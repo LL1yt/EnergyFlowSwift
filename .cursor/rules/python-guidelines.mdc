@@ -1,0 +1,45 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Python Code Guidelines
+
+When creating or modifying Python files (`.py`), adhere to these principles in addition to the general project guidelines (@project-guidelines.mdc):
+
+1. **Extreme Modularity**: Create very small, focused Python modules. Each module should have a single, clear responsibility.
+
+2. **Proper Python Structure**: 
+   - Use `__init__.py` files to make directories proper Python packages.
+   - Import only what's needed, use explicit imports.
+   - Follow PEP 8 style guidelines for readability.
+
+3. **Comprehensive Logging**: 
+   - Use Python's `logging` module for all output.
+   - Log at appropriate levels (DEBUG, INFO, WARNING, ERROR).
+   - Include detailed context in log messages.
+   - Example: `logger.info(f"Loading model from {model_path} with config {config_name}")`
+
+4. **Error Handling**:
+   - Use try/except blocks for operations that may fail.
+   - Log errors with full context and stack traces.
+   - Document actual errors encountered in `errors.md`.
+
+5. **Configuration Management**:
+   - Avoid hardcoded values. Use configuration files (`config.yaml`).
+   - Pass configuration through function parameters or class constructors.
+   - Validate configuration at startup.
+
+6. **Clear Function/Class Design**:
+   - Write small, focused functions that do one thing well.
+   - Use type hints for function parameters and return values.
+   - Document functions with clear docstrings.
+
+7. **Dependencies**:
+   - List all dependencies in `requirements.txt` for each module.
+   - Use version pinning for reproducibility.
+   - Prefer established libraries (PyTorch, transformers, numpy, etc.).
+
+---
+Reference the main project guidelines for complete context:
+@project-guidelines.mdc

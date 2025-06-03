@@ -9,10 +9,10 @@
 5. **Minimal Changes Only**: Make only the absolute minimum changes needed to get a feature working for testing.
 6. **Document Only Real Errors**: Only document errors that were actually encountered, not hypothetical ones. See `@.cursor/rules/documentation-guidelines.mdc`.
 7. **Stop After Minimal Implementation**: After implementing minimal changes to make a feature testable, stop and wait for further user instructions.
-   7.1 After successful testing, you can move on to full implementation of the feature
+   7.1 After user confirmed successful testing, you can move on to full implementation of the feature
 8. **Unified Application Interface**: Build a cohesive application with a central interface that incrementally grows as new modules are added.
-9. **Proper Code Organization & Separation**: Maintain modularity and separation of concerns by keeping styles, scripts, and markup in separate files within modules. See guidelines for specific file types (`@.cursor/rules/javascript-guidelines.mdc`, `@.cursor/rules/styling-guidelines.mdc`, `@.cursor/rules/html-guidelines.mdc`).
-10. **Comprehensive Operation Feedback**: Provide detailed feedback in both console and UI for all operations. See `@.cursor/rules/javascript-guidelines.mdc` and `@.cursor/rules/html-guidelines.mdc`.
+9. **Proper Code Organization & Separation**: Maintain modularity and separation of concerns by keeping different components in separate files within modules. See guidelines for specific file types (`@.cursor/rules/python-guidelines.mdc`, `@.cursor/rules/data-guidelines.mdc`, `@.cursor/rules/config-guidelines.mdc`).
+10. **Comprehensive Operation Feedback**: Provide detailed feedback in both console/logs and output for all operations. See `@.cursor/rules/python-guidelines.mdc`.
 
 ## Effective Use of Auxiliary Files for Code Analysis
 
@@ -24,7 +24,7 @@ When analyzing code to understand functionality or diagnose issues, follow this 
    - Look at the module-specific diagram to identify its components, relationships, and data flows
    - Pay special attention to arrows between components which show dependencies and data flow direction
    - Use the diagrams to identify which other modules might be involved in the issue
-   - Review event flow paths marked with dashed lines to understand user interaction sequences
+   - Review data flow paths marked with dashed lines to understand processing sequences
    - Examine critical paths marked with bold/red lines that are common error sources
 
 2. **Review the Module's README.md**:
@@ -38,7 +38,7 @@ When analyzing code to understand functionality or diagnose issues, follow this 
    - Look for previously encountered and solved problems that might be related
    - Check if there are documented workarounds or fixes for similar issues
    - Use past error patterns to understand common failure points
-   - Review user interaction errors specifically tagged with [UI-ERROR]
+   - Review model training/inference errors specifically tagged with [MODEL-ERROR]
 
 4. **Examine the plan.md File**:
 
@@ -50,28 +50,28 @@ When analyzing code to understand functionality or diagnose issues, follow this 
 
    - Check which modules this one depends on
    - Note which modules depend on this one
-   - Identify external dependencies that might be relevant
-   - Verify DOM element dependencies listed in the UI-dependencies section
+   - Identify external dependencies (PyTorch, transformers, etc.) that might be relevant
+   - Verify data dependencies listed in the data-dependencies section
 
 6. **Look at examples.md for Usage Patterns**:
 
    - See how the module is intended to be used
-   - Understand typical interaction patterns
+   - Understand typical processing patterns
    - Compare actual usage in code with documented examples
-   - Review documented user interaction sequences
+   - Review documented training/inference workflows
 
 7. **Cross-Reference with Code**:
 
    - After reviewing auxiliary files, examine the actual code with context
    - Compare documented interfaces with actual implementations
    - Look for discrepancies between documentation and code
-   - Check event listeners against documented event flow
+   - Check model configurations against documented parameters
 
 8. **Use Diagrams for Debugging Flow**:
    - During debugging, trace the issue through the flow shown in the diagrams
    - Identify where in the documented flow the issue might be occurring
    - Look for missing connections or incorrect relationships
-   - Follow user interaction paths to identify where the sequence breaks
+   - Follow data processing paths to identify where the sequence breaks
 
 This systematic approach helps:
 
@@ -80,202 +80,197 @@ This systematic approach helps:
 - Understand dependencies before changing code
 - Identify architecture-level issues more quickly
 - Maintain consistency between code and documentation
-- Detect event-handling and user interaction issues efficiently
+- Detect model training and inference issues efficiently
 
 When fixing issues, update all relevant documentation to reflect the changes, especially marking solved issues in errors.md and updating diagram.mmd if component relationships change.
 
-## Enhanced Mermaid Diagrams for UI Interaction Debugging
+## Enhanced Mermaid Diagrams for Model/Data Flow Debugging
 
 To improve error detection and debugging, all module diagrams should be extended to include:
 
-1. **DOM Event Flow Representation**:
+1. **Data Flow Representation**:
 
-   - Use dashed lines with event names to show event propagation
-   - Include event listeners with their respective DOM elements
-   - Indicate event delegation with nested boxes
-   - Example notation: `ElementA -.->|click| HandlerFunction`
+   - Use dashed lines with data format names to show data transformation
+   - Include data validation steps with their respective components
+   - Indicate data preprocessing with nested boxes
+   - Example notation: `RawData -.->|tokenization| ProcessedData`
 
-2. **User Interaction Sequences**:
+2. **Model Processing Sequences**:
 
-   - Add numbered sequences showing expected user interaction flows
-   - Use swimlane diagrams for complex UI interactions
-   - Document expected state changes at each interaction step
-   - Example: `1. User clicks button -> 2. Dialog opens -> 3. Form submits`
+   - Add numbered sequences showing expected model processing flows
+   - Use swimlane diagrams for complex model interactions
+   - Document expected state changes at each processing step
+   - Example: `1. Load model -> 2. Preprocess data -> 3. Run inference -> 4. Post-process results`
 
 3. **Critical Path Highlighting**:
    - Mark error-prone paths with bold red lines or [CRITICAL] tags
-   - Highlight race conditions or timing-dependent operations
+   - Highlight memory-intensive operations or GPU bottlenecks
    - Indicate validation points where errors often occur
    - Document recovery paths for error conditions
 
-Example enhanced diagram section for process-selection module:
+Example enhanced diagram section for model-loader module:
 
 ```mermaid
 graph TD
-    %% Process Selection Module Diagram Core
-    ProcessSelection[Process Selection Module]
-    FilterInput[Filter Input Element]
-    FilterBtn[Filter Button]
-    RefreshBtn[Refresh Button]
-    SelectBtn[Select Process Button]
+    %% Model Loading Module Diagram Core
+    ModelLoader[Model Loader Module]
+    ConfigLoader[Config Loader]
+    ModelCache[Model Cache]
+    GPUManager[GPU Manager]
 
-    %% DOM Event Flow with dashed lines
-    FilterInput -.->|keyup:Enter| FetchProcesses[fetchProcesses()]
-    FilterBtn -.->|click| FetchProcesses
-    RefreshBtn -.->|click| ClearAndFetch[Clear Filter + fetchProcesses()]
-    SelectBtn -.->|click: CRITICAL| SelectProcess[selectProcess()]
+    %% Data Flow with dashed lines
+    ConfigLoader -.->|config.json| ModelLoader
+    ModelLoader -.->|model_path: CRITICAL| ModelCache
+    ModelCache -.->|GPU allocation: CRITICAL| GPUManager
 
-    %% User Interaction Sequence
-    subgraph "User Interaction Flow"
+    %% Processing Sequence
+    subgraph "Model Loading Flow"
         direction LR
-        U1[1. Load Page] --> U2[2. Filter Processes]
-        U2 --> U3[3. Click Select Button]
-        U3 --> U4[4. Process Selection Updates]
+        P1[1. Load Config] --> P2[2. Check Cache]
+        P2 --> P3[3. Load Model]
+        P3 --> P4[4. GPU Allocation]
     end
 
     %% Critical Path Highlighting
-    SelectBtn -.->|click: CRITICAL| SelectProcess
-    SelectProcess -->|API call: CRITICAL| Backend
+    ModelLoader -.->|memory_check: CRITICAL| GPUManager
+    GPUManager -->|OOM risk: CRITICAL| ModelCache
 
     %% Styling
     classDef critical fill:#f66,stroke:#900,stroke-width:2px;
-    classDef event stroke:#333,stroke-width:1px,stroke-dasharray: 3 3;
-    class SelectBtn,SelectProcess critical;
-    class FilterInput,FilterBtn,RefreshBtn event;
+    classDef dataflow stroke:#333,stroke-width:1px,stroke-dasharray: 3 3;
+    class ModelLoader,GPUManager critical;
+    class ConfigLoader,ModelCache dataflow;
 ```
 
-For the main application diagram, include a complete user flow representation that shows all key interaction paths:
+For the main application diagram, include a complete data processing flow that shows all key transformation paths:
 
 ```mermaid
 flowchart TB
     %% Main Module Components
-    ProcessSelection[Process Selection]
-    ValueMatching[Value Matching]
+    DataLoader[Data Loader]
+    ModelTrainer[Model Trainer]
+    Evaluator[Evaluator]
 
-    %% DOM Event Flows
-    UserProcessSelect[Process Selection UI]
-    ScanButtonClick[Scan Button]
+    %% Data Flow
+    RawData[Raw Data]
+    ProcessedData[Processed Data]
+    TrainedModel[Trained Model]
 
-    %% Critical Interactions
-    UserProcessSelect -.->|click: CRITICAL| ProcessSelection
-    ScanButtonClick -.->|click: CRITICAL| ValueMatching
+    %% Critical Processing
+    RawData -.->|preprocessing: CRITICAL| DataLoader
+    DataLoader -.->|batching: CRITICAL| ModelTrainer
+    ModelTrainer -.->|training: CRITICAL| TrainedModel
 
-    %% User Interaction Flow
-    subgraph "Main User Flow"
+    %% Processing Flow
+    subgraph "Main Processing Flow"
         direction TB
-        UF1[1. Select Process] --> UF2[2. Set Search Value]
-        UF2 --> UF3[3. Click Scan Button]
-        UF3 --> UF4[4. View Results]
+        PF1[1. Load Data] --> PF2[2. Preprocess]
+        PF2 --> PF3[3. Train Model]
+        PF3 --> PF4[4. Evaluate]
     end
 
     %% Styling
     classDef critical fill:#f66,stroke:#900,stroke-width:2px;
-    classDef event stroke:#333,stroke-width:1px,stroke-dasharray: 3 3;
-    classDef userflow fill:#e7f7f7,stroke:#333,stroke-width:1px;
+    classDef dataflow stroke:#333,stroke-width:1px,stroke-dasharray: 3 3;
+    classDef processing fill:#e7f7f7,stroke:#333,stroke-width:1px;
 ```
 
-## Event Flow Debugging Benefits
+## Data Flow Debugging Benefits
 
 Using the enhanced diagrams for error detection provides these benefits:
 
 1. **Faster Issue Localization**:
 
-   - Easily identify where in the interaction flow an error occurs
-   - Pinpoint specific DOM events that might be failing
-   - See the entire user interaction context around an error
+   - Easily identify where in the processing flow an error occurs
+   - Pinpoint specific data transformations that might be failing
+   - See the entire data processing context around an error
 
 2. **Complete Context Understanding**:
 
-   - Visualize both the code execution path and user interaction flow simultaneously
-   - Identify gaps between expected and actual behavior
-   - Document the full sequence of events leading to errors
+   - Visualize both the code execution path and data flow simultaneously
+   - Identify gaps between expected and actual data formats
+   - Document the full sequence of operations leading to errors
 
 3. **Critical Path Awareness**:
 
    - Highlight the most error-prone areas for focused testing
-   - Identify async operations that commonly fail
-   - Prioritize debugging efforts on critical user paths
+   - Identify memory-intensive operations that commonly fail
+   - Prioritize debugging efforts on critical data paths
 
 4. **Improved Error Documentation**:
-   - Reference specific points in the interaction flow in error reports
-   - Document expected vs. actual behavior with diagram references
+   - Reference specific points in the processing flow in error reports
+   - Document expected vs. actual data shapes/formats with diagram references
    - Include error recovery paths in both code and diagrams
 
-## Common UI Interaction Problem Patterns
+## Common Model/Data Processing Problem Patterns
 
-When debugging, specifically check for these common UI-related error patterns:
+When debugging, specifically check for these common patterns:
 
-1. **Event Timing Issues**:
+1. **Data Shape Issues**:
 
-   - Race conditions between UI updates and data loading
-   - Event handlers fired before DOM is fully ready
-   - Multiple rapid user interactions causing state conflicts
+   - Tensor dimension mismatches between model layers
+   - Batch size inconsistencies during processing
+   - Data type conflicts (float32 vs float16)
 
-2. **DOM Element Availability**:
+2. **Memory Management**:
 
-   - Elements referenced before they exist in the DOM
-   - Dynamic elements removed while being accessed
-   - ID conflicts between modules sharing the DOM
+   - GPU memory overflow during training/inference
+   - Memory leaks in data loading pipelines
+   - Inefficient memory usage in large model loading
 
-3. **Data Flow Disruptions**:
+3. **Model Configuration Errors**:
 
-   - Incomplete data propagation between modules
-   - Inconsistent state updates after user interactions
-   - Form data not properly validated before processing
+   - Incorrect hyperparameters for model architecture
+   - Mismatched tokenizer and model configurations
+   - Version conflicts between model and framework
 
-4. **Asynchronous Operation Failures**:
-   - Promises not properly handled in UI interactions
-   - Missing loading states during async operations
-   - Failed error handling during async UI updates
+4. **Asynchronous Processing Failures**:
+   - Data loading bottlenecks affecting training speed
+   - Race conditions in multi-GPU training
+   - Failed error handling during async data processing
 
 For each error found, document in errors.md with these sections:
 
-- Interaction sequence that triggered the error
-- Visual symptoms in the UI
-- Console errors (if any)
+- Processing sequence that triggered the error
+- Error symptoms (stack trace, memory usage, etc.)
+- Model/data configuration at time of error
 - Root cause analysis
 - Solution implemented
 - Prevention strategy
 
-When analyzing errors, always check if user interactions follow the documented sequence flows in the enhanced diagrams to quickly identify deviation points.
+When analyzing errors, always check if data processing follows the documented sequence flows in the enhanced diagrams to quickly identify deviation points.
 
 ## Module Integration without Code Duplication
 
-To avoid duplicating code between modules and the main application, we use a dynamic module loading approach:
+To avoid duplicating code between modules and the main application, we use a Python package structure approach:
 
 ### Core Integration Principles
 
-1. **No Code Duplication**: Module assets (JS, CSS, HTML) stay in their original locations
-2. **Direct Serving**: Express serves module assets directly via static middleware
-3. **Dynamic Loading**: JavaScript is loaded at runtime using a module loader
-4. **Direct CSS References**: CSS files are referenced directly from module locations
+1. **No Code Duplication**: Module code stays in their original locations
+2. **Package Structure**: Each module is a proper Python package with `__init__.py`
+3. **Dynamic Imports**: Modules are imported at runtime using standard Python imports
+4. **Shared Configuration**: Configuration files are shared through a central config module
 
 ### Integration Process for New Modules
 
 When adding a new module to the application:
 
-1. Create the module with its standard directory structure
-2. In `app.js`, add Express static middleware:
-   ```javascript
-   app.use(
-     "/modules/new-module",
-     express.static(path.join(__dirname, "../new-module/public"))
-   );
+1. Create the module with its standard directory structure including `__init__.py`
+2. In `main.py`, add the module import:
+   ```python
+   from modules.new_module import NewModule
    ```
-3. In `modules-loader.js`, add the module to the loading list:
-   ```javascript
-   {
-     name: 'new-module',
-     scripts: ['js/new-module.js']
-   }
+3. In `config/modules.yaml`, add the module configuration:
+   ```yaml
+   modules:
+     new_module:
+       enabled: true
+       config_path: "config/new_module.yaml"
    ```
-4. In `app/public/index.html`, reference CSS directly:
-   ```html
-   <link rel="stylesheet" href="/modules/new-module/css/new-module.css" />
-   ```
-5. Add the module's UI components to the appropriate tab in the main application layout
+4. Create module-specific configuration file if needed
+5. Add the module's processing components to the appropriate pipeline in the main application
 
-Detailed documentation is available in `app/module-integration-guide.md`.
+Detailed documentation is available in `docs/module-integration-guide.md`.
 
 ## Directory Structure
 
@@ -283,19 +278,21 @@ Each module, no matter how small, should follow this structure (enforced by `@.c
 
 ```
 module_name/
-├── index.js          # Main code file
-├── public/           # UI assets
-│   ├── index.html    # Module UI template
-│   ├── css/          # Module-specific styles
-│   │   └── styles.css
-│   └── js/           # Module-specific scripts
-│       └── main.js
-├── README.md         # Module overview and usage
-├── plan.md           # Implementation plan with checkmarks
-├── meta.md           # Metadata about the module
-├── errors.md         # Known errors and their solutions
-├── diagram.mmd       # Mermaid diagram with module relationships
-└── examples.md       # Usage examples
+├── __init__.py       # Module initialization and exports
+├── main.py           # Main module code
+├── config/           # Module-specific configuration
+│   └── config.yaml
+├── data/            # Module-specific data files
+│   └── README.md    # Data description
+├── utils/           # Module utilities
+│   └── helpers.py
+├── README.md        # Module overview and usage
+├── plan.md          # Implementation plan with checkmarks
+├── meta.md          # Metadata about the module
+├── errors.md        # Known errors and their solutions
+├── diagram.mmd      # Mermaid diagram with module relationships
+├── examples.md      # Usage examples
+└── requirements.txt # Module-specific dependencies
 ```
 
 ## Documentation Requirements
@@ -310,7 +307,7 @@ Refer to `@.cursor/rules/documentation-guidelines.mdc` for the specific list of 
 
    - Break down features into the smallest possible functional units.
    - Create separate modules even for simple, distinct functionalities.
-   - _Example_: Instead of one large "Scanner" module, create separate modules for `value-input/`, `address-range/`, `scan-execution/`, `results-storage/`, etc.
+   - _Example_: Instead of one large "ModelTrainer" module, create separate modules for `data-loader/`, `model-config/`, `training-loop/`, `checkpointing/`, `evaluation/`, etc.
 
 2. **Verification Checkpoints**
 
@@ -328,19 +325,19 @@ Refer to `@.cursor/rules/documentation-guidelines.mdc` for the specific list of 
 
 5. **Progressive Interface Development**
 
-   - Build a single, unified application interface (`app/public/index.html`) that incorporates UI elements from different modules. Avoid creating separate, isolated interfaces for each module.
+   - Build a single, unified application interface (`main.py`) that incorporates processing components from different modules. Avoid creating separate, isolated interfaces for each module.
 
-6. **Style Management**
+6. **Configuration Management**
 
-   - Extract all CSS styles into separate `.css` files within the module's `public/css` directory. Avoid inline styles. Refer to `@.cursor/rules/styling-guidelines.mdc` for specific rules.
+   - Extract all configuration into separate `.yaml` files within the module's `config` directory. Avoid hardcoded values. Refer to `@.cursor/rules/config-guidelines.mdc` for specific rules.
 
-7. **JavaScript Organization**
+7. **Python Code Organization**
 
-   - Place all JavaScript code in separate `.js` files (e.g., `index.js`, `public/js/main.js`). Avoid inline scripts. Structure code logically and export clear interfaces. Refer to `@.cursor/rules/javascript-guidelines.mdc` for specific rules.
+   - Structure code logically with clear separation of concerns. Use proper Python packaging with `__init__.py` files. Export clear interfaces. Refer to `@.cursor/rules/python-guidelines.mdc` for specific rules.
 
 8. **Comprehensive Feedback System**
 
-   - Implement dual feedback (console logs for developers, UI notifications for users) for all operations (start, progress, success, failure). Ensure messages are informative. Specific requirements are outlined in the relevant file type rules.
+   - Implement detailed logging for all operations (start, progress, success, failure). Use Python's logging module for consistent output. Specific requirements are outlined in the relevant file type rules.
 
 ## Communication with LLM
 
@@ -349,14 +346,14 @@ When requesting work on modules:
 1. **Be Extremely Specific**:
 
    ```
-   I want to implement the address input field in the address-range module.
+   I want to implement the data preprocessing function in the data-loader module.
    ```
 
 2. **Provide Full Context**:
 
    ```
-   This module will be used by the scan-execution module. It should validate
-   that addresses are in hexadecimal format.
+   This module will be used by the model-trainer module. It should handle
+   tokenization and tensor creation for transformer models.
    ```
 
 3. **Request Documentation Updates**:
@@ -366,4 +363,4 @@ When requesting work on modules:
 
 ---
 
-This approach prioritizes extremely fine-grained modularity and documentation over conventional development practices, as the primary goal is to research LLM-assisted development patterns.
+This approach prioritizes extremely fine-grained modularity and documentation over conventional development practices, as the primary goal is to research LLM-assisted development patterns for ML/AI projects.

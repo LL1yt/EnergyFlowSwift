@@ -1,0 +1,57 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Configuration Guidelines
+
+When creating or modifying configuration files (`.yaml`, `.json`, `.toml`), adhere to these principles in addition to the general project guidelines (@project-guidelines.mdc):
+
+1. **Separation of Concerns**: 
+   - Keep configuration separate from code.
+   - Use YAML for human-readable configs, JSON for data exchange.
+   - Group related settings together logically.
+
+2. **Clear Structure**:
+   - Use consistent naming conventions (snake_case for keys).
+   - Include comments explaining non-obvious settings.
+   - Organize settings hierarchically.
+
+3. **Environment-Specific Configs**:
+   - Support different configs for development/testing/production.
+   - Use environment variables for sensitive information.
+   - Provide reasonable defaults for all settings.
+
+4. **Validation**:
+   - Validate configuration at application startup.
+   - Document required vs optional settings.
+   - Provide clear error messages for invalid configs.
+
+5. **Model/Training Configurations**:
+   - Separate model architecture configs from training hyperparameters.
+   - Include data path configurations.
+   - Document GPU/memory requirements in config comments.
+
+Example structure:
+```yaml
+# Model configuration
+model:
+  name: "gpt2-small"
+  max_length: 512
+  
+# Training configuration  
+training:
+  batch_size: 8
+  learning_rate: 2e-5
+  epochs: 3
+  
+# Data configuration
+data:
+  train_path: "data/train.jsonl"
+  val_path: "data/val.jsonl"
+```
+
+---
+Reference the main project guidelines for complete context:
+@project-guidelines.mdc
+
