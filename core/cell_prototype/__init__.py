@@ -9,9 +9,9 @@
 обрабатывает их и передает дальше.
 """
 
-from .main import CellPrototype
+from .main import CellPrototype, create_cell_from_config
 
-__all__ = ['CellPrototype']
+__all__ = ['CellPrototype', 'create_cell_from_config']
 
 __version__ = '0.1.0'
 __author__ = 'Research Team'
