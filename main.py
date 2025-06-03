@@ -24,8 +24,8 @@ sys.path.insert(0, str(project_root))
 
 # === ИМПОРТЫ МОДУЛЕЙ (будут создаваться постепенно) ===
 try:
-    # Пока модули не созданы, импорты закомментированы
-    # from core.cell_prototype import CellPrototype
+    # ✅ Модуль cell-prototype готов!
+    from core.cell_prototype import CellPrototype, create_cell_from_config
     # from core.lattice_3d import Lattice3D
     # from core.signal_propagation import SignalPropagator
     # from data.embedding_loader import EmbeddingLoader
@@ -35,9 +35,9 @@ try:
     # from utils.config_manager import ConfigManager
     # from utils.logger import setup_logger
     
-    # Временные заглушки для демонстрации структуры
     print("📋 Инициализация системы...")
-    print("⚠️  Модули пока не реализованы - это демонстрация структуры")
+    print("✅ Модуль cell-prototype загружен успешно!")
+    print("⚠️  Остальные модули пока не реализованы")
     
 except ImportError as e:
     print(f"⚠️  Модуль не найден: {e}")
@@ -200,33 +200,65 @@ def run_simple_test():
             print(f"  ❌ {lib} не установлен")
             return False
     
-    # Симулируем создание простейшей клетки
-    print("\n🔬 Создаем тестовую клетку...")
+    # Демонстрируем РЕАЛЬНЫЙ модуль cell-prototype
+    print("\n🧬 ТЕСТИРУЕМ РЕАЛЬНУЮ КЛЕТКУ CELL-PROTOTYPE...")
     try:
-        import torch.nn as nn
-        
-        # Простейший прототип клетки
-        class SimpleCell(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.layer = nn.Linear(3, 2)  # 3 входа, 2 выхода
-                self.activation = nn.Tanh()
-                
-            def forward(self, x):
-                return self.activation(self.layer(x))
-        
-        cell = SimpleCell()
-        test_input = torch.randn(1, 3)  # Случайный вход
-        output = cell(test_input)
-        
-        print(f"  ✅ Тестовая клетка создана")
-        print(f"  📊 Вход: {test_input.detach().numpy().flatten()}")
-        print(f"  📊 Выход: {output.detach().numpy().flatten()}")
+        # Создаем клетку из конфигурации  
+        config = load_configuration()
+        if config:
+            real_cell = create_cell_from_config(config)
+            print(f"  ✅ Реальная клетка создана: {real_cell}")
+            
+            # Создаем тестовые данные
+            batch_size = 2
+            neighbor_states = torch.randn(batch_size, 6, config['cell_prototype']['state_size'])
+            own_state = torch.randn(batch_size, config['cell_prototype']['state_size'])
+            external_input = torch.randn(batch_size, config['cell_prototype']['input_size'])
+            
+            # Тестируем forward pass
+            with torch.no_grad():
+                new_state = real_cell(neighbor_states, own_state, external_input)
+            
+            print(f"  📊 Входное состояние: {own_state[0].numpy()}")
+            print(f"  📊 Новое состояние:   {new_state[0].numpy()}")
+            print(f"  📊 Диапазон выхода:   [{new_state.min():.3f}, {new_state.max():.3f}]")
+            
+            # Показываем информацию о модели
+            info = real_cell.get_info()
+            print(f"  📋 Параметров в модели: {info['total_parameters']}")
+            print(f"  📋 Размер модели: {info['model_size_mb']:.2f} MB")
+            
+            print("  ✅ Тест реальной клетки прошел успешно!")
+            
+        else:
+            print("  ⚠️  Конфигурация недоступна, используем простую заглушку")
+            
+            # Fallback к простой клетке если конфигурация не загрузилась
+            import torch.nn as nn
+            
+            class SimpleCell(nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self.layer = nn.Linear(3, 2)
+                    self.activation = nn.Tanh()
+                    
+                def forward(self, x):
+                    return self.activation(self.layer(x))
+            
+            cell = SimpleCell()
+            test_input = torch.randn(1, 3)
+            output = cell(test_input)
+            
+            print(f"  ✅ Простая клетка создана")
+            print(f"  📊 Вход: {test_input.detach().numpy().flatten()}")
+            print(f"  📊 Выход: {output.detach().numpy().flatten()}")
         
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка создания клетки: {e}")
+        print(f"  ❌ Ошибка тестирования клетки: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
