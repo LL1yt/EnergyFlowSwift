@@ -1,0 +1,256 @@
+```mermaid
+graph TB
+    %% Главная диаграмма модуля Cell Prototype
+    subgraph "Cell Prototype Module"
+        direction TB
+        
+        %% Входные данные
+        subgraph "Inputs"
+            N1[Neighbor 1 State]
+            N2[Neighbor 2 State]
+            N3[Neighbor 3 State]
+            N4[Neighbor 4 State]
+            N5[Neighbor 5 State]
+            N6[Neighbor 6 State]
+            OwnState[Own Previous State]
+            ExtInput[External Input<br/>Optional]
+        end
+        
+        %% Основная обработка
+        subgraph "CellPrototype Core"
+            direction TB
+            
+            %% Комбинирование входов
+            Combiner[Input Combiner<br/>Concatenation]
+            
+            %% Нейросеть
+            subgraph "Neural Network"
+                Input[Input Layer<br/>Size: combined_input]
+                Hidden[Hidden Layer<br/>Size: configurable]
+                Output[Output Layer<br/>Size: state_size]
+                
+                Input --> Hidden
+                Hidden --> Output
+            end
+            
+            %% Активация
+            Activation[Activation Function<br/>tanh/sigmoid/relu]
+            
+            %% Выходы
+            NewState[New Cell State<br/>Size: state_size]
+            
+            Combiner --> Input
+            Output --> Activation
+            Activation --> NewState
+        end
+        
+        %% Поток данных
+        N1 -.->|state_size| Combiner
+        N2 -.->|state_size| Combiner
+        N3 -.->|state_size| Combiner
+        N4 -.->|state_size| Combiner
+        N5 -.->|state_size| Combiner
+        N6 -.->|state_size| Combiner
+        OwnState -.->|state_size| Combiner
+        ExtInput -.->|external_size| Combiner
+        
+        %% Выходы модуля
+        NewState --> NextTimestep[To Next Timestep]
+        NewState --> Neighbors[To Neighbor Cells]
+    end
+    
+    %% Внешние зависимости
+    subgraph "External Dependencies"
+        Config[config/cell_prototype.yaml]
+        Utils[utils/math-helpers]
+        Logger[utils/logger]
+    end
+    
+    %% Связи с внешними модулями
+    Config -.->|configuration| CellPrototype
+    Utils -.->|helper functions| CellPrototype
+    Logger -.->|logging| CellPrototype
+    
+    %% Стилизация
+    classDef input fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef processing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef output fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef config fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef critical fill:#ffebee,stroke:#c62828,stroke-width:3px
+    
+    class N1,N2,N3,N4,N5,N6,OwnState,ExtInput input
+    class Combiner,Input,Hidden,Output,Activation processing
+    class NewState,NextTimestep,Neighbors output
+    class Config,Utils,Logger config
+    class CellPrototype critical
+```
+
+```mermaid
+flowchart LR
+    %% Биологическая аналогия
+    subgraph "Biological Analogy"
+        direction TB
+        
+        subgraph "Real Neuron"
+            Dendrites[Dendrites<br/>Receive signals]
+            Soma[Cell Body<br/>Process signals]
+            Axon[Axon<br/>Send output]
+            
+            Dendrites --> Soma
+            Soma --> Axon
+        end
+        
+        subgraph "Our Cell Prototype"
+            Inputs[Input Combiner<br/>= Dendrites]
+            Network[Neural Network<br/>= Cell Body]
+            State[New State<br/>= Axon Output]
+            
+            Inputs --> Network
+            Network --> State
+        end
+        
+        %% Аналогии
+        Dendrites -.->|analogous to| Inputs
+        Soma -.->|analogous to| Network
+        Axon -.->|analogous to| State
+    end
+```
+
+```mermaid
+sequenceDiagram
+    participant Config as Configuration
+    participant Cell as CellPrototype
+    participant Neighbors as Neighbor Cells
+    participant Self as Own State
+    participant Output as New State
+    
+    %% Инициализация
+    Config->>Cell: Load architecture settings
+    Cell->>Cell: Build neural network layers
+    Cell->>Cell: Initialize weights
+    
+    %% Обработка одного временного шага
+    loop Every Timestep
+        Neighbors->>Cell: Send state vectors (6x state_size)
+        Self->>Cell: Send previous state (state_size)
+        
+        Cell->>Cell: Combine all inputs
+        Cell->>Cell: Forward pass through network
+        Cell->>Cell: Apply activation function
+        
+        Cell->>Output: Generate new state
+        Output->>Neighbors: Broadcast to neighbors
+        Output->>Self: Update own state
+    end
+    
+    %% Критические точки
+    Note over Cell: CRITICAL: Input validation
+    Note over Cell: CRITICAL: Gradient stability
+    Note over Output: CRITICAL: State bounds [-1,1]
+```
+
+```mermaid
+graph TD
+    %% Архитектурные варианты
+    subgraph "Architecture Options"
+        direction TB
+        
+        subgraph "Simple (MVP)"
+            S_Input[Combined Input<br/>Size: 6*8 + 8 = 56]
+            S_Linear[Linear Layer<br/>56 → 8]
+            S_Tanh[Tanh Activation]
+            S_Output[New State<br/>Size: 8]
+            
+            S_Input --> S_Linear
+            S_Linear --> S_Tanh
+            S_Tanh --> S_Output
+        end
+        
+        subgraph "Advanced"
+            A_Input[Combined Input<br/>Size: configurable]
+            A_Linear1[Linear Layer 1<br/>input_size → hidden_size]
+            A_Act1[Activation 1]
+            A_Linear2[Linear Layer 2<br/>hidden_size → state_size]
+            A_Act2[Final Activation]
+            A_Output[New State]
+            
+            A_Input --> A_Linear1
+            A_Linear1 --> A_Act1
+            A_Act1 --> A_Linear2
+            A_Linear2 --> A_Act2
+            A_Act2 --> A_Output
+        end
+        
+        subgraph "With Skip Connection"
+            SK_Input[Combined Input]
+            SK_Linear1[Linear Layer 1]
+            SK_Act1[Activation 1]
+            SK_Linear2[Linear Layer 2]
+            SK_Add[Add Skip Connection]
+            SK_Act2[Final Activation]
+            SK_Output[New State]
+            
+            SK_Input --> SK_Linear1
+            SK_Input -.->|skip| SK_Add
+            SK_Linear1 --> SK_Act1
+            SK_Act1 --> SK_Linear2
+            SK_Linear2 --> SK_Add
+            SK_Add --> SK_Act2
+            SK_Act2 --> SK_Output
+        end
+    end
+    
+    %% Стилизация
+    classDef simple fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef advanced fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef skip fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    class S_Input,S_Linear,S_Tanh,S_Output simple
+    class A_Input,A_Linear1,A_Act1,A_Linear2,A_Act2,A_Output advanced
+    class SK_Input,SK_Linear1,SK_Act1,SK_Linear2,SK_Add,SK_Act2,SK_Output skip
+```
+
+```mermaid
+graph LR
+    %% Модульные связи
+    subgraph "Module Connections"
+        direction LR
+        
+        %% Зависимости
+        subgraph "Dependencies"
+            ConfigMgr[utils/config-manager]
+            MathHelpers[utils/math-helpers]
+            Logger[utils/logger]
+        end
+        
+        %% Основной модуль
+        CellProto[core/cell-prototype]
+        
+        %% Использующие модули
+        subgraph "Used By"
+            Lattice3D[core/lattice-3d]
+            SignalProp[core/signal-propagation]
+            Training[training/training-loop]
+            Demo2D[examples/simple-2d-demo]
+        end
+        
+        %% Связи
+        ConfigMgr --> CellProto
+        MathHelpers --> CellProto
+        Logger --> CellProto
+        
+        CellProto --> Lattice3D
+        CellProto --> SignalProp
+        CellProto --> Training
+        CellProto --> Demo2D
+    end
+    
+    %% Стилизация
+    classDef dependency fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+    classDef main fill:#ffebee,stroke:#c62828,stroke-width:3px
+    classDef consumer fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    
+    class ConfigMgr,MathHelpers,Logger dependency
+    class CellProto main
+    class Lattice3D,SignalProp,Training,Demo2D consumer
+``` 
