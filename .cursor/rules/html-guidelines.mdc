@@ -1,0 +1,31 @@
+---
+description: Enforces specific guidelines for HTML files (.html) in this project, focusing on structure, separation of concerns, and UI integration as detailed in @instructions.md.
+globs: **/*.html
+alwaysApply: false
+---
+
+# HTML Specific Guidelines
+
+When working on HTML files (`.html`), adhere to these principles in addition to the general project guidelines (@project-guidelines.mdc):
+
+1.  **File Location**: 
+    *   Module-specific UI templates or components should typically reside within the module's `public/` directory (e.g., `module_name/public/index.html`).
+    *   The main application structure will be in `app/public/index.html`.
+2.  **Separation of Concerns**: 
+    *   Do NOT include inline CSS styles (use separate `.css` files referenced via `<link>` tags).
+    *   Do NOT include JavaScript code directly (use separate `.js` files referenced via `<script>` tags, ideally loaded dynamically).
+3.  **Structure**: 
+    *   Use semantic HTML elements where appropriate.
+    *   Ensure HTML is well-formed and valid.
+4.  **Module Integration**: 
+    *   UI components defined in a module's HTML should be integrated into the main application's layout (`app/public/index.html`), often within designated containers or tabs.
+    *   Reference module CSS directly using `<link>` tags with paths served by the backend (e.g., `<link rel="stylesheet" href="/modules/module_name/css/styles.css">`).
+    *   Module JavaScript is typically loaded dynamically by a central loader (`modules-loader.js`), not directly via `<script>` tags in the main HTML unless necessary for initialization.
+5.  **UI Feedback Elements**: 
+    *   Include necessary HTML elements (e.g., divs, spans) in your module's UI template to display status messages, errors, and progress indicators as required by the comprehensive feedback guidelines.
+
+---
+Refer to the main project guidelines for complete context:
+@project-guidelines.mdc
+Refer to the full instructions document for more details:
+@instructions.md

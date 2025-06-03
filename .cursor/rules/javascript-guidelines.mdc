@@ -1,0 +1,37 @@
+---
+description: Enforces specific development practices for JavaScript files (.js) in this project, focusing on modularity, documentation, feedback, and state management as detailed in @instructions.md.
+globs: **/*.js
+alwaysApply: false
+---
+
+# JavaScript Specific Guidelines
+
+When working on JavaScript files (`.js`), adhere to these principles in addition to the general project guidelines (@project-guidelines.mdc):
+
+1.  **Module Structure**: Each module should typically have a main `index.js`. Keep modules extremely small and focused.
+2.  **Code Organization**: 
+    *   Place all JavaScript logic in `.js` files within the appropriate module directory (e.g., `module_name/index.js` or `module_name/public/js/main.js`).
+    *   Do NOT include JavaScript directly in HTML files.
+    *   Structure code with clear function separation. Break down large functions/files into smaller logical components.
+    *   Use modern JavaScript patterns where appropriate.
+3.  **Module Interface**: 
+    *   Export a clear, minimal interface from each module's `index.js`.
+    *   Document all exports in the module's `meta.md` file.
+4.  **Dependencies**: 
+    *   Keep dependencies between modules explicit (e.g., using `require` or `import`).
+    *   Document dependencies in `meta.md`.
+    *   Include import/require statements in `examples.md`.
+5.  **State Management**: 
+    *   Be explicit about how state is managed and passed between modules.
+    *   Document the state flow in the module's `diagram.mmd`.
+6.  **Comprehensive Feedback**: 
+    *   Implement detailed **console logging** for all operations: start, progress (if applicable), success, and failure.
+    *   Ensure console error messages are technical and detailed.
+7.  **Incremental Implementation**: Implement features in tiny, verifiable steps. Verify functionality manually after *each* step before proceeding.
+8.  **Documentation**: Immediately after making *any* functional change to a `.js` file, update *all* relevant documentation files (`README.md`, `plan.md`, `meta.md`, `errors.md`, `diagram.mmd`, `examples.md`).
+
+---
+Refer to the main project guidelines for complete context:
+@project-guidelines.mdc
+Refer to the full instructions document for more details:
+@instructions.md 

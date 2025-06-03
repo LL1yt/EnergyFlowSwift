@@ -1,0 +1,26 @@
+---
+description: Enforces specific guidelines for CSS files (.css) in this project, focusing on separation of concerns and organization as detailed in @instructions.md.
+globs: **/*.css
+alwaysApply: false
+---
+
+# CSS Specific Guidelines
+
+When working on CSS files (`.css`), adhere to these principles in addition to the general project guidelines (@project-guidelines.mdc):
+
+1.  **File Location**: 
+    *   Place all CSS styles in separate `.css` files.
+    *   Module-specific styles should reside within the module's `public/css/` directory (e.g., `module_name/public/css/styles.css`).
+2.  **Separation of Concerns**: 
+    *   Do NOT include styles directly (inline) in HTML files.
+3.  **Naming Conventions**: 
+    *   Follow a consistent naming convention for CSS classes and IDs to avoid conflicts between modules.
+4.  **Integration**: 
+    *   Module CSS files should be referenced directly in the main application's HTML (e.g., `app/public/index.html`) using a link tag pointing to the module's served path (e.g., `/modules/module_name/css/styles.css`). Refer to the module integration guidelines in @instructions.md or `app/module-integration-guide.md` if needed.
+5.  **Documentation**: While CSS files themselves don't have the same documentation requirements as modules, ensure that any significant styling choices or complex selectors are understandable.
+
+---
+Refer to the main project guidelines for complete context:
+@project-guidelines.mdc
+Refer to the full instructions document for more details:
+@instructions.md

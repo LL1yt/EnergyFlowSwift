@@ -1,0 +1,44 @@
+---
+description: Enforces specific requirements for documentation files (.md, .mmd) in this project, ensuring all required files exist, are kept up-to-date, and follow the content/structure guidelines from @instructions.md.
+globs: **/*.md, **/*.mmd,*.mmd
+alwaysApply: false
+---
+
+# Documentation Specific Guidelines
+
+When creating or modifying documentation files (`.md`, `.mmd`), adhere to these principles in addition to the general project guidelines (@project-guidelines.mdc):
+
+1.  **Required Files**: EVERY module MUST contain:
+    *   `README.md`: Overview, purpose, basic usage.
+    *   `plan.md`: Step-by-step implementation plan. Use checkmarks (`[x]`) for completed items.
+    *   `meta.md`: Metadata including dependencies (module, external, UI/DOM), and exported API.
+    *   `errors.md`: **Only document errors ACTUALLY encountered** during development, including error message, cause, solution, and prevention. Include UI-ERROR tags and interaction sequence details for UI issues.
+    *   `diagram.mmd`: Mermaid diagram showing module components, relationships, dependencies, and data flow. Must follow enhanced diagram guidelines from @instructions.md (DOM events, user sequences, critical paths).
+    *   `examples.md`: Concrete usage examples, including necessary imports/setup.
+
+2.  **Update Cadence**: Documentation is paramount. **Immediately after ANY implementation step or code change**, update ALL relevant documentation files:
+    *   Mark completed items in `plan.md`.
+    *   Document any encountered errors in `errors.md`.
+    *   Update `diagram.mmd` if relationships, flows, or UI interactions change.
+    *   Update `meta.md` if dependencies or exports change.
+    *   Add/update examples in `examples.md`.
+    *   Update `README.md` if purpose or usage changes.
+
+3.  **Mermaid Diagrams (`.mmd`)**: 
+    *   Must accurately represent the module's internal components and external relationships.
+    *   **Crucially**, include the enhanced diagram elements specified in @instructions.md:
+        *   DOM Event Flows (dashed lines, event names, handlers).
+        *   User Interaction Sequences (numbered steps, swimlanes).
+        *   Critical Path Highlighting (bold/red lines, `CRITICAL` tags).
+    *   Ensure diagrams reflect the *current* state of the module and its interactions.
+
+4.  **Content Quality**: Ensure documentation is clear, accurate, and reflects the current state of the code and module functionality.
+
+5.  **Auxiliary File Usage**: When analyzing code or issues, systematically use the documentation files (diagrams, README, errors, plan, meta, examples) as outlined in the "Effective Use of Auxiliary Files" section of @instructions.md.
+
+---
+Refer to the main project guidelines for complete context:
+@project-guidelines.mdc
+Refer to the full instructions document for detailed documentation requirements and diagram standards:
+@instructions.md
+ 
