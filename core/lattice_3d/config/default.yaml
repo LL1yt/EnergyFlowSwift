@@ -1,0 +1,74 @@
+# Конфигурация модуля Lattice 3D
+# Базовые настройки для трехмерной решетки клеток
+
+lattice_3d:
+  # Размеры решетки [X, Y, Z]
+  dimensions: [8, 8, 8]
+
+  # Граничные условия: walls, periodic, absorbing, reflecting
+  boundary_conditions: "walls"
+
+  # Производительность
+  parallel_processing: true
+  gpu_enabled: true
+  batch_size: 1
+
+  # Инициализация состояний
+  initialization:
+    method: "normal" # normal, uniform, zeros, custom
+    std: 0.1
+    mean: 0.0
+
+  # Топология соседства
+  topology:
+    neighbors: 6 # 6-связность (±X, ±Y, ±Z)
+    validate_connections: true
+    cache_neighbors: true
+
+  # Интерфейсы ввода/вывода
+  io_interfaces:
+    input_face: "front" # front, back, left, right, top, bottom
+    output_face: "back"
+    embedding_mapping: "linear" # linear, conv, attention
+
+  # Диагностика и отладка
+  diagnostics:
+    enable_logging: true
+    log_level: "INFO"
+    track_performance: true
+    validate_states: true
+
+  # Оптимизация
+  optimization:
+    memory_efficient: true
+    use_checkpointing: false
+    mixed_precision: false
+
+# Интеграция с другими модулями
+integration:
+  cell_prototype:
+    # Будет загружена из cell_prototype/config/default.yaml
+    auto_sync: true
+
+  signal_propagation:
+    # Подготовка к следующему модулю
+    temporal_interface: true
+    state_history: false
+
+# Тестовые конфигурации
+test_configs:
+  small_test:
+    dimensions: [3, 3, 3]
+    boundary_conditions: "walls"
+    gpu_enabled: false
+
+  medium_test:
+    dimensions: [8, 8, 8]
+    boundary_conditions: "periodic"
+    gpu_enabled: true
+
+  large_test:
+    dimensions: [32, 32, 32]
+    boundary_conditions: "walls"
+    gpu_enabled: true
+    batch_size: 4
