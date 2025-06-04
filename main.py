@@ -24,8 +24,8 @@ sys.path.insert(0, str(project_root))
 
 # === ИМПОРТЫ МОДУЛЕЙ (будут создаваться постепенно) ===
 try:
-    # ✅ Модуль cell-prototype готов!
-    from core.cell_prototype import CellPrototype, create_cell_from_config
+    # ✅ Модуль cell_prototype готов!
+    from core import CellPrototype, create_cell_from_config
     # from core.lattice_3d import Lattice3D
     # from core.signal_propagation import SignalPropagator
     # from data.embedding_loader import EmbeddingLoader
@@ -36,7 +36,7 @@ try:
     # from utils.logger import setup_logger
     
     print("📋 Инициализация системы...")
-    print("✅ Модуль cell-prototype загружен успешно!")
+    print("✅ Модуль cell_prototype загружен успешно!")
     print("⚠️  Остальные модули пока не реализованы")
     
 except ImportError as e:
@@ -200,8 +200,8 @@ def run_simple_test():
             print(f"  ❌ {lib} не установлен")
             return False
     
-    # Демонстрируем РЕАЛЬНЫЙ модуль cell-prototype
-    print("\n🧬 ТЕСТИРУЕМ РЕАЛЬНУЮ КЛЕТКУ CELL-PROTOTYPE...")
+    # Демонстрируем РЕАЛЬНЫЙ модуль cell_prototype
+    print("\n🧬 ТЕСТИРУЕМ РЕАЛЬНУЮ КЛЕТКУ CELL_PROTOTYPE...")
     try:
         # Создаем клетку из конфигурации  
         config = load_configuration()
@@ -314,7 +314,7 @@ def main():
         print("  • Показываем основные концепции")
         print("  • Выполняем простые тесты")
         print("  • Готовимся к реальной разработке")
-        print("\n💡 Следующий шаг: создание первого модуля cell-prototype")
+        print("\n💡 Следующий шаг: создание первого модуля cell_prototype")
         
     elif args.mode == "train":
         print("🎓 Режим обучения (пока не реализован)")

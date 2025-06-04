@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 # Получаем путь к модулю cell-prototype
-module_path = Path(__file__).parent / "cell-prototype" / "main.py"
+module_path = Path(__file__).parent / "cell_prototype" / "main.py"
 
 # Загружаем модуль динамически
 spec = importlib.util.spec_from_file_location("cell_prototype_main", module_path)
