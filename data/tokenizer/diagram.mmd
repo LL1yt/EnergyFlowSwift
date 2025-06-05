@@ -1,0 +1,150 @@
+graph TD
+    %% Tokenizer Module Architecture - 3D Cellular Neural Network
+    %% Enhanced Mermaid diagram following @instructions.md guidelines
+    
+    subgraph "🎯 INPUT LAYER"
+        TXT["Text Input<br/>Hello world!"]
+        BTXT["Batch Texts<br/>Multiple texts"]
+        USER_EVENTS[("👤 User Events<br/>• text_input<br/>• batch_submit")]
+    end
+    
+    subgraph "📝 TEXT PROCESSING LAYER"
+        TP["TextProcessor<br/>• normalize_unicode()<br/>• clean_text()<br/>• remove_punctuation()"]
+        TXT --> TP
+        BTXT --> TP
+        USER_EVENTS -.->|"on_text_input"| TP
+    end
+    
+    subgraph "🔧 TOKENIZER MANAGER LAYER"
+        TM["TokenizerManager<br/>• encode()<br/>• decode()<br/>• tokenize()<br/>• batch_encode()"]
+        CONFIG["YAML Config<br/>• tokenizer_type<br/>• max_length<br/>• padding"]
+        
+        TP --> TM
+        CONFIG --> TM
+    end
+    
+    subgraph "🏗️ ADAPTER FACTORY LAYER"
+        FACTORY["TokenizerFactory<br/>create_adapter()"]
+        TM --> FACTORY
+    end
+    
+    subgraph "🔌 TOKENIZER ADAPTERS LAYER"
+        BERT["BertTokenizerAdapter<br/>• huggingface/bert<br/>• CLS, SEP tokens<br/>• subword tokenization"]
+        GPT["GPTTokenizerAdapter<br/>• gpt2/gpt2-medium<br/>• BPE encoding<br/>• byte-level"]
+        SP["SentencePieceAdapter<br/>• custom models<br/>• subword units<br/>• multilingual"]
+        BASIC["BasicTokenizerAdapter<br/>• whitespace split<br/>• punctuation handling<br/>• simple fallback"]
+        
+        FACTORY --> BERT
+        FACTORY --> GPT
+        FACTORY --> SP
+        FACTORY --> BASIC
+    end
+    
+    subgraph "💾 CACHING LAYER"
+        CACHE["TokenCache<br/>• LRU eviction<br/>• configurable TTL<br/>• memory efficient"]
+        CACHE_EVENTS[("🔄 Cache Events<br/>• cache_hit<br/>• cache_miss<br/>• cache_evict")]
+        
+        BERT --> CACHE
+        GPT --> CACHE
+        SP --> CACHE
+        BASIC --> CACHE
+        CACHE -.->|"cache_events"| CACHE_EVENTS
+    end
+    
+    subgraph "🚀 OUTPUT PROCESSING LAYER"
+        TOKENS["Token IDs<br/>[101, 7592, 2088, 102]"]
+        BATCH_TOKENS["Batch Token IDs<br/>Multiple sequences"]
+        OUTPUT_EVENTS[("📤 Output Events<br/>• tokens_ready<br/>• batch_complete")]
+        
+        CACHE --> TOKENS
+        CACHE --> BATCH_TOKENS
+        TOKENS -.->|"tokens_ready"| OUTPUT_EVENTS
+        BATCH_TOKENS -.->|"batch_complete"| OUTPUT_EVENTS
+    end
+    
+    subgraph "🔗 INTEGRATION LAYER"
+        EMBED["EmbeddingLoader<br/>Integration"]
+        LATTICE["Lattice3D<br/>Input Preparation"]
+        INTEGRATION_EVENTS[("🔄 Integration Events<br/>• embed_request<br/>• lattice_prepare")]
+        
+        TOKENS --> EMBED
+        BATCH_TOKENS --> LATTICE
+        EMBED -.->|"embed_request"| INTEGRATION_EVENTS
+        LATTICE -.->|"lattice_prepare"| INTEGRATION_EVENTS
+    end
+    
+    %% Special handling flows with DOM-like events
+    subgraph "⚠️ SPECIAL HANDLING LAYER"
+        OOV["OOV Tokens<br/>Out-of-Vocabulary"]
+        SPECIAL["Special Tokens<br/>CLS, SEP, PAD"]
+        TRUNCATE["Truncation<br/>Max Length Handling"]
+        ERROR_EVENTS[("⚠️ Error Events<br/>• oov_detected<br/>• truncation_needed")]
+        
+        TM --> OOV
+        TM --> SPECIAL
+        TM --> TRUNCATE
+        OOV -.->|"oov_detected"| ERROR_EVENTS
+        TRUNCATE -.->|"truncation_needed"| ERROR_EVENTS
+    end
+    
+    %% Error handling with event flows
+    subgraph "🛡️ ERROR HANDLING LAYER"
+        FALLBACK["Fallback to Basic<br/>if model fails"]
+        VALIDATION["Input Validation<br/>• type checking<br/>• length limits"]
+        ERROR_HANDLER[("🚨 Error Handler<br/>• model_failure<br/>• validation_error")]
+        
+        FACTORY --> FALLBACK
+        TM --> VALIDATION
+        FALLBACK -.->|"model_failure"| ERROR_HANDLER
+        VALIDATION -.->|"validation_error"| ERROR_HANDLER
+    end
+    
+    %% Performance monitoring with metrics events
+    subgraph "📊 PERFORMANCE MONITORING"
+        METRICS["Performance Metrics<br/>• tokens/sec<br/>• memory usage<br/>• cache hit rate"]
+        PERF_EVENTS[("📈 Performance Events<br/>• metrics_update<br/>• threshold_exceeded")]
+        
+        CACHE --> METRICS
+        TM --> METRICS
+        METRICS -.->|"metrics_update"| PERF_EVENTS
+    end
+    
+    %% User Interaction Sequence (Numbered Steps)
+    subgraph "👤 USER SEQUENCE"
+        STEP1["1. User inputs text"]
+        STEP2["2. Text preprocessing"]
+        STEP3["3. Tokenizer selection"]
+        STEP4["4. Token generation"]
+        STEP5["5. Cache storage"]
+        STEP6["6. Output delivery"]
+        
+        STEP1 --> STEP2
+        STEP2 --> STEP3
+        STEP3 --> STEP4
+        STEP4 --> STEP5
+        STEP5 --> STEP6
+    end
+    
+    %% Critical paths with bold styling
+    TXT ==>|"CRITICAL PATH"| TM
+    TM ==>|"CRITICAL PATH"| TOKENS
+    TOKENS ==>|"CRITICAL PATH"| EMBED
+    
+    %% Enhanced data flow styles
+    classDef inputClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef processingClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef adapterClass fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef outputClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef integrationClass fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef errorClass fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef eventClass fill:#f1f8e9,stroke:#33691e,stroke-width:1px,stroke-dasharray: 5 5
+    classDef criticalClass fill:#ffcdd2,stroke:#d32f2f,stroke-width:3px
+    
+    class TXT,BTXT inputClass
+    class TP,TM,FACTORY processingClass
+    class BERT,GPT,SP,BASIC adapterClass
+    class TOKENS,BATCH_TOKENS outputClass
+    class EMBED,LATTICE integrationClass
+    class FALLBACK,VALIDATION,OOV,SPECIAL,TRUNCATE errorClass
+    class USER_EVENTS,CACHE_EVENTS,OUTPUT_EVENTS,INTEGRATION_EVENTS,ERROR_EVENTS,PERF_EVENTS eventClass
+    class STEP1,STEP2,STEP3,STEP4,STEP5,STEP6 criticalClass 

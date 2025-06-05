@@ -1,0 +1,190 @@
+# Tokenizer Configuration - 3D Cellular Neural Network
+# Configuration for text tokenization and preprocessing
+
+tokenizer:
+  # Default tokenizer type to use
+  type: "bert-base-uncased"
+
+  # Tokenizer-specific settings
+  max_length: 512 # Maximum sequence length
+  padding: true # Add padding to sequences
+  truncation: true # Truncate long sequences
+  add_special_tokens: true # Add [CLS], [SEP] tokens
+
+  # Model loading settings
+  cache_dir: "./cache/tokenizers" # Directory to cache downloaded models
+  local_files_only: false # Use only local files (no downloads)
+  trust_remote_code: false # Trust remote code execution
+
+  # Advanced tokenizer settings
+  return_tensors: "pt" # Return PyTorch tensors
+  return_attention_mask: true # Return attention masks
+  return_token_type_ids: false # Return token type IDs (for BERT)
+
+text_processing:
+  # Basic text cleaning
+  lowercase: true # Convert to lowercase
+  strip_whitespace: true # Remove extra whitespace
+  normalize_unicode: true # Normalize Unicode characters
+
+  # Punctuation handling
+  remove_punctuation: false # Keep punctuation for most tasks
+  normalize_punctuation: true # Normalize punctuation marks
+
+  # Advanced preprocessing
+  remove_stopwords: false # Keep stopwords (important for context)
+  remove_numbers: false # Keep numbers
+  remove_urls: true # Remove URLs
+  remove_emails: true # Remove email addresses
+
+  # Language-specific settings
+  language: "english" # Primary language for processing
+  detect_language: false # Auto-detect language
+
+batch_processing:
+  # Batch settings
+  batch_size: 32 # Default batch size
+  max_batch_size: 128 # Maximum allowed batch size
+
+  # Performance settings
+  num_workers: 4 # Number of parallel workers
+  show_progress: true # Show progress bars
+
+  # Memory management
+  dynamic_padding: true # Use dynamic padding in batches
+  pin_memory: true # Pin memory for GPU transfer
+
+caching:
+  # Cache configuration
+  enabled: true # Enable caching
+  max_size: 10000 # Maximum cache entries
+  ttl: 3600 # Time to live (seconds)
+
+  # Cache storage
+  memory_cache: true # Use in-memory cache
+  disk_cache: false # Use disk cache
+  cache_path: "./cache/tokens" # Disk cache directory
+
+  # Cache optimization
+  compress_cache: false # Compress cached data
+  cache_statistics: true # Track cache statistics
+
+integration:
+  # Integration with other modules
+  embedding_loader:
+    enabled: true
+    vocab_sync: true # Synchronize vocabularies
+    oov_strategy: "unk" # Out-of-vocabulary strategy: "unk", "skip", "error"
+
+  lattice_3d:
+    enabled: true
+    auto_reshape: true # Automatically reshape for lattice input
+    padding_strategy: "max_length" # Padding for lattice: "max_length", "lattice_size"
+
+special_tokens:
+  # BERT-style tokens
+  cls_token: "[CLS]"
+  sep_token: "[SEP]"
+  pad_token: "[PAD]"
+  unk_token: "[UNK]"
+  mask_token: "[MASK]"
+
+  # GPT-style tokens
+  bos_token: "<|startoftext|>"
+  eos_token: "<|endoftext|>"
+
+supported_tokenizers:
+  # BERT family
+  "bert-base-uncased":
+    model_name: "bert-base-uncased"
+    vocab_size: 30522
+    max_position_embeddings: 512
+    type: "bert"
+
+  "bert-base-cased":
+    model_name: "bert-base-cased"
+    vocab_size: 28996
+    max_position_embeddings: 512
+    type: "bert"
+
+  # GPT family
+  "gpt2":
+    model_name: "gpt2"
+    vocab_size: 50257
+    max_position_embeddings: 1024
+    type: "gpt"
+
+  "gpt2-medium":
+    model_name: "gpt2-medium"
+    vocab_size: 50257
+    max_position_embeddings: 1024
+    type: "gpt"
+
+  # SentencePiece
+  "sentencepiece":
+    model_path: "./models/sentencepiece.model"
+    vocab_size: 32000
+    type: "sentencepiece"
+
+  # Basic tokenizer
+  "basic":
+    vocab_size: null
+    case_sensitive: false
+    type: "basic"
+
+error_handling:
+  # Error handling strategy
+  on_model_load_error: "fallback" # "fallback", "error", "retry"
+  fallback_tokenizer: "basic" # Fallback to basic tokenizer
+  max_retries: 3 # Maximum retry attempts
+
+  # Validation settings
+  validate_input: true # Validate input text
+  max_input_length: 1000000 # Maximum input length (characters)
+
+  # Logging
+  log_errors: true # Log errors to file
+  error_log_path: "./logs/tokenizer_errors.log"
+
+performance:
+  # Performance monitoring
+  enable_metrics: true # Enable performance metrics
+  metrics_interval: 100 # Metrics collection interval (operations)
+
+  # Memory monitoring
+  memory_threshold_mb: 1000 # Memory usage warning threshold
+  gc_interval: 1000 # Garbage collection interval
+
+  # Optimization
+  use_fast_tokenizers: true # Use fast tokenizers when available
+  optimize_for_speed: true # Optimize for speed over memory
+
+logging:
+  # Logging configuration
+  level: "INFO" # Log level: DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Log files
+  log_to_file: true
+  log_file: "./logs/tokenizer.log"
+  max_log_size_mb: 10
+  backup_count: 5
+
+# Environment-specific overrides
+development:
+  tokenizer:
+    cache_dir: "./dev_cache/tokenizers"
+  logging:
+    level: "DEBUG"
+  caching:
+    max_size: 1000
+
+production:
+  batch_processing:
+    num_workers: 8
+    max_batch_size: 256
+  caching:
+    max_size: 50000
+    disk_cache: true
+  logging:
+    level: "WARNING"
