@@ -156,8 +156,8 @@ class TimeManager:
         Returns:
             torch.Tensor: Новое состояние
         """
-        # Заглушка - здесь будет интеграция с другими модулями
-        # Пока возвращаем то же состояние
+        # В этой версии мы просто возвращаем состояние как есть
+        # Реальная логика обработки будет в SignalPropagator
         return system_state.clone()
     
     def _save_to_history(self, state: torch.Tensor):

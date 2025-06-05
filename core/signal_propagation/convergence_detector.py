@@ -293,8 +293,15 @@ class ConvergenceDetector:
         
         # Вычисляем корреляцию
         if len(flat1) > 1:
-            correlation = torch.corrcoef(torch.stack([flat1, flat2]))[0, 1]
-            return correlation.item() if not torch.isnan(correlation) else 0.0
+            # Используем NumPy для корреляции
+            flat1_np = flat1.detach().cpu().numpy()
+            flat2_np = flat2.detach().cpu().numpy()
+            
+            # Вычисляем коэффициент корреляции Пирсона
+            correlation_matrix = np.corrcoef(flat1_np, flat2_np)
+            correlation = correlation_matrix[0, 1]
+            
+            return float(correlation) if not np.isnan(correlation) else 0.0
         else:
             return 1.0 if torch.allclose(flat1, flat2) else 0.0
     

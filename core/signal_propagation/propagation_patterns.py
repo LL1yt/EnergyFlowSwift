@@ -403,9 +403,10 @@ class PatternAnalyzer:
         if slice_data.numel() < 4:
             return 0.0
         
-        # Автокорреляция
-        autocorr = torch.correlate(slice_data, slice_data, mode='full')
-        autocorr = autocorr[autocorr.size(0) // 2:]
+        # Автокорреляция через NumPy
+        slice_np = slice_data.detach().cpu().numpy()
+        autocorr = np.correlate(slice_np, slice_np, mode='full')
+        autocorr = autocorr[autocorr.size // 2:]
         
         # Поиск первого пика после 0
         for i in range(1, len(autocorr) - 1):

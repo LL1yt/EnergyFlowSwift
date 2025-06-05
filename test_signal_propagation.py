@@ -160,9 +160,10 @@ def test_signal_propagator_basic():
     # Создаем компоненты
     lattice_config = LatticeConfig(
         dimensions=(3, 3, 3),
-        cell_state_size=4,
-        neighbor_topology='moore_3d',
-        boundary_condition='periodic'
+        boundary_conditions='periodic',
+        neighbors=6,
+        parallel_processing=True,
+        gpu_enabled=False  # Отключаем GPU для совместимости
     )
     
     time_config = TimeConfig(
@@ -185,8 +186,9 @@ def test_signal_propagator_basic():
     propagator = SignalPropagator(lattice, time_manager, propagation_config)
     print(f"SignalPropagator создан: {propagator}")
     
-    # Инициализируем сигналы
-    input_signals = torch.randn(3, 3, 4) * 0.5  # Небольшие входные сигналы
+    # Инициализируем сигналы (размер состояния клетки получаем из решетки)
+    cell_state_size = lattice.cell_prototype.state_size
+    input_signals = torch.randn(3, 3, cell_state_size) * 0.5  # Небольшие входные сигналы
     propagator.initialize_signals(input_signals, input_face="front")
     
     print(f"Сигналы инициализированы на грани 'front'")
@@ -217,9 +219,10 @@ def test_full_integration():
         # Создаем все компоненты
         lattice_config = LatticeConfig(
             dimensions=(4, 4, 4),
-            cell_state_size=3,
-            neighbor_topology='moore_3d',
-            boundary_condition='reflective'
+            boundary_conditions='reflecting',
+            neighbors=6,
+            parallel_processing=True,
+            gpu_enabled=False  # Отключаем GPU для совместимости
         )
         
         time_config = TimeConfig(
@@ -253,7 +256,8 @@ def test_full_integration():
         print("Все компоненты созданы успешно")
         
         # Инициализируем сигналы
-        input_signals = torch.randn(4, 4, 3) * 0.3
+        cell_state_size = lattice.cell_prototype.state_size
+        input_signals = torch.randn(4, 4, cell_state_size) * 0.3
         propagator.initialize_signals(input_signals, input_face="left")
         
         # Запускаем симуляцию с мониторингом сходимости

@@ -109,11 +109,11 @@ class SignalPropagator:
         self.logger.info(f"Инициализация сигналов на грани: {input_face}")
         
         # Получаем размеры решетки
-        lattice_size = self.lattice.get_size()
+        lattice_size = self.lattice.config.dimensions
         
         # Создаем тензор для всех сигналов решетки
-        signal_shape = (lattice_size[0], lattice_size[1], lattice_size[2], 
-                       self.lattice.get_cell_state_size())
+        cell_state_size = self.lattice.cell_prototype.state_size
+        signal_shape = (lattice_size[0], lattice_size[1], lattice_size[2], cell_state_size)
         self.current_signals = torch.zeros(signal_shape)
         
         # Размещаем входные сигналы на указанной грани
@@ -166,6 +166,10 @@ class SignalPropagator:
         if not self.is_active:
             raise RuntimeError("Сигналы не инициализированы")
         
+        # Автоматически запускаем симуляцию если она не запущена
+        if not self.time_manager.is_running:
+            self.time_manager.start_simulation()
+        
         # Выполняем шаг через TimeManager
         self.current_signals = self.time_manager.step(self.current_signals)
         
@@ -202,8 +206,8 @@ class SignalPropagator:
     
     def _wave_propagation(self, signals: torch.Tensor) -> torch.Tensor:
         """Волновое распространение"""
-        # Интегрируем с lattice для обновления состояний клеток
-        updated_signals = self.lattice.forward(signals)
+        # Преобразуем 4D сигналы в формат для клеток и обратно
+        updated_signals = self._apply_cellular_dynamics(signals)
         
         # Применяем волновую динамику
         wave_effect = self._calculate_wave_effect(updated_signals)
@@ -212,7 +216,7 @@ class SignalPropagator:
     
     def _diffusion_propagation(self, signals: torch.Tensor) -> torch.Tensor:
         """Диффузионное распространение"""
-        updated_signals = self.lattice.forward(signals)
+        updated_signals = self._apply_cellular_dynamics(signals)
         
         # Применяем диффузию
         diffusion_effect = self._calculate_diffusion_effect(updated_signals)
@@ -221,7 +225,7 @@ class SignalPropagator:
     
     def _directional_propagation(self, signals: torch.Tensor) -> torch.Tensor:
         """Направленное распространение"""
-        updated_signals = self.lattice.forward(signals)
+        updated_signals = self._apply_cellular_dynamics(signals)
         
         # Применяем направленный эффект
         if self.config.direction_vector:
@@ -232,7 +236,87 @@ class SignalPropagator:
     
     def _default_propagation(self, signals: torch.Tensor) -> torch.Tensor:
         """Стандартное распространение через решетку"""
-        return self.lattice.forward(signals)
+        return self._apply_cellular_dynamics(signals)
+    
+    def _apply_cellular_dynamics(self, signals: torch.Tensor) -> torch.Tensor:
+        """
+        Применение клеточной динамики к сигналам
+        
+        Args:
+            signals: 4D тензор сигналов [x, y, z, state_size]
+            
+        Returns:
+            torch.Tensor: Обновленные сигналы той же формы
+        """
+        x_size, y_size, z_size, state_size = signals.shape
+        
+        # Создаем новый тензор для результата
+        new_signals = torch.zeros_like(signals)
+        
+        # Проходим по всем клеткам и применяем клеточную динамику
+        for x in range(x_size):
+            for y in range(y_size):
+                for z in range(z_size):
+                    # Получаем состояния соседей
+                    neighbor_states = self._get_neighbor_states(signals, x, y, z)
+                    
+                    # Текущее состояние клетки
+                    current_state = signals[x, y, z, :].unsqueeze(0)  # [1, state_size]
+                    
+                    # Формируем входы для клетки (без внешнего входа пока)
+                    external_input = torch.zeros(1, self.lattice.cell_prototype.input_size)
+                    
+                    # Применяем прототип клетки
+                    new_state = self.lattice.cell_prototype(
+                        neighbor_states.unsqueeze(0),  # [1, 6, state_size]
+                        current_state,                 # [1, state_size] 
+                        external_input                 # [1, input_size]
+                    )
+                    
+                    # Сохраняем новое состояние
+                    new_signals[x, y, z, :] = new_state.squeeze(0)
+        
+        return new_signals
+    
+    def _get_neighbor_states(self, signals: torch.Tensor, x: int, y: int, z: int) -> torch.Tensor:
+        """
+        Получение состояний соседей для клетки в позиции (x, y, z)
+        
+        Args:
+            signals: Тензор всех сигналов
+            x, y, z: Координаты клетки
+            
+        Returns:
+            torch.Tensor: Состояния 6 соседей [6, state_size]
+        """
+        x_size, y_size, z_size, state_size = signals.shape
+        neighbor_states = []
+        
+        # Направления к 6 соседям: left, right, down, up, back, front
+        directions = [
+            (-1, 0, 0),  # left
+            (1, 0, 0),   # right
+            (0, -1, 0),  # down
+            (0, 1, 0),   # up
+            (0, 0, -1),  # back
+            (0, 0, 1),   # front
+        ]
+        
+        for dx, dy, dz in directions:
+            nx, ny, nz = x + dx, y + dy, z + dz
+            
+            # Проверяем границы и применяем граничные условия
+            if self._is_valid_position(nx, ny, nz, x_size, y_size, z_size):
+                neighbor_states.append(signals[nx, ny, nz, :])
+            else:
+                # Для упрощения используем нулевое состояние для клеток вне границ
+                neighbor_states.append(torch.zeros(state_size))
+        
+        return torch.stack(neighbor_states)  # [6, state_size]
+    
+    def _is_valid_position(self, x: int, y: int, z: int, x_size: int, y_size: int, z_size: int) -> bool:
+        """Проверка корректности позиции"""
+        return 0 <= x < x_size and 0 <= y < y_size and 0 <= z < z_size
     
     def _calculate_wave_effect(self, signals: torch.Tensor) -> torch.Tensor:
         """Расчет волнового эффекта"""
@@ -241,7 +325,10 @@ class SignalPropagator:
         
         # Добавляем небольшое волновое усиление
         wave_amplitude = self.config.signal_strength * self.config.wave_speed
-        wave_effect = wave_amplitude * torch.sin(self.time_manager.current_step * 0.1) * signals
+        
+        # Преобразуем текущий шаг в тензор для torch.sin()
+        time_tensor = torch.tensor(self.time_manager.current_step * 0.1, dtype=signals.dtype)
+        wave_effect = wave_amplitude * torch.sin(time_tensor) * signals
         
         return wave_effect * 0.1  # Небольшой коэффициент
     
