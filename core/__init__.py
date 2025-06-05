@@ -6,8 +6,8 @@
 
 Модули:
     cell_prototype: Прототип "умной клетки" ✅ ГОТОВ
-    lattice_3d: 3D решетка клеток 📋 В РАЗРАБОТКЕ
-    signal_propagation: Распространение сигналов (планируется)
+    lattice_3d: 3D решетка клеток ✅ ГОТОВ
+    signal_propagation: Распространение сигналов ✅ ГОТОВ
 """
 
 # Импорт готовых модулей
@@ -30,6 +30,17 @@ from .lattice_3d import (
     Dimensions3D,
 )
 
+from .signal_propagation import (
+    TimeManager,
+    TimeConfig,
+    SignalPropagator,
+    PropagationConfig,
+    PropagationPatterns,
+    PatternAnalyzer,
+    ConvergenceDetector,
+    ConvergenceConfig,
+)
+
 __all__ = [
     # Cell Prototype модуль
     'CellPrototype',
@@ -47,6 +58,16 @@ __all__ = [
     'validate_lattice_config',
     'Coordinates3D',
     'Dimensions3D',
+    
+    # Signal Propagation модуль
+    'TimeManager',
+    'TimeConfig',
+    'SignalPropagator',
+    'PropagationConfig',
+    'PropagationPatterns',
+    'PatternAnalyzer',
+    'ConvergenceDetector',
+    'ConvergenceConfig',
 ]
 
 __version__ = '0.1.0' 
