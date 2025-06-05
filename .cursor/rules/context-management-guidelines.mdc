@@ -18,7 +18,9 @@ This rule enforces proper context management across LLM sessions to prevent loss
 - Last successful test/command
 - Any current blockers or issues
 - Next immediate action to take
-- Updated progress percentages
+- Session success criteria for next time
+
+**NOTE**: Keep `CONTEXT_SUMMARY.md` BRIEF - detailed info goes in `PROJECT_PLAN.md`
 
 ### 2. Session Start Protocol
 
@@ -40,34 +42,44 @@ This rule enforces proper context management across LLM sessions to prevent loss
 
 ### 4. Context File Structure
 
-`CONTEXT_SUMMARY.md` must contain:
+**IMPORTANT**: `CONTEXT_SUMMARY.md` should be **BRIEF and SESSION-FOCUSED** only. Detailed project information belongs in `PROJECT_PLAN.md`.
+
+`CONTEXT_SUMMARY.md` must contain ONLY:
 ```markdown
-## 📊 ТЕКУЩИЙ СТАТУС ПРОЕКТА
-- Date and progress percentage
-- Current phase details
+## 🎯 WHERE WE ARE NOW
+- Brief current phase status (1-2 lines)
+- Key achievement summary
 
-## ✅ ЗАВЕРШЕННЫЕ МОДУЛИ
-- Complete module list with status
-- API information for integration
+## 🎯 NEXT SESSION ACTIONS  
+- Immediate priority task
+- Specific module and first action
+- Time estimate
 
-## ⏳ ТЕКУЩИЙ/СЛЕДУЮЩИЙ МОДУЛЬ  
-- Exact current work location
-- Current implementation step
-- Dependencies status
+## 📁 KEY FILES FOR NEXT SESSION
+- Links to detailed documentation:
+  - `PROJECT_PLAN.md` - General project overview  
+  - `PHASE_X_PLAN.md` - Detailed phase-specific plans
+  - Individual module documentation
+- Reference files for current work
 
-## 🚨 КРИТИЧЕСКИЕ ПРОБЛЕМЫ
-- Active blockers
-- Solution attempts
-- Current status
+## ⚙️ TECHNICAL CONTEXT
+- Critical setup information
+- Known issues affecting work
 
-## 🎯 ДОСТИЖЕНИЯ ТЕКУЩЕЙ СЕССИИ
-- What was accomplished
-- New functionality added
+## 🎯 SUCCESS CRITERIA FOR NEXT SESSION
+- Minimum viable goals
+- How to know session succeeded
 
-## 🎯 ПРИОРИТЕТЫ ДЛЯ СЛЕДУЮЩЕЙ СЕССИИ
-- Immediate next steps
-- Continuation points
+## 🔄 SESSION HANDOFF CHECKLIST
+- Pre-session verification steps
+- Post-session update requirements
 ```
+
+**What NOT to include**:
+- ❌ Detailed project architecture (→ use `PROJECT_PLAN.md`)
+- ❌ Complete module specifications (→ use individual module docs)
+- ❌ Historical achievements (→ use `PROJECT_PLAN.md`)
+- ❌ Comprehensive technical details (→ use module-specific docs)
 
 ### 5. Context Validation Rules
 

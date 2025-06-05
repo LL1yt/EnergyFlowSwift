@@ -23,97 +23,72 @@ To ensure smooth continuation of work across different LLM sessions and prevent 
 
 **CRITICAL**: This file MUST be updated at the end of each development session and immediately after any significant milestone.
 
+**IMPORTANT**: Keep `CONTEXT_SUMMARY.md` **BRIEF and SESSION-FOCUSED**. Detailed project documentation belongs in `PROJECT_PLAN.md`.
+
 **Required Structure**:
 
-````markdown
-# Краткий Контекст для Продолжения Разработки
+```markdown
+# 3D Cellular Neural Network - Session Context
 
-## 📊 ТЕКУЩИЙ СТАТУС ПРОЕКТА
+## 🎯 WHERE WE ARE NOW
 
-**Обновлено**: [Дата]  
-**Phase Progress**: [Процент] ([Детали])
+- Brief current phase status (1-2 lines)
+- Key achievement summary
 
-## ✅ ЗАВЕРШЕННЫЕ МОДУЛИ
+## 🎯 NEXT SESSION ACTIONS
 
-### [Модуль 1] ✅ **СТАТУС**
+- Immediate priority task
+- Specific module and first action
+- Time estimate
 
-- **Локация**: `path/to/module/`
-- **Статус**: [Детальное описание готовности]
-- **Функции**: [Ключевые функции]
-- **API**: [Основные классы и функции]
+## 📁 KEY FILES FOR NEXT SESSION
 
-## ⏳ ТЕКУЩИЙ/СЛЕДУЮЩИЙ МОДУЛЬ
+- Links to detailed documentation:
+  - `PROJECT_PLAN.md` - General project overview
+  - `PHASE_X_PLAN.md` - Detailed phase-specific plans
+  - Individual module documentation
+- Reference files for current work
 
-### [Модуль] - **СТАТУС**
+## ⚙️ TECHNICAL CONTEXT
 
-- **Локация**: `path/to/module/`
-- **Цель**: [Описание цели модуля]
-- **Зависимости**: [Статус зависимостей]
-- **Текущий этап**: [Конкретный этап в процессе]
+- Critical setup information
+- Known issues affecting work
 
-## 🚨 КРИТИЧЕСКИЕ ПРОБЛЕМЫ
+## 🎯 SUCCESS CRITERIA FOR NEXT SESSION
 
-### Проблема #N: [Название] [✅ РЕШЕНА / ⏳ В РАБОТЕ / 🚨 БЛОКИРУЕТ]
+- Minimum viable goals
+- How to know session succeeded
 
-- **Суть**: [Описание проблемы]
-- **Решение**: [Описание решения или текущий подход]
+## 🔄 SESSION HANDOFF CHECKLIST
 
-## 🎯 ДОСТИЖЕНИЯ ТЕКУЩЕЙ СЕССИИ
-
-### ✅ Основные Результаты
-
-1. [Конкретные достижения с деталями]
-
-## 🛠️ ТЕХНИЧЕСКАЯ АРХИТЕКТУРА
-
-### Проверенные Интеграции
-
-- [модуль_а] → [модуль_б] ✅/❌ [статус]
-
-## 📂 АКТУАЛЬНАЯ СТРУКТУРА ФАЙЛОВ
-
-[Обновленная структура с отметками готовности]
-
-## 🎯 ПРИОРИТЕТЫ ДЛЯ СЛЕДУЮЩЕЙ СЕССИИ
-
-### 🚀 НЕМЕДЛЕННО
-
-1. [Конкретный следующий шаг]
-2. [Детали где остановились]
-
-### 📋 НА ЭТОЙ НЕДЕЛЕ
-
-1. [Среднесрочные цели]
-
-## 🔗 ПОЛЕЗНЫЕ КОМАНДЫ
-
-### [Категория команд]
-
-```bash
-# Команды для быстрого тестирования
+- Pre-session verification steps
+- Post-session update requirements
 ```
-````
 
-## 💡 КЛЮЧЕВЫЕ УРОКИ
+**What NOT to include in CONTEXT_SUMMARY.md**:
 
-1. [Важные технические уроки из сессии]
-
-````
+- ❌ Detailed project architecture (→ use `PROJECT_PLAN.md`)
+- ❌ Complete module specifications (→ use individual module docs)
+- ❌ Historical achievements (→ use `PROJECT_PLAN.md`)
+- ❌ Comprehensive technical details (→ use module-specific docs)
 
 ### 2. Session Context Rules
 
 **At the START of each session**:
+
 - Read `CONTEXT_SUMMARY.md` first
 - Verify current state by checking recent files
 - Identify exact continuation point
 - Confirm dependencies are still working
 
 **During the session**:
+
 - Update progress markers in module `plan.md` files
 - Document any new errors in `errors.md`
 - Note any API changes in `meta.md`
 
 **At the END of each session**:
+
 - **MANDATORY**: Update `CONTEXT_SUMMARY.md` with current status
 - Mark completion status in all relevant `plan.md` files
 - Update project progress percentages
@@ -122,6 +97,7 @@ To ensure smooth continuation of work across different LLM sessions and prevent 
 ### 3. Critical Context Elements
 
 **Must Always Include**:
+
 - **Exact module being worked on** and current implementation step
 - **Last working command/test** that succeeded
 - **Current blocker/issue** if session ended mid-task
@@ -133,12 +109,14 @@ To ensure smooth continuation of work across different LLM sessions and prevent 
 ### 4. Context Validation
 
 **Before ending session**:
+
 - Verify all documentation updates are complete
 - Test current functionality to confirm working state
 - Update context summary with exact stopping point
 - Provide clear "what to do next" instructions
 
 **When starting new session**:
+
 - Validate context summary against actual file states
 - Run basic tests to confirm system integrity
 - Identify any gaps in context and note them
@@ -146,6 +124,7 @@ To ensure smooth continuation of work across different LLM sessions and prevent 
 ### 5. Emergency Context Recovery
 
 If context is lost or unclear:
+
 1. Check `CONTEXT_SUMMARY.md` for last known state
 2. Review recent changes in all `plan.md` files
 3. Check `errors.md` for recent issues
@@ -280,7 +259,7 @@ graph TD
     classDef dataflow stroke:#333,stroke-width:1px,stroke-dasharray: 3 3;
     class ModelLoader,GPUManager critical;
     class ConfigLoader,ModelCache dataflow;
-````
+```
 
 For the main application diagram, include a complete data processing flow that shows all key transformation paths:
 

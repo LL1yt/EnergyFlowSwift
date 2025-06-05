@@ -36,7 +36,7 @@ When creating or modifying documentation files (`.md`, `.mmd`), adhere to these 
 
 5.  **Auxiliary File Usage**: When analyzing code or issues, systematically use the documentation files (diagrams, README, errors, plan, meta, examples) as outlined in the "Effective Use of Auxiliary Files" section of @instructions.md.
 
-6.  **Context Management**: **CRITICAL** - At the end of each development session, update the project-level `CONTEXT_SUMMARY.md` with current progress, exact stopping point, and next steps. This ensures seamless continuation across different LLM sessions. See @context-management-guidelines.mdc for detailed requirements.
+6.  **Context Management**: **CRITICAL** - At the end of each development session, update the project-level `CONTEXT_SUMMARY.md` with current progress, exact stopping point, and next steps. **KEEP BRIEF** - `CONTEXT_SUMMARY.md` should only contain session transition info, NOT detailed project documentation (which belongs in `PROJECT_PLAN.md` for general overview and `PHASE_X_PLAN.md` for phase-specific details). See @context-management-guidelines.mdc for detailed requirements.
 
 ---
 Refer to the main project guidelines for complete context:
