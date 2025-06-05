@@ -1,0 +1,67 @@
+# Configuration for Embedding Loader Module
+
+# Cache settings
+cache:
+  cache_dir: "./data/cache/"
+  max_cache_size: "2GB"
+  enable_disk_cache: true
+  cache_compression: false
+
+# Supported formats and their settings
+formats:
+  word2vec:
+    extensions: [".bin", ".txt"]
+    binary_loader: "gensim" # gensim or custom
+    text_encoding: "utf-8"
+    skip_header: true # Skip first line if it contains dimensions
+
+  glove:
+    extensions: [".txt"]
+    text_encoding: "utf-8"
+    delimiter: " "
+
+  bert:
+    extensions: [".pt", ".pkl"]
+    device_map: "cpu" # Where to load tensors
+    pickle_protocol: 4
+
+# Preprocessing default settings
+preprocessing:
+  default:
+    normalize: true # L2 normalization
+    center: true # Mean centering
+    clip_outliers: false # Outlier clipping
+    outlier_std: 3.0 # Standard deviations for clipping
+
+  standardize:
+    enable: false # Z-score standardization
+
+  whitening:
+    enable: false # PCA whitening
+
+  dimension_reduction:
+    enable: false
+    method: "pca" # pca or random
+    target_dim: 300
+
+# Performance settings
+performance:
+  batch_size: 1000 # Batch size for processing
+  num_workers: 4 # Number of worker threads
+  memory_limit: "4GB" # Maximum memory usage
+
+# Logging settings
+logging:
+  level: "INFO"
+  log_statistics: true
+  log_performance: true
+
+# Integration settings
+integration:
+  lattice_3d:
+    input_layer: "input" # Which layer to feed embeddings to
+    batch_processing: true
+
+  tokenizer:
+    sync_vocabulary: true # Sync vocabularies between modules
+    handle_oov: "random" # Out-of-vocabulary handling: random, zero, skip

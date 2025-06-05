@@ -1,0 +1,127 @@
+graph TB
+    %% Embedding Loader Module Architecture
+    
+    subgraph "External Sources"
+        W2V[Word2Vec Files<br/>.bin/.txt]
+        GLOVE[GloVe Files<br/>.txt]
+        BERT[BERT Embeddings<br/>.pt/.pkl]
+        CONFIG[embedding_config.yaml]
+    end
+    
+    subgraph "data/embedding_loader/"
+        %% Main Components
+        EL[EmbeddingLoader<br/>Main Class]
+        
+        %% Format Handlers
+        subgraph "Format Handlers"
+            FH[FormatHandler<br/>Abstract Base]
+            W2VH[Word2VecHandler<br/>Binary & Text]
+            GH[GloVeHandler<br/>Text Format]
+            BH[BertHandler<br/>PyTorch & Pickle]
+        end
+        
+        %% Preprocessing
+        subgraph "Preprocessing"
+            EP[EmbeddingPreprocessor<br/>Main Processor]
+            NORM[L2 Normalization]
+            CENTER[Mean Centering]
+            CLIP[Outlier Clipping]
+            PCA[PCA Reduction]
+            WHITE[Whitening]
+        end
+        
+        %% Cache System
+        subgraph "Cache System"
+            CACHE[Memory Cache<br/>Dict[str, Tensor]]
+            DISK[Disk Cache<br/>./data/cache/]
+        end
+        
+        %% Statistics
+        STATS[Statistics<br/>Tracker]
+    end
+    
+    subgraph "Integration Points"
+        %% Phase 1 Integration
+        subgraph "core/"
+            LATTICE[lattice_3d<br/>Lattice3D]
+            CELL[cell_prototype<br/>NeuralCell]
+        end
+        
+        %% Future Phase 2 Integration
+        subgraph "data/ (Future)"
+            TOK[tokenizer<br/>TokenizerManager]
+            VIZ[data_visualization<br/>Visualizer3D]
+        end
+    end
+    
+    %% External Dependencies
+    subgraph "External Libraries"
+        TORCH[PyTorch<br/>torch]
+        NUMPY[NumPy<br/>numpy]
+        GENSIM[Gensim<br/>KeyedVectors]
+        YAML[PyYAML<br/>yaml]
+    end
+    
+    %% Data Flow - Input
+    W2V -->|"Load Binary"| W2VH
+    W2V -->|"Load Text"| W2VH
+    GLOVE -->|"Load Text"| GH
+    BERT -->|"Load Tensors"| BH
+    CONFIG -->|"Configuration"| EL
+    
+    %% Format Handler Inheritance
+    FH -.->|"inherits"| W2VH
+    FH -.->|"inherits"| GH
+    FH -.->|"inherits"| BH
+    
+    %% Main Processing Flow
+    EL -->|"delegates to"| W2VH
+    EL -->|"delegates to"| GH
+    EL -->|"delegates to"| BH
+    EL -->|"uses"| EP
+    EL -->|"manages"| CACHE
+    EL -->|"manages"| DISK
+    
+    %% Preprocessing Chain
+    EP -->|"applies"| NORM
+    EP -->|"applies"| CENTER
+    EP -->|"applies"| CLIP
+    EP -->|"applies"| PCA
+    EP -->|"applies"| WHITE
+    EP -->|"tracks"| STATS
+    
+    %% Cache Flow
+    EL -->|"check cache"| CACHE
+    CACHE -->|"miss -> disk"| DISK
+    EL -->|"store results"| CACHE
+    EL -->|"persist"| DISK
+    
+    %% Integration Flow - Phase 1
+    EL -->|"feed embeddings"| LATTICE
+    LATTICE -->|"set_input_face()"| LATTICE
+    CELL -->|"get_embedding_dim()"| EL
+    
+    %% Integration Flow - Future
+    EL -.->|"sync vocabulary"| TOK
+    EL -.->|"visualization data"| VIZ
+    TOK -.->|"token mappings"| EL
+    
+    %% External Dependencies
+    EL -->|"tensor operations"| TORCH
+    EP -->|"numerical ops"| NUMPY
+    W2VH -->|"binary loading"| GENSIM
+    EL -->|"config parsing"| YAML
+    
+    %% Output Data Flow
+    EL -->|"torch.Tensor"| LATTICE
+    EL -->|"preprocessed data"| VIZ
+    EL -->|"statistics"| STATS
+    
+    %% Critical Path Highlighting
+    classDef critical fill:#ff6b6b,stroke:#d63447,stroke-width:3px,color:#fff
+    classDef important fill:#4ecdc4,stroke:#26a69a,stroke-width:2px,color:#fff
+    classDef future fill:#ced6e0,stroke:#a4b0be,stroke-width:1px,color:#2f3542
+    
+    class EL,EP,LATTICE critical
+    class W2VH,GH,BH,CACHE important
+    class TOK,VIZ future 
