@@ -13,6 +13,146 @@
 8. **Unified Application Interface**: Build a cohesive application with a central interface that incrementally grows as new modules are added.
 9. **Proper Code Organization & Separation**: Maintain modularity and separation of concerns by keeping different components in separate files within modules. See guidelines for specific file types (`@.cursor/rules/python-guidelines.mdc`, `@.cursor/rules/data-guidelines.mdc`, `@.cursor/rules/config-guidelines.mdc`).
 10. **Comprehensive Operation Feedback**: Provide detailed feedback in both console/logs and output for all operations. See `@.cursor/rules/python-guidelines.mdc`.
+11. **Context Continuity**: Maintain comprehensive session context to enable seamless continuation of work across different LLM sessions. See `Context Management` section below.
+
+## Context Management for Multi-Session Development
+
+To ensure smooth continuation of work across different LLM sessions and prevent loss of progress, maintain a comprehensive context management system:
+
+### 1. Context Summary File (`CONTEXT_SUMMARY.md`)
+
+**CRITICAL**: This file MUST be updated at the end of each development session and immediately after any significant milestone.
+
+**Required Structure**:
+
+````markdown
+# Краткий Контекст для Продолжения Разработки
+
+## 📊 ТЕКУЩИЙ СТАТУС ПРОЕКТА
+
+**Обновлено**: [Дата]  
+**Phase Progress**: [Процент] ([Детали])
+
+## ✅ ЗАВЕРШЕННЫЕ МОДУЛИ
+
+### [Модуль 1] ✅ **СТАТУС**
+
+- **Локация**: `path/to/module/`
+- **Статус**: [Детальное описание готовности]
+- **Функции**: [Ключевые функции]
+- **API**: [Основные классы и функции]
+
+## ⏳ ТЕКУЩИЙ/СЛЕДУЮЩИЙ МОДУЛЬ
+
+### [Модуль] - **СТАТУС**
+
+- **Локация**: `path/to/module/`
+- **Цель**: [Описание цели модуля]
+- **Зависимости**: [Статус зависимостей]
+- **Текущий этап**: [Конкретный этап в процессе]
+
+## 🚨 КРИТИЧЕСКИЕ ПРОБЛЕМЫ
+
+### Проблема #N: [Название] [✅ РЕШЕНА / ⏳ В РАБОТЕ / 🚨 БЛОКИРУЕТ]
+
+- **Суть**: [Описание проблемы]
+- **Решение**: [Описание решения или текущий подход]
+
+## 🎯 ДОСТИЖЕНИЯ ТЕКУЩЕЙ СЕССИИ
+
+### ✅ Основные Результаты
+
+1. [Конкретные достижения с деталями]
+
+## 🛠️ ТЕХНИЧЕСКАЯ АРХИТЕКТУРА
+
+### Проверенные Интеграции
+
+- [модуль_а] → [модуль_б] ✅/❌ [статус]
+
+## 📂 АКТУАЛЬНАЯ СТРУКТУРА ФАЙЛОВ
+
+[Обновленная структура с отметками готовности]
+
+## 🎯 ПРИОРИТЕТЫ ДЛЯ СЛЕДУЮЩЕЙ СЕССИИ
+
+### 🚀 НЕМЕДЛЕННО
+
+1. [Конкретный следующий шаг]
+2. [Детали где остановились]
+
+### 📋 НА ЭТОЙ НЕДЕЛЕ
+
+1. [Среднесрочные цели]
+
+## 🔗 ПОЛЕЗНЫЕ КОМАНДЫ
+
+### [Категория команд]
+
+```bash
+# Команды для быстрого тестирования
+```
+````
+
+## 💡 КЛЮЧЕВЫЕ УРОКИ
+
+1. [Важные технические уроки из сессии]
+
+````
+
+### 2. Session Context Rules
+
+**At the START of each session**:
+- Read `CONTEXT_SUMMARY.md` first
+- Verify current state by checking recent files
+- Identify exact continuation point
+- Confirm dependencies are still working
+
+**During the session**:
+- Update progress markers in module `plan.md` files
+- Document any new errors in `errors.md`
+- Note any API changes in `meta.md`
+
+**At the END of each session**:
+- **MANDATORY**: Update `CONTEXT_SUMMARY.md` with current status
+- Mark completion status in all relevant `plan.md` files
+- Update project progress percentages
+- Document any incomplete work with exact continuation points
+
+### 3. Critical Context Elements
+
+**Must Always Include**:
+- **Exact module being worked on** and current implementation step
+- **Last working command/test** that succeeded
+- **Current blocker/issue** if session ended mid-task
+- **Next specific action** to take in following session
+- **Current file states** (which files were modified)
+- **Integration status** between modules
+- **Configuration changes** made during session
+
+### 4. Context Validation
+
+**Before ending session**:
+- Verify all documentation updates are complete
+- Test current functionality to confirm working state
+- Update context summary with exact stopping point
+- Provide clear "what to do next" instructions
+
+**When starting new session**:
+- Validate context summary against actual file states
+- Run basic tests to confirm system integrity
+- Identify any gaps in context and note them
+
+### 5. Emergency Context Recovery
+
+If context is lost or unclear:
+1. Check `CONTEXT_SUMMARY.md` for last known state
+2. Review recent changes in all `plan.md` files
+3. Check `errors.md` for recent issues
+4. Run basic integration tests to verify current state
+5. Update context summary with current findings
+
+This context management system ensures that no progress is lost between sessions and any LLM can quickly understand the current state and continue development effectively.
 
 ## Effective Use of Auxiliary Files for Code Analysis
 
@@ -140,7 +280,7 @@ graph TD
     classDef dataflow stroke:#333,stroke-width:1px,stroke-dasharray: 3 3;
     class ModelLoader,GPUManager critical;
     class ConfigLoader,ModelCache dataflow;
-```
+````
 
 For the main application diagram, include a complete data processing flow that shows all key transformation paths:
 

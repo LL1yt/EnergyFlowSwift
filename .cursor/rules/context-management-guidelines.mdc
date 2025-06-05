@@ -1,0 +1,110 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Context Management Guidelines
+
+## Overview
+This rule enforces proper context management across LLM sessions to prevent loss of development progress and ensure seamless continuation of work.
+
+## Core Requirements
+
+### 1. MANDATORY Context Updates
+
+**AT THE END OF EVERY SESSION** - Update `CONTEXT_SUMMARY.md` with:
+- Current module being worked on
+- Exact step where development stopped
+- Last successful test/command
+- Any current blockers or issues
+- Next immediate action to take
+- Updated progress percentages
+
+### 2. Session Start Protocol
+
+**AT THE START OF EVERY SESSION**:
+1. Read `CONTEXT_SUMMARY.md` first
+2. Verify current state matches documented state
+3. Run basic integration tests if needed
+4. Identify exact continuation point before proceeding
+
+### 3. Critical Context Information
+
+**Always document**:
+- **Module location**: Exact path to current work
+- **Implementation step**: Specific task in progress
+- **Dependencies**: Status of required modules
+- **Configuration changes**: Any new settings or files
+- **Integration status**: Working/broken connections between modules
+- **Test commands**: Commands that verify current functionality
+
+### 4. Context File Structure
+
+`CONTEXT_SUMMARY.md` must contain:
+```markdown
+## 📊 ТЕКУЩИЙ СТАТУС ПРОЕКТА
+- Date and progress percentage
+- Current phase details
+
+## ✅ ЗАВЕРШЕННЫЕ МОДУЛИ
+- Complete module list with status
+- API information for integration
+
+## ⏳ ТЕКУЩИЙ/СЛЕДУЮЩИЙ МОДУЛЬ  
+- Exact current work location
+- Current implementation step
+- Dependencies status
+
+## 🚨 КРИТИЧЕСКИЕ ПРОБЛЕМЫ
+- Active blockers
+- Solution attempts
+- Current status
+
+## 🎯 ДОСТИЖЕНИЯ ТЕКУЩЕЙ СЕССИИ
+- What was accomplished
+- New functionality added
+
+## 🎯 ПРИОРИТЕТЫ ДЛЯ СЛЕДУЮЩЕЙ СЕССИИ
+- Immediate next steps
+- Continuation points
+```
+
+### 5. Context Validation Rules
+
+**Before ending session**:
+- [ ] All module `plan.md` files updated with progress
+- [ ] Any errors documented in respective `errors.md` files  
+- [ ] `CONTEXT_SUMMARY.md` reflects current state
+- [ ] Clear "next action" documented
+- [ ] Last working test confirmed
+
+**When starting new session**:
+- [ ] Context summary reviewed and validated
+- [ ] Current state verified against documented state
+- [ ] Any discrepancies noted and resolved
+- [ ] Continuation point identified
+
+### 6. Emergency Recovery Process
+
+If context is unclear or lost:
+1. Check `CONTEXT_SUMMARY.md` for last known state
+2. Review recent `plan.md` updates across modules
+3. Check `errors.md` files for recent issues
+4. Test basic functionality to verify current state
+5. Update context summary with findings
+6. Document gaps for future prevention
+
+## Integration with Existing Rules
+
+This rule works alongside:
+- `documentation-guidelines.mdc` - for keeping docs updated
+- `project-guidelines.mdc` - for overall project structure
+- Main `instructions.md` - for development principles
+
+## Success Metrics
+
+- Zero sessions start without clear context
+- No repeated debugging of previously solved issues
+- Seamless handoff between different LLM sessions
+- Complete development history preservation
+
