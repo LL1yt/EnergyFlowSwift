@@ -2,10 +2,10 @@
 
 # Cache settings
 cache:
-  cache_dir: "./data/cache/"
-  max_cache_size: "2GB"
-  enable_disk_cache: true
-  cache_compression: false
+  enabled: true
+  directory: "./data/cache/"
+  max_size: "2GB"
+  cleanup_threshold: 0.9 # Очистка при заполнении 90%
 
 # Supported formats and their settings
 formats:
@@ -27,41 +27,157 @@ formats:
 
 # Preprocessing default settings
 preprocessing:
-  default:
-    normalize: true # L2 normalization
-    center: true # Mean centering
-    clip_outliers: false # Outlier clipping
-    outlier_std: 3.0 # Standard deviations for clipping
+  normalize:
+    enabled: true
+    method: "l2" # l2, l1, max
 
-  standardize:
-    enable: false # Z-score standardization
+  center:
+    enabled: false
+    method: "mean" # mean, median
 
-  whitening:
-    enable: false # PCA whitening
+  outlier_removal:
+    enabled: false
+    method: "iqr" # iqr, zscore, percentile
+    threshold: 3.0
 
   dimension_reduction:
-    enable: false
-    method: "pca" # pca or random
+    enabled: false
+    method: "pca" # pca, svd
     target_dim: 300
+
+  whitening:
+    enabled: false
+    eps: 1e-5
 
 # Performance settings
 performance:
-  batch_size: 1000 # Batch size for processing
-  num_workers: 4 # Number of worker threads
-  memory_limit: "4GB" # Maximum memory usage
+  max_file_size: "1GB"
+  batch_size: 1000
+  num_workers: 4
+  memory_limit: "4GB"
 
 # Logging settings
 logging:
   level: "INFO"
-  log_statistics: true
-  log_performance: true
+  log_file: "./logs/embedding_loader.log"
+  log_llm_operations: true
+  log_performance_metrics: true
 
 # Integration settings
 integration:
   lattice_3d:
-    input_layer: "input" # Which layer to feed embeddings to
-    batch_processing: true
+    enabled: true
+    input_format: "torch_tensor" # torch_tensor, numpy_array
 
   tokenizer:
-    sync_vocabulary: true # Sync vocabularies between modules
-    handle_oov: "random" # Out-of-vocabulary handling: random, zero, skip
+    sync_vocabularies: true
+    handle_oov: true # Out-of-vocabulary tokens
+
+# Validation settings
+validation:
+  check_embedding_quality: true
+  quality_metrics: ["norm", "similarity", "clustering"]
+  performance_benchmarks: true
+
+# ==============================================
+# НОВАЯ СЕКЦИЯ: LLM & Knowledge Distillation
+# ==============================================
+
+# Настройки LLM моделей
+llm:
+  # Модель по умолчанию (легкая для тестирования)
+  default_model: "distilbert"
+
+  # Стратегия агрегации токенов по умолчанию
+  default_pooling: "mean" # mean, cls, max
+
+  # Батч размер для LLM
+  batch_size: 16
+
+  # Кэширование LLM эмбедингов
+  cache_embeddings: true
+
+  # Максимальная длина последовательности
+  max_sequence_length: 512
+
+  # Настройки устройства
+  device: "auto" # auto, cpu, cuda
+
+  # Поддерживаемые модели (соответствует SUPPORTED_LLM_MODELS)
+  supported_models:
+    # Открытые модели (требуют больше ресурсов)
+    llama2-7b:
+      name: "meta-llama/Llama-2-7b-hf"
+      memory_requirement: "14GB"
+      recommended_for: "production"
+
+    llama3-8b:
+      name: "meta-llama/Meta-Llama-3-8B"
+      memory_requirement: "16GB"
+      recommended_for: "production"
+
+    mistral-7b:
+      name: "mistralai/Mistral-7B-v0.1"
+      memory_requirement: "14GB"
+      recommended_for: "production"
+
+    codellama-7b:
+      name: "codellama/CodeLlama-7b-hf"
+      memory_requirement: "14GB"
+      recommended_for: "code_tasks"
+
+    # Более легкие модели (для разработки и тестирования)
+    distilbert:
+      name: "distilbert-base-uncased"
+      memory_requirement: "1GB"
+      recommended_for: "development"
+
+    roberta:
+      name: "roberta-base"
+      memory_requirement: "2GB"
+      recommended_for: "development"
+
+    gpt2:
+      name: "gpt2"
+      memory_requirement: "2GB"
+      recommended_for: "development"
+
+    # Для тестирования
+    dialogpt:
+      name: "microsoft/DialoGPT-medium"
+      memory_requirement: "2GB"
+      recommended_for: "testing"
+
+# Knowledge Distillation настройки
+knowledge_distillation:
+  # Включить функциональность Knowledge Distillation
+  enabled: true
+
+  # Модель-учитель по умолчанию
+  default_teacher: "distilbert" # Для production: llama2-7b или llama3-8b
+
+  # Сохранение датасетов для обучения
+  save_datasets: true
+  dataset_save_dir: "./data/distillation_datasets/"
+
+  # Формат сохранения (.pt, .npz)
+  save_format: "pt"
+
+  # Метаданные датасета
+  include_metadata: true
+
+  # Автоматическое создание train/val splits
+  auto_split: true
+  train_ratio: 0.8
+
+  # Настройки для будущего Phase 3 (Training Infrastructure)
+  training:
+    # Функция потерь для дистилляции
+    loss_function: "mse" # mse, kl_div, cosine
+
+    # Температура для knowledge distillation (если используется softmax)
+    temperature: 3.0
+
+    # Весовые коэффициенты
+    distillation_weight: 0.7
+    task_weight: 0.3

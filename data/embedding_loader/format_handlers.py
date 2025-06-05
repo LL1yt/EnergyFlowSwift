@@ -5,7 +5,7 @@ Format handlers for different embedding file formats.
 import os
 import logging
 from abc import ABC, abstractmethod
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, List
 
 import torch
 import numpy as np
@@ -266,3 +266,225 @@ class BertHandler(FormatHandler):
         logger.warning("BERT vocabulary not available from embedding file. "
                       "Use tokenizer vocabulary instead.")
         return {} 
+
+
+class LLMHandler(FormatHandler):
+    """
+    Обработчик для извлечения эмбедингов из открытых LLM моделей.
+    
+    Поддерживает Knowledge Distillation через извлечение эмбедингов
+    из предобученных языковых моделей (LLaMA, Mistral, GPT и др.)
+    """
+    
+    def __init__(self, model_name: str = "microsoft/DialoGPT-medium"):
+        """
+        Инициализация LLM handler.
+        
+        Args:
+            model_name: Имя модели на HuggingFace Hub
+        """
+        self.model_name = model_name
+        self.model = None
+        self.tokenizer = None
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Initialized LLM handler for {model_name} on {self._device}")
+    
+    def load_model(self):
+        """Ленивая загрузка LLM модели и токенайзера."""
+        if self.model is None:
+            try:
+                from transformers import AutoModel, AutoTokenizer
+                
+                logger.info(f"Loading LLM model: {self.model_name}")
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                self.model = AutoModel.from_pretrained(self.model_name)
+                self.model.to(self._device)
+                self.model.eval()
+                
+                logger.info(f"Successfully loaded {self.model_name}")
+                
+            except ImportError:
+                raise ImportError("transformers library is required for LLM support. "
+                                "Install with: pip install transformers")
+            except Exception as e:
+                raise ValueError(f"Failed to load LLM model {self.model_name}: {e}")
+    
+    def load(self, path: str) -> np.ndarray:
+        """
+        Загрузка заранее сохраненных LLM эмбедингов.
+        
+        Args:
+            path: Путь к файлу с эмбедингами (.pt, .npy)
+            
+        Returns:
+            numpy.ndarray: Матрица эмбедингов
+        """
+        file_ext = os.path.splitext(path)[1].lower()
+        
+        if file_ext == '.pt':
+            embeddings = torch.load(path, map_location='cpu')
+            if isinstance(embeddings, torch.Tensor):
+                embeddings = embeddings.numpy()
+        elif file_ext == '.npy':
+            embeddings = np.load(path)
+        else:
+            raise ValueError(f"Unsupported LLM embedding file format: {file_ext}")
+        
+        logger.info(f"Loaded LLM embeddings from {path}: {embeddings.shape}")
+        return embeddings
+    
+    def generate_embeddings(self, texts: List[str], 
+                          pooling_strategy: str = "mean") -> torch.Tensor:
+        """
+        Генерация эмбедингов из текстов в реальном времени.
+        
+        Args:
+            texts: Список текстов для обработки
+            pooling_strategy: Стратегия агрегации токенов ("mean", "cls", "max")
+            
+        Returns:
+            torch.Tensor: Эмбединги текстов [batch_size, hidden_size]
+        """
+        self.load_model()
+        
+        if not texts:
+            raise ValueError("Empty text list provided")
+        
+        # Добавляем padding token если его нет
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # Токенизация с padding
+        inputs = self.tokenizer(
+            texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=512
+        )
+        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+        
+        # Извлечение эмбедингов
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            hidden_states = outputs.last_hidden_state  # [batch, seq_len, hidden]
+            
+            # Применяем стратегию агрегации
+            if pooling_strategy == "mean":
+                # Учитываем attention mask для корректного усреднения
+                attention_mask = inputs['attention_mask'].unsqueeze(-1)
+                embeddings = (hidden_states * attention_mask).sum(dim=1) / attention_mask.sum(dim=1)
+            elif pooling_strategy == "cls":
+                # Берем первый токен (обычно [CLS])
+                embeddings = hidden_states[:, 0, :]
+            elif pooling_strategy == "max":
+                # Максимальное значение по sequence dimension
+                embeddings = hidden_states.max(dim=1)[0]
+            else:
+                raise ValueError(f"Unknown pooling strategy: {pooling_strategy}")
+        
+        embeddings = embeddings.cpu()
+        logger.info(f"Generated embeddings for {len(texts)} texts: {embeddings.shape}")
+        
+        return embeddings
+    
+    def batch_generate_embeddings(self, texts: List[str], 
+                                batch_size: int = 16) -> torch.Tensor:
+        """
+        Генерация эмбедингов батчами для больших объемов текста.
+        
+        Args:
+            texts: Список текстов
+            batch_size: Размер батча
+            
+        Returns:
+            torch.Tensor: Объединенные эмбединги
+        """
+        all_embeddings = []
+        
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
+            batch_embeddings = self.generate_embeddings(batch_texts)
+            all_embeddings.append(batch_embeddings)
+        
+        return torch.cat(all_embeddings, dim=0)
+    
+    def save_embeddings(self, embeddings: torch.Tensor, save_path: str):
+        """
+        Сохранение сгенерированных эмбедингов для кэширования.
+        
+        Args:
+            embeddings: Эмбединги для сохранения
+            save_path: Путь для сохранения
+        """
+        file_ext = os.path.splitext(save_path)[1].lower()
+        
+        if file_ext == '.pt':
+            torch.save(embeddings, save_path)
+        elif file_ext == '.npy':
+            np.save(save_path, embeddings.numpy())
+        else:
+            raise ValueError(f"Unsupported save format: {file_ext}")
+        
+        logger.info(f"Saved LLM embeddings to {save_path}")
+    
+    def get_vocabulary(self, path: str) -> Dict[str, int]:
+        """
+        Получение словаря LLM (если применимо).
+        
+        Note: Для LLM обычно используется токенайзер
+        """
+        self.load_model()
+        if hasattr(self.tokenizer, 'get_vocab'):
+            return self.tokenizer.get_vocab()
+        else:
+            logger.warning("LLM tokenizer does not support vocabulary extraction")
+            return {}
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """Получение информации о загруженной модели."""
+        self.load_model()
+        
+        return {
+            "model_name": self.model_name,
+            "device": self._device,
+            "hidden_size": self.model.config.hidden_size if hasattr(self.model.config, 'hidden_size') else "unknown",
+            "vocab_size": self.tokenizer.vocab_size if self.tokenizer else "unknown",
+            "max_position_embeddings": getattr(self.model.config, 'max_position_embeddings', "unknown")
+        }
+
+
+# Поддерживаемые LLM модели для Knowledge Distillation
+SUPPORTED_LLM_MODELS = {
+    # Открытые модели
+    "llama2-7b": "meta-llama/Llama-2-7b-hf",
+    "llama3-8b": "meta-llama/Meta-Llama-3-8B",
+    "mistral-7b": "mistralai/Mistral-7B-v0.1", 
+    "codellama-7b": "codellama/CodeLlama-7b-hf",
+    
+    # Более легкие модели
+    "distilbert": "distilbert-base-uncased",
+    "roberta": "roberta-base",
+    "gpt2": "gpt2",
+    
+    # Для тестирования
+    "dialogpt": "microsoft/DialoGPT-medium",
+}
+
+
+def create_llm_handler(model_key: str) -> LLMHandler:
+    """
+    Фабричная функция для создания LLM handler.
+    
+    Args:
+        model_key: Ключ модели из SUPPORTED_LLM_MODELS
+        
+    Returns:
+        LLMHandler: Настроенный handler
+    """
+    if model_key not in SUPPORTED_LLM_MODELS:
+        raise ValueError(f"Unsupported model key: {model_key}. "
+                        f"Supported: {list(SUPPORTED_LLM_MODELS.keys())}")
+    
+    model_name = SUPPORTED_LLM_MODELS[model_key]
+    return LLMHandler(model_name) 

@@ -194,6 +194,8 @@ def process_large_embeddings(file_path: str, batch_size: int = 10000):
 
 # Использование
 result = process_large_embeddings("./data/embeddings/glove.840B.300d.txt")
+print("Converted embeddings shape:", result.shape)
+print("Used preprocessing:", loader.stats['preprocessing_used'])
 ```
 
 ### Пример 6: Работа с конфигурацией
@@ -478,3 +480,322 @@ lattice.set_input_face(embeddings[:batch_size])
 # 5. Очистка ресурсов
 loader.clear_cache()
 ```
+
+---
+
+## 🚀 НОВЫЕ ПРИМЕРЫ: LLM & Knowledge Distillation
+
+### Пример 11: Базовое использование LLM
+
+```python
+from data.embedding_loader import EmbeddingLoader
+
+# Инициализация
+loader = EmbeddingLoader()
+
+# Список текстов для обработки
+texts = [
+    "Artificial intelligence is transforming the world",
+    "Machine learning models are becoming more sophisticated",
+    "Neural networks can learn complex patterns"
+]
+
+# Генерация эмбедингов через LLM
+embeddings = loader.load_from_llm(
+    texts=texts,
+    model_key="distilbert",  # Легкая модель для тестирования
+    pooling_strategy="mean"
+)
+
+print(f"Generated embeddings: {embeddings.shape}")
+print(f"Model used: distilbert")
+```
+
+### Пример 12: Knowledge Distillation с LLaMA
+
+```python
+# Использование более мощной модели для production
+texts = [
+    "The future of AI is bright",
+    "Deep learning revolutionizes computing",
+    "Natural language processing advances rapidly"
+]
+
+# Генерация с LLaMA 2 (требует больше ресурсов)
+try:
+    embeddings = loader.load_from_llm(
+        texts=texts,
+        model_key="llama2-7b",  # Мощная модель
+        pooling_strategy="mean",
+        use_cache=True  # Кэшируем результаты
+    )
+    print(f"LLaMA embeddings: {embeddings.shape}")
+except Exception as e:
+    print(f"LLaMA не доступна: {e}")
+    # Fallback на легкую модель
+    embeddings = loader.load_from_llm(texts=texts, model_key="distilbert")
+```
+
+### Пример 13: Создание обучающего датасета
+
+```python
+# Большой набор текстов для обучения
+training_texts = [
+    "Quantum computing will change cryptography",
+    "Blockchain technology ensures data integrity",
+    "Cloud computing provides scalable infrastructure",
+    "Internet of Things connects everyday devices",
+    "Augmented reality enhances user experience",
+    # ... еще тысячи текстов
+]
+
+# Создание датасета для Knowledge Distillation
+dataset = loader.create_knowledge_distillation_dataset(
+    texts=training_texts,
+    teacher_model="llama3-8b",  # Teacher: мощная LLM
+    save_path="./datasets/kd_dataset_llama3.pt"
+)
+
+print(f"Создан датасет: {dataset['num_samples']} образцов")
+print(f"Размерность эмбедингов: {dataset['embedding_dim']}")
+print(f"Teacher модель: {dataset['teacher_model']}")
+
+# Этот датасет будет использован для обучения 3D CNN в Phase 3
+```
+
+### Пример 14: Батчевая обработка больших данных
+
+```python
+# Большой объем текстов
+large_text_corpus = ["Text sample " + str(i) for i in range(10000)]
+
+# Эффективная батчевая обработка
+embeddings = loader.batch_load_from_llm(
+    texts=large_text_corpus,
+    model_key="roberta",
+    batch_size=32  # Обрабатываем по 32 текста
+)
+
+print(f"Обработано {len(large_text_corpus)} текстов")
+print(f"Результирующие эмбединги: {embeddings.shape}")
+print(f"Статистики: {loader.stats}")
+```
+
+### Пример 15: Сравнение разных LLM моделей
+
+```python
+# Тестовый текст
+test_text = ["The quick brown fox jumps over the lazy dog"]
+
+# Список моделей для сравнения
+models_to_test = ["distilbert", "roberta", "gpt2"]
+
+results = {}
+for model in models_to_test:
+    try:
+        embeddings = loader.load_from_llm(
+            texts=test_text,
+            model_key=model,
+            pooling_strategy="mean"
+        )
+
+        # Получаем информацию о модели
+        model_info = loader.get_llm_info(model)
+
+        results[model] = {
+            'embeddings': embeddings,
+            'shape': embeddings.shape,
+            'hidden_size': model_info['hidden_size'],
+            'memory_req': "Unknown"  # Из конфигурации
+        }
+
+        print(f"✅ {model}: {embeddings.shape}")
+
+    except Exception as e:
+        print(f"❌ {model}: {e}")
+
+# Сравнение результатов
+for model, data in results.items():
+    print(f"{model}: {data['shape']}, hidden_size: {data['hidden_size']}")
+```
+
+### Пример 16: Интеграция с 3D CNN (Готовность к Phase 3)
+
+```python
+from core.lattice_3d import Lattice3D
+
+# Создание датасета для обучения 3D CNN
+texts = ["AI will transform education", "Machine learning improves healthcare"]
+
+# Teacher: LLM генерирует качественные эмбединги
+teacher_embeddings = loader.load_from_llm(
+    texts=texts,
+    model_key="mistral-7b",
+    pooling_strategy="mean"
+)
+
+# Student: наша 3D CNN (будет реализовано в Phase 3)
+lattice = Lattice3D(size=(10, 10, 10))
+
+# Подача эмбедингов на входную грань решетки
+input_face = teacher_embeddings[:, :lattice.get_face_size()]
+lattice.set_input_face(input_face)
+
+print("✅ Интеграция с 3D CNN готова для Phase 3!")
+print(f"Teacher embeddings: {teacher_embeddings.shape}")
+print(f"Lattice input: {input_face.shape}")
+```
+
+### Пример 17: Продвинутые настройки pooling
+
+```python
+# Тестирование разных стратегий агрегации
+text = ["Natural language processing is a branch of artificial intelligence"]
+
+pooling_strategies = ["mean", "cls", "max"]
+results = {}
+
+for strategy in pooling_strategies:
+    embeddings = loader.load_from_llm(
+        texts=text,
+        model_key="distilbert",
+        pooling_strategy=strategy
+    )
+    results[strategy] = embeddings
+    print(f"{strategy} pooling: {embeddings.shape}")
+
+# Анализ различий
+mean_emb = results["mean"]
+cls_emb = results["cls"]
+max_emb = results["max"]
+
+print(f"Mean vs CLS similarity: {torch.cosine_similarity(mean_emb, cls_emb).item():.4f}")
+print(f"Mean vs Max similarity: {torch.cosine_similarity(mean_emb, max_emb).item():.4f}")
+```
+
+### Пример 18: Кэширование и оптимизация
+
+```python
+import time
+
+# Тест эффективности кэширования
+texts = ["This is a test sentence for caching performance"]
+
+# Первый запрос (без кэша)
+start_time = time.time()
+embeddings1 = loader.load_from_llm(texts=texts, model_key="gpt2", use_cache=True)
+first_call_time = time.time() - start_time
+
+# Второй запрос (из кэша)
+start_time = time.time()
+embeddings2 = loader.load_from_llm(texts=texts, model_key="gpt2", use_cache=True)
+cached_call_time = time.time() - start_time
+
+# Проверка идентичности результатов
+identical = torch.allclose(embeddings1, embeddings2)
+
+print(f"Первый вызов: {first_call_time:.2f}s")
+print(f"Кэшированный вызов: {cached_call_time:.2f}s")
+print(f"Ускорение: {first_call_time/cached_call_time:.1f}x")
+print(f"Результаты идентичны: {identical}")
+print(f"Статистики кэша: hits={loader.stats['cache_hits']}, misses={loader.stats['cache_misses']}")
+```
+
+### Пример 19: Мониторинг и диагностика
+
+```python
+# Получение информации о поддерживаемых моделях
+supported_models = loader.list_supported_llm_models()
+print("Поддерживаемые LLM модели:")
+for model in supported_models:
+    print(f"  - {model}")
+
+# Детальная информация о конкретной модели
+model_info = loader.get_llm_info("distilbert")
+print(f"\nИнформация о модели:")
+for key, value in model_info.items():
+    print(f"  {key}: {value}")
+
+# Статистики использования
+print(f"\nСтатистики embedding_loader:")
+for key, value in loader.stats.items():
+    print(f"  {key}: {value}")
+```
+
+### Пример 20: Production Pipeline (готовность к Phase 3)
+
+```python
+# Полный production pipeline для Knowledge Distillation
+class ProductionKnowledgeDistillation:
+    def __init__(self):
+        self.loader = EmbeddingLoader()
+        self.teacher_model = "llama3-8b"  # Мощная teacher модель
+
+    def prepare_training_data(self, text_corpus, save_dir="./kd_datasets/"):
+        """Подготовка данных для обучения 3D CNN"""
+
+        # Создание train/validation датасетов
+        train_texts = text_corpus[:int(0.8 * len(text_corpus))]
+        val_texts = text_corpus[int(0.8 * len(text_corpus)):]
+
+        # Генерация train датасета
+        train_dataset = self.loader.create_knowledge_distillation_dataset(
+            texts=train_texts,
+            teacher_model=self.teacher_model,
+            save_path=f"{save_dir}/train_kd_dataset.pt"
+        )
+
+        # Генерация validation датасета
+        val_dataset = self.loader.create_knowledge_distillation_dataset(
+            texts=val_texts,
+            teacher_model=self.teacher_model,
+            save_path=f"{save_dir}/val_kd_dataset.pt"
+        )
+
+        return train_dataset, val_dataset
+
+    def get_teacher_embeddings(self, texts):
+        """Получение teacher эмбедингов для inference"""
+        return self.loader.load_from_llm(
+            texts=texts,
+            model_key=self.teacher_model,
+            pooling_strategy="mean",
+            use_cache=True
+        )
+
+# Использование
+pipeline = ProductionKnowledgeDistillation()
+
+# Подготовка данных для Phase 3
+sample_corpus = [f"Training sample {i}" for i in range(1000)]
+train_data, val_data = pipeline.prepare_training_data(sample_corpus)
+
+print("🚀 Production pipeline готов!")
+print(f"Train dataset: {train_data['num_samples']} образцов")
+print(f"Validation dataset: {val_data['num_samples']} образцов")
+print("✅ Готово для Phase 3: Training Infrastructure")
+```
+
+---
+
+## 📋 Резюме новых возможностей
+
+### 🎯 Основные фичи
+
+1. **LLM Integration**: Поддержка 8+ моделей (LLaMA, Mistral, GPT и др.)
+2. **Knowledge Distillation**: Полный pipeline создания обучающих данных
+3. **Real-time Generation**: Генерация эмбедингов в реальном времени
+4. **Smart Caching**: Интеллигентное кэширование LLM результатов
+5. **Batch Processing**: Эффективная обработка больших объемов
+6. **Multi-device Support**: CPU и GPU поддержка
+7. **Production Ready**: Готовность к Phase 3 Training Infrastructure
+
+### 🚀 Готовность к Phase 3
+
+- ✅ **Teacher-Student Architecture**: Готова инфраструктура для KD
+- ✅ **Dataset Generation**: Автоматическое создание обучающих данных
+- ✅ **Integration Points**: API для подключения к training loop
+- ✅ **Quality Metrics**: Мониторинг качества эмбедингов
+- ✅ **Scalability**: Поддержка production нагрузок
+
+**🎯 Следующий шаг**: Переход к Phase 3 для реализации training infrastructure с полной поддержкой knowledge distillation!

@@ -1,27 +1,46 @@
 """
-Data Embedding Loader Module
+Модуль загрузки и предобработки эмбедингов.
 
-Модуль для загрузки и предобработки векторных представлений (эмбедингов) различных типов.
-Поддерживает популярные форматы: Word2Vec, GloVe, BERT embeddings.
+Поддерживает:
+- Традиционные форматы: Word2Vec, GloVe, BERT
+- LLM модели для Knowledge Distillation: LLaMA, Mistral, GPT и др.
+- Real-time генерацию эмбедингов из текстов
+- Полный pipeline для обучения 3D CNN через knowledge distillation
 """
 
 from .embedding_loader import EmbeddingLoader
 from .format_handlers import (
     FormatHandler,
     Word2VecHandler, 
-    GloVeHandler,
-    BertHandler
+    GloVeHandler, 
+    BertHandler,
+    LLMHandler,
+    create_llm_handler,
+    SUPPORTED_LLM_MODELS
 )
 from .preprocessing import EmbeddingPreprocessor
 
-__version__ = "1.0.0"
-__author__ = "3D CNN Team"
-
 __all__ = [
-    "EmbeddingLoader",
-    "FormatHandler", 
-    "Word2VecHandler",
-    "GloVeHandler", 
-    "BertHandler",
-    "EmbeddingPreprocessor"
-] 
+    # Основные классы
+    'EmbeddingLoader',
+    'EmbeddingPreprocessor',
+    
+    # Format handlers (традиционные)
+    'FormatHandler',
+    'Word2VecHandler',
+    'GloVeHandler', 
+    'BertHandler',
+    
+    # LLM & Knowledge Distillation
+    'LLMHandler',
+    'create_llm_handler',
+    'SUPPORTED_LLM_MODELS',
+]
+
+# Версия модуля
+__version__ = "2.0.0"  # Обновлена для поддержки LLM
+
+# Метаданные для knowledge distillation
+KNOWLEDGE_DISTILLATION_READY = True
+SUPPORTED_TEACHER_MODELS = list(SUPPORTED_LLM_MODELS.keys())
+PHASE_3_INTEGRATION_READY = True 

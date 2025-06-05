@@ -5,14 +5,15 @@ Main EmbeddingLoader class for loading and preprocessing various embedding forma
 import os
 import pickle
 import logging
-from typing import Dict, Optional, Union, Tuple
+import time
+from typing import Dict, Optional, Union, Tuple, List, Any
 from pathlib import Path
 
 import torch
 import numpy as np
 from torch import Tensor
 
-from .format_handlers import FormatHandler, Word2VecHandler, GloVeHandler, BertHandler
+from .format_handlers import FormatHandler, Word2VecHandler, GloVeHandler, BertHandler, LLMHandler, create_llm_handler, SUPPORTED_LLM_MODELS
 from .preprocessing import EmbeddingPreprocessor
 
 
@@ -29,32 +30,45 @@ class EmbeddingLoader:
     - BERT embeddings (.pt, .pkl)
     """
     
-    def __init__(self, cache_dir: str = "./data/cache/", max_cache_size: str = "2GB"):
+    def __init__(self, cache_dir: str = "./cache", config_path: str = None):
         """
-        Инициализация загрузчика эмбедингов.
+        Инициализация EmbeddingLoader.
         
         Args:
             cache_dir: Директория для кэширования
-            max_cache_size: Максимальный размер кэша
+            config_path: Путь к конфигурационному файлу
         """
         self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.max_cache_size = max_cache_size
+        self.cache_dir.mkdir(exist_ok=True)
         
-        # Инициализация обработчиков форматов
-        self.format_handlers: Dict[str, FormatHandler] = {
+        # Инициализируем обработчики форматов
+        self.handlers = {
             'word2vec': Word2VecHandler(),
             'glove': GloVeHandler(),
-            'bert': BertHandler()
+            'bert': BertHandler(),
+            'llm': None  # Ленивая инициализация для LLM
         }
         
-        # Инициализация препроцессора
+        # Статистики
+        self.stats = {
+            'loaded_files': 0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'llm_generations': 0,
+            'total_texts_processed': 0
+        }
+        
+        # Инициализируем препроцессор
+        from .preprocessing import EmbeddingPreprocessor
         self.preprocessor = EmbeddingPreprocessor()
         
-        # Кэш загруженных эмбедингов
+        # Кэш загруженных эмбедингов в памяти
         self._embedding_cache: Dict[str, Tensor] = {}
         
-        logger.info(f"EmbeddingLoader initialized with cache_dir: {cache_dir}")
+        # Загружаем конфигурацию
+        self.config = self._load_config(config_path)
+        
+        logger.info(f"EmbeddingLoader initialized with cache: {cache_dir}")
     
     def load_embeddings(self, 
                        path: Union[str, Path], 
@@ -80,9 +94,9 @@ class EmbeddingLoader:
         if not path.exists():
             raise FileNotFoundError(f"Embedding file not found: {path}")
         
-        if format_type not in self.format_handlers:
+        if format_type not in self.handlers:
             raise ValueError(f"Unsupported format: {format_type}. "
-                           f"Supported formats: {list(self.format_handlers.keys())}")
+                           f"Supported formats: {list(self.handlers.keys())}")
         
         # Проверяем кэш
         cache_key = f"{path.stem}_{format_type}"
@@ -91,7 +105,7 @@ class EmbeddingLoader:
             return self._embedding_cache[cache_key]
         
         # Загружаем эмбединги
-        handler = self.format_handlers[format_type]
+        handler = self.handlers[format_type]
         logger.info(f"Loading embeddings from {path} using {format_type} handler")
         
         embeddings = handler.load(str(path))
@@ -200,4 +214,196 @@ class EmbeddingLoader:
     
     def get_supported_formats(self) -> list:
         """Получение списка поддерживаемых форматов."""
-        return list(self.format_handlers.keys()) 
+        return list(self.handlers.keys())
+    
+    def load_from_llm(self, texts: List[str], model_key: str = "distilbert", 
+                     pooling_strategy: str = "mean", 
+                     use_cache: bool = True) -> Tensor:
+        """
+        Генерация эмбедингов из текстов через LLM (Knowledge Distillation).
+        
+        Args:
+            texts: Список текстов для обработки
+            model_key: Ключ LLM модели из SUPPORTED_LLM_MODELS
+            pooling_strategy: Стратегия агрегации ("mean", "cls", "max")
+            use_cache: Использовать кэширование
+            
+        Returns:
+            torch.Tensor: Эмбединги текстов
+        """
+        if not texts:
+            raise ValueError("Empty text list provided")
+        
+        # Создаем уникальный ключ кэша
+        cache_key = self._create_llm_cache_key(texts, model_key, pooling_strategy)
+        cache_path = self.cache_dir / f"llm_{cache_key}.pt"
+        
+        # Проверяем кэш
+        if use_cache and cache_path.exists():
+            logger.info(f"Loading LLM embeddings from cache: {cache_path}")
+            embeddings = torch.load(cache_path)
+            self.stats['cache_hits'] += 1
+            return embeddings
+        
+        # Инициализируем LLM handler если нужно
+        if model_key not in SUPPORTED_LLM_MODELS:
+            raise ValueError(f"Unsupported LLM model: {model_key}")
+        
+        llm_handler = create_llm_handler(model_key)
+        
+        # Генерируем эмбединги
+        logger.info(f"Generating embeddings for {len(texts)} texts using {model_key}")
+        embeddings = llm_handler.generate_embeddings(texts, pooling_strategy)
+        
+        # Обновляем статистики
+        self.stats['llm_generations'] += 1
+        self.stats['total_texts_processed'] += len(texts)
+        self.stats['cache_misses'] += 1
+        
+        # Сохраняем в кэш
+        if use_cache:
+            torch.save(embeddings, cache_path)
+            logger.info(f"Cached LLM embeddings to: {cache_path}")
+        
+        return embeddings
+    
+    def batch_load_from_llm(self, texts: List[str], model_key: str = "distilbert",
+                           batch_size: int = 16, **kwargs) -> Tensor:
+        """
+        Батчевая генерация эмбедингов через LLM.
+        
+        Args:
+            texts: Список текстов
+            model_key: Ключ LLM модели
+            batch_size: Размер батча
+            **kwargs: Дополнительные параметры для load_from_llm
+            
+        Returns:
+            torch.Tensor: Объединенные эмбединги
+        """
+        llm_handler = create_llm_handler(model_key)
+        embeddings = llm_handler.batch_generate_embeddings(texts, batch_size)
+        
+        self.stats['llm_generations'] += 1
+        self.stats['total_texts_processed'] += len(texts)
+        
+        return embeddings
+    
+    def create_knowledge_distillation_dataset(self, texts: List[str], 
+                                            teacher_model: str = "llama2-7b",
+                                            save_path: str = None) -> Dict[str, Tensor]:
+        """
+        Создание датасета для Knowledge Distillation.
+        
+        Генерирует эмбединги teacher модели (LLM) для обучения student модели (3D CNN).
+        
+        Args:
+            texts: Тексты для обработки
+            teacher_model: Модель-учитель (LLM)
+            save_path: Путь для сохранения датасета
+            
+        Returns:
+            Dict с эмбедингами teacher модели и метаданными
+        """
+        logger.info(f"Creating Knowledge Distillation dataset with {teacher_model}")
+        
+        # Генерируем эмбединги teacher модели
+        teacher_embeddings = self.load_from_llm(
+            texts=texts, 
+            model_key=teacher_model,
+            pooling_strategy="mean"
+        )
+        
+        # Создаем датасет
+        dataset = {
+            'teacher_embeddings': teacher_embeddings,
+            'texts': texts,
+            'teacher_model': teacher_model,
+            'num_samples': len(texts),
+            'embedding_dim': teacher_embeddings.shape[1],
+            'created_at': torch.tensor(time.time())
+        }
+        
+        # Сохраняем если указан путь
+        if save_path:
+            torch.save(dataset, save_path)
+            logger.info(f"Knowledge Distillation dataset saved to: {save_path}")
+        
+        return dataset
+    
+    def _create_llm_cache_key(self, texts: List[str], model_key: str, 
+                             pooling_strategy: str) -> str:
+        """Создание ключа кэша для LLM эмбедингов."""
+        import hashlib
+        
+        # Создаем хэш из текстов и параметров
+        content = f"{model_key}_{pooling_strategy}_{'|'.join(texts)}"
+        return hashlib.md5(content.encode()).hexdigest()[:16]
+    
+    def get_llm_info(self, model_key: str) -> Dict[str, Any]:
+        """Получение информации о LLM модели."""
+        if model_key not in SUPPORTED_LLM_MODELS:
+            raise ValueError(f"Unknown model key: {model_key}")
+        
+        llm_handler = create_llm_handler(model_key)
+        return llm_handler.get_model_info()
+    
+    def list_supported_llm_models(self) -> List[str]:
+        """Список поддерживаемых LLM моделей."""
+        return list(SUPPORTED_LLM_MODELS.keys())
+    
+    def _load_config(self, config_path: str = None) -> Dict[str, Any]:
+        """Загрузка конфигурации из YAML файла."""
+        if config_path is None:
+            # Используем конфигурацию по умолчанию из модуля
+            config_path = Path(__file__).parent / "config" / "embedding_config.yaml"
+        
+        try:
+            import yaml
+            
+            if Path(config_path).exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
+                logger.info(f"Configuration loaded from: {config_path}")
+                return config
+            else:
+                logger.warning(f"Config file not found: {config_path}, using defaults")
+                return self._get_default_config()
+                
+        except ImportError:
+            logger.warning("PyYAML not installed, using default configuration")
+            return self._get_default_config()
+        except Exception as e:
+            logger.warning(f"Failed to load config: {e}, using defaults")
+            return self._get_default_config()
+    
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Конфигурация по умолчанию если YAML не доступен."""
+        return {
+            'cache': {
+                'enabled': True,
+                'directory': './data/cache/',
+                'max_size': '2GB'
+            },
+            'llm': {
+                'default_model': 'distilbert',
+                'default_pooling': 'mean',
+                'batch_size': 16,
+                'cache_embeddings': True,
+                'device': 'auto'
+            },
+            'knowledge_distillation': {
+                'enabled': True,
+                'default_teacher': 'distilbert',
+                'save_datasets': True,
+                'dataset_save_dir': './data/distillation_datasets/'
+            }
+        }
+
+    def _create_cache_key(self, path: str, format_type: str) -> str:
+        """Создание ключа кэша для файла."""
+        import hashlib
+        
+        # Создаем хэш из пути и типа
+        content = f"{format_type}_{path}"
+        return hashlib.md5(content.encode()).hexdigest()[:16] 
