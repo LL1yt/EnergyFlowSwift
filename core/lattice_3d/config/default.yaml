@@ -10,7 +10,7 @@ lattice_3d:
 
   # Производительность
   parallel_processing: true
-  gpu_enabled: true
+  gpu_enabled: false # Отключено для совместимости
   batch_size: 1
 
   # Инициализация состояний

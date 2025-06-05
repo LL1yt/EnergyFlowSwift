@@ -532,30 +532,362 @@ class NeighborTopology:
 
 
 # =============================================================================
-# ОСНОВНОЙ КЛАСС РЕШЕТКИ (ЗАГЛУШКА ДЛЯ СЛЕДУЮЩЕГО ЭТАПА)
+# ОСНОВНОЙ КЛАСС РЕШЕТКИ
 # =============================================================================
 
 class Lattice3D(nn.Module):
     """
     Основной класс трехмерной решетки клеток.
     
-    [ЗАГЛУШКА - будет реализован в следующем этапе]
-    
     Управляет сеткой клеток cell_prototype, их состояниями и взаимодействием.
+    Реализует синхронное обновление всех клеток и интерфейсы ввода/вывода.
+    
+    Биологическая аналогия: кора головного мозга - 3D ткань из одинаковых 
+    нейронов, где каждый нейрон обрабатывает сигналы от соседей.
     """
     
     def __init__(self, config: LatticeConfig):
-        """Инициализация решетки (базовая версия)"""
+        """
+        Инициализация трехмерной решетки клеток.
+        
+        Args:
+            config: Конфигурация решетки
+        """
         super().__init__()
         self.config = config
         
-        # Будет реализовано на следующем этапе
-        logging.info(f"Lattice3D initialized with config: {config.dimensions}")
+        # Основные компоненты
+        self.position_system = Position3D(config.dimensions)
+        self.topology = NeighborTopology(config)
         
-    def forward(self, states: torch.Tensor) -> torch.Tensor:
-        """Заглушка для forward pass"""
-        logging.info("Lattice3D.forward() called - implementation pending")
+        # Создание прототипа клетки (один для всех позиций)
+        self.cell_prototype = self._create_cell_prototype()
+        
+        # Состояния всех клеток решетки
+        self.states = self._initialize_states()
+        
+        # Кэширование для производительности
+        self._face_indices = self._compute_face_indices()
+        
+        # Статистика и диагностика
+        self.step_count = 0
+        self.performance_stats = {
+            'forward_calls': 0,
+            'total_time': 0.0,
+            'avg_time_per_step': 0.0
+        }
+        
+        logging.info(f"Lattice3D initialized: {config.dimensions} = {config.total_cells} cells")
+        if config.track_performance:
+            logging.info(f"Performance tracking enabled, device: {config.device}")
+            
+    def _create_cell_prototype(self) -> CellPrototype:
+        """
+        Создание прототипа клетки на основе конфигурации.
+        
+        Returns:
+            CellPrototype: Настроенный прототип клетки
+        """
+        # Получаем конфигурацию cell_prototype
+        if self.config.cell_config is not None:
+            cell_config = self.config.cell_config
+        else:
+            # Загружаем базовую конфигурацию
+            cell_config = load_cell_config()
+            
+        # Создаем экземпляр клетки
+        try:
+            cell = create_cell_from_config(cell_config)  # Передаем конфигурацию
+            cell = cell.to(self.config.device)
+            
+            logging.info(f"Cell prototype created: input_size={cell.input_size}, state_size={cell.state_size}")
+            return cell
+            
+        except Exception as e:
+            logging.error(f"Failed to create cell prototype: {e}")
+            raise RuntimeError(f"Cell prototype creation failed: {e}")
+            
+    def _initialize_states(self) -> torch.Tensor:
+        """
+        Инициализация состояний всех клеток решетки.
+        
+        Returns:
+            torch.Tensor: Тензор состояний [total_cells, state_size]
+        """
+        total_cells = self.config.total_cells
+        state_size = self.cell_prototype.state_size
+        
+        # Выбираем метод инициализации
+        if self.config.initialization_method == "normal":
+            states = torch.normal(
+                mean=self.config.initialization_mean,
+                std=self.config.initialization_std,
+                size=(total_cells, state_size)
+            )
+        elif self.config.initialization_method == "uniform":
+            states = torch.uniform(
+                low=-self.config.initialization_std,
+                high=self.config.initialization_std,
+                size=(total_cells, state_size)
+            )
+        elif self.config.initialization_method == "zeros":
+            states = torch.zeros(total_cells, state_size)
+        else:
+            raise ValueError(f"Unknown initialization method: {self.config.initialization_method}")
+            
+        states = states.to(self.config.device)
+        
+        # Регистрируем как параметр модуля для обучения
+        self.register_buffer('_states', states)
+        
+        logging.info(f"States initialized: {states.shape} with method '{self.config.initialization_method}'")
         return states
+        
+    def _compute_face_indices(self) -> Dict[Face, List[int]]:
+        """
+        Предвычисление индексов клеток на каждой грани решетки.
+        
+        Returns:
+            Dict[Face, List[int]]: Словарь граней и соответствующих индексов
+        """
+        x_size, y_size, z_size = self.config.dimensions
+        face_indices = {}
+        
+        # FRONT face (Z = 0)
+        face_indices[Face.FRONT] = [
+            self.position_system.to_linear_index((x, y, 0))
+            for x in range(x_size) for y in range(y_size)
+        ]
+        
+        # BACK face (Z = max)
+        face_indices[Face.BACK] = [
+            self.position_system.to_linear_index((x, y, z_size - 1))
+            for x in range(x_size) for y in range(y_size)
+        ]
+        
+        # LEFT face (X = 0)
+        face_indices[Face.LEFT] = [
+            self.position_system.to_linear_index((0, y, z))
+            for y in range(y_size) for z in range(z_size)
+        ]
+        
+        # RIGHT face (X = max)
+        face_indices[Face.RIGHT] = [
+            self.position_system.to_linear_index((x_size - 1, y, z))
+            for y in range(y_size) for z in range(z_size)
+        ]
+        
+        # TOP face (Y = max)
+        face_indices[Face.TOP] = [
+            self.position_system.to_linear_index((x, y_size - 1, z))
+            for x in range(x_size) for z in range(z_size)
+        ]
+        
+        # BOTTOM face (Y = 0)
+        face_indices[Face.BOTTOM] = [
+            self.position_system.to_linear_index((x, 0, z))
+            for x in range(x_size) for z in range(z_size)
+        ]
+        
+        logging.info(f"Face indices computed: {[(face.name, len(indices)) for face, indices in face_indices.items()]}")
+        return face_indices
+        
+    def forward(self, external_inputs: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Один шаг обновления всех клеток решетки.
+        
+        Args:
+            external_inputs: Внешние входы [batch_size, input_size] или None
+            
+        Returns:
+            torch.Tensor: Новые состояния всех клеток [total_cells, state_size]
+        """
+        import time
+        start_time = time.time()
+        
+        # Применяем cell_prototype ко всем клеткам параллельно
+        if self.config.parallel_processing:
+            new_states = self._parallel_forward(external_inputs)
+        else:
+            new_states = self._sequential_forward(external_inputs)
+            
+        # Обновляем состояния (синхронно)
+        self._states = new_states
+        self.step_count += 1
+        
+        # Обновляем статистику производительности
+        if self.config.track_performance:
+            self._update_performance_stats(time.time() - start_time)
+            
+        return new_states
+        
+
+                    
+    def _parallel_forward(self, external_inputs: Optional[torch.Tensor]) -> torch.Tensor:
+        """
+        Параллельное обновление всех клеток.
+        
+        Args:
+            external_inputs: Внешние входы или None
+            
+        Returns:
+            torch.Tensor: Новые состояния всех клеток
+        """
+        total_cells = self.config.total_cells
+        batch_size = total_cells
+        
+        # Собираем данные для всех клеток
+        all_neighbor_states = []
+        all_own_states = []
+        all_external_inputs = []
+        
+        for cell_idx in range(total_cells):
+            # Получаем соседей для каждой клетки
+            neighbor_indices = self.topology.get_neighbor_indices(cell_idx)
+            
+            # Собираем состояния соседей
+            neighbor_states = []
+            for neighbor_idx in neighbor_indices:
+                neighbor_states.append(self._states[neighbor_idx])
+                
+            # Если соседей меньше 6, дополняем нулями
+            while len(neighbor_states) < 6:
+                neighbor_states.append(torch.zeros_like(self._states[0]))
+                
+            # Формируем тензор состояний соседей [1, 6, state_size]
+            neighbor_tensor = torch.stack(neighbor_states[:6]).unsqueeze(0)
+            all_neighbor_states.append(neighbor_tensor)
+            
+            # Собственное состояние [1, state_size]
+            own_state = self._states[cell_idx].unsqueeze(0)
+            all_own_states.append(own_state)
+            
+            # Внешний вход для этой клетки
+            if external_inputs is not None:
+                ext_input = self._get_external_input_for_cell(cell_idx, external_inputs)
+            else:
+                ext_input = torch.zeros(1, self.cell_prototype.input_size, device=self.config.device)
+            all_external_inputs.append(ext_input)
+        
+        # Объединяем все данные в батчи
+        batch_neighbor_states = torch.cat(all_neighbor_states, dim=0)  # [total_cells, 6, state_size]
+        batch_own_states = torch.cat(all_own_states, dim=0)  # [total_cells, state_size]
+        batch_external_inputs = torch.cat(all_external_inputs, dim=0)  # [total_cells, input_size]
+        
+        # Применяем cell_prototype ко всем клеткам одновременно
+        new_states = self.cell_prototype(batch_neighbor_states, batch_own_states, batch_external_inputs)
+        
+        return new_states
+        
+    def _sequential_forward(self, external_inputs: Optional[torch.Tensor]) -> torch.Tensor:
+        """
+        Последовательное обновление клеток (для отладки).
+        
+        Args:
+            external_inputs: Внешние входы или None
+            
+        Returns:
+            torch.Tensor: Новые состояния всех клеток
+        """
+        new_states = torch.zeros_like(self._states)
+        
+        for cell_idx in range(self.config.total_cells):
+            # Получаем соседей
+            neighbor_indices = self.topology.get_neighbor_indices(cell_idx)
+            
+            # Собираем состояния соседей
+            neighbor_states = []
+            for neighbor_idx in neighbor_indices:
+                neighbor_states.append(self._states[neighbor_idx])
+                
+            # Дополняем до 6 соседей
+            while len(neighbor_states) < 6:
+                neighbor_states.append(torch.zeros_like(self._states[0]))
+                
+            # Формируем входные данные
+            neighbor_tensor = torch.stack(neighbor_states[:6]).unsqueeze(0)  # [1, 6, state_size]
+            own_state = self._states[cell_idx].unsqueeze(0)  # [1, state_size]
+            
+            # Внешний вход
+            if external_inputs is not None:
+                ext_input = self._get_external_input_for_cell(cell_idx, external_inputs)
+            else:
+                ext_input = torch.zeros(1, self.cell_prototype.input_size, device=self.config.device)
+            
+            # Применяем cell_prototype
+            new_state = self.cell_prototype(neighbor_tensor, own_state, ext_input)
+            new_states[cell_idx] = new_state.squeeze(0)
+            
+        return new_states
+        
+    def _get_external_input_for_cell(self, cell_idx: int, external_inputs: torch.Tensor) -> torch.Tensor:
+        """
+        Получение внешнего входа для конкретной клетки.
+        
+        Args:
+            cell_idx: Индекс клетки
+            external_inputs: Внешние входы
+            
+        Returns:
+            torch.Tensor: Внешний вход для клетки [1, input_size]
+        """
+        # Проверяем, находится ли клетка на входной грани
+        input_face_indices = self._face_indices[self.config.input_face]
+        
+        if cell_idx in input_face_indices:
+            # Находим позицию клетки в списке граней
+            face_position = input_face_indices.index(cell_idx)
+            
+            if face_position < external_inputs.shape[0]:
+                # Берем соответствующий внешний вход
+                ext_input = external_inputs[face_position].unsqueeze(0)  # [1, input_size]
+                
+                # Обрезаем или дополняем до нужного размера
+                target_size = self.cell_prototype.input_size
+                if ext_input.shape[1] > target_size:
+                    ext_input = ext_input[:, :target_size]
+                elif ext_input.shape[1] < target_size:
+                    padding = torch.zeros(1, target_size - ext_input.shape[1], device=self.config.device)
+                    ext_input = torch.cat([ext_input, padding], dim=1)
+                    
+                return ext_input
+        
+        # Если клетка не на входной грани или нет соответствующего входа
+        return torch.zeros(1, self.cell_prototype.input_size, device=self.config.device)
+        
+    def _update_performance_stats(self, step_time: float):
+        """Обновление статистики производительности"""
+        self.performance_stats['forward_calls'] += 1
+        self.performance_stats['total_time'] += step_time
+        self.performance_stats['avg_time_per_step'] = (
+            self.performance_stats['total_time'] / self.performance_stats['forward_calls']
+        )
+        
+    # Дополнительные методы для управления решеткой (будут добавлены в следующих шагах)
+    
+    def get_states(self) -> torch.Tensor:
+        """Получение текущих состояний всех клеток"""
+        return self._states.clone()
+        
+    def set_states(self, new_states: torch.Tensor):
+        """Установка новых состояний всех клеток"""
+        if new_states.shape != self._states.shape:
+            raise ValueError(f"States shape mismatch: expected {self._states.shape}, got {new_states.shape}")
+        self._states = new_states.to(self.config.device)
+        
+    def get_face_states(self, face: Face) -> torch.Tensor:
+        """Получение состояний клеток на указанной грани"""
+        face_indices = self._face_indices[face]
+        return self._states[face_indices]
+        
+    def reset_states(self):
+        """Сброс состояний к начальным значениям"""
+        self._states = self._initialize_states()
+        self.step_count = 0
+        
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Получение статистики производительности"""
+        return self.performance_stats.copy()
 
 
 # =============================================================================
