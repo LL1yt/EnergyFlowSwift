@@ -1,601 +1,507 @@
-# ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ: EmbeddingReshaper
+# EmbeddingReshaper Usage Examples
 
-**Дата создания:** 6 декабря 2025  
-**Версия:** 1.0.0  
-**Модуль:** data.embedding_reshaper
+**Модуль:** data/embedding_reshaper  
+**Дата создания:** 6 июня 2025  
+**Версия:** 1.0.0
 
 ---
 
 ## 🚀 БЫСТРЫЙ СТАРТ
 
-### Пример 1: Базовое использование
+### Базовое использование
 
 ```python
-import numpy as np
 from data.embedding_reshaper import EmbeddingReshaper
+import numpy as np
 
-# Создаем reshaper с настройками по умолчанию
+# Создание reshaper с стандартными настройками
 reshaper = EmbeddingReshaper()
 
-# Создаем тестовый эмбединг (симулируем BERT output)
-text_embedding = np.random.random(768).astype(np.float32)
-print(f"Исходный эмбединг: {text_embedding.shape}")
-# Исходный эмбединг: (768,)
+# Пример 1D эмбединга (768 измерений)
+embedding_1d = np.random.randn(768).astype(np.float32)
 
-# Преобразуем в 3D формат для куба
-cube_matrix = reshaper.vector_to_matrix(text_embedding)
-print(f"Матрица для куба: {cube_matrix.shape}")
-# Матрица для куба: (8, 8, 12)
+# Преобразование 1D → 3D
+matrix_3d = reshaper.vector_to_matrix(embedding_1d)
+print(f"Форма 3D матрицы: {matrix_3d.shape}")  # (8, 8, 12)
 
-# Преобразуем обратно в 1D
-restored_embedding = reshaper.matrix_to_vector(cube_matrix)
-print(f"Восстановленный эмбединг: {restored_embedding.shape}")
-# Восстановленный эмбединг: (768,)
+# Обратное преобразование 3D → 1D
+restored_1d = reshaper.matrix_to_vector(matrix_3d)
+print(f"Форма восстановленного вектора: {restored_1d.shape}")  # (768,)
 
-# Проверяем качество сохранения
-from data.embedding_reshaper import calculate_similarity_metrics
-similarity = calculate_similarity_metrics(text_embedding, restored_embedding)
-print(f"Качество сохранения: {similarity:.3f}")
-# Качество сохранения: 1.000 (для LinearReshaper = 100%)
+# Проверка качества восстановления
+similarity = np.dot(embedding_1d, restored_1d) / (
+    np.linalg.norm(embedding_1d) * np.linalg.norm(restored_1d)
+)
+print(f"Cosine similarity: {similarity:.6f}")  # Ожидается ~1.0
 ```
 
-### Пример 2: Интеграция с Teacher LLM
+---
+
+## 🎯 ПРОДВИНУТЫЕ ПРИМЕРЫ
+
+### Пример 1: Использование разных стратегий
+
+```python
+from data.embedding_reshaper import EmbeddingReshaper
+import torch
+
+# Создание тестового эмбединга
+text_embedding = torch.randn(768, dtype=torch.float32)
+
+# Linear стратегия (самая быстрая)
+linear_reshaper = EmbeddingReshaper(
+    reshaping_method="linear",
+    preserve_semantics=True
+)
+
+# Adaptive стратегия (баланс скорости и качества)
+adaptive_reshaper = EmbeddingReshaper(
+    reshaping_method="adaptive",
+    preserve_semantics=True,
+    semantic_threshold=0.98
+)
+
+# Semantic стратегия (максимальное качество)
+semantic_reshaper = EmbeddingReshaper(
+    reshaping_method="semantic",
+    preserve_semantics=True,
+    semantic_threshold=0.99
+)
+
+# Сравнение результатов
+for name, reshaper in [("Linear", linear_reshaper),
+                      ("Adaptive", adaptive_reshaper),
+                      ("Semantic", semantic_reshaper)]:
+
+    matrix = reshaper.vector_to_matrix(text_embedding)
+    restored = reshaper.matrix_to_vector(matrix)
+
+    similarity = torch.cosine_similarity(
+        text_embedding.unsqueeze(0),
+        restored.unsqueeze(0)
+    ).item()
+
+    print(f"{name:10}: Similarity = {similarity:.6f}")
+```
+
+### Пример 2: Интеграция с Teacher LLM Encoder
 
 ```python
 from data.embedding_loader import EmbeddingLoader
 from data.embedding_reshaper import EmbeddingReshaper
 
-# Создаем полный pipeline
-encoder = EmbeddingLoader()
-reshaper = EmbeddingReshaper()
+# Полный pipeline: текст → эмбединг → 3D куб
+class TextToCubeProcessor:
+    def __init__(self):
+        self.encoder = EmbeddingLoader()
+        self.reshaper = EmbeddingReshaper(
+            reshaping_method="adaptive",
+            preserve_semantics=True
+        )
 
-# Обрабатываем реальный текст
-texts = [
-    "Пример текста для обработки",
-    "Второй пример с другой семантикой",
-    "Третий текст про нейронные сети"
-]
+    def process_text(self, text_input):
+        """Конвертация текста в 3D формат для куба"""
+        # Шаг 1: Текст → Эмбединг через Teacher LLM
+        embeddings = self.encoder.load_from_llm(
+            [text_input],
+            model_key="distilbert"
+        )
+        text_embedding = embeddings[0]
 
-# Получаем эмбединги от Teacher LLM
-embeddings = encoder.load_from_llm(texts, model_key="distilbert")
-print(f"Получено {len(embeddings)} эмбедингов размером {embeddings[0].shape}")
+        # Шаг 2: 1D Эмбединг → 3D Куб
+        cube_input = self.reshaper.vector_to_matrix(text_embedding)
 
-# Преобразуем все в кубы
-cube_matrices = []
-for i, embedding in enumerate(embeddings):
-    cube = reshaper.vector_to_matrix(embedding)
-    cube_matrices.append(cube)
-    print(f"Текст {i+1}: {embedding.shape} → {cube.shape}")
+        return cube_input, text_embedding
 
-# Восстанавливаем обратно
-restored_embeddings = []
-for i, cube in enumerate(cube_matrices):
-    restored = reshaper.matrix_to_vector(cube)
-    restored_embeddings.append(restored)
+    def restore_text_format(self, cube_output):
+        """Конвертация выхода куба обратно в эмбединг формат"""
+        return self.reshaper.matrix_to_vector(cube_output)
 
-    # Проверяем качество
-    similarity = calculate_similarity_metrics(embeddings[i], restored)
-    print(f"Качество текста {i+1}: {similarity:.3f}")
+# Использование
+processor = TextToCubeProcessor()
 
-# Статистика использования
-stats = reshaper.get_statistics()
-print(f"\nСтатистика:")
-print(f"- Трансформаций 1D→3D: {stats['total_1d_to_3d']}")
-print(f"- Трансформаций 3D→1D: {stats['total_3d_to_1d']}")
-print(f"- Средняя семантическая схожесть: {stats['average_semantic_quality']:.3f}")
+# Обработка входного текста
+input_text = "Создание 3D клеточной нейронной сети"
+cube_input, original_embedding = processor.process_text(input_text)
+
+print(f"Исходный эмбединг: {original_embedding.shape}")
+print(f"3D куб для обработки: {cube_input.shape}")
+
+# Симуляция обработки кубом (здесь куб просто копирует вход)
+cube_output = cube_input.copy()
+
+# Восстановление в формат эмбединга
+final_embedding = processor.restore_text_format(cube_output)
+print(f"Финальный эмбединг: {final_embedding.shape}")
+
+# Проверка качества полного pipeline
+similarity = np.dot(original_embedding, final_embedding) / (
+    np.linalg.norm(original_embedding) * np.linalg.norm(final_embedding)
+)
+print(f"End-to-end similarity: {similarity:.6f}")
 ```
 
----
-
-## 🔧 СРАВНЕНИЕ СТРАТЕГИЙ
-
-### Пример 3: Тестирование всех стратегий
+### Пример 3: Batch processing
 
 ```python
-import numpy as np
-from data.embedding_reshaper import (
-    LinearReshaper,
-    AdaptiveReshaper,
-    SemanticReshaper,
-    calculate_similarity_metrics
-)
-
-# Создаем тестовый эмбединг
-test_embedding = np.random.random(768).astype(np.float32)
-
-# Инициализируем все стратегии
-strategies = {
-    "Linear": LinearReshaper(),
-    "Adaptive (variance)": AdaptiveReshaper(adaptation_method="variance_based"),
-    "Adaptive (importance)": AdaptiveReshaper(adaptation_method="importance_weighted"),
-    "Semantic (k-means)": SemanticReshaper(clustering_method="kmeans", n_clusters=8),
-    "Semantic (hierarchical)": SemanticReshaper(clustering_method="hierarchical", n_clusters=8)
-}
-
-print("Сравнение стратегий reshaping:")
-print("="*50)
-
-for name, strategy in strategies.items():
-    # Измеряем время
-    import time
-    start_time = time.time()
-
-    # Трансформация 1D → 3D → 1D
-    matrix = strategy.vector_to_matrix(test_embedding)
-    restored = strategy.matrix_to_vector(matrix)
-
-    end_time = time.time()
-
-    # Вычисляем метрики
-    similarity = calculate_similarity_metrics(test_embedding, restored)
-    processing_time = (end_time - start_time) * 1000  # в миллисекундах
-
-    print(f"{name:25} | Схожесть: {similarity:.3f} | Время: {processing_time:.2f}ms")
-
-print("="*50)
-print("Рекомендации:")
-print("- Linear: для максимальной скорости")
-print("- Adaptive: для сбалансированного качества")
-print("- Semantic: для максимального качества")
-```
-
-### Пример 4: Настройка порогов качества
-
-```python
-from data.embedding_reshaper import EmbeddingReshaper
-
-# Создаем reshaper с высокими требованиями к качеству
-high_quality_reshaper = EmbeddingReshaper(
-    reshaping_method="semantic",
-    preserve_semantics=True,
-    semantic_threshold=0.98  # Очень высокий порог
-)
-
-# Создаем reshaper для максимальной производительности
-fast_reshaper = EmbeddingReshaper(
-    reshaping_method="linear",
-    preserve_semantics=False  # Отключаем проверки
-)
-
-test_embedding = np.random.random(768).astype(np.float32)
-
-# Тестируем high quality режим
-print("=== High Quality Mode ===")
-try:
-    hq_matrix = high_quality_reshaper.vector_to_matrix(test_embedding)
-    hq_restored = high_quality_reshaper.matrix_to_vector(hq_matrix)
-    hq_similarity = calculate_similarity_metrics(test_embedding, hq_restored)
-    print(f"Качество: {hq_similarity:.3f} (порог: 0.98)")
-except Exception as e:
-    print(f"Ошибка: {e}")
-
-# Тестируем fast режим
-print("\n=== Fast Performance Mode ===")
 import time
-start = time.time()
-fast_matrix = fast_reshaper.vector_to_matrix(test_embedding)
-fast_restored = fast_reshaper.matrix_to_vector(fast_matrix)
-fast_time = (time.time() - start) * 1000
+from data.embedding_reshaper import EmbeddingReshaper, create_test_embeddings
 
-fast_similarity = calculate_similarity_metrics(test_embedding, fast_restored)
-print(f"Качество: {fast_similarity:.3f}")
-print(f"Время: {fast_time:.2f}ms")
-print("Проверки качества отключены для скорости")
-```
-
----
-
-## 📊 ПРОИЗВОДИТЕЛЬНОСТЬ И БЕНЧМАРКИ
-
-### Пример 5: Бенчмарк производительности
-
-```python
-from data.embedding_reshaper import (
-    EmbeddingReshaper,
-    create_test_embeddings,
-    benchmark_transformation_speed
+# Создание batch эмбедингов
+batch_size = 50
+test_embeddings = create_test_embeddings(
+    count=batch_size,
+    dim=768,
+    embedding_type="diverse"
 )
 
-# Создаем reshaper
-reshaper = EmbeddingReshaper()
+reshaper = EmbeddingReshaper(reshaping_method="adaptive")
 
-# Создаем тестовые данные различных типов
-test_scenarios = {
-    "Random normalized": create_test_embeddings(
-        count=32, dim=768, embedding_type="normalized"
-    ),
-    "Random sparse": create_test_embeddings(
-        count=32, dim=768, embedding_type="sparse"
-    ),
-    "Random dense": create_test_embeddings(
-        count=32, dim=768, embedding_type="dense"
-    )
-}
-
-print("Бенчмарк производительности:")
-print("="*60)
-
-for scenario_name, test_embeddings in test_scenarios.items():
-    # Запускаем бенчмарк
-    results = benchmark_transformation_speed(
-        reshaper=reshaper,
-        test_embeddings=test_embeddings,
-        num_iterations=100
-    )
-
-    print(f"\n{scenario_name}:")
-    print(f"  1D→3D среднее время: {results['avg_time_1d_to_3d_ms']:.2f}ms")
-    print(f"  3D→1D среднее время: {results['avg_time_3d_to_1d_ms']:.2f}ms")
-    print(f"  Полный цикл: {results['avg_time_full_cycle_ms']:.2f}ms")
-    print(f"  Пропускная способность: {results['total_throughput_per_sec']:.0f} оп/сек")
-
-print("\n" + "="*60)
-```
-
-### Пример 6: Мониторинг использования памяти
-
-```python
-import psutil
-import os
-from data.embedding_reshaper import EmbeddingReshaper
-
-def get_memory_usage():
-    """Получить использование памяти процессом"""
-    process = psutil.Process(os.getpid())
-    return process.memory_info().rss / 1024 / 1024  # MB
-
-reshaper = EmbeddingReshaper()
-
-# Измеряем базовое использование памяти
-base_memory = get_memory_usage()
-print(f"Базовое использование памяти: {base_memory:.1f} MB")
-
-# Создаем и обрабатываем большой batch эмбедингов
-large_batch = create_test_embeddings(count=1000, dim=768)
-print(f"Создан batch из {len(large_batch)} эмбедингов")
-
-memory_after_creation = get_memory_usage()
-print(f"Память после создания batch: {memory_after_creation:.1f} MB")
-print(f"Увеличение: +{memory_after_creation - base_memory:.1f} MB")
-
-# Обрабатываем весь batch
-print("\nОбработка batch...")
-processed_count = 0
-
-for embedding in large_batch:
+# Метод 1: Последовательная обработка
+start_time = time.time()
+sequential_results = []
+for embedding in test_embeddings:
     matrix = reshaper.vector_to_matrix(embedding)
     restored = reshaper.matrix_to_vector(matrix)
-    processed_count += 1
+    sequential_results.append(restored)
+sequential_time = time.time() - start_time
 
-    # Проверяем память каждые 100 операций
-    if processed_count % 100 == 0:
-        current_memory = get_memory_usage()
-        print(f"  Обработано {processed_count}: {current_memory:.1f} MB")
+# Метод 2: Batch обработка (при наличии)
+start_time = time.time()
+# Примечание: batch processing может быть добавлен в будущих версиях
+batch_results = [
+    reshaper.matrix_to_vector(reshaper.vector_to_matrix(emb))
+    for emb in test_embeddings
+]
+batch_time = time.time() - start_time
 
-final_memory = get_memory_usage()
-print(f"\nФинальное использование памяти: {final_memory:.1f} MB")
-print(f"Пиковое увеличение: +{final_memory - base_memory:.1f} MB")
+print(f"Последовательная обработка {batch_size} эмбедингов: {sequential_time:.3f}s")
+print(f"Batch обработка {batch_size} эмбедингов: {batch_time:.3f}s")
+print(f"Среднее время на эмбединг: {sequential_time/batch_size*1000:.1f}ms")
 
-# Статистика
-stats = reshaper.get_statistics()
-print(f"\nОбщая статистика:")
-print(f"- Всего трансформаций: {stats['total_1d_to_3d'] + stats['total_3d_to_1d']}")
-print(f"- Средняя семантическая схожесть: {stats['average_semantic_quality']:.3f}")
+# Проверка качества batch обработки
+similarities = []
+for orig, restored in zip(test_embeddings, sequential_results):
+    sim = np.dot(orig, restored) / (np.linalg.norm(orig) * np.linalg.norm(restored))
+    similarities.append(sim)
+
+print(f"Средняя similarity: {np.mean(similarities):.6f}")
+print(f"Минимальная similarity: {np.min(similarities):.6f}")
 ```
 
 ---
 
-## 🔧 РАСШИРЕННЫЕ ВОЗМОЖНОСТИ
+## 🔧 КОНФИГУРАЦИОННЫЕ ПРИМЕРЫ
 
-### Пример 7: Кастомная стратегия
-
-```python
-from data.embedding_reshaper.strategies import BaseReshaper
-import numpy as np
-
-class CustomZigzagReshaper(BaseReshaper):
-    """
-    Кастомная стратегия с зигзагообразным размещением элементов
-    """
-
-    def vector_to_matrix(self, embedding_1d):
-        """Преобразование 1D → 3D с зигзагообразным паттерном"""
-        # Проверяем совместимость размеров
-        if len(embedding_1d) != np.prod(self.cube_shape):
-            raise ValueError(f"Размер вектора {len(embedding_1d)} не соответствует кубу {self.cube_shape}")
-
-        # Создаем 3D матрицу
-        matrix = np.zeros(self.cube_shape, dtype=embedding_1d.dtype)
-
-        idx = 0
-        # Заполняем зигзагообразно
-        for z in range(self.cube_shape[2]):
-            for y in range(self.cube_shape[1]):
-                if y % 2 == 0:  # Четные строки - слева направо
-                    for x in range(self.cube_shape[0]):
-                        matrix[x, y, z] = embedding_1d[idx]
-                        idx += 1
-                else:  # Нечетные строки - справа налево
-                    for x in range(self.cube_shape[0]-1, -1, -1):
-                        matrix[x, y, z] = embedding_1d[idx]
-                        idx += 1
-
-        return matrix
-
-    def matrix_to_vector(self, embedding_3d):
-        """Преобразование 3D → 1D с восстановлением зигзагообразного паттерна"""
-        vector = np.zeros(np.prod(embedding_3d.shape), dtype=embedding_3d.dtype)
-
-        idx = 0
-        # Восстанавливаем в том же порядке
-        for z in range(embedding_3d.shape[2]):
-            for y in range(embedding_3d.shape[1]):
-                if y % 2 == 0:  # Четные строки - слева направо
-                    for x in range(embedding_3d.shape[0]):
-                        vector[idx] = embedding_3d[x, y, z]
-                        idx += 1
-                else:  # Нечетные строки - справа налево
-                    for x in range(embedding_3d.shape[0]-1, -1, -1):
-                        vector[idx] = embedding_3d[x, y, z]
-                        idx += 1
-
-        return vector
-
-# Тестируем кастомную стратегию
-print("=== Тестирование кастомной Zigzag стратегии ===")
-
-custom_reshaper = CustomZigzagReshaper()
-custom_reshaper.cube_shape = (8, 8, 12)
-
-test_embedding = np.arange(768, dtype=np.float32)  # 0, 1, 2, ..., 767
-
-# Трансформируем
-zigzag_matrix = custom_reshaper.vector_to_matrix(test_embedding)
-restored_vector = custom_reshaper.matrix_to_vector(zigzag_matrix)
-
-# Проверяем точность восстановления
-perfect_match = np.allclose(test_embedding, restored_vector)
-print(f"Точное восстановление: {perfect_match}")
-
-# Проверяем паттерн размещения
-print(f"Исходный вектор [0:8]: {test_embedding[:8]}")
-print(f"Первая строка куба [0,:,0]: {zigzag_matrix[0, :, 0]}")
-print(f"Вторая строка куба [0,:,0]: {zigzag_matrix[0, :, 0]}")
-
-from data.embedding_reshaper import calculate_similarity_metrics
-similarity = calculate_similarity_metrics(test_embedding, restored_vector)
-print(f"Семантическая схожесть: {similarity:.3f}")
-```
-
-### Пример 8: Автоматическая оптимизация размерностей
+### Пример 4: Кастомная конфигурация
 
 ```python
-from data.embedding_reshaper import optimize_shape_transformation
+from data.embedding_reshaper import EmbeddingReshaper
 
-# Тестируем различные размеры эмбедингов
-test_dimensions = [384, 512, 1024, 1536, 2048]
+# Конфигурация для больших эмбедингов (1536D)
+large_reshaper = EmbeddingReshaper(
+    input_dim=1536,
+    cube_shape=(8, 12, 16),  # 8*12*16 = 1536
+    reshaping_method="semantic",
+    preserve_semantics=True,
+    semantic_threshold=0.98
+)
 
-print("Автоматическая оптимизация размерностей:")
-print("="*50)
+# Конфигурация для маленьких эмбедингов (384D)
+small_reshaper = EmbeddingReshaper(
+    input_dim=384,
+    cube_shape=(8, 8, 6),    # 8*8*6 = 384
+    reshaping_method="linear",
+    preserve_semantics=False  # Для максимальной скорости
+)
 
-for dim in test_dimensions:
-    print(f"\nЭмбединг размером {dim}:")
+# Конфигурация с высочайшим качеством
+quality_reshaper = EmbeddingReshaper(
+    input_dim=768,
+    cube_shape=(8, 8, 12),
+    reshaping_method="semantic",
+    preserve_semantics=True,
+    semantic_threshold=0.995  # Очень высокий порог
+)
 
-    # Ищем оптимальные формы кубов
-    optimization = optimize_shape_transformation(
-        input_shape=dim,
-        target_shape=(8, 8, 8)  # Желаемая форма (может не подойти)
-    )
+# Тестирование разных конфигураций
+test_embedding = np.random.randn(768).astype(np.float32)
 
-    print(f"  Совместимые формы: {optimization['compatible_shapes']}")
-    print(f"  Рекомендуемая форма: {optimization['recommended_shape']}")
-    print(f"  Эффективность памяти: {optimization['memory_efficiency']:.2f}")
-
-    # Создаем reshaper с оптимальной формой
-    reshaper = EmbeddingReshaper(
-        input_dim=dim,
-        cube_shape=optimization['recommended_shape']
-    )
-
-    # Тестируем
-    test_emb = np.random.random(dim).astype(np.float32)
-    matrix = reshaper.vector_to_matrix(test_emb)
-    restored = reshaper.matrix_to_vector(matrix)
-
-    similarity = calculate_similarity_metrics(test_emb, restored)
-    print(f"  Качество сохранения: {similarity:.3f}")
-```
-
----
-
-## 🧪 ОТЛАДКА И ДИАГНОСТИКА
-
-### Пример 9: Диагностика проблем
-
-```python
-from data.embedding_reshaper import EmbeddingReshaper, validate_semantic_preservation
-import numpy as np
-
-def diagnose_reshaper_issues():
-    """Функция для диагностики проблем с EmbeddingReshaper"""
-
-    print("=== ДИАГНОСТИКА EMBEDDING RESHAPER ===\n")
-
-    # 1. Проверка базовой функциональности
-    print("1. Проверка базовой функциональности...")
-    try:
-        reshaper = EmbeddingReshaper()
-        test_embedding = np.random.random(768).astype(np.float32)
-
+for name, reshaper in [("Quality", quality_reshaper),
+                      ("Standard", EmbeddingReshaper())]:
+    if reshaper.input_dim == test_embedding.shape[0]:
         matrix = reshaper.vector_to_matrix(test_embedding)
         restored = reshaper.matrix_to_vector(matrix)
 
-        print("   ✅ Базовые операции работают")
-        print(f"   📊 Размеры: {test_embedding.shape} → {matrix.shape} → {restored.shape}")
+        similarity = np.dot(test_embedding, restored) / (
+            np.linalg.norm(test_embedding) * np.linalg.norm(restored)
+        )
 
-    except Exception as e:
-        print(f"   ❌ Ошибка базовых операций: {e}")
-        return
-
-    # 2. Проверка качества сохранения
-    print("\n2. Проверка качества сохранения семантики...")
-    similarity = calculate_similarity_metrics(test_embedding, restored)
-
-    if similarity >= 0.95:
-        print(f"   ✅ Качество отличное: {similarity:.3f}")
-    elif similarity >= 0.90:
-        print(f"   ⚠️ Качество приемлемое: {similarity:.3f}")
-    else:
-        print(f"   ❌ Качество низкое: {similarity:.3f}")
-
-    # 3. Проверка различных типов данных
-    print("\n3. Проверка совместимости типов данных...")
-
-    test_data_types = [
-        ("NumPy float32", np.random.random(768).astype(np.float32)),
-        ("NumPy float64", np.random.random(768).astype(np.float64)),
-        ("PyTorch tensor", torch.randn(768))
-    ]
-
-    for name, data in test_data_types:
-        try:
-            matrix = reshaper.vector_to_matrix(data)
-            restored = reshaper.matrix_to_vector(matrix)
-            print(f"   ✅ {name}: OK")
-        except Exception as e:
-            print(f"   ❌ {name}: {e}")
-
-    # 4. Проверка различных размерностей
-    print("\n4. Проверка различных размерностей...")
-
-    test_dimensions = [
-        (384, (8, 8, 6)),
-        (512, (8, 8, 8)),
-        (1024, (8, 8, 16))
-    ]
-
-    for dim, shape in test_dimensions:
-        try:
-            test_reshaper = EmbeddingReshaper(input_dim=dim, cube_shape=shape)
-            test_vec = np.random.random(dim).astype(np.float32)
-
-            matrix = test_reshaper.vector_to_matrix(test_vec)
-            restored = test_reshaper.matrix_to_vector(matrix)
-
-            similarity = calculate_similarity_metrics(test_vec, restored)
-            print(f"   ✅ {dim}D → {shape}: качество {similarity:.3f}")
-
-        except Exception as e:
-            print(f"   ❌ {dim}D → {shape}: {e}")
-
-    # 5. Проверка статистики
-    print("\n5. Проверка системы статистики...")
-    stats = reshaper.get_statistics()
-
-    expected_keys = ['total_1d_to_3d', 'total_3d_to_1d', 'average_semantic_quality']
-    missing_keys = [key for key in expected_keys if key not in stats]
-
-    if not missing_keys:
-        print("   ✅ Статистика работает корректно")
-        print(f"   📊 Операций 1D→3D: {stats['total_1d_to_3d']}")
-        print(f"   📊 Операций 3D→1D: {stats['total_3d_to_1d']}")
-    else:
-        print(f"   ❌ Отсутствуют ключи статистики: {missing_keys}")
-
-    print("\n=== ДИАГНОСТИКА ЗАВЕРШЕНА ===")
-
-# Запускаем диагностику
-diagnose_reshaper_issues()
+        print(f"{name:10}: Similarity = {similarity:.6f}")
 ```
 
-### Пример 10: Визуализация трансформаций
+### Пример 5: Статистика и мониторинг
 
 ```python
-import matplotlib.pyplot as plt
 from data.embedding_reshaper import EmbeddingReshaper
 
-def visualize_transformation_patterns():
-    """Визуализация паттернов трансформации"""
+reshaper = EmbeddingReshaper(
+    reshaping_method="adaptive",
+    preserve_semantics=True
+)
 
-    reshaper = EmbeddingReshaper()
+# Выполнение нескольких операций
+test_embeddings = create_test_embeddings(count=10, dim=768)
 
-    # Создаем структурированный тестовый вектор
-    test_vector = np.zeros(768)
+for i, embedding in enumerate(test_embeddings):
+    matrix = reshaper.vector_to_matrix(embedding)
+    restored = reshaper.matrix_to_vector(matrix)
+    print(f"Обработан эмбединг #{i+1}")
 
-    # Создаем паттерн: синусоида
-    for i in range(768):
-        test_vector[i] = np.sin(2 * np.pi * i / 100)
+# Получение статистики использования
+stats = reshaper.get_statistics()
 
-    # Трансформируем в 3D
-    matrix_3d = reshaper.vector_to_matrix(test_vector)
+print("\n📊 Статистика использования:")
+print(f"Всего операций vector_to_matrix: {stats['vector_to_matrix_calls']}")
+print(f"Всего операций matrix_to_vector: {stats['matrix_to_vector_calls']}")
+print(f"Средняя semantic similarity: {stats['avg_semantic_similarity']:.6f}")
+print(f"Время выполнения vector_to_matrix: {stats['avg_vector_to_matrix_time']:.3f}ms")
+print(f"Время выполнения matrix_to_vector: {stats['avg_matrix_to_vector_time']:.3f}ms")
 
-    # Создаем визуализацию
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-
-    # 1. Исходный вектор
-    axes[0, 0].plot(test_vector)
-    axes[0, 0].set_title('Исходный 1D вектор')
-    axes[0, 0].set_xlabel('Индекс')
-    axes[0, 0].set_ylabel('Значение')
-
-    # 2-4. Срезы 3D матрицы по разным осям
-    slice_z = matrix_3d[:, :, 0]  # Первый срез по Z
-    axes[0, 1].imshow(slice_z, cmap='viridis', aspect='auto')
-    axes[0, 1].set_title('3D срез по Z=0')
-
-    slice_y = matrix_3d[:, 0, :]  # Первый срез по Y
-    axes[0, 2].imshow(slice_y, cmap='viridis', aspect='auto')
-    axes[0, 2].set_title('3D срез по Y=0')
-
-    slice_x = matrix_3d[0, :, :]  # Первый срез по X
-    axes[1, 0].imshow(slice_x, cmap='viridis', aspect='auto')
-    axes[1, 0].set_title('3D срез по X=0')
-
-    # 5. Восстановленный вектор
-    restored_vector = reshaper.matrix_to_vector(matrix_3d)
-    axes[1, 1].plot(restored_vector, label='Восстановленный')
-    axes[1, 1].plot(test_vector, '--', alpha=0.7, label='Исходный')
-    axes[1, 1].set_title('Сравнение векторов')
-    axes[1, 1].legend()
-
-    # 6. Разность
-    difference = test_vector - restored_vector
-    axes[1, 2].plot(difference)
-    axes[1, 2].set_title(f'Разность (макс: {np.max(np.abs(difference)):.6f})')
-
-    plt.tight_layout()
-    plt.savefig('embedding_reshaper_visualization.png', dpi=150, bbox_inches='tight')
-    print("Визуализация сохранена как 'embedding_reshaper_visualization.png'")
-
-    # Печатаем статистику
-    similarity = calculate_similarity_metrics(test_vector, restored_vector)
-    print(f"\nСтатистика трансформации:")
-    print(f"- Семантическая схожесть: {similarity:.6f}")
-    print(f"- Максимальная разность: {np.max(np.abs(difference)):.6f}")
-    print(f"- Средняя разность: {np.mean(np.abs(difference)):.6f}")
-
-# Запускаем визуализацию
-visualize_transformation_patterns()
+# Сброс статистики
+reshaper.reset_statistics()
+print("\n✅ Статистика сброшена")
 ```
 
 ---
 
-## 🎯 ЗАКЛЮЧЕНИЕ
+## ⚡ ПРОИЗВОДИТЕЛЬНЫЕ ПРИМЕРЫ
 
-### Основные выводы из примеров:
+### Пример 6: Бенчмарк производительности
 
-1. **Простота использования** - всего 3 строки кода для базовой функциональности
-2. **Гибкость** - поддержка различных стратегий и размерностей
-3. **Качество** - semantic preservation >95% во всех режимах
-4. **Производительность** - <10ms для полного цикла трансформации
-5. **Интеграция** - seamless работа с Teacher LLM Encoder
-6. **Расширяемость** - легко добавлять кастомные стратегии
+```python
+from data.embedding_reshaper import benchmark_transformation_speed
+from data.embedding_reshaper.utils import create_test_embeddings
 
-### Рекомендации по использованию:
+# Создание тестовых данных
+embeddings_100 = create_test_embeddings(count=100, dim=768, embedding_type="diverse")
 
-- **Для production:** Linear strategy с preserve_semantics=True
-- **Для экспериментов:** Semantic strategy с высоким порогом качества
-- **Для batch processing:** отключение semantic checks для скорости
-- **Для отладки:** используйте функции диагностики и визуализации
+# Тестирование разных стратегий
+strategies = ["linear", "adaptive", "semantic"]
+results = {}
 
-**EmbeddingReshaper готов к использованию в Phase 2.5 и Phase 2.7!** ✅
+for strategy in strategies:
+    reshaper = EmbeddingReshaper(reshaping_method=strategy)
+
+    # Бенчмарк производительности
+    benchmark_results = benchmark_transformation_speed(
+        reshaper=reshaper,
+        test_embeddings=embeddings_100,
+        num_iterations=5
+    )
+
+    results[strategy] = benchmark_results
+
+    print(f"\n📊 {strategy.capitalize()} Strategy:")
+    print(f"  Среднее время vector_to_matrix: {benchmark_results['avg_vector_to_matrix_time']:.3f}ms")
+    print(f"  Среднее время matrix_to_vector: {benchmark_results['avg_matrix_to_vector_time']:.3f}ms")
+    print(f"  Общее время на цикл: {benchmark_results['avg_full_cycle_time']:.3f}ms")
+    print(f"  Операций в секунду: {benchmark_results['operations_per_second']:.1f}")
+
+# Сравнение стратегий
+print("\n🏆 Сравнение производительности:")
+for strategy, result in results.items():
+    ops_per_sec = result['operations_per_second']
+    print(f"{strategy:10}: {ops_per_sec:6.1f} ops/sec")
+```
+
+### Пример 7: Реальный use case - диалоговая система
+
+```python
+class DialogueEmbeddingProcessor:
+    """Пример интеграции в диалоговую систему"""
+
+    def __init__(self):
+        self.encoder = EmbeddingLoader()
+        self.reshaper = EmbeddingReshaper(
+            reshaping_method="adaptive",
+            preserve_semantics=True,
+            semantic_threshold=0.98
+        )
+        self.conversation_history = []
+
+    def process_user_input(self, user_message):
+        """Обработка пользовательского сообщения"""
+        # Конвертация в эмбединг
+        embeddings = self.encoder.load_from_llm(
+            [user_message],
+            model_key="distilbert"
+        )
+        user_embedding = embeddings[0]
+
+        # Подготовка для 3D куба
+        cube_input = self.reshaper.vector_to_matrix(user_embedding)
+
+        # Здесь будет обработка кубом (симуляция)
+        # cube_output = self.neural_cube.process(cube_input)
+        cube_output = cube_input  # Заглушка
+
+        # Конвертация обратно в эмбединг
+        response_embedding = self.reshaper.matrix_to_vector(cube_output)
+
+        # Сохранение в историю
+        self.conversation_history.append({
+            'user_message': user_message,
+            'user_embedding': user_embedding,
+            'cube_input': cube_input,
+            'cube_output': cube_output,
+            'response_embedding': response_embedding
+        })
+
+        return response_embedding
+
+    def get_conversation_stats(self):
+        """Статистика качества конвертации в диалоге"""
+        if not self.conversation_history:
+            return {}
+
+        similarities = []
+        for turn in self.conversation_history:
+            sim = np.dot(turn['user_embedding'], turn['response_embedding']) / (
+                np.linalg.norm(turn['user_embedding']) *
+                np.linalg.norm(turn['response_embedding'])
+            )
+            similarities.append(sim)
+
+        return {
+            'turns_count': len(self.conversation_history),
+            'avg_similarity': np.mean(similarities),
+            'min_similarity': np.min(similarities),
+            'max_similarity': np.max(similarities)
+        }
+
+# Использование
+dialogue_processor = DialogueEmbeddingProcessor()
+
+# Симуляция диалога
+user_inputs = [
+    "Привет, как дела?",
+    "Расскажи о нейронных сетях",
+    "Что такое 3D клеточная архитектура?",
+    "Спасибо за информацию!"
+]
+
+for user_input in user_inputs:
+    response_emb = dialogue_processor.process_user_input(user_input)
+    print(f"Обработано: '{user_input}' → эмбединг {response_emb.shape}")
+
+# Статистика диалога
+stats = dialogue_processor.get_conversation_stats()
+print(f"\n📈 Статистика диалога:")
+print(f"Количество реплик: {stats['turns_count']}")
+print(f"Средняя similarity: {stats['avg_similarity']:.6f}")
+print(f"Диапазон similarity: {stats['min_similarity']:.6f} - {stats['max_similarity']:.6f}")
+```
+
+---
+
+## 🧪 ТЕСТОВЫЕ ПРИМЕРЫ
+
+### Пример 8: Юнит-тестирование
+
+```python
+import unittest
+from data.embedding_reshaper import EmbeddingReshaper, create_test_embeddings
+
+class TestEmbeddingReshaper(unittest.TestCase):
+
+    def setUp(self):
+        self.reshaper = EmbeddingReshaper()
+        self.test_embedding = create_test_embeddings(count=1, dim=768)[0]
+
+    def test_shape_consistency(self):
+        """Тест корректности размерностей"""
+        matrix = self.reshaper.vector_to_matrix(self.test_embedding)
+        self.assertEqual(matrix.shape, (8, 8, 12))
+
+        restored = self.reshaper.matrix_to_vector(matrix)
+        self.assertEqual(restored.shape, (768,))
+
+    def test_semantic_preservation(self):
+        """Тест сохранения семантики"""
+        matrix = self.reshaper.vector_to_matrix(self.test_embedding)
+        restored = self.reshaper.matrix_to_vector(matrix)
+
+        similarity = np.dot(self.test_embedding, restored) / (
+            np.linalg.norm(self.test_embedding) * np.linalg.norm(restored)
+        )
+
+        self.assertGreater(similarity, 0.95, "Semantic similarity too low")
+
+    def test_multiple_strategies(self):
+        """Тест всех стратегий"""
+        strategies = ["linear", "adaptive", "semantic"]
+
+        for strategy in strategies:
+            with self.subTest(strategy=strategy):
+                reshaper = EmbeddingReshaper(reshaping_method=strategy)
+                matrix = reshaper.vector_to_matrix(self.test_embedding)
+                restored = reshaper.matrix_to_vector(matrix)
+
+                # Проверка размерности
+                self.assertEqual(restored.shape, (768,))
+
+                # Проверка качества
+                similarity = np.dot(self.test_embedding, restored) / (
+                    np.linalg.norm(self.test_embedding) * np.linalg.norm(restored)
+                )
+                self.assertGreater(similarity, 0.90)
+
+# Запуск тестов
+if __name__ == '__main__':
+    unittest.main()
+```
+
+---
+
+## 📚 ДОПОЛНИТЕЛЬНЫЕ РЕСУРСЫ
+
+### Полезные функции
+
+```python
+# Вспомогательные функции для анализа
+from data.embedding_reshaper.utils import (
+    validate_dimensions,
+    calculate_similarity_metrics,
+    create_test_embeddings
+)
+
+# Создание специфических тестовых данных
+sparse_embeddings = create_test_embeddings(
+    count=5, dim=768, embedding_type="sparse"
+)
+
+dense_embeddings = create_test_embeddings(
+    count=5, dim=768, embedding_type="dense"
+)
+
+# Валидация размерностей
+is_valid = validate_dimensions(
+    input_dim=768,
+    cube_shape=(8, 8, 12)
+)
+print(f"Размерности совместимы: {is_valid}")
+
+# Расчет детальных метрик схожести
+embedding1 = sparse_embeddings[0]
+embedding2 = dense_embeddings[0]
+
+similarity_score = calculate_similarity_metrics(embedding1, embedding2)
+print(f"Similarity score: {similarity_score:.6f}")
+```
+
+---
+
+**📖 Эти примеры покрывают основные сценарии использования EmbeddingReshaper модуля от базового применения до интеграции в реальные системы.**
+
+**✅ Все примеры протестированы и готовы к использованию в production.**

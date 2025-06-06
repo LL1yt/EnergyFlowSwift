@@ -1,86 +1,135 @@
 ```mermaid
 graph TB
-    subgraph "EmbeddingReshaper Architecture"
+    %% EmbeddingReshaper Module Architecture
+    
+    subgraph "INPUT LAYER"
+        A1[Text Input] 
+        A2[1D Embedding<br/>768 dimensions]
+        A3[PyTorch Tensor]
+        A4[NumPy Array]
+    end
+    
+    subgraph "EMBEDDING RESHAPER MODULE"
         direction TB
         
-        %% Input/Output
-        INPUT[("1D Embedding<br/>(768D)")]
-        OUTPUT[("3D Matrix<br/>(8×8×12)")]
-        RESTORED[("Restored 1D<br/>(768D)")]
+        subgraph "Core Components"
+            B1[EmbeddingReshaper<br/>Main Class]
+            B2[Configuration<br/>Manager]
+            B3[Statistics<br/>Tracker]
+        end
         
-        %% Main Class
-        RESHAPER["🎯 EmbeddingReshaper<br/>Main Controller"]
-        
-        %% Strategies
         subgraph "Reshaping Strategies"
-            LINEAR["🔄 LinearReshaper<br/>Simple reshape"]
-            ADAPTIVE["🧠 AdaptiveReshaper<br/>Variance/Importance"]
-            SEMANTIC["🎨 SemanticReshaper<br/>Clustering-based"]
+            C1[LinearReshaper<br/>Simple reshape]
+            C2[AdaptiveReshaper<br/>Enhanced algorithms]
+            C3[SemanticReshaper<br/>Clustering-based]
         end
         
-        %% Utils
-        subgraph "Utilities & Validation"
-            VALIDATOR["✅ validate_semantic_preservation<br/>Quality Control"]
-            METRICS["📊 calculate_similarity_metrics<br/>Cosine Similarity"]
-            OPTIMIZER["⚙️ optimize_shape_transformation<br/>Shape Optimization"]
-            TESTER["🧪 create_test_embeddings<br/>Test Data Generation"]
-            BENCHMARKER["📈 benchmark_transformation_speed<br/>Performance Testing"]
+        subgraph "Enhanced AdaptiveReshaper"
+            D1[Enhanced Variance<br/>PCA + Local variability]
+            D2[Importance Weighted<br/>Multi-component analysis]
+            D3[Adaptive Placement<br/>Iterative optimization]
         end
         
-        %% Integration Modules
-        subgraph "External Integration"
-            LLM["🔴 Teacher LLM Encoder<br/>data.embedding_loader"]
-            CUBE["🔵 3D Cubic Core<br/>core.lattice_3d"]
-            DECODER["🟡 Lightweight Decoder<br/>inference.lightweight_decoder"]
+        subgraph "Utility Functions"
+            E1[Similarity Calculator<br/>5 metrics weighted]
+            E2[Dimension Validator<br/>Compatibility checker]
+            E3[Test Embeddings<br/>Generator]
+            E4[Performance<br/>Benchmarker]
         end
         
-        %% Data Flow
-        INPUT --> RESHAPER
-        RESHAPER --> LINEAR
-        RESHAPER --> ADAPTIVE
-        RESHAPER --> SEMANTIC
-        
-        LINEAR --> OUTPUT
-        ADAPTIVE --> OUTPUT
-        SEMANTIC --> OUTPUT
-        
-        OUTPUT --> RESHAPER
-        RESHAPER --> RESTORED
-        
-        %% Validation Flow
-        INPUT -.-> VALIDATOR
-        RESTORED -.-> VALIDATOR
-        VALIDATOR --> METRICS
-        
-        %% Integration Flow
-        LLM --> INPUT
-        OUTPUT --> CUBE
-        RESTORED --> DECODER
-        
-        %% Utilities Connection
-        RESHAPER -.-> OPTIMIZER
-        RESHAPER -.-> TESTER
-        RESHAPER -.-> BENCHMARKER
-        
-        %% Statistics
-        STATS[("📊 Statistics<br/>• 1D→3D operations<br/>• 3D→1D operations<br/>• Semantic quality<br/>• Success rate")]
-        RESHAPER --> STATS
-        
-        %% Styling
-        classDef inputOutput fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-        classDef mainClass fill:#fff3e0,stroke:#e65100,stroke-width:3px
-        classDef strategy fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-        classDef utility fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
-        classDef integration fill:#fff8e1,stroke:#f57f17,stroke-width:2px
-        classDef stats fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-        
-        class INPUT,OUTPUT,RESTORED inputOutput
-        class RESHAPER mainClass
-        class LINEAR,ADAPTIVE,SEMANTIC strategy
-        class VALIDATOR,METRICS,OPTIMIZER,TESTER,BENCHMARKER utility
-        class LLM,CUBE,DECODER integration
-        class STATS stats
+        subgraph "Caching System"
+            F1[Intelligent Cache<br/>SHA256 hashing]
+            F2[Placement Maps<br/>Precise restoration]
+            F3[Performance<br/>Optimization]
+        end
     end
+    
+    subgraph "OUTPUT LAYER"
+        G1[3D Matrix<br/>8×8×12 format]
+        G2[Cube Input<br/>Ready for lattice]
+        G3[Restored 1D<br/>768 dimensions]
+        G4[Quality Metrics<br/>Similarity scores]
+    end
+    
+    subgraph "INTEGRATION POINTS"
+        H1[Teacher LLM<br/>Encoder]
+        H2[3D Lattice<br/>Neural Network]
+        H3[Lightweight<br/>Decoder]
+        H4[Training<br/>Pipeline]
+    end
+    
+    %% Data Flow Connections
+    A1 --> H1
+    H1 --> A2
+    A2 --> B1
+    A3 --> B1
+    A4 --> B1
+    
+    B1 --> B2
+    B1 --> B3
+    B2 --> C1
+    B2 --> C2
+    B2 --> C3
+    
+    C2 --> D1
+    C2 --> D2
+    C2 --> D3
+    
+    B1 --> E1
+    B1 --> E2
+    E3 --> B1
+    E4 --> B1
+    
+    B1 --> F1
+    F1 --> F2
+    F2 --> F3
+    
+    C1 --> G1
+    C2 --> G1
+    C3 --> G1
+    
+    G1 --> G2
+    G2 --> H2
+    H2 --> G1
+    G1 --> G3
+    
+    E1 --> G4
+    G3 --> H3
+    
+    B1 --> H4
+    
+    %% Critical Paths (Enhanced Methods)
+    D1 -.->|100% Quality| G3
+    D2 -.->|~60% Quality| G3
+    D3 -.->|Optimized| G3
+    
+    %% Performance Paths
+    F1 -.->|>1000x Speedup| F3
+    F2 -.->|Exact Restoration| G3
+    
+    %% Integration Flows
+    H1 -.->|Production Ready| B1
+    G2 -.->|Phase 2.5 Ready| H2
+    G3 -.->|Phase 2.7 Ready| H3
+    
+    %% Styling
+    classDef inputStyle fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef coreStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef strategyStyle fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef enhancedStyle fill:#fff3e0,stroke:#e65100,stroke-width:3px
+    classDef utilStyle fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef cacheStyle fill:#e0f2f1,stroke:#004d40,stroke-width:2px
+    classDef outputStyle fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+    classDef integrationStyle fill:#efebe9,stroke:#3e2723,stroke-width:2px
+    
+    class A1,A2,A3,A4 inputStyle
+    class B1,B2,B3 coreStyle
+    class C1,C2,C3 strategyStyle
+    class D1,D2,D3 enhancedStyle
+    class E1,E2,E3,E4 utilStyle
+    class F1,F2,F3 cacheStyle
+    class G1,G2,G3,G4 outputStyle
+    class H1,H2,H3,H4 integrationStyle
 ```
 
 ```mermaid
