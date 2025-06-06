@@ -31,6 +31,22 @@ lattice_3d:
     output_face: "back"
     embedding_mapping: "linear" # linear, conv, attention
 
+  # НОВОЕ: Стратегия размещения I/O точек
+  io_strategy:
+    placement_method: "proportional" # proportional, random, corners, full_face
+    coverage_ratio:
+      min_percentage: 7.8 # Минимальный % покрытия грани
+      max_percentage: 15.6 # Максимальный % покрытия грани
+    absolute_limits:
+      min_points: 5 # Минимальное количество точек
+      max_points: 0 # Максимальное количество точек (0 = без ограничений)
+    size_specific:
+      "8x8": { min_points: 5, max_points: 10 } # 64 клетки → 5-10 точек
+      "16x16": { min_points: 20, max_points: 40 } # 256 клеток → 20-40 точек
+      "32x32": { min_points: 80, max_points: 160 } # 1024 клетки → 80-160 точек
+      "64x64": { min_points: 320, max_points: 640 } # 4096 клеток → 320-640 точек
+    seed: 42 # Для воспроизводимости случайного размещения
+
   # Диагностика и отладка
   diagnostics:
     enable_logging: true
@@ -61,14 +77,26 @@ test_configs:
     dimensions: [3, 3, 3]
     boundary_conditions: "walls"
     gpu_enabled: false
+    io_strategy:
+      placement_method: "proportional"
+      coverage_ratio: { min_percentage: 10.0, max_percentage: 20.0 }
+      absolute_limits: { min_points: 2, max_points: 0 }
 
   medium_test:
     dimensions: [8, 8, 8]
     boundary_conditions: "periodic"
     gpu_enabled: true
+    io_strategy:
+      placement_method: "proportional"
+      coverage_ratio: { min_percentage: 7.8, max_percentage: 15.6 }
+      absolute_limits: { min_points: 5, max_points: 10 }
 
   large_test:
     dimensions: [32, 32, 32]
     boundary_conditions: "walls"
     gpu_enabled: true
     batch_size: 4
+    io_strategy:
+      placement_method: "proportional"
+      coverage_ratio: { min_percentage: 7.8, max_percentage: 15.6 }
+      absolute_limits: { min_points: 80, max_points: 0 } # Без ограничений для больших решеток
