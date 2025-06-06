@@ -1,0 +1,250 @@
+```mermaid
+graph TB
+    subgraph "EmbeddingReshaper Architecture"
+        direction TB
+        
+        %% Input/Output
+        INPUT[("1D Embedding<br/>(768D)")]
+        OUTPUT[("3D Matrix<br/>(8×8×12)")]
+        RESTORED[("Restored 1D<br/>(768D)")]
+        
+        %% Main Class
+        RESHAPER["🎯 EmbeddingReshaper<br/>Main Controller"]
+        
+        %% Strategies
+        subgraph "Reshaping Strategies"
+            LINEAR["🔄 LinearReshaper<br/>Simple reshape"]
+            ADAPTIVE["🧠 AdaptiveReshaper<br/>Variance/Importance"]
+            SEMANTIC["🎨 SemanticReshaper<br/>Clustering-based"]
+        end
+        
+        %% Utils
+        subgraph "Utilities & Validation"
+            VALIDATOR["✅ validate_semantic_preservation<br/>Quality Control"]
+            METRICS["📊 calculate_similarity_metrics<br/>Cosine Similarity"]
+            OPTIMIZER["⚙️ optimize_shape_transformation<br/>Shape Optimization"]
+            TESTER["🧪 create_test_embeddings<br/>Test Data Generation"]
+            BENCHMARKER["📈 benchmark_transformation_speed<br/>Performance Testing"]
+        end
+        
+        %% Integration Modules
+        subgraph "External Integration"
+            LLM["🔴 Teacher LLM Encoder<br/>data.embedding_loader"]
+            CUBE["🔵 3D Cubic Core<br/>core.lattice_3d"]
+            DECODER["🟡 Lightweight Decoder<br/>inference.lightweight_decoder"]
+        end
+        
+        %% Data Flow
+        INPUT --> RESHAPER
+        RESHAPER --> LINEAR
+        RESHAPER --> ADAPTIVE
+        RESHAPER --> SEMANTIC
+        
+        LINEAR --> OUTPUT
+        ADAPTIVE --> OUTPUT
+        SEMANTIC --> OUTPUT
+        
+        OUTPUT --> RESHAPER
+        RESHAPER --> RESTORED
+        
+        %% Validation Flow
+        INPUT -.-> VALIDATOR
+        RESTORED -.-> VALIDATOR
+        VALIDATOR --> METRICS
+        
+        %% Integration Flow
+        LLM --> INPUT
+        OUTPUT --> CUBE
+        RESTORED --> DECODER
+        
+        %% Utilities Connection
+        RESHAPER -.-> OPTIMIZER
+        RESHAPER -.-> TESTER
+        RESHAPER -.-> BENCHMARKER
+        
+        %% Statistics
+        STATS[("📊 Statistics<br/>• 1D→3D operations<br/>• 3D→1D operations<br/>• Semantic quality<br/>• Success rate")]
+        RESHAPER --> STATS
+        
+        %% Styling
+        classDef inputOutput fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+        classDef mainClass fill:#fff3e0,stroke:#e65100,stroke-width:3px
+        classDef strategy fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+        classDef utility fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+        classDef integration fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+        classDef stats fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+        
+        class INPUT,OUTPUT,RESTORED inputOutput
+        class RESHAPER mainClass
+        class LINEAR,ADAPTIVE,SEMANTIC strategy
+        class VALIDATOR,METRICS,OPTIMIZER,TESTER,BENCHMARKER utility
+        class LLM,CUBE,DECODER integration
+        class STATS stats
+    end
+```
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant EmbeddingReshaper
+    participant Strategy
+    participant Validator
+    participant Stats
+    
+    Note over User, Stats: EmbeddingReshaper Workflow
+    
+    User->>EmbeddingReshaper: vector_to_matrix(embedding_1d)
+    EmbeddingReshaper->>Strategy: vector_to_matrix(embedding_1d)
+    Strategy->>Strategy: Apply reshaping algorithm
+    Strategy-->>EmbeddingReshaper: matrix_3d
+    
+    opt Semantic Preservation Enabled
+        EmbeddingReshaper->>Validator: validate_transformation
+        Validator-->>EmbeddingReshaper: quality_score
+    end
+    
+    EmbeddingReshaper->>Stats: update_statistics(operation="1d_to_3d")
+    EmbeddingReshaper-->>User: matrix_3d
+    
+    User->>EmbeddingReshaper: matrix_to_vector(matrix_3d)
+    EmbeddingReshaper->>Strategy: matrix_to_vector(matrix_3d)
+    Strategy->>Strategy: Apply inverse reshaping
+    Strategy-->>EmbeddingReshaper: embedding_1d
+    
+    opt Semantic Preservation Enabled
+        EmbeddingReshaper->>Validator: validate_quality(original, restored)
+        Validator-->>EmbeddingReshaper: similarity_score
+        
+        alt Quality Below Threshold
+            EmbeddingReshaper->>EmbeddingReshaper: fallback_strategy()
+        end
+    end
+    
+    EmbeddingReshaper->>Stats: update_statistics(operation="3d_to_1d")
+    EmbeddingReshaper-->>User: embedding_1d
+    
+    User->>EmbeddingReshaper: get_statistics()
+    EmbeddingReshaper->>Stats: get_stats()
+    Stats-->>EmbeddingReshaper: statistics_dict
+    EmbeddingReshaper-->>User: statistics_dict
+```
+
+```mermaid
+graph LR
+    subgraph "Three Reshaping Strategies Comparison"
+        
+        subgraph "LinearReshaper"
+            L1[("Input<br/>(768,)")]
+            L2["Simple<br/>reshape()"]
+            L3[("Output<br/>(8,8,12)")]
+            L4["Performance: ⭐⭐⭐<br/>Quality: ⭐⭐<br/>Complexity: ⭐"]
+            
+            L1 --> L2 --> L3
+            L3 --> L4
+        end
+        
+        subgraph "AdaptiveReshaper"
+            A1[("Input<br/>(768,)")]
+            A2["Variance/Importance<br/>Analysis"]
+            A3["Adaptive<br/>Placement"]
+            A4[("Output<br/>(8,8,12)")]
+            A5["Performance: ⭐⭐<br/>Quality: ⭐⭐⭐<br/>Complexity: ⭐⭐"]
+            
+            A1 --> A2 --> A3 --> A4
+            A4 --> A5
+        end
+        
+        subgraph "SemanticReshaper"
+            S1[("Input<br/>(768,)")]
+            S2["Clustering<br/>(K-means/Hierarchical)"]
+            S3["Semantic<br/>Grouping"]
+            S4[("Output<br/>(8,8,12)")]
+            S5["Performance: ⭐<br/>Quality: ⭐⭐⭐<br/>Complexity: ⭐⭐⭐"]
+            
+            S1 --> S2 --> S3 --> S4
+            S4 --> S5
+        end
+        
+        %% Quality indicators
+        QUALITY["🎯 Quality Comparison:<br/>Linear: >95% preservation<br/>Adaptive: >96% preservation<br/>Semantic: >97% preservation"]
+        
+        %% Styling
+        classDef linear fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+        classDef adaptive fill:#f1f8e9,stroke:#388e3c,stroke-width:2px
+        classDef semantic fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+        classDef quality fill:#fff3e0,stroke:#f57c00,stroke-width:3px
+        
+        class L1,L2,L3,L4 linear
+        class A1,A2,A3,A4,A5 adaptive
+        class S1,S2,S3,S4,S5 semantic
+        class QUALITY quality
+    end
+```
+
+```mermaid
+graph TB
+    subgraph "Integration with 3D Cellular Neural Network"
+        
+        %% Phase 2 modules
+        subgraph "Phase 2: Data Pipeline"
+            TLM["🔴 Teacher LLM Encoder<br/>✅ ГОТОВ<br/>8+ LLM models"]
+            ER["🆕 EmbeddingReshaper<br/>✅ ГОТОВ<br/>1D↔3D bridge"]
+        end
+        
+        %% Phase 2.5 module  
+        subgraph "Phase 2.5: Core Processing"
+            EP["🔵 EmbeddingProcessor<br/>🔄 В РАЗРАБОТКЕ<br/>3D cube processing"]
+            L3D["3D Lattice<br/>Core neural network"]
+        end
+        
+        %% Phase 2.7 module
+        subgraph "Phase 2.7: Decoding"
+            LD["🟡 Lightweight Decoder<br/>🆕 ПЛАНИРУЕТСЯ<br/>embedding→text"]
+        end
+        
+        %% Data flow
+        TEXT[("Input Text")]
+        EMB1[("Embedding<br/>768D")]
+        CUBE[("3D Matrix<br/>8×8×12")]
+        EMB2[("Processed<br/>768D")]
+        RESULT[("Output Text")]
+        
+        %% Full pipeline
+        TEXT --> TLM
+        TLM --> EMB1
+        EMB1 --> ER
+        ER --> CUBE
+        CUBE --> EP
+        EP --> L3D
+        L3D --> EP
+        EP --> CUBE
+        CUBE --> ER
+        ER --> EMB2
+        EMB2 --> LD
+        LD --> RESULT
+        
+        %% Status indicators
+        STATUS1["✅ МОДУЛЬ 1 ГОТОВ<br/>Phase 2 завершен"]
+        STATUS2["🆕 МОДУЛЬ 2 (МОСТ)<br/>Phase 2.3 готов"]
+        STATUS3["🔄 МОДУЛЬ 3 ЯДРО<br/>Phase 2.5 следующий"]
+        STATUS4["🟡 МОДУЛЬ 4 ДЕКОДЕР<br/>Phase 2.7 параллельно"]
+        
+        TLM -.-> STATUS1
+        ER -.-> STATUS2
+        EP -.-> STATUS3
+        LD -.-> STATUS4
+        
+        %% Styling
+        classDef ready fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
+        classDef inProgress fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+        classDef planned fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+        classDef data fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+        classDef status fill:#fce4ec,stroke:#c2185b,stroke-width:1px
+        
+        class TLM,ER ready
+        class EP,L3D inProgress
+        class LD planned
+        class TEXT,EMB1,CUBE,EMB2,RESULT data
+        class STATUS1,STATUS2,STATUS3,STATUS4 status
+    end
+``` 
