@@ -30,6 +30,7 @@ coverage/
 logs/
 *.log
 *.pyc
+*.pt
 
 # Temporary files
 tmp/
