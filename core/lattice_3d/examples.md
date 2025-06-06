@@ -4,9 +4,166 @@
 
 Модуль `lattice_3d` реализует трехмерную решетку "умных клеток" для клеточной нейронной сети. Каждая клетка взаимодействует с соседями и может обрабатывать внешние входы.
 
+## 🆕 Новые Примеры с I/O Стратегией
+
+### Пример 1: Пропорциональная I/O Стратегия
+
+```python
+from core.lattice_3d import Lattice3D, LatticeConfig, PlacementStrategy
+import torch
+
+# Создаем конфигурацию с пропорциональной I/O стратегией
+config = LatticeConfig(
+    dimensions=(16, 16, 16),
+    boundary_conditions="walls",
+    placement_strategy=PlacementStrategy.PROPORTIONAL,
+    io_strategy_config={
+        'coverage_ratio': {'min_percentage': 8.0, 'max_percentage': 12.0},
+        'absolute_limits': {'min_points': 10, 'max_points': 50},
+        'seed': 42
+    }
+)
+
+# Создаем решетку
+lattice = Lattice3D(config)
+
+# Получаем информацию о I/O точках
+io_info = lattice.get_io_point_info()
+print(f"Входных точек: {io_info['input_points']['count']} из {16*16} возможных")
+print(f"Покрытие входа: {io_info['input_points']['coverage_percentage']:.1f}%")
+print(f"Выходных точек: {io_info['output_points']['count']} из {16*16} возможных")
+print(f"Покрытие выхода: {io_info['output_points']['coverage_percentage']:.1f}%")
+
+# Подготавливаем входные данные
+num_input_points = io_info['input_points']['count']
+input_size = lattice.cell_prototype.input_size
+external_inputs = torch.randn(num_input_points, input_size)
+
+# Выполняем forward pass
+result_states = lattice.forward(external_inputs)
+
+# Получаем только выходные состояния
+output_states = lattice.get_output_states()
+print(f"Форма выходных состояний: {output_states.shape}")
+```
+
+### Пример 2: Сравнение Различных Стратегий Размещения
+
+```python
+from core.lattice_3d import IOPointPlacer, PlacementStrategy, Face
+
+# Тестируем все стратегии размещения
+strategies = [
+    ("Пропорциональная", PlacementStrategy.PROPORTIONAL),
+    ("Случайная", PlacementStrategy.RANDOM),
+    ("Углы", PlacementStrategy.CORNERS),
+    ("Углы + центр", PlacementStrategy.CORNERS_CENTER),
+    ("Полная грань", PlacementStrategy.FULL_FACE),
+]
+
+lattice_size = (12, 12, 12)
+face_area = lattice_size[0] * lattice_size[1]  # 144 точки
+
+for name, strategy in strategies:
+    placer = IOPointPlacer(
+        lattice_dimensions=lattice_size,
+        strategy=strategy,
+        config={
+            'coverage_ratio': {'min_percentage': 10.0, 'max_percentage': 20.0},
+            'absolute_limits': {'min_points': 5, 'max_points': 0}
+        },
+        seed=42
+    )
+
+    input_points = placer.get_input_points(Face.FRONT)
+    coverage = len(input_points) / face_area * 100
+
+    print(f"{name:15}: {len(input_points):3d} точек ({coverage:5.1f}%)")
+
+# Вывод:
+# Пропорциональная:  17 точек ( 11.8%)
+# Случайная     :  36 точек ( 25.0%)
+# Углы          :   4 точки (  2.8%)
+# Углы + центр  :   5 точек (  3.5%)
+# Полная грань  : 144 точки (100.0%)
+```
+
+### Пример 3: Автоматическое Масштабирование
+
+```python
+# Тестируем автоматическое масштабирование на разных размерах
+sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32), (64, 64, 64)]
+
+placer_config = {
+    'coverage_ratio': {'min_percentage': 7.8, 'max_percentage': 15.6},
+    'absolute_limits': {'min_points': 5, 'max_points': 0},
+    'seed': 42
+}
+
+print("Автоматическое масштабирование пропорциональной стратегии:")
+print("Размер решетки | Площадь грани | I/O точек | Покрытие")
+print("-" * 55)
+
+for size in sizes:
+    placer = IOPointPlacer(size, PlacementStrategy.PROPORTIONAL, placer_config)
+    input_points = placer.get_input_points(Face.FRONT)
+    face_area = size[0] * size[1]
+    coverage = len(input_points) / face_area * 100
+
+    print(f"{size[0]:2d}×{size[1]:2d}×{size[2]:2d}         | {face_area:9d} | {len(input_points):7d}   | {coverage:6.1f}%")
+
+# Результат показывает постоянную плотность рецепторов (~7.8-15.6%)
+```
+
+### Пример 4: Настройка Конфигурации Через YAML
+
+```python
+# Создаем пример конфигурационного файла
+config_content = """
+lattice_3d:
+  dimensions: [20, 20, 20]
+  boundary_conditions: "walls"
+
+  io_strategy:
+    placement_method: "proportional"
+    coverage_ratio:
+      min_percentage: 9.0
+      max_percentage: 12.0
+    absolute_limits:
+      min_points: 15
+      max_points: 100
+    seed: 123
+"""
+
+# Сохраняем во временный файл
+import tempfile
+import yaml
+
+with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+    f.write(config_content)
+    temp_config_path = f.name
+
+# Загружаем конфигурацию
+from core.lattice_3d import load_lattice_config, create_lattice_from_config
+
+config = load_lattice_config(temp_config_path)
+lattice = Lattice3D(config)
+
+# Проверяем результат
+io_info = lattice.get_io_point_info()
+print(f"Загружено из YAML:")
+print(f"  Размер решетки: {config.dimensions}")
+print(f"  I/O точки: {io_info['input_points']['count']} входных, {io_info['output_points']['count']} выходных")
+print(f"  Покрытие: {io_info['input_points']['coverage_percentage']:.1f}%")
+
+# Очищаем временный файл
+import os
+os.unlink(temp_config_path)
+```
+
 ## Базовое Использование
 
-### Пример 1: Создание Простой Решетки
+### Пример 5: Создание Простой Решетки
 
 ```python
 from core.lattice_3d import Lattice3D, LatticeConfig, BoundaryCondition

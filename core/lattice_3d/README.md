@@ -39,9 +39,20 @@
    - Валидация связей
 
 3. **LatticeConfig** - Конфигурация решетки
+
    - Размеры решетки (X, Y, Z)
    - Тип граничных условий
    - Параметры клеток
+
+4. **IOPointPlacer** - 🆕 Система размещения I/O точек
+
+   - Пропорциональное автоматическое масштабирование (7.8-15.6%)
+   - 5 стратегий размещения: PROPORTIONAL, RANDOM, CORNERS, CORNERS_CENTER, FULL_FACE
+   - Биологически обоснованная постоянная плотность рецепторов
+
+5. **PlacementStrategy** - 🆕 Стратегии размещения точек ввода/вывода
+   - Автоматическое масштабирование от 4×4×4 до 128×128×128
+   - Конфигурируемые параметры покрытия и ограничения
 
 ### Зависимости
 
@@ -54,35 +65,89 @@
 ### Базовый Пример
 
 ```python
-from core.lattice_3d import Lattice3D, LatticeConfig
+from core.lattice_3d import Lattice3D, LatticeConfig, PlacementStrategy
 
-# Создание конфигурации
+# Создание конфигурации с пропорциональной I/O стратегией
 config = LatticeConfig(
-    dimensions=(5, 5, 5),
+    dimensions=(8, 8, 8),
     boundary_conditions='walls',
-    cell_config=cell_config
+    placement_strategy=PlacementStrategy.PROPORTIONAL,
+    io_strategy_config={
+        'coverage_ratio': {'min_percentage': 7.8, 'max_percentage': 15.6},
+        'absolute_limits': {'min_points': 5, 'max_points': 0},
+        'seed': 42
+    }
 )
 
 # Создание решетки
 lattice = Lattice3D(config)
 
+# Получение информации о I/O точках
+io_info = lattice.get_io_point_info()
+print(f"Входных точек: {io_info['input_points']['count']} ({io_info['input_points']['coverage_percentage']:.1f}%)")
+
+# Подготовка входных данных для пропорциональных точек
+num_input_points = io_info['input_points']['count']
+input_size = lattice.cell_prototype.input_size
+external_inputs = torch.randn(num_input_points, input_size)
+
 # Обновление состояний всех клеток
-new_states = lattice.forward(current_states, external_inputs)
+new_states = lattice.forward(external_inputs)
+
+# Получение только выходных точек (вместо всех клеток)
+output_states = lattice.get_output_states()
 ```
 
-### Подача Входных Данных
+### 🆕 Стратегии Размещения I/O Точек
 
 ```python
-# Подача эмбединга на входную грань
-input_embedding = torch.randn(embedding_dim)
-lattice.set_input_face(input_embedding, face='front')
+from core.lattice_3d import IOPointPlacer, PlacementStrategy, Face
 
-# Распространение сигнала
-for step in range(num_steps):
-    lattice.step()
+# Пропорциональная стратегия (рекомендуется)
+placer = IOPointPlacer(
+    lattice_dimensions=(16, 16, 16),
+    strategy=PlacementStrategy.PROPORTIONAL,
+    config={
+        'coverage_ratio': {'min_percentage': 10.0, 'max_percentage': 15.0},
+        'absolute_limits': {'min_points': 8, 'max_points': 0}
+    },
+    seed=42
+)
 
-# Получение результата с выходной грани
-output_states = lattice.get_output_face(face='back')
+# Получение точек ввода/вывода
+input_points = placer.get_input_points(Face.FRONT)
+output_points = placer.get_output_points(Face.BACK)
+
+print(f"Входных точек: {len(input_points)} из {16*16} возможных")
+print(f"Покрытие: {len(input_points)/(16*16)*100:.1f}%")
+
+# Другие стратегии
+strategies = [
+    PlacementStrategy.CORNERS,        # 4 угла грани
+    PlacementStrategy.CORNERS_CENTER, # 4 угла + центр
+    PlacementStrategy.RANDOM,         # 25% случайных точек
+    PlacementStrategy.FULL_FACE,      # Все точки грани
+]
+```
+
+### Масштабирование I/O Точек
+
+```python
+# Автоматическое масштабирование для разных размеров
+sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32), (64, 64, 64)]
+
+for size in sizes:
+    placer = IOPointPlacer(size, PlacementStrategy.PROPORTIONAL, config)
+    input_points = placer.get_input_points(Face.FRONT)
+    face_area = size[0] * size[1]
+    coverage = len(input_points) / face_area * 100
+
+    print(f"{size[0]}×{size[1]}×{size[2]}: {len(input_points)} точек ({coverage:.1f}%)")
+# Вывод:
+# 8×8×8: 5 точек (7.8%)
+# 16×16×16: 25 точек (9.8%)
+# 32×32×32: 95 точек (9.3%)
+# 64×64×64: 350 точек (8.5%)
 ```
 
 ## Возможности
@@ -117,6 +182,22 @@ lattice_3d:
   boundary_conditions: "walls"
   parallel_processing: true
   gpu_enabled: true
+
+  # 🆕 Конфигурация I/O стратегии
+  io_strategy:
+    placement_method: "proportional" # proportional, random, corners, full_face
+    coverage_ratio:
+      min_percentage: 7.8 # Минимальный % покрытия грани
+      max_percentage: 15.6 # Максимальный % покрытия грани
+    absolute_limits:
+      min_points: 5 # Минимальное количество точек
+      max_points: 0 # Максимальное количество точек (0 = без ограничений)
+    seed: 42 # Для воспроизводимости
+
+  # Размер-специфичные настройки
+  size_specific:
+    "16x16": { min_points: 20, max_points: 40 }
+    "32x32": { min_points: 80, max_points: 160 }
 
   cell_prototype:
     input_size: 64
