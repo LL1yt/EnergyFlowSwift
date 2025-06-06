@@ -99,17 +99,33 @@ class EmbeddingReshaper:
         else:
             raise TypeError("Поддерживаются только torch.Tensor и np.ndarray")
         
-        # Контроль качества при необходимости
+        # Улучшенный контроль качества при необходимости
         if self.preserve_semantics:
-            similarity = self._check_semantic_preservation(embedding_1d, embedding_3d)
+            # Используем расширенные метрики семантического сходства
+            from .utils import calculate_enhanced_similarity_metrics
+            
+            try:
+                enhanced_metrics = calculate_enhanced_similarity_metrics(embedding_1d, embedding_3d)
+                similarity = enhanced_metrics['weighted_similarity']
+                
+                # Логирование детальных метрик для отладки
+                self.logger.debug(f"Enhanced metrics 1D→3D: {enhanced_metrics}")
+                
+            except Exception as e:
+                # Fallback к базовой метрике
+                self.logger.warning(f"Enhanced metrics failed: {e}, using basic similarity")
+                similarity = self._check_semantic_preservation(embedding_1d, embedding_3d)
+            
             self.stats['semantic_quality_avg'].append(similarity)
             
             if similarity >= self.semantic_threshold:
                 self.stats['successful_preservations'] += 1
+                if similarity >= 0.98:
+                    self.logger.info(f"🎯 Высокое качество 1D→3D достигнуто: {similarity:.6f}")
             else:
                 self.stats['failed_preservations'] += 1
                 self.logger.warning(
-                    f"Качество преобразования ниже порога: {similarity:.3f} < {self.semantic_threshold}"
+                    f"Качество преобразования 1D→3D ниже порога: {similarity:.6f} < {self.semantic_threshold}"
                 )
         
         self.stats['transformations_1d_to_3d'] += 1
@@ -145,17 +161,33 @@ class EmbeddingReshaper:
         else:
             raise TypeError("Поддерживаются только torch.Tensor и np.ndarray")
         
-        # Контроль качества при необходимости
+        # Улучшенный контроль качества при необходимости
         if self.preserve_semantics:
-            similarity = self._check_semantic_preservation(embedding_1d, embedding_3d)
+            # Используем расширенные метрики семантического сходства
+            from .utils import calculate_enhanced_similarity_metrics
+            
+            try:
+                enhanced_metrics = calculate_enhanced_similarity_metrics(embedding_1d, embedding_3d)
+                similarity = enhanced_metrics['weighted_similarity']
+                
+                # Логирование детальных метрик для отладки
+                self.logger.debug(f"Enhanced metrics 3D→1D: {enhanced_metrics}")
+                
+            except Exception as e:
+                # Fallback к базовой метрике
+                self.logger.warning(f"Enhanced metrics failed: {e}, using basic similarity")
+                similarity = self._check_semantic_preservation(embedding_1d, embedding_3d)
+            
             self.stats['semantic_quality_avg'].append(similarity)
             
             if similarity >= self.semantic_threshold:
                 self.stats['successful_preservations'] += 1
+                if similarity >= 0.98:
+                    self.logger.info(f"🎯 Высокое качество 3D→1D достигнуто: {similarity:.6f}")
             else:
                 self.stats['failed_preservations'] += 1
                 self.logger.warning(
-                    f"Качество преобразования ниже порога: {similarity:.3f} < {self.semantic_threshold}"
+                    f"Качество преобразования 3D→1D ниже порога: {similarity:.6f} < {self.semantic_threshold}"
                 )
         
         self.stats['transformations_3d_to_1d'] += 1
