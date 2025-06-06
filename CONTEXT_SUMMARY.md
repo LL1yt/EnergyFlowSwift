@@ -1,71 +1,90 @@
 # 3D Cellular Neural Network - Session Context
 
-**Last Updated:** December 5, 2025  
-**Current Session Status:** 🎉 **TOKENIZER MODULE COMPLETED! Phase 2: 85% DONE**
+**Last Updated:** December 19, 2024  
+**Current Session Status:** 📋 **LATTICE I/O ARCHITECTURE PLANNING + PLANS UPDATE COMPLETED**
 
 ---
 
 ## 🎯 WHERE WE ARE NOW
 
-### ✅ Phase 1 - COMPLETED (100%)
+### ✅ Phase 1 - Core Architecture
 
-**Core foundation modules working:**
+**Status:** Basic lattice structure implemented + I/O Architecture Strategy Designed
 
 - `core/cell_prototype/` - Neural cell implementation ✅
-- `core/lattice_3d/` - 3D grid structure ✅
+- `core/lattice_3d/` - 3D grid structure ✅ (basic functionality + I/O strategy)
 - `core/signal_propagation/` - Temporal dynamics ✅
 
-**Key achievement:** Full end-to-end signal propagation through 3D lattice is working and tested.
+### 📋 THIS SESSION ACHIEVEMENTS - I/O Architecture Design + Plans Update
 
-### 🚀 Phase 2 - ALMOST COMPLETE! (85% Done)
+**Major Decision:** Lattice Input/Output Point Placement Strategy
+**Problem Solved:** How to handle input/output points on 3D lattice faces
+**Current State:** Full face coverage (64 points per 8×8 face) - too complex
+**Decision:** Evolutionary approach starting with simple random placement
 
-**Status:** TWO major modules completed! 🎉  
-**Major Achievement:** Full data processing pipeline ready for 3D CNN  
-**Module progress:**
+**Documentation Updated:**
 
-- `data/embedding_loader/` - ✅ **COMPLETED** (LLM Integration + Knowledge Distillation)
-- `data/tokenizer/` - ✅ **COMPLETED** (4+ tokenizers + Lattice integration + 5/5 tests passed!)
-- `data/data_visualization/` - ⏳ Last remaining module for Phase 2
+- `core/lattice_3d/plan.md` - Added I/O placement strategy (Etap 4)
+- `core/lattice_3d/io_placement_strategy.md` - Complete strategy document
+- `PROJECT_PLAN.md` - Updated with new I/O architecture achievements and priorities
+- `PHASE_1_PLAN.md` - Updated with I/O strategy integration and new KPIs
+- `PHASE_2_PLAN.md` - Updated dependencies, I/O integration points, and API contracts
+- Visual diagram created showing 4-phase evolution path
+
+**Plans Integration:**
+
+- ✅ **General project plan updated** - New I/O architecture priority added
+- ✅ **Phase 1 plan updated** - I/O strategy marked as architectural achievement
+- ✅ **Phase 2 plan updated** - Dependencies, integration points, and blocking conditions added
+- ✅ **Cross-references established** - Between strategy docs and main plans
+- ✅ **Implementation roadmap clarified** - Next session actions well-defined
 
 ---
 
 ## 🎯 NEXT SESSION ACTIONS
 
-### 🔥 IMMEDIATE PRIORITY (Phase 2 Completion)
+### 🔥 IMMEDIATE PRIORITY - Implement Random I/O Placement
 
-**Module:** `data/data_visualization/` - 3D visualization and dashboards  
-**Focus:** Interactive 3D lattice visualization, data flow monitoring, real-time metrics  
-**Goal:** Complete Phase 2 and prepare for Phase 3 training  
-**Time Estimate:** 3-4 hours for full visualization module
+**Module:** `core/lattice_3d/` - Implement simplified I/O point placement  
+**Focus:** Replace full face coverage with random point placement (5-10 points per face)  
+**Goal:** Cleaner, more biologically inspired architecture  
+**Time Estimate:** 2-3 hours for implementation + testing
 
-### 📋 Step-by-Step Plan (Final Phase 2 Module)
+### 📋 Implementation Steps
 
-1. ✅ ~~Create `data/embedding_loader/`~~ - COMPLETED
-2. ✅ ~~Create `data/tokenizer/`~~ - COMPLETED
-3. **CURRENT:** Create `data/data_visualization/` module
-4. **NEXT:** Integrate all Phase 2 modules with Phase 1 core
-5. **FINAL:** Ready to start Phase 3 training infrastructure
+1. **Create IOPointPlacer class** - Random placement strategy implementation
+2. **Update Lattice3D.forward()** - Use selected points instead of full faces
+3. **Modify external input handling** - Support sparse point input
+4. **Update tests** - Verify random placement works correctly
+5. **Measure performance** - Compare with current full face approach
+
+### 🧭 Strategic Path Forward
+
+**Current:** Full face coverage (64 points) → **Target:** Random placement (5-10 points)
+**If successful:** Continue with simple approach
+**If insufficient:** Move to Phase 2 (basic zoning) as documented in strategy
 
 ---
 
 ## 📁 KEY FILES FOR NEXT SESSION
 
-### 📚 Planning & Reference
+### 📋 New Strategy Documentation (READ FIRST)
 
-- **`PHASE_2_PLAN.md`** - Complete Phase 2 roadmap and details
+- **`core/lattice_3d/io_placement_strategy.md`** - Complete I/O placement strategy
+- **`core/lattice_3d/plan.md`** - Updated plan with Etap 4 (I/O interfaces)
+- Visual diagram showing 4-phase evolution path
+
+### 🔧 Implementation Targets
+
+- **`core/lattice_3d/main.py`** - Lattice3D class needs I/O point modification
+- **`core/lattice_3d/`** - Create new placement_strategies.py module
+- **`test_lattice_3d_advanced.py`** - Update tests for random placement
+
+### 📚 Reference Files
+
 - **`PROJECT_PLAN.md`** - Full project overview and architecture
-- **`CONTEXT_SUMMARY.md`** - This file (session continuity)
-
-### 🔧 Core Implementation (Phase 1 - Reference)
-
-- **`core/`** - All Phase 1 modules (working and tested)
-- **`main.py`** - Integration point for all modules
-- **`config/`** - Configuration files
-
-### 🧪 Testing & Examples
-
-- **`test_*.py`** - Existing test files (for reference)
-- **`demos/`** - Working demonstrations
+- **`core/lattice_3d/README.md`** - Module overview
+- **`config/main_config.yaml`** - Configuration system
 
 ---
 
@@ -109,28 +128,25 @@ plotly>=5.0.0          # For 3D visualization
 
 ## 🎯 SUCCESS CRITERIA FOR NEXT SESSION
 
-### ✅ Completed This Session - TOKENIZER MODULE!
+### ✅ Completed This Session - I/O ARCHITECTURE STRATEGY
 
-- [x] `data/tokenizer/` complete module architecture
-- [x] TokenizerManager with unified interface for 4+ tokenizers
-- [x] Support for BERT, GPT-2, SentencePiece, and Basic tokenizers
-- [x] TextProcessor for intelligent text preprocessing
-- [x] Adapter pattern implementation with factory design
-- [x] Complete lattice integration (prepare_for_lattice method)
-- [x] Batch processing capabilities
-- [x] LRU caching with performance metrics
-- [x] YAML configuration system
-- [x] **ALL 5 TESTS PASSED** (Basic, TextProcessor, Batch, Lattice, Config)
-- [x] Complete documentation suite (README, plan, meta, examples, diagram)
+- [x] **Analyzed current I/O approach** - Full face coverage (64 points per face)
+- [x] **Identified problems** - Complexity, inefficiency, non-biological
+- [x] **Researched biological justification** - Hub neurons, random receptor placement
+- [x] **Designed evolutionary strategy** - 4 phases from simple to complex
+- [x] **Documented complete strategy** - io_placement_strategy.md created
+- [x] **Updated implementation plan** - Etap 4 in plan.md modified
+- [x] **Created visual roadmap** - Mermaid diagram showing evolution path
+- [x] **Established decision criteria** - When to move between phases
 
-### 🎯 Next Session Goals (Final Phase 2)
+### 🎯 Next Session Goals - Implementation
 
-- [ ] Create `data/data_visualization/` module for 3D visualization
-- [ ] Interactive lattice visualization with Plotly
-- [ ] Real-time signal flow monitoring
-- [ ] Performance dashboards and metrics
-- [ ] Integration with all Phase 2 modules
-- [ ] Phase 2 completion and Phase 3 readiness validation
+- [ ] **Create IOPointPlacer class** - Support multiple placement strategies
+- [ ] **Implement RANDOM strategy** - 5-10 points per face instead of 64
+- [ ] **Modify Lattice3D.forward()** - Work with selected points only
+- [ ] **Update input/output handling** - Support sparse point arrays
+- [ ] **Test performance comparison** - Random vs. full face coverage
+- [ ] **Validate biologically inspired approach** - Ensure functionality maintained
 
 ---
 
@@ -152,8 +168,10 @@ plotly>=5.0.0          # For 3D visualization
 
 ---
 
-**🎉 OUTSTANDING ACHIEVEMENT!**
+**🏗️ ARCHITECTURE PLANNING SESSION COMPLETE**
 
-**Tokenizer Module:** Complete implementation with 5/5 tests passing!  
-**Phase 2 Progress:** 85% complete - only data_visualization remains  
-**Next Session:** Final Phase 2 module, then ready for Phase 3 training!
+**I/O Strategy:** Complete 4-phase evolutionary path documented  
+**Decision Made:** Start with simple random placement (5-10 points vs 64)  
+**Project Plans:** Updated PROJECT_PLAN.md and PHASE_1_PLAN.md with new achievements  
+**Cross-references:** Full integration between strategy docs and main project plans  
+**Next Session:** Implement IOPointPlacer class and test random strategy
