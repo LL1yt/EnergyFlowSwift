@@ -9,7 +9,7 @@ import torch
 import numpy as np
 from typing import Union, Tuple, Dict, Any, List
 import logging
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity 
 import warnings
 
 # Подавляем предупреждения sklearn для чистого вывода

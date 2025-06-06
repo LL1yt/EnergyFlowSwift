@@ -513,7 +513,6 @@ evaluation_metrics:
 - **`PHASE_1_PLAN.md`** - Детальный план Foundation (завершен)
 - **`PHASE_2_PLAN.md`** - Детальный план Core Functionality (активный)
 - **`PHASE_3_PLAN.md`** - Детальный план Training Infrastructure (планируется)
-- **`CONTEXT_SUMMARY.md`** - Краткий контекст для переходов между сессиями
 
 ### Технические файлы
 
