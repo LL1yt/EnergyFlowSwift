@@ -1,0 +1,132 @@
+graph TB
+    %% Входные данные от Module 2
+    subgraph "INPUT"
+        EM[["Processed Embedding<br/>(768D от EmbeddingProcessor)"]]
+    end
+    
+    %% Три подхода декодирования
+    subgraph "DECODER SELECTION"
+        DS["DecoderFactory<br/>Configuration-Based Selection"]
+        
+        DS --> PBD["PhraseBankDecoder<br/>🔹 Phrase-based"]
+        DS --> GD["GenerativeDecoder<br/>🔸 Neural Generation"]  
+        DS --> HD["HybridDecoder<br/>🔶 Combined Approach"]
+    end
+    
+    %% PhraseBankDecoder детали
+    subgraph "PHRASE BANK APPROACH"
+        PB["PhraseBank<br/>50K phrases"]
+        IDX["FAISS Index<br/>Fast Search"]
+        SIM["Similarity Matching<br/>Cosine Distance"]
+        ASM["Text Assembly<br/>Coherent Output"]
+        
+        PBD --> PB
+        PB --> IDX
+        IDX --> SIM
+        SIM --> ASM
+    end
+    
+    %% GenerativeDecoder детали  
+    subgraph "GENERATIVE APPROACH"
+        EMB["Embedding Input Layer<br/>768D → Hidden"]
+        TRF["Mini Transformer<br/>4 layers, 8 heads"]
+        VOC["Vocabulary Projection<br/>32K tokens"]
+        SAMP["Temperature Sampling<br/>Controlled Generation"]
+        
+        GD --> EMB
+        EMB --> TRF
+        TRF --> VOC
+        VOC --> SAMP
+    end
+    
+    %% HybridDecoder детали
+    subgraph "HYBRID APPROACH"
+        CONF["Confidence Scoring<br/>Route Decision"]
+        ROUTE["Dynamic Routing<br/>Phrase vs Generation"]
+        COMB["Result Combination<br/>Quality Optimization"]
+        
+        HD --> CONF
+        CONF --> ROUTE
+        ROUTE --> PBD
+        ROUTE --> GD
+        PBD --> COMB
+        GD --> COMB
+    end
+    
+    %% Качество и оценка
+    subgraph "QUALITY ASSESSMENT"
+        BLEU["BLEU Score<br/>Generation Quality"]
+        ROUGE["ROUGE Score<br/>Summarization"]
+        SEM["Semantic Similarity<br/>Meaning Preservation"]
+        COH["Coherence Score<br/>Text Fluency"]
+    end
+    
+    %% Выходные данные
+    subgraph "OUTPUT"
+        TXT[["Generated Text<br/>Natural Language"]]
+        METRICS[["Quality Metrics<br/>Performance Stats"]]
+    end
+    
+    %% Интеграция с системой
+    subgraph "SYSTEM INTEGRATION"
+        MOD1["Module 1<br/>TeacherLLMEncoder"]
+        MOD2["Module 2<br/>EmbeddingProcessor"]
+        MOD3["Module 3<br/>LightweightDecoder"]
+        PIPE["End-to-End Pipeline<br/>Complete System"]
+    end
+    
+    %% Конфигурация
+    subgraph "CONFIGURATION"
+        YAML["lightweight_decoder.yaml<br/>Settings"]
+        CACHE["CacheManager<br/>Performance"]
+        ERR["Error Handling<br/>Fallbacks"]
+    end
+    
+    %% Основные связи
+    EM --> DS
+    
+    ASM --> TXT
+    SAMP --> TXT
+    COMB --> TXT
+    
+    TXT --> BLEU
+    TXT --> ROUGE
+    TXT --> SEM
+    TXT --> COH
+    
+    BLEU --> METRICS
+    ROUGE --> METRICS
+    SEM --> METRICS
+    COH --> METRICS
+    
+    %% Системная интеграция
+    MOD1 --> MOD2
+    MOD2 --> MOD3
+    MOD3 --> PIPE
+    
+    %% Конфигурационные связи
+    YAML --> DS
+    CACHE --> PBD
+    CACHE --> GD
+    ERR --> HD
+    
+    %% Стили для различных компонентов
+    classDef input fill:#e1f5fe
+    classDef decoder fill:#fff3e0
+    classDef phrase fill:#f3e5f5
+    classDef generative fill:#e8f5e8
+    classDef hybrid fill:#fff8e1
+    classDef quality fill:#fce4ec
+    classDef output fill:#e0f2f1
+    classDef system fill:#f1f8e9
+    classDef config fill:#fafafa
+    
+    class EM input
+    class DS,PBD,GD,HD decoder
+    class PB,IDX,SIM,ASM phrase
+    class EMB,TRF,VOC,SAMP generative
+    class CONF,ROUTE,COMB hybrid
+    class BLEU,ROUGE,SEM,COH quality
+    class TXT,METRICS output
+    class MOD1,MOD2,MOD3,PIPE system
+    class YAML,CACHE,ERR config 

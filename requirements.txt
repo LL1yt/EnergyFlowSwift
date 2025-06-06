@@ -40,6 +40,14 @@ pytest>=7.4.0                  # Unit testing framework
 black>=23.0.0                   # Code formatting
 flake8>=6.0.0                   # Code linting
 
+# Phase 2.7: Lightweight Decoder Dependencies
+faiss-cpu>=1.7.4                # Fast similarity search for phrase bank
+annoy>=1.17.3                   # Alternative similarity search
+sacrebleu>=2.3.0                # BLEU score evaluation
+rouge-score>=0.1.2              # ROUGE metrics
+bert-score>=0.3.13              # Semantic evaluation metrics
+datasets>=2.14.0                # Hugging Face datasets for training data
+
 # Utilities
 psutil>=5.9.0                   # System monitoring
 memory-profiler>=0.61.0         # Memory usage profiling

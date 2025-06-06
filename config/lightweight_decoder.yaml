@@ -1,0 +1,223 @@
+# 🔧 LIGHTWEIGHT DECODER CONFIGURATION
+# Phase 2.7 - Module 3 Configuration
+
+# ═══════════════════════════════════════════════════════════════
+# GENERAL SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+lightweight_decoder:
+  # Primary configuration
+  enabled: true
+  version: "0.1.0"
+  default_decoder: "hybrid" # phrase_bank, generative, hybrid
+
+  # Input/Output specifications
+  embedding_dim: 768 # Input embedding dimension (from Module 2)
+  max_output_length: 512 # Maximum generated text length
+  min_output_length: 10 # Minimum generated text length
+
+  # Performance settings
+  batch_size: 32 # Batch processing size
+  device: "auto" # auto, cpu, cuda
+  memory_limit_gb: 2 # Memory usage limit
+
+  # Quality thresholds
+  min_quality_threshold: 0.6 # Minimum acceptable quality
+  semantic_similarity_threshold: 0.7 # Semantic preservation threshold
+
+# ═══════════════════════════════════════════════════════════════
+# PHRASE BANK DECODER SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+phrase_bank:
+  enabled: true
+
+  # Bank configuration
+  bank_size: 50000 # Number of phrases in bank
+  phrase_min_length: 3 # Minimum phrase length (words)
+  phrase_max_length: 50 # Maximum phrase length (words)
+
+  # Similarity search
+  similarity_threshold: 0.8 # Minimum similarity for phrase selection
+  max_candidates: 10 # Maximum candidate phrases
+  index_type: "faiss" # faiss, annoy, linear
+  index_dimensions: 768 # Embedding dimensions for index
+
+  # Caching
+  cache_enabled: true
+  cache_size: 1000 # Cache frequently used phrases
+  cache_ttl_hours: 24 # Cache time-to-live
+
+  # Data sources
+  phrase_bank_path: "data/phrase_banks/"
+  default_bank: "common_phrases_50k.pkl"
+  custom_banks:
+    - "technical_phrases.pkl"
+    - "conversational_phrases.pkl"
+    - "creative_phrases.pkl"
+
+  # Assembly strategy
+  assembly_method: "weighted" # weighted, greedy, beam_search
+  coherence_weight: 0.3 # Weight for coherence scoring
+  relevance_weight: 0.7 # Weight for relevance scoring
+
+# ═══════════════════════════════════════════════════════════════
+# GENERATIVE DECODER SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+generative:
+  enabled: true
+
+  # Model architecture
+  model_size: "medium" # small (~1M), medium (~2M)
+  vocab_size: 32000 # Vocabulary size
+  hidden_size: 1024 # Hidden layer dimension
+  num_layers: 4 # Number of transformer layers
+  num_heads: 8 # Attention heads
+  dropout: 0.1 # Dropout probability
+
+  # Generation parameters
+  temperature: 0.8 # Sampling temperature
+  top_k: 50 # Top-k sampling
+  top_p: 0.9 # Nucleus sampling
+  repetition_penalty: 1.1 # Repetition penalty
+  length_penalty: 1.0 # Length penalty
+
+  # Training configuration
+  learning_rate: 5e-4 # Learning rate
+  weight_decay: 0.01 # Weight decay
+  warmup_steps: 1000 # Warmup steps
+  max_gradient_norm: 1.0 # Gradient clipping
+
+  # Optimization
+  use_flash_attention: false # Flash attention (if available)
+  gradient_checkpointing: true # Memory optimization
+  mixed_precision: true # FP16 training
+
+  # Model paths
+  model_save_path: "checkpoints/generative_decoder/"
+  pretrained_path: null # Path to pretrained model
+  checkpoint_interval: 1000 # Save every N steps
+
+# ═══════════════════════════════════════════════════════════════
+# HYBRID DECODER SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+hybrid:
+  enabled: true
+
+  # Decision logic
+  phrase_threshold: 0.8 # When to prefer phrase bank
+  generation_threshold: 0.6 # When to prefer generation
+  confidence_weighting: true # Combine confidence scores
+
+  # Fallback strategy
+  fallback_strategy: "phrase" # phrase, generative, both
+  fallback_on_failure: true # Enable fallback on errors
+  max_fallback_attempts: 3 # Maximum fallback attempts
+
+  # Quality optimization
+  quality_scoring_enabled: true # Enable quality assessment
+  prefer_higher_quality: true # Choose based on quality
+  quality_weight: 0.4 # Weight for quality in decision
+  speed_weight: 0.3 # Weight for speed in decision
+  accuracy_weight: 0.3 # Weight for accuracy in decision
+
+  # Combination strategies
+  combination_method: "weighted_average" # weighted_average, best_only, ensemble
+  ensemble_voting: "soft" # soft, hard
+  confidence_threshold: 0.75 # Minimum confidence for routing
+
+# ═══════════════════════════════════════════════════════════════
+# EVALUATION SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+evaluation:
+  enabled: true
+
+  # Metrics to calculate
+  calculate_bleu: true # BLEU score
+  calculate_rouge: true # ROUGE scores
+  calculate_bert_score: true # BERTScore semantic similarity
+  calculate_semantic_similarity: true # Custom semantic similarity
+  calculate_coherence: true # Text coherence
+  calculate_diversity: true # Output diversity
+
+  # Evaluation data
+  reference_corpus: "data/test/references.txt"
+  evaluation_dataset: "data/test/evaluation_set.jsonl"
+  max_evaluation_samples: 1000 # Limit for large datasets
+
+  # Quality thresholds
+  target_bleu_score: 0.4 # Target BLEU score
+  target_rouge_score: 0.3 # Target ROUGE score
+  target_semantic_similarity: 0.8 # Target semantic similarity
+  target_coherence_score: 0.7 # Target coherence
+
+  # Performance monitoring
+  log_metrics: true # Log all metrics
+  save_detailed_results: true # Save detailed evaluation results
+  evaluation_frequency: 100 # Evaluate every N samples
+
+# ═══════════════════════════════════════════════════════════════
+# INTEGRATION SETTINGS
+# ═══════════════════════════════════════════════════════════════
+
+integration:
+  # Module dependencies
+  module_1_integration: true # TeacherLLMEncoder integration
+  module_2_integration: true # EmbeddingProcessor integration
+
+  # Pipeline configuration
+  pipeline_mode: "sequential" # sequential, parallel
+  error_handling: "graceful" # strict, graceful, fallback
+
+  # API settings
+  api_timeout_seconds: 30 # API call timeout
+  max_retries: 3 # Maximum retry attempts
+  retry_delay_seconds: 1 # Delay between retries
+
+  # Monitoring
+  performance_monitoring: true # Monitor performance metrics
+  quality_monitoring: true # Monitor quality metrics
+  resource_monitoring: true # Monitor resource usage
+
+# ═══════════════════════════════════════════════════════════════
+# LOGGING AND DEBUGGING
+# ═══════════════════════════════════════════════════════════════
+
+logging:
+  level: "INFO" # DEBUG, INFO, WARNING, ERROR
+  log_to_file: true # Enable file logging
+  log_file_path: "logs/lightweight_decoder.log"
+  max_log_size_mb: 100 # Maximum log file size
+  backup_count: 5 # Number of backup log files
+
+  # Component-specific logging
+  phrase_bank_logging: true # Log phrase bank operations
+  generative_logging: true # Log generative operations
+  hybrid_logging: true # Log hybrid operations
+  evaluation_logging: true # Log evaluation metrics
+
+  # Debug settings
+  debug_mode: false # Enable debug mode
+  verbose_generation: false # Verbose generation logging
+  save_intermediate_results: false # Save intermediate processing results
+
+# ═══════════════════════════════════════════════════════════════
+# EXPERIMENTAL FEATURES
+# ═══════════════════════════════════════════════════════════════
+
+experimental:
+  enabled: false # Enable experimental features
+
+  # Advanced features (Phase 3+)
+  multi_modal_support: false # Support for multimodal inputs
+  reinforcement_learning: false # RL-based optimization
+  adaptive_thresholds: false # Adaptive threshold learning
+  context_awareness: false # Context-aware generation
+
+  # Research features
+  attention_visualization: false # Visualize attention patterns
+  embedding_analysis: false # Analyze embedding patterns
+  quality_prediction: false # Predict quality before generation
