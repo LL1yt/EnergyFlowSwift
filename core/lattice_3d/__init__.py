@@ -10,10 +10,12 @@ from .main import (
     LatticeConfig,
     Position3D,
     NeighborTopology,
+    IOPointPlacer,  # НОВОЕ
     
     # Енумы
     BoundaryCondition,
     Face,
+    PlacementStrategy,  # НОВОЕ
     
     # Функции загрузки и создания
     load_lattice_config,
@@ -31,10 +33,12 @@ __all__ = [
     'LatticeConfig', 
     'Position3D',
     'NeighborTopology',
+    'IOPointPlacer',  # НОВОЕ
     
     # Енумы
     'BoundaryCondition',
     'Face',
+    'PlacementStrategy',  # НОВОЕ
     
     # Функции
     'load_lattice_config',

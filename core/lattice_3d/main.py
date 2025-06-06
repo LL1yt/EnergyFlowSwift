@@ -49,9 +49,283 @@ class Face(Enum):
     BOTTOM = "bottom" # Y = 0
 
 
+class PlacementStrategy(Enum):
+    """Стратегии размещения точек ввода/вывода"""
+    PROPORTIONAL = "proportional"    # Пропорциональное автоматическое масштабирование
+    RANDOM = "random"               # Случайное размещение
+    CORNERS = "corners"             # Размещение в углах
+    CORNERS_CENTER = "corners_center"  # Углы + центр
+    FULL_FACE = "full_face"         # Полное покрытие грани (текущая реализация)
+
+
 # Типы для координат и размеров
 Coordinates3D = Tuple[int, int, int]
 Dimensions3D = Tuple[int, int, int]
+
+
+# =============================================================================
+# РАЗМЕЩЕНИЕ I/O ТОЧЕК
+# =============================================================================
+
+class IOPointPlacer:
+    """
+    Управление размещением точек ввода/вывода с автоматическим масштабированием.
+    
+    Реализует различные стратегии размещения I/O точек на гранях решетки,
+    включая биологически обоснованное пропорциональное масштабирование.
+    """
+    
+    def __init__(self, lattice_dimensions: Dimensions3D, strategy: PlacementStrategy, 
+                 config: Dict[str, Any], seed: int = 42):
+        """
+        Инициализация размещения I/O точек.
+        
+        Args:
+            lattice_dimensions: Размеры решетки (X, Y, Z)
+            strategy: Стратегия размещения точек
+            config: Конфигурация размещения
+            seed: Сид для воспроизводимости
+        """
+        self.dimensions = lattice_dimensions
+        self.strategy = strategy
+        self.config = config
+        self.seed = seed
+        
+        # Устанавливаем сид для воспроизводимости
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        
+        # Кэш для размещенных точек
+        self._input_points_cache = {}
+        self._output_points_cache = {}
+        
+    
+    def calculate_num_points(self, face_area: int) -> Tuple[int, int]:
+        """
+        Рассчитывает количество точек для пропорциональной стратегии.
+        
+        Args:
+            face_area: Площадь грани (количество клеток)
+            
+        Returns:
+            Tuple[int, int]: (минимальное_количество, максимальное_количество)
+        """
+        if self.strategy != PlacementStrategy.PROPORTIONAL:
+            raise ValueError("calculate_num_points только для PROPORTIONAL стратегии")
+            
+        coverage_config = self.config.get('coverage_ratio', {})
+        min_percentage = coverage_config.get('min_percentage', 7.8)
+        max_percentage = coverage_config.get('max_percentage', 15.6)
+        
+        # Рассчитываем количество точек
+        min_points_calc = max(1, int(face_area * min_percentage / 100))
+        max_points_calc = max(min_points_calc, int(face_area * max_percentage / 100))
+        
+        # Применяем абсолютные ограничения
+        limits_config = self.config.get('absolute_limits', {})
+        min_points_abs = limits_config.get('min_points', 1)
+        max_points_abs = limits_config.get('max_points', 0)  # 0 = без ограничений
+        
+        min_points = max(min_points_calc, min_points_abs)
+        max_points = max_points_calc
+        
+        if max_points_abs > 0:
+            max_points = min(max_points, max_points_abs)
+            
+        # ИСПРАВЛЕНИЕ: Убеждаемся, что min_points <= max_points
+        if min_points > max_points:
+            # Если min_points больше max_points, корректируем
+            if max_points_abs > 0:
+                # Если есть максимальное ограничение, используем его как min_points
+                min_points = max_points
+            else:
+                # Если нет максимального ограничения, увеличиваем max_points
+                max_points = min_points
+                
+        return min_points, max_points
+    
+    
+    def get_input_points(self, face: Face) -> List[Coordinates3D]:
+        """
+        Получает координаты точек ввода на указанной грани.
+        
+        Args:
+            face: Грань решетки для размещения точек ввода
+            
+        Returns:
+            List[Coordinates3D]: Список 3D координат точек ввода
+        """
+        # Проверяем кэш
+        cache_key = f"input_{face.value}"
+        if cache_key in self._input_points_cache:
+            return self._input_points_cache[cache_key]
+            
+        # Генерируем точки в зависимости от стратегии
+        if self.strategy == PlacementStrategy.PROPORTIONAL:
+            points = self._generate_proportional_points(face)
+        elif self.strategy == PlacementStrategy.FULL_FACE:
+            points = self._generate_full_face_points(face)
+        elif self.strategy == PlacementStrategy.RANDOM:
+            points = self._generate_random_points(face)
+        elif self.strategy == PlacementStrategy.CORNERS:
+            points = self._generate_corner_points(face)
+        elif self.strategy == PlacementStrategy.CORNERS_CENTER:
+            points = self._generate_corners_center_points(face)
+        else:
+            raise ValueError(f"Неподдерживаемая стратегия: {self.strategy}")
+            
+        # Кэшируем результат
+        self._input_points_cache[cache_key] = points
+        return points
+    
+    
+    def get_output_points(self, face: Face) -> List[Coordinates3D]:
+        """
+        Получает координаты точек вывода на указанной грани.
+        
+        Args:
+            face: Грань решетки для размещения точек вывода
+            
+        Returns:
+            List[Coordinates3D]: Список 3D координат точек вывода
+        """
+        # Проверяем кэш
+        cache_key = f"output_{face.value}"
+        if cache_key in self._output_points_cache:
+            return self._output_points_cache[cache_key]
+            
+        # Для вывода используем те же стратегии, что и для ввода
+        if self.strategy == PlacementStrategy.PROPORTIONAL:
+            points = self._generate_proportional_points(face)
+        elif self.strategy == PlacementStrategy.FULL_FACE:
+            points = self._generate_full_face_points(face)
+        elif self.strategy == PlacementStrategy.RANDOM:
+            points = self._generate_random_points(face)
+        elif self.strategy == PlacementStrategy.CORNERS:
+            points = self._generate_corner_points(face)
+        elif self.strategy == PlacementStrategy.CORNERS_CENTER:
+            points = self._generate_corners_center_points(face)
+        else:
+            raise ValueError(f"Неподдерживаемая стратегия: {self.strategy}")
+            
+        # Кэшируем результат
+        self._output_points_cache[cache_key] = points
+        return points
+    
+    
+    def _generate_proportional_points(self, face: Face) -> List[Coordinates3D]:
+        """Генерирует точки для пропорциональной стратегии."""
+        face_coords = self._get_face_coordinates(face)
+        face_area = len(face_coords)
+        
+        min_points, max_points = self.calculate_num_points(face_area)
+        
+        # Выбираем случайное количество точек в диапазоне
+        num_points = np.random.randint(min_points, max_points + 1)
+        
+        # Случайно выбираем точки из доступных координат
+        selected_indices = np.random.choice(len(face_coords), size=num_points, replace=False)
+        return [face_coords[i] for i in selected_indices]
+    
+    
+    def _generate_full_face_points(self, face: Face) -> List[Coordinates3D]:
+        """Генерирует точки для полного покрытия грани."""
+        return self._get_face_coordinates(face)
+    
+    
+    def _generate_random_points(self, face: Face) -> List[Coordinates3D]:
+        """Генерирует случайно размещенные точки."""
+        face_coords = self._get_face_coordinates(face)
+        # Используем 25% от площади грани для случайного размещения
+        num_points = max(1, len(face_coords) // 4)
+        selected_indices = np.random.choice(len(face_coords), size=num_points, replace=False)
+        return [face_coords[i] for i in selected_indices]
+    
+    
+    def _generate_corner_points(self, face: Face) -> List[Coordinates3D]:
+        """Генерирует точки в углах грани."""
+        face_coords = self._get_face_coordinates(face)
+        
+        # Находим угловые точки в зависимости от грани
+        if face in [Face.FRONT, Face.BACK]:
+            # Для граней Z - углы в плоскости XY
+            corners = [
+                (0, 0), (0, self.dimensions[1]-1),
+                (self.dimensions[0]-1, 0), (self.dimensions[0]-1, self.dimensions[1]-1)
+            ]
+            z_val = 0 if face == Face.FRONT else self.dimensions[2]-1
+            return [(x, y, z_val) for x, y in corners]
+        elif face in [Face.LEFT, Face.RIGHT]:
+            # Для граней X - углы в плоскости YZ
+            corners = [
+                (0, 0), (0, self.dimensions[2]-1),
+                (self.dimensions[1]-1, 0), (self.dimensions[1]-1, self.dimensions[2]-1)
+            ]
+            x_val = 0 if face == Face.LEFT else self.dimensions[0]-1
+            return [(x_val, y, z) for y, z in corners]
+        else:  # TOP, BOTTOM
+            # Для граней Y - углы в плоскости XZ
+            corners = [
+                (0, 0), (0, self.dimensions[2]-1),
+                (self.dimensions[0]-1, 0), (self.dimensions[0]-1, self.dimensions[2]-1)
+            ]
+            y_val = self.dimensions[1]-1 if face == Face.TOP else 0
+            return [(x, y_val, z) for x, z in corners]
+    
+    
+    def _generate_corners_center_points(self, face: Face) -> List[Coordinates3D]:
+        """Генерирует точки в углах и центре грани."""
+        corner_points = self._generate_corner_points(face)
+        center_point = self._get_face_center(face)
+        return corner_points + [center_point]
+    
+    
+    def _get_face_coordinates(self, face: Face) -> List[Coordinates3D]:
+        """Получает все координаты клеток на указанной грани."""
+        coords = []
+        
+        if face == Face.FRONT:  # Z = 0
+            for x in range(self.dimensions[0]):
+                for y in range(self.dimensions[1]):
+                    coords.append((x, y, 0))
+        elif face == Face.BACK:  # Z = max
+            for x in range(self.dimensions[0]):
+                for y in range(self.dimensions[1]):
+                    coords.append((x, y, self.dimensions[2]-1))
+        elif face == Face.LEFT:  # X = 0
+            for y in range(self.dimensions[1]):
+                for z in range(self.dimensions[2]):
+                    coords.append((0, y, z))
+        elif face == Face.RIGHT:  # X = max
+            for y in range(self.dimensions[1]):
+                for z in range(self.dimensions[2]):
+                    coords.append((self.dimensions[0]-1, y, z))
+        elif face == Face.TOP:  # Y = max
+            for x in range(self.dimensions[0]):
+                for z in range(self.dimensions[2]):
+                    coords.append((x, self.dimensions[1]-1, z))
+        elif face == Face.BOTTOM:  # Y = 0
+            for x in range(self.dimensions[0]):
+                for z in range(self.dimensions[2]):
+                    coords.append((x, 0, z))
+                    
+        return coords
+    
+    
+    def _get_face_center(self, face: Face) -> Coordinates3D:
+        """Получает координаты центра указанной грани."""
+        if face == Face.FRONT:
+            return (self.dimensions[0]//2, self.dimensions[1]//2, 0)
+        elif face == Face.BACK:
+            return (self.dimensions[0]//2, self.dimensions[1]//2, self.dimensions[2]-1)
+        elif face == Face.LEFT:
+            return (0, self.dimensions[1]//2, self.dimensions[2]//2)
+        elif face == Face.RIGHT:
+            return (self.dimensions[0]-1, self.dimensions[1]//2, self.dimensions[2]//2)
+        elif face == Face.TOP:
+            return (self.dimensions[0]//2, self.dimensions[1]-1, self.dimensions[2]//2)
+        elif face == Face.BOTTOM:
+            return (self.dimensions[0]//2, 0, self.dimensions[2]//2)
 
 
 # =============================================================================
@@ -90,6 +364,10 @@ class LatticeConfig:
     input_face: Face = Face.FRONT
     output_face: Face = Face.BACK
     embedding_mapping: str = "linear"
+    
+    # НОВОЕ: Стратегия размещения I/O точек
+    placement_strategy: PlacementStrategy = PlacementStrategy.PROPORTIONAL
+    io_strategy_config: Optional[Dict[str, Any]] = None
     
     # Диагностика
     enable_logging: bool = True
@@ -201,6 +479,24 @@ def load_lattice_config(config_path: Optional[str] = None) -> LatticeConfig:
                 'input_face': Face(io_data.get('input_face', 'front')),
                 'output_face': Face(io_data.get('output_face', 'back')),
                 'embedding_mapping': io_data.get('embedding_mapping', 'linear'),
+            })
+            
+        # НОВОЕ: Загрузка конфигурации I/O стратегии
+        if 'io_strategy' in lattice_data:
+            io_strategy_data = lattice_data['io_strategy']
+            config_params.update({
+                'placement_strategy': PlacementStrategy(io_strategy_data.get('placement_method', 'proportional')),
+                'io_strategy_config': io_strategy_data,
+            })
+        else:
+            # Значения по умолчанию
+            config_params.update({
+                'placement_strategy': PlacementStrategy.PROPORTIONAL,
+                'io_strategy_config': {
+                    'coverage_ratio': {'min_percentage': 7.8, 'max_percentage': 15.6},
+                    'absolute_limits': {'min_points': 5, 'max_points': 0},
+                    'seed': 42
+                },
             })
             
         if 'diagnostics' in lattice_data:
@@ -560,6 +856,14 @@ class Lattice3D(nn.Module):
         self.position_system = Position3D(config.dimensions)
         self.topology = NeighborTopology(config)
         
+        # НОВОЕ: Инициализация системы размещения I/O точек
+        self.io_placer = IOPointPlacer(
+            lattice_dimensions=config.dimensions,
+            strategy=config.placement_strategy,
+            config=config.io_strategy_config or {},
+            seed=config.io_strategy_config.get('seed', 42) if config.io_strategy_config else 42
+        )
+        
         # Создание прототипа клетки (один для всех позиций)
         self.cell_prototype = self._create_cell_prototype()
         
@@ -822,7 +1126,7 @@ class Lattice3D(nn.Module):
         
     def _get_external_input_for_cell(self, cell_idx: int, external_inputs: torch.Tensor) -> torch.Tensor:
         """
-        Получение внешнего входа для конкретной клетки.
+        Получение внешнего входа для конкретной клетки с использованием новой I/O стратегии.
         
         Args:
             cell_idx: Индекс клетки
@@ -831,16 +1135,23 @@ class Lattice3D(nn.Module):
         Returns:
             torch.Tensor: Внешний вход для клетки [1, input_size]
         """
-        # Проверяем, находится ли клетка на входной грани
-        input_face_indices = self._face_indices[self.config.input_face]
+        # НОВОЕ: Используем IOPointPlacer для определения точек ввода
+        input_points_3d = self.io_placer.get_input_points(self.config.input_face)
         
-        if cell_idx in input_face_indices:
-            # Находим позицию клетки в списке граней
-            face_position = input_face_indices.index(cell_idx)
+        # Конвертируем 3D координаты в линейные индексы
+        input_point_indices = []
+        for point_3d in input_points_3d:
+            linear_idx = self.position_system.to_linear_index(point_3d)
+            input_point_indices.append(linear_idx)
             
-            if face_position < external_inputs.shape[0]:
+        # Проверяем, находится ли текущая клетка среди точек ввода
+        if cell_idx in input_point_indices:
+            # Находим позицию клетки в списке точек ввода
+            input_position = input_point_indices.index(cell_idx)
+            
+            if input_position < external_inputs.shape[0]:
                 # Берем соответствующий внешний вход
-                ext_input = external_inputs[face_position].unsqueeze(0)  # [1, input_size]
+                ext_input = external_inputs[input_position].unsqueeze(0)  # [1, input_size]
                 
                 # Обрезаем или дополняем до нужного размера
                 target_size = self.cell_prototype.input_size
@@ -852,7 +1163,7 @@ class Lattice3D(nn.Module):
                     
                 return ext_input
         
-        # Если клетка не на входной грани или нет соответствующего входа
+        # Если клетка не является точкой ввода или нет соответствующего входа
         return torch.zeros(1, self.cell_prototype.input_size, device=self.config.device)
         
     def _update_performance_stats(self, step_time: float):
@@ -879,6 +1190,59 @@ class Lattice3D(nn.Module):
         """Получение состояний клеток на указанной грани"""
         face_indices = self._face_indices[face]
         return self._states[face_indices]
+        
+    def get_output_states(self) -> torch.Tensor:
+        """
+        НОВОЕ: Получение состояний только из выходных точек с использованием I/O стратегии.
+        
+        Returns:
+            torch.Tensor: Состояния клеток в выходных точках [num_output_points, state_size]
+        """
+        # Используем IOPointPlacer для определения точек вывода
+        output_points_3d = self.io_placer.get_output_points(self.config.output_face)
+        
+        # Конвертируем 3D координаты в линейные индексы
+        output_point_indices = []
+        for point_3d in output_points_3d:
+            linear_idx = self.position_system.to_linear_index(point_3d)
+            output_point_indices.append(linear_idx)
+            
+        # Возвращаем состояния только выходных точек
+        return self._states[output_point_indices]
+        
+    def get_io_point_info(self) -> Dict[str, Any]:
+        """
+        НОВОЕ: Получение информации о размещении I/O точек.
+        
+        Returns:
+            Dict[str, Any]: Информация о точках ввода/вывода
+        """
+        input_points_3d = self.io_placer.get_input_points(self.config.input_face)
+        output_points_3d = self.io_placer.get_output_points(self.config.output_face)
+        
+        # Подсчитываем площади граней
+        face_area_input = len(self.io_placer._get_face_coordinates(self.config.input_face))
+        face_area_output = len(self.io_placer._get_face_coordinates(self.config.output_face))
+        
+        return {
+            'strategy': self.config.placement_strategy.value,
+            'input_face': self.config.input_face.value,
+            'output_face': self.config.output_face.value,
+            'input_points': {
+                'count': len(input_points_3d),
+                'coordinates': input_points_3d,
+                'coverage_percentage': (len(input_points_3d) / face_area_input) * 100
+            },
+            'output_points': {
+                'count': len(output_points_3d),
+                'coordinates': output_points_3d,
+                'coverage_percentage': (len(output_points_3d) / face_area_output) * 100
+            },
+            'face_areas': {
+                'input': face_area_input,
+                'output': face_area_output
+            }
+        }
         
     def reset_states(self):
         """Сброс состояний к начальным значениям"""
@@ -980,10 +1344,12 @@ __all__ = [
     'LatticeConfig', 
     'Position3D',
     'NeighborTopology',
+    'IOPointPlacer',  # НОВОЕ
     
     # Енумы
     'BoundaryCondition',
     'Face',
+    'PlacementStrategy',  # НОВОЕ
     
     # Функции
     'load_lattice_config',
