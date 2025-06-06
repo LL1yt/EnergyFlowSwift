@@ -84,15 +84,14 @@ def create_io_visualizer(config_path: str = None) -> 'IOPointVisualizer':
     return IOPointVisualizer(config)
 
 
-def quick_visualize_lattice(lattice, title: str = "3D Neural Network", 
-                           show_io_points: bool = True) -> 'go.Figure':
+def quick_visualize_lattice(lattice, config=None, title: str = None) -> 'go.Figure':
     """
     Быстрая визуализация решетки с настройками по умолчанию.
     
     Args:
         lattice: Объект решетки для визуализации
-        title: Заголовок визуализации
-        show_io_points: Показывать ли I/O точки
+        config: Объект конфигурации (опционально)
+        title: Заголовок визуализации (переопределяет config.title)
         
     Returns:
         go.Figure: Plotly фигура для отображения
@@ -100,20 +99,26 @@ def quick_visualize_lattice(lattice, title: str = "3D Neural Network",
     if not _VISUALIZERS_AVAILABLE:
         raise ImportError("Visualizers are not available. Please check the installation.")
         
-    config = VisualizationConfig()
-    config.title = title
+    # Используем переданную конфигурацию или создаем новую
+    if config is None:
+        config = load_visualization_config()
+    
+    # Переопределяем заголовок если указан
+    if title is not None:
+        config.title = title
     
     visualizer = Lattice3DVisualizer(config)
     return visualizer.visualize_lattice(lattice)
 
 
-def quick_visualize_io_strategy(io_placer, face=None) -> 'go.Figure':
+def quick_visualize_io_strategy(io_placer, face=None, config=None) -> 'go.Figure':
     """
     Быстрая визуализация стратегии размещения I/O точек.
     
     Args:
         io_placer: Объект размещения I/O точек
         face: Грань для визуализации (по умолчанию FRONT)
+        config: Объект конфигурации (опционально)
         
     Returns:
         go.Figure: Plotly фигура для отображения
@@ -124,8 +129,11 @@ def quick_visualize_io_strategy(io_placer, face=None) -> 'go.Figure':
     from core.lattice_3d import Face
     if face is None:
         face = Face.FRONT
+    
+    # Используем переданную конфигурацию или создаем новую
+    if config is None:
+        config = load_visualization_config()
         
-    config = VisualizationConfig()
     visualizer = IOPointVisualizer(config)
     return visualizer.visualize_io_strategy(io_placer, face)
 
