@@ -1,0 +1,198 @@
+# Конфигурация модуля Data Visualization
+# Настройки для 3D визуализации клеточной нейронной сети
+
+data_visualization:
+  # Основные настройки визуализации
+  display:
+    title: "3D Cellular Neural Network Visualization"
+    width: 1200
+    height: 800
+    background_color: "#f8f9fa"
+    show_grid: true
+    grid_opacity: 0.3
+
+  # 3D рендеринг
+  renderer:
+    engine: "plotly" # plotly, matplotlib, mayavi
+    quality: "high" # low, medium, high
+    anti_aliasing: true
+    max_fps: 60
+
+  # Визуализация решетки
+  lattice:
+    # Клетки решетки
+    cell_size: 0.8
+    cell_opacity: 0.7
+    cell_colors:
+      inactive: "#e9ecef"
+      active_low: "#28a745"
+      active_medium: "#ffc107"
+      active_high: "#dc3545"
+
+    # Пороги активации для цветовой схемы
+    activation_thresholds:
+      low: 0.1
+      medium: 0.5
+      high: 0.8
+
+    # Связи между клетками
+    show_connections: false
+    connection_opacity: 0.2
+    connection_width: 1.0
+
+  # Визуализация I/O точек
+  io_points:
+    # Точки ввода
+    input_points:
+      size: 1.5
+      color: "#007bff"
+      opacity: 0.9
+      glow_effect: true
+      label_size: 12
+
+    # Точки вывода
+    output_points:
+      size: 1.5
+      color: "#28a745"
+      opacity: 0.9
+      glow_effect: true
+      label_size: 12
+
+    # Стрелки направления
+    show_flow_arrows: true
+    arrow_size: 0.3
+    arrow_color: "#6c757d"
+
+  # Анимация распространения сигналов
+  animation:
+    enable: true
+    speed: 1.0 # Множитель скорости
+    trail_length: 5 # Длина следа сигнала
+    trail_opacity: 0.5
+    wave_color: "#17a2b8"
+    wave_opacity: 0.6
+
+    # Пульсация активных клеток
+    pulse_active_cells: true
+    pulse_speed: 2.0
+    pulse_scale: 1.2
+
+  # Интерактивность
+  interaction:
+    enable_zoom: true
+    enable_pan: true
+    enable_rotate: true
+    enable_hover: true
+    hover_info: ["position", "activation", "neighbors"]
+
+    # Клики по клеткам
+    clickable_cells: true
+    show_cell_details: true
+
+  # Панель управления
+  controls:
+    show_toolbar: true
+    show_play_pause: true
+    show_speed_control: true
+    show_layer_selector: true
+    show_color_scale: true
+    show_statistics: true
+
+  # Экспорт результатов
+  export:
+    supported_formats: ["png", "svg", "html", "mp4", "gif"]
+    default_format: "png"
+    resolution: [1920, 1080]
+    quality: 90
+
+    # Видео экспорт
+    video_fps: 24
+    video_duration: 10 # секунд
+    video_codec: "h264"
+
+  # Производительность
+  performance:
+    max_lattice_size: [50, 50, 50] # Максимальный размер для отображения
+    level_of_detail: true # Упрощение для больших решеток
+    adaptive_quality: true # Автоматическое снижение качества
+    render_threads: 4
+
+    # Буферизация
+    buffer_frames: true
+    max_buffer_size: 100 # кадров
+
+  # Дашборд с метриками
+  dashboard:
+    enable: true
+    update_interval: 100 # миллисекунд
+
+    # Отображаемые метрики
+    metrics:
+      - "total_activation"
+      - "convergence_rate"
+      - "signal_propagation_speed"
+      - "io_utilization"
+      - "memory_usage"
+      - "computation_time"
+
+    # Графики
+    plots:
+      activation_history: true
+      convergence_plot: true
+      io_flow_diagram: true
+      performance_stats: true
+
+# Предустановленные темы
+themes:
+  dark:
+    background_color: "#2c3e50"
+    cell_colors:
+      inactive: "#34495e"
+      active_low: "#2ecc71"
+      active_medium: "#f39c12"
+      active_high: "#e74c3c"
+    text_color: "#ecf0f1"
+
+  light:
+    background_color: "#ffffff"
+    cell_colors:
+      inactive: "#f8f9fa"
+      active_low: "#28a745"
+      active_medium: "#ffc107"
+      active_high: "#dc3545"
+    text_color: "#212529"
+
+  neon:
+    background_color: "#0a0a0a"
+    cell_colors:
+      inactive: "#1a1a1a"
+      active_low: "#00ff41"
+      active_medium: "#ffff00"
+      active_high: "#ff0080"
+    text_color: "#00ff41"
+
+# Тестовые конфигурации
+test_configs:
+  minimal:
+    lattice:
+      cell_size: 1.0
+      show_connections: false
+    animation:
+      enable: false
+    controls:
+      show_toolbar: false
+
+  performance_test:
+    performance:
+      max_lattice_size: [100, 100, 100]
+      level_of_detail: true
+      adaptive_quality: true
+    animation:
+      enable: true
+      speed: 2.0
+
+  export_test:
+    export:
+      supported_formats: ["png", "mp4"]
+      resolution: [800, 600]
+      video_fps: 30

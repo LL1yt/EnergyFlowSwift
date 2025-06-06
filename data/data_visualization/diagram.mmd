@@ -1,0 +1,130 @@
+graph TB
+    subgraph "data_visualization Module"
+        subgraph "Configuration Layer"
+            CONFIG["config/default.yaml<br/>📄 Visualization Settings"]
+            THEMES["Built-in Themes<br/>🎨 dark/light/neon"]
+        end
+        
+        subgraph "Core Classes"
+            VIS_CONFIG["VisualizationConfig<br/>⚙️ Dataclass Configuration"]
+            L3D_VIS["Lattice3DVisualizer<br/>🧊 Main 3D Visualizer"]
+            IO_VIS["IOPointVisualizer<br/>📍 I/O Points Visualizer"]
+        end
+        
+        subgraph "Enums & Types"
+            RENDER_ENGINE["RenderEngine<br/>🔧 PLOTLY/MATPLOTLIB"]
+            VIS_MODE["VisualizationMode<br/>📊 STATIC/ANIMATED/INTERACTIVE"]
+            EXPORT_FORMAT["ExportFormat<br/>💾 PNG/SVG/HTML/MP4/GIF"]
+            COORDS_3D["Coordinates3D<br/>📐 Tuple[int,int,int]"]
+        end
+        
+        subgraph "API Functions" 
+            LOAD_CONFIG["load_visualization_config()<br/>📋 Config Loader"]
+            CREATE_VIS["create_visualizer()<br/>🏗️ Factory Function"]
+            CREATE_IO_VIS["create_io_visualizer()<br/>🏗️ IO Factory"]
+            QUICK_LATTICE["quick_visualize_lattice()<br/>⚡ Quick 3D View"]
+            QUICK_IO["quick_visualize_io_strategy()<br/>⚡ Quick I/O View"]
+        end
+    end
+    
+    subgraph "External Dependencies"
+        PLOTLY["plotly.graph_objects<br/>📈 Main Render Engine"]
+        PLOTLY_SUB["plotly.subplots<br/>📊 Multi-plot Support"]
+        TORCH["torch<br/>🔥 Tensor Operations"]
+        NUMPY["numpy<br/>🔢 Numerical Computing"]
+    end
+    
+    subgraph "Core Integration"
+        LATTICE_3D["core/lattice_3d<br/>🧊 Lattice3D Class"]
+        IO_PLACER["core/lattice_3d<br/>📍 IOPointPlacer"]
+        SIGNAL_PROP["core/signal_propagation<br/>📡 SignalPropagator"]
+        CONFIG_MGR["utils/config_manager<br/>⚙️ ConfigManager"]
+    end
+    
+    subgraph "Data Integration"
+        EMBED_LOADER["data/embedding_loader<br/>🔤 EmbeddingLoader"]
+        TOKENIZER["data/tokenizer<br/>🔤 Tokenizer"]
+    end
+    
+    subgraph "Output Formats"
+        INTERACTIVE["Interactive HTML<br/>🌐 Browser View"]
+        STATIC_IMG["Static Images<br/>🖼️ PNG/SVG Export"]
+        ANIMATION["Animated GIF/MP4<br/>🎬 Video Export"]
+        JUPYTER["Jupyter Integration<br/>📓 Notebook Widgets"]
+    end
+    
+    %% Configuration Flow
+    CONFIG --> VIS_CONFIG
+    THEMES --> VIS_CONFIG
+    LOAD_CONFIG --> VIS_CONFIG
+    
+    %% Core Class Relationships
+    VIS_CONFIG --> L3D_VIS
+    VIS_CONFIG --> IO_VIS
+    RENDER_ENGINE --> L3D_VIS
+    VIS_MODE --> L3D_VIS
+    EXPORT_FORMAT --> L3D_VIS
+    COORDS_3D --> L3D_VIS
+    COORDS_3D --> IO_VIS
+    
+    %% API Functions
+    CREATE_VIS --> L3D_VIS
+    CREATE_IO_VIS --> IO_VIS
+    QUICK_LATTICE --> L3D_VIS
+    QUICK_IO --> IO_VIS
+    
+    %% External Dependencies
+    PLOTLY --> L3D_VIS
+    PLOTLY --> IO_VIS
+    PLOTLY_SUB --> IO_VIS
+    TORCH --> L3D_VIS
+    NUMPY --> L3D_VIS
+    NUMPY --> IO_VIS
+    
+    %% Core Integration
+    LATTICE_3D --> L3D_VIS
+    LATTICE_3D --> QUICK_LATTICE
+    IO_PLACER --> IO_VIS
+    IO_PLACER --> QUICK_IO
+    SIGNAL_PROP --> L3D_VIS
+    CONFIG_MGR --> LOAD_CONFIG
+    
+    %% Data Integration (Future)
+    EMBED_LOADER -.-> L3D_VIS
+    TOKENIZER -.-> L3D_VIS
+    
+    %% Output Generation
+    L3D_VIS --> INTERACTIVE
+    L3D_VIS --> STATIC_IMG
+    L3D_VIS --> ANIMATION
+    L3D_VIS --> JUPYTER
+    IO_VIS --> INTERACTIVE
+    IO_VIS --> STATIC_IMG
+    
+    %% Performance & Optimization
+    subgraph "Performance Features"
+        LOD["Level of Detail<br/>⚡ Adaptive Quality"]
+        CACHE["Mesh/Color Caching<br/>💾 Performance Cache"]
+        METRICS["Render Metrics<br/>📊 Performance Stats"]
+        MAX_SIZE["Size Limits<br/>⚠️ 50×50×50 Max"]
+    end
+    
+    L3D_VIS --> LOD
+    L3D_VIS --> CACHE  
+    L3D_VIS --> METRICS
+    L3D_VIS --> MAX_SIZE
+    
+    %% Styling
+    classDef configClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef coreClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef apiClass fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef externClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef outputClass fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef perfClass fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    
+    class CONFIG,THEMES,VIS_CONFIG,LOAD_CONFIG configClass
+    class L3D_VIS,IO_VIS,RENDER_ENGINE,VIS_MODE,EXPORT_FORMAT,COORDS_3D coreClass
+    class CREATE_VIS,CREATE_IO_VIS,QUICK_LATTICE,QUICK_IO apiClass
+    class PLOTLY,PLOTLY_SUB,TORCH,NUMPY,LATTICE_3D,IO_PLACER,SIGNAL_PROP,CONFIG_MGR externClass
+    class INTERACTIVE,STATIC_IMG,ANIMATION,JUPYTER outputClass
+    class LOD,CACHE,METRICS,MAX_SIZE perfClass 
