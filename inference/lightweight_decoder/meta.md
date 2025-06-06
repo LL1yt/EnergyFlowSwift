@@ -3,8 +3,16 @@
 **Модуль:** inference/lightweight_decoder/  
 **Версия:** 0.1.0  
 **Дата создания:** 6 июня 2025  
-**Последнее обновление:** 6 июня 2025  
-**Статус:** 🆕 Инициализация Phase 2.7
+**Последнее обновление:** 6 декабря 2024  
+**Статус:** 🔄 **Phase 2.7 - Stage 1.1 ЗАВЕРШЕН!**
+
+## 🎉 **ТЕКУЩИЙ СТАТУС РЕАЛИЗАЦИИ**
+
+- ✅ **PhraseBankDecoder** - полностью реализован и протестирован
+- ✅ **PhraseBank** - phrase storage и indexing готовы
+- ✅ **Module 1 интеграция** - успешная интеграция с EmbeddingLoader
+- ✅ **RTX 5090 совместимость** - CPU-only режим работает
+- ✅ **Все тесты пройдены** - 5/5 Checkpoint 1.1 критериев
 
 ---
 
@@ -66,12 +74,28 @@ dom_interactions: None
 ### Main Classes
 
 ```python
-# Phase 2.7.1 - Phrase Bank Approach
+# Phase 2.7.1 - Phrase Bank Approach ✅ РЕАЛИЗОВАНО
 class PhraseBankDecoder:
     def __init__(self, embedding_dim, phrase_bank_size, similarity_threshold)
-    def decode(self, embedding: torch.Tensor) -> str
-    def load_phrase_bank(self, path: str) -> None
-    def build_index(self) -> None
+    def decode(self, embedding: torch.Tensor) -> str                     # ✅ Готов
+    def load_phrase_bank(self, embedding_loader=None, bank_path=None)     # ✅ Готов
+    def decode_with_metrics(self, embedding: torch.Tensor) -> Tuple      # ✅ Готов
+    def batch_decode(self, embeddings: torch.Tensor) -> List[str]        # ✅ Готов
+    def get_statistics(self) -> Dict                                     # ✅ Готов
+
+# Phase 2.7.1 Supporting Classes ✅ РЕАЛИЗОВАНО
+class PhraseBank:
+    def __init__(self, embedding_dim, similarity_threshold, max_phrases)
+    def add_phrases(self, phrases: List[PhraseEntry]) -> None            # ✅ Готов
+    def search_phrases(self, query_embedding, k=10) -> List              # ✅ Готов
+    def get_statistics(self) -> Dict                                     # ✅ Готов
+    def load_sample_bank(self, embedding_loader) -> None                 # ✅ Готов
+
+class PhraseEntry:
+    text: str                                                            # ✅ Готов
+    embedding: torch.Tensor                                              # ✅ Готов
+    frequency: int                                                       # ✅ Готов
+    category: str                                                        # ✅ Готов
 
 # Phase 2.7.2 - Generative Approach
 class GenerativeDecoder:

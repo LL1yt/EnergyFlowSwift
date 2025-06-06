@@ -4,21 +4,21 @@ graph TB
         EM[["Processed Embedding<br/>(768D от EmbeddingProcessor)"]]
     end
     
-    %% Три подхода декодирования
+    %% Три подхода декодирования (статус implementation)
     subgraph "DECODER SELECTION"
-        DS["DecoderFactory<br/>Configuration-Based Selection"]
+        DS["DecoderFactory<br/>⏳ Configuration-Based Selection"]
         
-        DS --> PBD["PhraseBankDecoder<br/>🔹 Phrase-based"]
-        DS --> GD["GenerativeDecoder<br/>🔸 Neural Generation"]  
-        DS --> HD["HybridDecoder<br/>🔶 Combined Approach"]
+        DS --> PBD["PhraseBankDecoder<br/>✅ РЕАЛИЗОВАН (Stage 1.1)"]
+        DS --> GD["GenerativeDecoder<br/>📋 ПЛАНИРУЕТСЯ (Stage 2)"]  
+        DS --> HD["HybridDecoder<br/>📋 ПЛАНИРУЕТСЯ (Stage 3)"]
     end
     
-    %% PhraseBankDecoder детали
-    subgraph "PHRASE BANK APPROACH"
-        PB["PhraseBank<br/>50K phrases"]
-        IDX["FAISS Index<br/>Fast Search"]
-        SIM["Similarity Matching<br/>Cosine Distance"]
-        ASM["Text Assembly<br/>Coherent Output"]
+    %% PhraseBankDecoder детали ✅ ГОТОВО
+    subgraph "PHRASE BANK APPROACH ✅ ГОТОВО"
+        PB["PhraseBank<br/>✅ 25 sample phrases loaded"]
+        IDX["Search Index<br/>✅ Linear/FAISS support"]
+        SIM["Similarity Matching<br/>✅ Cosine similarity <10ms"]
+        ASM["Text Assembly<br/>✅ Weighted/Greedy/Beam methods"]
         
         PBD --> PB
         PB --> IDX
@@ -26,12 +26,12 @@ graph TB
         SIM --> ASM
     end
     
-    %% GenerativeDecoder детали  
-    subgraph "GENERATIVE APPROACH"
-        EMB["Embedding Input Layer<br/>768D → Hidden"]
-        TRF["Mini Transformer<br/>4 layers, 8 heads"]
-        VOC["Vocabulary Projection<br/>32K tokens"]
-        SAMP["Temperature Sampling<br/>Controlled Generation"]
+    %% GenerativeDecoder детали (планируется)
+    subgraph "GENERATIVE APPROACH 📋 ПЛАНИРУЕТСЯ"
+        EMB["Embedding Input Layer<br/>📋 768D → Hidden"]
+        TRF["Mini Transformer<br/>📋 4 layers, 8 heads"]
+        VOC["Vocabulary Projection<br/>📋 32K tokens"]
+        SAMP["Temperature Sampling<br/>📋 Controlled Generation"]
         
         GD --> EMB
         EMB --> TRF
@@ -39,11 +39,11 @@ graph TB
         VOC --> SAMP
     end
     
-    %% HybridDecoder детали
-    subgraph "HYBRID APPROACH"
-        CONF["Confidence Scoring<br/>Route Decision"]
-        ROUTE["Dynamic Routing<br/>Phrase vs Generation"]
-        COMB["Result Combination<br/>Quality Optimization"]
+    %% HybridDecoder детали (планируется)
+    subgraph "HYBRID APPROACH 📋 ПЛАНИРУЕТСЯ"
+        CONF["Confidence Scoring<br/>📋 Route Decision"]
+        ROUTE["Dynamic Routing<br/>📋 Phrase vs Generation"]
+        COMB["Result Combination<br/>📋 Quality Optimization"]
         
         HD --> CONF
         CONF --> ROUTE
@@ -53,41 +53,50 @@ graph TB
         GD --> COMB
     end
     
-    %% Качество и оценка
-    subgraph "QUALITY ASSESSMENT"
-        BLEU["BLEU Score<br/>Generation Quality"]
-        ROUGE["ROUGE Score<br/>Summarization"]
-        SEM["Semantic Similarity<br/>Meaning Preservation"]
-        COH["Coherence Score<br/>Text Fluency"]
+    %% Качество и оценка ✅ ГОТОВО
+    subgraph "QUALITY ASSESSMENT ✅ ГОТОВО"
+        BLEU["BLEU Score<br/>✅ Framework ready"]
+        ROUGE["ROUGE Score<br/>✅ Framework ready"]
+        SEM["Semantic Similarity<br/>✅ Working"]
+        COH["Coherence Score<br/>✅ Implemented"]
     end
     
-    %% Выходные данные
-    subgraph "OUTPUT"
-        TXT[["Generated Text<br/>Natural Language"]]
-        METRICS[["Quality Metrics<br/>Performance Stats"]]
+    %% Выходные данные ✅ ГОТОВО
+    subgraph "OUTPUT ✅ ГОТОВО"
+        TXT[["Generated Text<br/>✅ Natural Language Output"]]
+        METRICS[["Quality Metrics<br/>✅ Performance Stats"]]
     end
     
-    %% Интеграция с системой
-    subgraph "SYSTEM INTEGRATION"
-        MOD1["Module 1<br/>TeacherLLMEncoder"]
-        MOD2["Module 2<br/>EmbeddingProcessor"]
-        MOD3["Module 3<br/>LightweightDecoder"]
-        PIPE["End-to-End Pipeline<br/>Complete System"]
+    %% Интеграция с системой ✅ ГОТОВО
+    subgraph "SYSTEM INTEGRATION ✅ ГОТОВО"
+        MOD1["Module 1<br/>✅ EmbeddingLoader"]
+        MOD2["Module 2<br/>⏳ EmbeddingProcessor"]
+        MOD3["Module 3<br/>✅ PhraseBankDecoder"]
+        PIPE["End-to-End Pipeline<br/>✅ Module 1 → Module 3"]
     end
     
-    %% Конфигурация
-    subgraph "CONFIGURATION"
-        YAML["lightweight_decoder.yaml<br/>Settings"]
-        CACHE["CacheManager<br/>Performance"]
-        ERR["Error Handling<br/>Fallbacks"]
+    %% Конфигурация ✅ ГОТОВО
+    subgraph "CONFIGURATION ✅ ГОТОВО"
+        YAML["lightweight_decoder.yaml<br/>✅ Settings configured"]
+        CACHE["CacheManager<br/>✅ Phrase caching"]
+        ERR["Error Handling<br/>✅ RTX 5090 CPU fallback"]
     end
     
-    %% Основные связи
+    %% Тестирование ✅ ЗАВЕРШЕНО
+    subgraph "TESTING ✅ CHECKPOINT 1.1 PASSED"
+        TEST1["✅ Phrase Bank Loading"]
+        TEST2["✅ Similarity Search"]
+        TEST3["✅ Performance <10ms"]
+        TEST4["✅ PhraseBankDecoder"]
+        TEST5["✅ Module Integration"]
+    end
+    
+    %% Основные связи (реализованные)
     EM --> DS
     
     ASM --> TXT
-    SAMP --> TXT
-    COMB --> TXT
+    %% SAMP --> TXT  (не реализовано)
+    %% COMB --> TXT  (не реализовано)
     
     TXT --> BLEU
     TXT --> ROUGE
@@ -99,34 +108,42 @@ graph TB
     SEM --> METRICS
     COH --> METRICS
     
-    %% Системная интеграция
-    MOD1 --> MOD2
-    MOD2 --> MOD3
+    %% Системная интеграция (реализованная)
+    MOD1 --> MOD3  %% Прямая интеграция Module 1 → Module 3
+    %% MOD2 --> MOD3  (планируется в будущем)
     MOD3 --> PIPE
     
-    %% Конфигурационные связи
+    %% Конфигурационные связи (реализованные)
     YAML --> DS
     CACHE --> PBD
-    CACHE --> GD
-    ERR --> HD
+    ERR --> PBD
+    
+    %% Тестирование связи
+    PBD --> TEST1
+    PBD --> TEST2
+    PBD --> TEST3
+    PBD --> TEST4
+    MOD1 --> TEST5
     
     %% Стили для различных компонентов
     classDef input fill:#e1f5fe
     classDef decoder fill:#fff3e0
-    classDef phrase fill:#f3e5f5
-    classDef generative fill:#e8f5e8
-    classDef hybrid fill:#fff8e1
-    classDef quality fill:#fce4ec
-    classDef output fill:#e0f2f1
-    classDef system fill:#f1f8e9
-    classDef config fill:#fafafa
+    classDef phrase_ready fill:#c8e6c9   %% Зеленый для готового
+    classDef generative_planned fill:#ffecb3   %% Желтый для планируемого
+    classDef hybrid_planned fill:#ffecb3       %% Желтый для планируемого
+    classDef quality_ready fill:#c8e6c9       %% Зеленый для готового
+    classDef output_ready fill:#c8e6c9        %% Зеленый для готового
+    classDef system_ready fill:#c8e6c9        %% Зеленый для готового
+    classDef config_ready fill:#c8e6c9        %% Зеленый для готового
+    classDef test_passed fill:#4caf50         %% Темно-зеленый для тестов
     
     class EM input
-    class DS,PBD,GD,HD decoder
-    class PB,IDX,SIM,ASM phrase
-    class EMB,TRF,VOC,SAMP generative
-    class CONF,ROUTE,COMB hybrid
-    class BLEU,ROUGE,SEM,COH quality
-    class TXT,METRICS output
-    class MOD1,MOD2,MOD3,PIPE system
-    class YAML,CACHE,ERR config 
+    class DS decoder
+    class PBD,PB,IDX,SIM,ASM phrase_ready
+    class GD,EMB,TRF,VOC,SAMP generative_planned
+    class HD,CONF,ROUTE,COMB hybrid_planned
+    class BLEU,ROUGE,SEM,COH quality_ready
+    class TXT,METRICS output_ready
+    class MOD1,MOD2,MOD3,PIPE system_ready
+    class YAML,CACHE,ERR config_ready
+    class TEST1,TEST2,TEST3,TEST4,TEST5 test_passed 

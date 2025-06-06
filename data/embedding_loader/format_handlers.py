@@ -286,8 +286,9 @@ class LLMHandler(FormatHandler):
         self.model_name = model_name
         self.model = None
         self.tokenizer = None
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Initialized LLM handler for {model_name} on {self._device}")
+        # Принудительно используем CPU для RTX 5090 совместимости (PyTorch sm_120 limitation)
+        self._device = "cpu"
+        logger.info(f"Initialized LLM handler for {model_name} on {self._device} (forced CPU mode)")
     
     def load_model(self):
         """Ленивая загрузка LLM модели и токенайзера."""

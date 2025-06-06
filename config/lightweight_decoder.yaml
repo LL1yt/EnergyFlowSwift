@@ -18,7 +18,7 @@ lightweight_decoder:
 
   # Performance settings
   batch_size: 32 # Batch processing size
-  device: "auto" # auto, cpu, cuda
+  device: "cpu" # Принудительно CPU для RTX 5090 совместимости
   memory_limit_gb: 2 # Memory usage limit
 
   # Quality thresholds

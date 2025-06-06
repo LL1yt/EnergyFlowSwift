@@ -86,7 +86,7 @@ logging:
 
 # === НАСТРОЙКИ УСТРОЙСТВА ===
 device:
-  use_gpu: true # Использовать GPU если доступен
+  use_gpu: false # Принудительно отключаем GPU для RTX 5090 (PyTorch совместимость)
   gpu_device: "cuda:0" # Какой GPU использовать
   fallback_to_cpu: true # Переключиться на CPU если GPU недоступен
 

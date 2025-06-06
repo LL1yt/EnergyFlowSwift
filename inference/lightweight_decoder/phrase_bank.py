@@ -168,11 +168,22 @@ class PhraseLoader:
         
         phrase_entries = []
         
-        # Генерация эмбедингов для фраз
+        # Генерация эмбедингов для фраз батчами для эффективности
+        try:
+            # Получение всех эмбедингов сразу через правильный API
+            embeddings = embedding_loader.load_from_llm(
+                texts=sample_phrases,
+                model_key="distilbert",
+                use_cache=True
+            )
+        except Exception as e:
+            logging.error(f"Failed to generate embeddings: {e}")
+            return []
+        
+        # Создание phrase entries
         for i, phrase_text in enumerate(sample_phrases):
             try:
-                # Получение эмбединга через embedding_loader
-                embedding = embedding_loader.encode_text(phrase_text)
+                embedding = embeddings[i]
                 
                 # Определение категории
                 if "machine learning" in phrase_text.lower() or "neural" in phrase_text.lower():
