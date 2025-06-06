@@ -1,0 +1,95 @@
+graph TB
+    subgraph "🔵 EmbeddingProcessor Module"
+        subgraph "📋 Configuration Layer"
+            CONFIG["EmbeddingConfig<br/>📝 Конфигурация процессора"]
+            MODE["ProcessingMode<br/>🎯 AUTOENCODER/GENERATOR/DIALOGUE"]
+            FACTORY["Config Factories<br/>🏭 create_*_config()"]
+        end
+        
+        subgraph "🧠 Core Processing Layer"
+            PROCESSOR["EmbeddingProcessor<br/>⚡ Главный процессор"]
+            RESHAPER["EmbeddingReshaper<br/>🔄 1D↔3D конвертация"]
+            LATTICE["Lattice3D<br/>🎲 3D решетка обработки"]
+        end
+        
+        subgraph "📊 Metrics & Monitoring"
+            METRICS["ProcessingMetrics<br/>📈 Сбор метрик"]
+            UTILS["Validation Utils<br/>✅ Валидация и тестирование"]
+            BENCHMARK["Benchmark Utils<br/>⏱️ Производительность"]
+        end
+    end
+    
+    subgraph "🔴 External: Teacher LLM Encoder"
+        INPUT_TEXT["Input Text<br/>💬 Входной текст"]
+        INPUT_EMB["Input Embedding<br/>📊 768D вектор"]
+    end
+    
+    subgraph "🟡 External: Lightweight Decoder"
+        OUTPUT_EMB["Output Embedding<br/>📊 768D вектор"]
+        OUTPUT_TEXT["Output Text<br/>💬 Выходной текст"]
+    end
+    
+    %% Основной поток данных
+    INPUT_TEXT --> INPUT_EMB
+    INPUT_EMB --> PROCESSOR
+    PROCESSOR --> OUTPUT_EMB
+    OUTPUT_EMB --> OUTPUT_TEXT
+    
+    %% Внутренняя обработка
+    PROCESSOR --> RESHAPER
+    RESHAPER --> LATTICE
+    LATTICE --> RESHAPER
+    RESHAPER --> PROCESSOR
+    
+    %% Конфигурация
+    CONFIG --> PROCESSOR
+    MODE --> CONFIG
+    FACTORY --> CONFIG
+    
+    %% Метрики
+    PROCESSOR --> METRICS
+    METRICS --> UTILS
+    UTILS --> BENCHMARK
+    
+    %% Детальный поток 1D→3D→1D
+    subgraph "🔄 Transformation Pipeline"
+        EMB_1D["768D Vector<br/>📊 Входной эмбединг"]
+        MATRIX_3D["8×8×8 Matrix<br/>🎲 3D представление"]
+        PROCESSED_3D["8×8×8 Processed<br/>⚡ Обработанная матрица"]
+        EMB_OUT["768D Vector<br/>📊 Выходной эмбединг"]
+    end
+    
+    EMB_1D --> MATRIX_3D
+    MATRIX_3D --> PROCESSED_3D
+    PROCESSED_3D --> EMB_OUT
+    
+    %% Три режима обработки
+    subgraph "🎯 Processing Modes"
+        AUTO["AUTOENCODER<br/>🔄 Similarity: 0.999"]
+        GEN["GENERATOR<br/>🎲 Semantic Generation"]
+        DIAL["DIALOGUE<br/>💬 Context Responses"]
+    end
+    
+    MODE --> AUTO
+    MODE --> GEN
+    MODE --> DIAL
+    
+    %% Критические пути
+    PROCESSOR -.->|"CRITICAL PATH"| RESHAPER
+    RESHAPER -.->|"CRITICAL PATH"| LATTICE
+    LATTICE -.->|"CRITICAL PATH"| METRICS
+    
+    %% Стили
+    classDef inputNode fill:#ffcccc
+    classDef coreNode fill:#ccddff
+    classDef outputNode fill:#ccffcc
+    classDef configNode fill:#ffffcc
+    classDef metricsNode fill:#ffccff
+    classDef criticalPath stroke:#ff0000,stroke-width:3px
+    
+    class INPUT_TEXT,INPUT_EMB inputNode
+    class PROCESSOR,RESHAPER,LATTICE coreNode
+    class OUTPUT_EMB,OUTPUT_TEXT outputNode
+    class CONFIG,MODE,FACTORY configNode
+    class METRICS,UTILS,BENCHMARK metricsNode
+    class PROCESSOR,RESHAPER,LATTICE,METRICS criticalPath 
