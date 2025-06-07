@@ -3,8 +3,27 @@
 **Модуль:** inference/lightweight_decoder/  
 **Phase:** 2.7  
 **Продолжительность:** 2-3 недели  
-**Статус:** 🎉 **ЭТАП 1 ПОЛНОСТЬЮ ЗАВЕРШЕН! Готов к GenerativeDecoder**  
-**Последнее обновление:** 6 декабря 2024 - **STAGE 1.3 PRODUCTION SUCCESS!**
+**Статус:** 🚀 **STAGE 1 ЗАВЕРШЕН + REVOLUTIONARY RESEARCH COMPLETE!**  
+**Последнее обновление:** 6 декабря 2024 - **READY FOR RET INTEGRATION**
+
+## 📋 **СВЯЗАННЫЕ ДОКУМЕНТЫ - КРИТИЧЕСКАЯ ИНФОРМАЦИЯ**
+
+### 🧠 **Архитектурные Исследования & Стратегии (НОВЫЕ ДОКУМЕНТЫ):**
+
+- **`../../GENERATIVE_DECODER_RESEARCH_SUMMARY.md`** - 🔬 Comprehensive research findings для GenerativeDecoder
+- **`../../ARCHITECTURE_RECOMMENDATIONS_ANALYSIS.md`** - 🏆 Analysis топ-3 революционных решений 2024
+- **`../../IMPLEMENTATION_STRATEGY_V3.md`** - 🚀 3-phase integration strategy (RET → Hybrid → Production)
+
+### 📊 **Проектные Планы:**
+
+- **`../../PROJECT_PLAN.md`** - General project overview & Phase 2.7 integration
+- **`plan.md`** - Этот файл (Stage 1-4 detailed implementation)
+- **`README.md`** - Production documentation & usage examples
+- **`meta.md`** - Technical specifications & API exports
+
+### 🎯 **Конфигурация:**
+
+- **`../../config/lightweight_decoder.yaml`** - Revolutionary architecture settings (v3.0.0)
 
 ### 🎉 ПОСЛЕДНИЕ ДОСТИЖЕНИЯ
 
@@ -595,6 +614,12 @@ evaluation_metrics = {
 - **Memory Usage:** <500MB training, <200MB inference
 
 ### 🚀 Ready for Phase 3 (Research-Enhanced Capabilities)
+
+📋 **Детальные планы в связанных документах:**
+
+- See **`../../IMPLEMENTATION_STRATEGY_V3.md`** для complete 3-phase strategy
+- See **`../../ARCHITECTURE_RECOMMENDATIONS_ANALYSIS.md`** для detailed analysis
+- See **`../../PROJECT_PLAN.md`** для overall project integration
 
 После завершения Phase 2.7, система будет иметь **research-level capabilities**:
 

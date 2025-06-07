@@ -101,8 +101,6 @@ cellular-neural-network/
 - **Статус:** Требует создания
 - **Параметры:** ~1-2M (против 7B+ у LLM)
 
-````
-
 ---
 
 ## 🗓️ НОВЫЕ ФАЗЫ МОДУЛЬНОЙ РАЗРАБОТКИ
@@ -114,12 +112,13 @@ cellular-neural-network/
 **Результат:** Готова основа для Модуля 2 (3D Cubic Core)
 
 **Готовые компоненты для модульной архитектуры:**
+
 - ✅ Прототип клетки с PyTorch интеграцией
 - ✅ 3D решетка с топологией соседства (ОСНОВА ДЛЯ CUBIC CORE)
 - ✅ Система временного распространения сигналов
 - ✅ IOPointPlacer для входов/выходов куба
 
-**Детальный план:** `PHASE_1_PLAN.md`
+**Детальный план:** **[`PHASE_1_PLAN.md`](PHASE_1_PLAN.md)**
 
 ### ✅ **PHASE 2: DATA PIPELINE** - ЗАВЕРШЕН (100%)
 
@@ -128,12 +127,13 @@ cellular-neural-network/
 **Дата завершения:** 6 июня 2025
 
 **Готовый Модуль 1 - Teacher LLM Encoder:**
+
 - ✅ `data/embedding_loader/` - 8+ LLM моделей (LLaMA, Mistral, BERT)
 - ✅ Real-time текст → эмбединг conversion
 - ✅ Batch processing и smart caching
 - ✅ Production-ready API
 
-**Детальный план:** `PHASE_2_PLAN.md`
+**Детальный план:** **[`PHASE_2_PLAN.md`](PHASE_2_PLAN.md)**
 
 ### ✅ **PHASE 2.3: EMBEDDING RESHAPER** - ЗАВЕРШЕН!
 
@@ -142,21 +142,17 @@ cellular-neural-network/
 **Дата завершения:** 6 июня 2025
 
 **Завершенный модуль:**
+
 - ✅ `data/embedding_reshaper/` - Enhanced AdaptiveReshaper с революционными возможностями
 
-**Реализованные компоненты:**
-```python
-class EmbeddingReshaper:
-    def vector_to_matrix(self, embedding_1d):  # (768,) → (8,8,12) с 100% качеством
-    def matrix_to_vector(self, embedding_3d):  # (8,8,12) → (768,) с точным восстановлением
-    def preserve_semantics(self):              # Идеальное качество достигнуто
-```
-
 **Достигнутые результаты:**
+
 - 🎯 **Цель превышена:** 100% семантическое сохранение (vs >95% планируемых)
 - 🏆 **Все тесты пройдены:** 6/6 (100% success rate)
 - 📈 **Результатов >98%:** 20/20 (100% всех трансформаций)
 - 🚀 **Production ready:** Готов к интеграции с Phase 2.5
+
+**Детальный план:** **[`PHASE_2_3_PLAN.md`](PHASE_2_3_PLAN.md)**
 
 ### ✅ **PHASE 2.5: CORE EMBEDDING PROCESSOR** - ЗАВЕРШЕН!
 
@@ -166,25 +162,17 @@ class EmbeddingReshaper:
 **Результат:** **0.999 cosine similarity** (vs 0.90 целевой)
 
 **Завершенный модуль:**
+
 - ✅ `core/embedding_processor/` - Центральный процессор эмбедингов
 
-**Реализованные компоненты:**
-```python
-class EmbeddingProcessor:
-    def process(self, input_embedding):
-        # 1D → 3D для куба
-        matrix = self.reshaper.vector_to_matrix(input_embedding)
-        # Обработка кубом
-        processed_matrix = self.lattice(matrix)
-        # 3D → 1D для декодера
-        return self.reshaper.matrix_to_vector(processed_matrix)
-```
-
 **Достигнутые результаты:**
+
 - 🎯 **Цель превышена:** 0.999 cosine similarity (vs >0.90 планируемых)
 - 🏆 **Все тесты пройдены:** 5/5 (100% success rate)
 - 📈 **Три режима работают:** AUTOENCODER/GENERATOR/DIALOGUE
 - 🚀 **Production ready:** Готов к интеграции с Phase 3
+
+**Детальный план:** **[`PHASE_2_5_PLAN.md`](PHASE_2_5_PLAN.md)**
 
 ### ✅ **PHASE 2.7: LIGHTWEIGHT DECODER** - STAGE 1 ЗАВЕРШЕН!
 
@@ -193,17 +181,20 @@ class EmbeddingProcessor:
 **Продолжительность:** 2-3 недели
 
 **🎉 STAGE 1 ДОСТИЖЕНИЯ (PhraseBankDecoder):**
+
 - ✅ **Stage 1.1** - Basic Implementation (5/5 тестов)
 - ✅ **Stage 1.2** - Advanced Optimization (6/6 тестов)
 - ✅ **Stage 1.3** - Production Readiness (6/6 тестов)
 - 🚀 **PhraseBankDecoder PRODUCTION-READY!**
 
 **Модули для реализации:**
+
 - ✅ `inference/lightweight_decoder/` - **PhraseBankDecoder ЗАВЕРШЕН!**
 - 🟡 `inference/generative_decoder/` - **СЛЕДУЮЩИЙ: GenerativeDecoder**
 - 🔶 `inference/hybrid_decoder/` - Планируется после GenerativeDecoder
 
 **Три варианта декодера:**
+
 ```python
 # Вариант 1: Phrase Bank подход
 class PhraseBankDecoder:
@@ -220,6 +211,8 @@ class HybridDecoder:
 
 **Milestone:** BLEU score >0.4, размер модели <2M параметров
 
+**Детальный план:** **[`PHASE_2_7_PLAN.md`](PHASE_2_7_PLAN.md)**
+
 ### 🎓 **PHASE 3: МОДУЛЬНОЕ ОБУЧЕНИЕ** - УПРОЩЕННАЯ СТРАТЕГИЯ
 
 **Цель:** Обучить каждый модуль независимо
@@ -227,11 +220,13 @@ class HybridDecoder:
 **Продолжительность:** 3-4 недели
 
 **Специализированные тренеры:**
+
 - 🆕 `training/embedding_trainer/` - Обучение Модуля 2 (куб)
 - 🆕 `training/decoder_trainer/` - Обучение Модуля 3 (декодер)
 - 🆕 `training/joint_trainer/` - End-to-end fine-tuning
 
 **Упрощенные данные для обучения:**
+
 ```python
 # Автоэнкодер данные для куба
 autoencoder_data = [(embedding, embedding) for text in corpus]
@@ -245,6 +240,8 @@ decoder_data = [(embedding, original_text) for text in corpus]
 
 **Milestone:** Stable training для всех трех компонентов
 
+**Детальный план:** **[`PHASE_3_PLAN.md`](PHASE_3_PLAN.md)**
+
 ### 🔗 **PHASE 3.5: END-TO-END INTEGRATION** - ФИНАЛЬНАЯ ИНТЕГРАЦИЯ
 
 **Цель:** Объединить все три модуля в единую систему
@@ -252,10 +249,12 @@ decoder_data = [(embedding, original_text) for text in corpus]
 **Продолжительность:** 2-3 недели
 
 **Финальная система:**
+
 - 🆕 `inference/end_to_end_pipeline/` - Полная модульная система
 - 🆕 `evaluation/end_to_end_metrics/` - Комплексная оценка качества
 
 **Полная система:**
+
 ```python
 class CompleteCognitiveSystem:
     def forward(self, input_text):
@@ -295,17 +294,20 @@ class CompleteCognitiveSystem:
 ### Ключевые Метрики Модульной Архитектуры
 
 **По модулям:**
+
 - **🔴 Модуль 1 (Teacher LLM Encoder):** ✅ 100% ГОТОВ
 - **🔵 Модуль 2 (3D Cubic Core):** ✅ 100% ГОТОВ (EmbeddingReshaper + EmbeddingProcessor)
 - **🟡 Модуль 3 (Lightweight Decoder):** 🧠 40% ГОТОВ (PhraseBankDecoder + GenerativeDecoder research complete!)
 
 **По компонентам:**
+
 - **Модулей завершено:** 9/12 ✅ (включая production-ready PhraseBankDecoder)
 - **Модулей в разработке:** 1/12 🚀 (GenerativeDecoder следующий)
 - **Покрытие тестами:** 100% для завершенных модулей (17/17 тестов пройдены Stage 1)
 - **Покрытие документацией:** 100% для всех модулей
 
 **Готовность к развертыванию:**
+
 - **✅ EmbeddingReshaper:** ЗАВЕРШЕН - 100% качество, готов к production
 - **✅ EmbeddingProcessor:** ЗАВЕРШЕН - 0.999 качество, готов к Phase 3
 - **✅ PhraseBankDecoder:** ЗАВЕРШЕН - Production-ready, 17/17 тестов пройдено
@@ -363,13 +365,13 @@ class CompleteCognitiveSystem:
 - **🎯 Context-Aware Selection** - выбор фраз на основе контекста куба
 - **🧠 Биологическое обоснование** - мозг оперирует концептами, не символами
 
-**Двунаправленная Архитектура (Bidirectional Cognitive System):**
+**Lightweight Decoder Architecture:**
 
-- **🔄 Dual-Cube System** - Encoder ↔ Decoder взаимодействие
-- **🎭 Автоэнкодер режим** - точное воспроизведение входной информации
-- **💡 Генераторный режим** - создание новых вероятностных ответов
-- **🗣️ Внутренний диалог** - self-reflection система между кубами
-- **🧠 Биологическое обоснование** - зоны Брока и Вернике
+- **🎯 Компактный дизайн** - <2M параметров vs 7B+ LLM
+- **🚀 Революционные архитектуры** - RET/CCT+Mamba/Enhanced CCT integration
+- **📚 PhraseBankDecoder** - production-ready phrase lookup approach
+- **🧠 GenerativeDecoder** - research-backed compact generation
+- **🔄 HybridDecoder** - best of both approaches combined
 
 **2D Embedding Architecture:**
 
@@ -379,8 +381,9 @@ class CompleteCognitiveSystem:
 
 **Общие достижения:**
 
-- **🎯 Phase 2.5 Ready** - фразовая архитектура готова к реализации
-- **🔄 Phase 2.7 Ready** - двунаправленная система спроектирована
+- **✅ Phase 2.5 Complete** - фразовая архитектура полностью реализована
+- **🚀 Phase 2.7 Stage 1 Complete** - PhraseBankDecoder production-ready (17/17 тестов)
+- **🧠 Phase 2.7 Stage 2 Research Complete** - революционные архитектуры исследованы и готовы к реализации
 - **✅ Все тесты пройдены** - 6/6 Data Visualization + 5/5 LLM функциональности работает стабильно
 
 ---
@@ -417,7 +420,7 @@ nltk: "*" # Phase 2.5 - для обработки фраз
 spacy: "*" # Phase 2.5 - для семантического анализа
 sklearn: "*" # Phase 2.7 - для метрик similarity
 torch-audio: "*" # Phase 3 - для multimodal возможностей
-````
+```
 
 ### 🎛️ КОНФИГУРАЦИОННЫЕ ИЗМЕНЕНИЯ
 
@@ -532,12 +535,32 @@ evaluation_metrics:
 
 ## 📁 КЛЮЧЕВЫЕ ДОКУМЕНТЫ
 
+### 📚 **НАВИГАЦИЯ ПО ДОКУМЕНТАЦИИ**
+
+- **`DOCUMENTATION_INDEX.md`** - 🎯 **COMPLETE NAVIGATION INDEX** (всё в одном месте!)
+
 ### Планирование и Референс
 
 - **`PROJECT_PLAN.md`** - Этот файл (общий обзор)
 - **`PHASE_1_PLAN.md`** - Детальный план Foundation (завершен)
 - **`PHASE_2_PLAN.md`** - Детальный план Core Functionality (активный)
+- **`PHASE_2_3_PLAN.md`** - Детальный план EmbeddingReshaper (завершен)
+- **`PHASE_2_5_PLAN.md`** - Детальный план Phrase Architecture (завершен)
+- **`PHASE_2_7_PLAN.md`** - Детальный план Lightweight Decoder Implementation
 - **`PHASE_3_PLAN.md`** - Детальный план Training Infrastructure (планируется)
+- **`PHASE_4_PLAN.md`** - Детальный план Cognitive Inference System (планируется)
+
+### 🧠 Архитектурные Исследования и Стратегии (NEW)
+
+- **`GENERATIVE_DECODER_RESEARCH_SUMMARY.md`** - 🔬 Comprehensive research findings для GenerativeDecoder
+- **`ARCHITECTURE_RECOMMENDATIONS_ANALYSIS.md`** - 🏆 Analysis топ-3 архитектурных решений 2024
+- **`IMPLEMENTATION_STRATEGY_V3.md`** - 🚀 Revolutionary architecture integration plan
+
+### 📋 Модульные Планы
+
+- **`inference/lightweight_decoder/plan.md`** - Детальный план Модуля 3 (Stage 1-4)
+- **`core/embedding_processor/plan.md`** - План процессора эмбедингов (завершен)
+- **`data/embedding_reshaper/plan.md`** - План 1D↔3D конвертации (завершен)
 
 ### Технические файлы
 
@@ -613,22 +636,35 @@ evaluation_metrics:
 
 ### 🟡 ПАРАЛЛЕЛЬНАЯ РАЗРАБОТКА 3: Lightweight Decoder (2-3 недели)
 
-**Phase 2.7 - НОВЫЙ МОДУЛЬ:**
+**Phase 2.7 - РЕВОЛЮЦИОННАЯ АРХИТЕКТУРА (Research Enhanced):**
 
-1. **Создать `inference/lightweight_decoder/`** - Завершить Модуль 3
-   ```python
-   # Три варианта декодера
-   class PhraseBankDecoder:     # Поиск ближайших фраз
-   class GenerativeDecoder:     # Генерация токенов ~1-2M params
-   class HybridDecoder:         # Комбинированный подход
-   ```
+📋 **Детальная документация:**
 
-**Checkpoint Phase 2.7:**
+- **`GENERATIVE_DECODER_RESEARCH_SUMMARY.md`** - Complete research analysis
+- **`ARCHITECTURE_RECOMMENDATIONS_ANALYSIS.md`** - Топ-3 architectural solutions
+- **`IMPLEMENTATION_STRATEGY_V3.md`** - 3-phase integration plan
+- **`inference/lightweight_decoder/plan.md`** - Detailed implementation roadmap
 
-- [ ] BLEU score >0.4 для текстовой генерации
-- [ ] Размер модели <2M параметров
-- [ ] Phrase bank с 10,000+ семантических единиц
-- [ ] Hybrid режим для оптимального качества
+🚀 **Revolutionary Architecture Options:**
+
+```python
+# 🥇 Resource-Efficient Transformer (Priority 1)
+class ResourceEfficientGenerativeDecoder:    # 52% memory, 33% speed, RTX 5090 optimized
+
+# 🥈 Hybrid CCT+Mamba (Innovation)
+class HybridCellularArchitecture:            # Bio-inspired, O(n) complexity, 3D-native
+
+# 🥉 Enhanced CCT (Baseline)
+class EnhancedCCTDecoder:                     # Proven + optimized, production-ready
+```
+
+**🏆 Enhanced Checkpoint Phase 2.7:**
+
+- [ ] **Quality:** BLEU >0.45 (research-enhanced target)
+- [ ] **Performance:** <20ms inference, <150MB memory (RET optimizations)
+- [ ] **Size:** <1M parameters (adaptive pruning achieved)
+- [ ] **Compatibility:** RTX 5090 SOLVED через edge optimization
+- [ ] **Architecture:** Multi-option system с revolutionary capabilities
 
 ### 🎓 МОДУЛЬНОЕ ОБУЧЕНИЕ - Phase 3 (3-4 недели)
 
