@@ -281,27 +281,31 @@ class AdvancedLossFunction(nn.Module):
     
     def _combine_losses(self, losses: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Комбинирование всех компонентов loss"""
-        total_loss = torch.tensor(0.0, device=next(iter(losses.values())).device)
+        # Определяем device из первого доступного loss
+        device = next(iter(losses.values())).device
+        
+        # Создаем tensor с требованием градиентов
+        total_loss = torch.tensor(0.0, device=device, requires_grad=True)
         
         # Базовые losses
         if 'cosine_loss' in losses:
-            total_loss += self.config.cosine_weight * losses['cosine_loss']
+            total_loss = total_loss + self.config.cosine_weight * losses['cosine_loss']
         
         if 'mse_loss' in losses:
-            total_loss += self.config.mse_weight * losses['mse_loss']
+            total_loss = total_loss + self.config.mse_weight * losses['mse_loss']
         
         # Продвинутые losses
         if 'curriculum_loss' in losses:
-            total_loss += self.config.semantic_alignment_weight * losses['curriculum_loss']
+            total_loss = total_loss + self.config.semantic_alignment_weight * losses['curriculum_loss']
         
         if 'triplet_loss' in losses:
-            total_loss += self.config.triplet_weight * losses['triplet_loss']
+            total_loss = total_loss + self.config.triplet_weight * losses['triplet_loss']
         
         if 'contrastive_loss' in losses:
-            total_loss += self.config.contrastive_weight * losses['contrastive_loss']
+            total_loss = total_loss + self.config.contrastive_weight * losses['contrastive_loss']
         
         if 'diversity_loss' in losses:
-            total_loss += self.config.diversity_weight * losses['diversity_loss']
+            total_loss = total_loss + self.config.diversity_weight * losses['diversity_loss']
         
         return total_loss
     

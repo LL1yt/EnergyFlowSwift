@@ -124,24 +124,88 @@ class Word2VecHandler(TextFormatHandler):
         return embeddings_array
     
     def _load_binary(self, path: str) -> np.ndarray:
-        """Загрузка из бинарного формата (требует gensim)."""
+        """Загрузка из бинарного формата (альтернатива gensim)."""
+        logger.info(f"Loading Word2Vec binary file: {path}")
+        
         try:
-            from gensim.models import KeyedVectors
+            # Пытаемся использовать gensim если доступен
+            try:
+                from gensim.models import KeyedVectors
+                model = KeyedVectors.load_word2vec_format(path, binary=True)
+                
+                # Сохраняем словарь
+                self._vocabulary = {word: idx for idx, word in enumerate(model.index_to_key)}
+                embeddings = model.vectors
+                logger.info(f"Loaded Word2Vec binary embeddings via gensim: {embeddings.shape}")
+                return embeddings
+                
+            except (ImportError, Exception) as e:
+                logger.warning(f"Gensim not available or failed ({e}), using alternative loader")
+                return self._load_binary_alternative(path)
+                
+        except Exception as e:
+            raise ValueError(f"Failed to load binary Word2Vec file: {e}")
+    
+    def _load_binary_alternative(self, path: str) -> np.ndarray:
+        """
+        Альтернативная загрузка Word2Vec binary без gensim.
+        Совместима с numpy 2.3.0 и scipy 1.15.3.
+        """
+        import struct
+        
+        logger.info("Using alternative Word2Vec binary loader (numpy 2.3.0 compatible)")
+        
+        with open(path, 'rb') as f:
+            # Читаем заголовок (vocab_size, vector_dim)
+            header = f.readline().decode('utf-8').strip()
+            vocab_size, vector_dim = map(int, header.split())
             
-            logger.info(f"Loading Word2Vec binary file: {path}")
-            model = KeyedVectors.load_word2vec_format(path, binary=True)
+            logger.info(f"Word2Vec binary: {vocab_size} words, {vector_dim} dimensions")
             
-            # Сохраняем словарь
-            self._vocabulary = {word: idx for idx, word in enumerate(model.index_to_key)}
+            # Инициализируем массивы
+            embeddings = np.zeros((vocab_size, vector_dim), dtype=np.float32)
+            vocabulary = {}
             
-            embeddings = model.vectors
-            logger.info(f"Loaded Word2Vec binary embeddings: {embeddings.shape}")
+            # Читаем слова и векторы
+            for i in range(vocab_size):
+                # Читаем слово (до пробела)
+                word = b''
+                while True:
+                    char = f.read(1)
+                    if char == b' ' or char == b'':
+                        break
+                    word += char
+                
+                try:
+                    word = word.decode('utf-8', errors='ignore')
+                except UnicodeDecodeError:
+                    word = word.decode('latin-1', errors='ignore')
+                
+                vocabulary[word] = i
+                
+                # Читаем вектор (vector_dim float32 значений)
+                vector_bytes = f.read(4 * vector_dim)
+                if len(vector_bytes) < 4 * vector_dim:
+                    logger.warning(f"Incomplete vector for word '{word}', padding with zeros")
+                    vector = np.zeros(vector_dim, dtype=np.float32)
+                    available_floats = len(vector_bytes) // 4
+                    if available_floats > 0:
+                        vector[:available_floats] = struct.unpack(f'{available_floats}f', vector_bytes[:available_floats * 4])
+                else:
+                    vector = struct.unpack(f'{vector_dim}f', vector_bytes)
+                    vector = np.array(vector, dtype=np.float32)
+                
+                embeddings[i] = vector
+                
+                # Пропускаем завершающий символ новой строки если есть
+                f.read(1)
+                
+                if i % 10000 == 0 and i > 0:
+                    logger.info(f"Loaded {i}/{vocab_size} words...")
             
+            self._vocabulary = vocabulary
+            logger.info(f"Successfully loaded Word2Vec binary (alternative): {embeddings.shape}")
             return embeddings
-            
-        except ImportError:
-            raise ImportError("gensim is required for loading binary Word2Vec files. "
-                            "Install with: pip install gensim")
     
     def get_vocabulary(self, path: str) -> Dict[str, int]:
         """Получение словаря Word2Vec."""

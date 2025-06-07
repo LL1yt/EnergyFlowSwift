@@ -89,6 +89,58 @@ class DialogueConfig:
         
         # Создание директории для кэша
         Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Интеграция с центральной системой конфигурации
+        self._load_from_central_config()
+    
+    def _load_from_central_config(self):
+        """Загрузка настроек из центральной системы конфигурации"""
+        try:
+            from utils.config_loader import config_manager
+            
+            # Загружаем teacher models из конфига
+            teacher_config = config_manager.get_teacher_models_config()
+            if teacher_config:
+                # Берем первую доступную модель как основную
+                if 'models' in teacher_config and teacher_config['models']:
+                    available_models = teacher_config['models']
+                    self.teacher_model = available_models[0]
+                    if len(available_models) > 1:
+                        self.fallback_model = available_models[1]
+                    
+                    print(f"📋 Loaded teacher models from central config:")
+                    print(f"   Primary: {self.teacher_model}")
+                    print(f"   Fallback: {self.fallback_model}")
+            
+            # Загружаем общие настройки
+            general_config = config_manager.get_config()
+            if general_config:
+                # Настройки качества данных
+                if 'dialogue_dataset' in general_config:
+                    dialogue_settings = general_config['dialogue_dataset']
+                    
+                    if 'quality_filter' in dialogue_settings:
+                        quality_settings = dialogue_settings['quality_filter']
+                        self.min_question_length = quality_settings.get('min_question_length', self.min_question_length)
+                        self.min_answer_length = quality_settings.get('min_answer_length', self.min_answer_length)
+                        self.semantic_similarity_threshold = quality_settings.get('semantic_similarity_threshold', self.semantic_similarity_threshold)
+                    
+                    # Настройки кэширования
+                    if 'caching' in dialogue_settings:
+                        cache_settings = dialogue_settings['caching']
+                        self.use_cache = cache_settings.get('enabled', self.use_cache)
+                        self.cache_batch_size = cache_settings.get('batch_size', self.cache_batch_size)
+                    
+                    # Настройки валидации
+                    if 'validation' in dialogue_settings:
+                        val_settings = dialogue_settings['validation']
+                        self.validation_split = val_settings.get('split', self.validation_split)
+                        self.random_seed = val_settings.get('seed', self.random_seed)
+                
+                print(f"✅ DialogueConfig integrated with central configuration")
+            
+        except Exception as e:
+            print(f"⚠️ Could not load from central config ({e}), using defaults")
 
 
 class DialogueDataset(Dataset):

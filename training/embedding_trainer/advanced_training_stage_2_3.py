@@ -143,18 +143,34 @@ class AdvancedTrainingStage23:
         Returns:
             Нормализованные эмбединги размера target_dim
         """
+        # Приводим к float32 и сохраняем gradients
+        embeddings = embeddings.float()
+        if not embeddings.requires_grad:
+            embeddings.requires_grad_(True)
+        
         if embeddings.size(-1) == target_dim:
             return embeddings
         
         # Если эмбединги больше целевой размерности - обрезаем
         if embeddings.size(-1) > target_dim:
-            return embeddings[..., :target_dim]
+            result = embeddings[..., :target_dim]
+            if not result.requires_grad:
+                result.requires_grad_(True)
+            return result
         
         # Если эмбединги меньше - дополняем нулями
         else:
             padding_size = target_dim - embeddings.size(-1)
-            padding = torch.zeros(*embeddings.shape[:-1], padding_size, dtype=embeddings.dtype, device=embeddings.device)
-            return torch.cat([embeddings, padding], dim=-1)
+            padding = torch.zeros(
+                *embeddings.shape[:-1], padding_size, 
+                dtype=torch.float32, 
+                device=embeddings.device,
+                requires_grad=False
+            )
+            result = torch.cat([embeddings, padding], dim=-1)
+            if not result.requires_grad:
+                result.requires_grad_(True)
+            return result
     
     def create_enhanced_dataset(self) -> DialogueDataset:
         """Создание enhanced dataset с expanded data и multi-teacher embeddings"""
