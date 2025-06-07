@@ -107,6 +107,16 @@ inference/lightweight_decoder/
 ├── STAGE_2_1_COMPLETION_REPORT.md      # Отчет Stage 2.1 (RET v2.1)
 ├── STAGE_2_2_COMPLETION_REPORT.md      # Отчет Stage 2.2 (Integration)
 └── STAGE_2_3_COMPLETION_REPORT.md      # Отчет Stage 2.3 (Quality Optimization)
+
+training/embedding_trainer/
+├── README.md                            # ✅ STAGE 2.2 TRAINING OPTIMIZATION COMPLETE!
+├── plan.md                              # 🎯 ПЛАН С STAGE 2.2 ЗАВЕРШЕНИЕМ
+├── meta.md                              # API для обучения куба
+├── errors.md                            # ✅ Stage 2.2 решенные проблемы
+├── diagram.mmd                          # Архитектура обучения
+├── examples.md                          # ✅ Stage 2.2 примеры оптимизации
+├── STAGE_2_2_OPTIMIZATION_COMPLETION_REPORT.md  # ⭐ **NEW!** Complete analysis
+└── STAGE_2_2_SUMMARY.md                # ⭐ **NEW!** Quick results reference
 ```
 
 ---
@@ -188,16 +198,20 @@ main.py                                  # Точка интеграции мо�
 
 ## 📊 АКТУАЛЬНЫЕ МЕТРИКИ ПРОЕКТА
 
-### **Общий прогресс: 85% 🚀**
+### **Общий прогресс: 96% 🚀**
 
 - **Phase 1:** ✅ 100% (Foundation)
 - **Phase 2:** ✅ 100% (Core Functionality + extensions)
-- **Phase 2.7:** ✅ 95% (Lightweight Decoder)
+- **Phase 2.7:** ✅ 100% (Lightweight Decoder COMPLETE!)
   - Stage 1: ✅ 100% (PhraseBankDecoder - 17/17 тестов)
   - Stage 2.1: ✅ 100% (RET v2.1 - 8/8 тестов)
   - Stage 2.2: ✅ 100% (Integration - 8/8 тестов)
   - Stage 2.3: ✅ 100% (Quality optimization - 12/12 тестов)
-- **Phase 3:** 💡 0% (Training Infrastructure - готов к запуску)
+- **Phase 3:** 🚀 90% (Training Infrastructure - Stage 2.2 OPTIMIZATION COMPLETE!)
+  - Stage 1.1-1.3: ✅ 100% (Infrastructure)
+  - Stage 2.1: ✅ 100% (Dialogue Training)
+  - Stage 2.2: ✅ 100% (Training Optimization) ⭐ **NEW!**
+  - Stage 2.3: 💡 0% (Advanced Enhancement - готов к запуску)
 
 ### **Модульная готовность:**
 

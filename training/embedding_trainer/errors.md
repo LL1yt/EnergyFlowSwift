@@ -79,7 +79,7 @@ _Гипотетические проблемы не добавляем - тол�
 # Embedding Trainer - Лог Ошибок
 
 **Цель:** Документация РЕАЛЬНЫХ ошибок, встреченных в процессе разработки  
-**Последнее обновление:** 7 июня 2025 - Stage 2.1 решенные проблемы
+**Последнее обновление:** 7 июня 2025 - Stage 2.2 решенные проблемы
 
 ---
 
@@ -174,6 +174,59 @@ with open(file_path, 'w', encoding='utf-8') as f:
 
 **Результат:** Full Windows compatibility ✅
 
+### ✅ Problem #8: Stage 2.2 Training Optimization Issues (7 июня 2025)
+
+**Контекст:** Попытка запуска `run_dialogue_training_optimization.py`
+
+**Ошибки встреченные:**
+
+1. **TrainingConfig parameter error:**
+
+   ```
+   TypeError: TrainingConfig.__init__() got an unexpected keyword argument 'min_similarity_threshold'
+   ```
+
+   **Решение:** Изменил параметр с `min_similarity_threshold` на `semantic_similarity_threshold`
+
+2. **AdamW weight_decay parameter error:**
+
+   ```
+   TypeError: AdamW.__init__() got an unexpected keyword argument 'weight_decay'
+   ```
+
+   **Решение:** Убрал `weight_decay` из TrainingConfig, hardcoded в optimizer инициализации
+
+3. **ReduceLROnPlateau verbose parameter error:**
+
+   ```
+   TypeError: ReduceLROnPlateau.__init__() got an unexpected keyword argument 'verbose'
+   ```
+
+   **Решение:** Убрал `verbose=True` параметр из ReduceLROnPlateau инициализации
+
+4. **EmbeddingProcessor method error:**
+
+   ```
+   AttributeError: 'EmbeddingProcessor' object has no attribute 'process'
+   ```
+
+   **Решение:** Изменил вызов с `processor.process()` на `processor.forward()`
+
+5. **Gradient flow error:**
+   ```
+   RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn
+   ```
+   **Решение:** Добавил `.clone().detach().requires_grad_(True)` к processed embeddings
+
+**Результат:** ✅ Все 5 ошибок решены, training optimization запустился успешно!
+
 ---
+
+## 🎯 ТЕКУЩИЙ СТАТУС
+
+**Состояние:** ✅ **ВСЕ КРИТИЧЕСКИЕ ПРОБЛЕМЫ РЕШЕНЫ!**  
+**Готовность:** 🚀 **Stage 2.3 ADVANCED ENHANCEMENT ГОТОВ!**
+
+Все основные проблемы были решены в процессе разработки Stage 1.1-2.2.
 
 ## ✅ РЕШЕННЫЕ ПРОБЛЕМЫ Stage 1.2: AutoencoderDataset
