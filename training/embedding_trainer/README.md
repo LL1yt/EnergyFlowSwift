@@ -1,11 +1,16 @@
-# Embedding Trainer ✅ Stage 1.1 ЗАВЕРШЕН!
+# Embedding Trainer ✅ Stage 1.2 ЗАВЕРШЕН!
 
 **Назначение:** Модуль для обучения 3D Cubic Core (Модуль 2) на эмбединг→эмбединг трансформациях
 
-## 🎉 Major Milestone: CubeTrainer ГОТОВ!
+## 🎉 Major Milestone: AutoencoderDataset ГОТОВ!
 
-**Stage 1.1 успешно завершен (6 июня 2025)** - все 8 тестов пройдены!
-CubeTrainer полностью функционален и готов к обучению 3D Cubic Core.
+**Stage 1.2 успешно завершен (6 июня 2025)** - все 10 тестов пройдены!
+AutoencoderDataset полностью интегрирован с EmbeddingLoader и готов к production обучению.
+
+**Завершенные этапы:**
+
+- ✅ **Stage 1.1** - CubeTrainer (8/8 тестов)
+- ✅ **Stage 1.2** - AutoencoderDataset (10/10 тестов) ⭐ NEW!
 
 ## Обзор
 
@@ -26,10 +31,53 @@ EmbeddingTrainer специализируется на обучении цент
 - ✅ **`CubeTrainer`** - основной класс для обучения куба (ЗАВЕРШЕН!)
 - ✅ **`TrainingConfig`** - система конфигурации (ЗАВЕРШЕНА!)
 - ✅ **`EmbeddingMetrics`** - метрики качества обучения (ЗАВЕРШЕНЫ!)
-- 🚀 **`AutoencoderDataset`** - датасет для autoencoder задач (Stage 1.2)
-- 💬 **`DialogueDataset`** - датасет для диалоговых задач (Stage 1.3)
+- ✅ **`AutoencoderDataset`** - датасет для autoencoder задач (ЗАВЕРШЕН!) ⭐
+- ✅ **`DatasetConfig`** - конфигурация dataset'ов (ЗАВЕРШЕНА!) ⭐
+- 🚀 **`create_text_dataset`** - удобная функция для создания из текстов (ГОТОВА!) ⭐
+- 🚀 **`create_file_dataset`** - удобная функция для создания из файлов (ГОТОВА!) ⭐
+- 💬 **`DialogueDataset`** - датасет для диалоговых задач (Stage 1.3 - следующий)
 
 ## Быстрый старт
+
+### 1. AutoencoderDataset ✅ Готов к использованию!
+
+```python
+from training.embedding_trainer import (
+    AutoencoderDataset,
+    create_text_dataset,
+    create_file_dataset
+)
+
+# Создание dataset из текстов ⭐ NEW!
+texts = [
+    "Machine learning is transforming the world",
+    "Neural networks can learn complex patterns",
+    "Deep learning enables amazing applications"
+]
+
+dataset = create_text_dataset(
+    texts=texts,
+    llm_model="distilbert",  # Поддержка 8+ LLM моделей
+    validation_split=0.2,
+    use_cache=True,          # Smart caching
+    normalize_embeddings=True
+)
+
+# Создание DataLoaders для обучения
+train_loader = dataset.get_dataloader(batch_size=32, validation=False)
+val_loader = dataset.get_dataloader(batch_size=32, validation=True)
+
+print(f"Dataset готов: {dataset}")
+print(f"Train batches: {len(train_loader)}")
+print(f"Val batches: {len(val_loader)}")
+
+# Тестирование autoencoder format
+for input_emb, target_emb in train_loader:
+    print(f"Batch shapes: {input_emb.shape} -> {target_emb.shape}")
+    break  # input_emb == target_emb для autoencoder режима
+```
+
+### 2. CubeTrainer ✅ Готов к обучению!
 
 ```python
 from training.embedding_trainer import CubeTrainer, TrainingConfig

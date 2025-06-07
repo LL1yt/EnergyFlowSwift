@@ -38,22 +38,33 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("CubeTrainer dependencies not available")
 
+# 🚀 STAGE 1.2: AutoencoderDataset - ГОТОВ!
+try:
+    from .autoencoder_dataset import (
+        AutoencoderDataset, 
+        DatasetConfig, 
+        create_text_dataset, 
+        create_file_dataset
+    )
+    AUTOENCODER_DATASET_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  AutoencoderDataset not available: {e}")
+    AUTOENCODER_DATASET_AVAILABLE = False
+    
+    # Заглушка если недоступен
+    class AutoencoderDataset:
+        """Заглушка для autoencoder датасета"""
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError("AutoencoderDataset dependencies not available")
+
 # TODO: Добавить импорты после реализации:
-# from .datasets import AutoencoderDataset, DialogueDataset
 # from .logger import TrainingLogger
 # from .checkpoint_manager import CheckpointManager
 # from .utils import (
-#     create_autoencoder_dataset,
-#     create_dialogue_dataset,
 #     calculate_embedding_similarity,
 #     save_training_checkpoint,
 #     load_training_checkpoint
 # )
-
-class AutoencoderDataset:
-    """Заглушка для autoencoder датасета - будет реализована в Stage 1.2"""
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError("AutoencoderDataset will be implemented in Stage 1.2")
 
 class DialogueDataset:
     """Заглушка для dialogue датасета - будет реализована в Stage 1.3"""
@@ -102,17 +113,25 @@ def get_module_info():
     ready_components = []
     if CUBE_TRAINER_AVAILABLE:
         ready_components.extend(['CubeTrainer', 'TrainingConfig', 'EmbeddingMetrics'])
+    if AUTOENCODER_DATASET_AVAILABLE:
+        ready_components.extend(['AutoencoderDataset', 'DatasetConfig', 'create_text_dataset', 'create_file_dataset'])
     
     return {
         'name': 'EmbeddingTrainer',
         'version': __version__,
         'status': __status__,
-        'phase': 'Phase 3.1 - Stage 1.1',
+        'phase': 'Phase 3.1 - Stage 1.2',  # Обновлен статус!
         'description': 'Training system for 3D Cubic Core (Module 2)',
         'ready_components': ready_components,
-        'in_development': ['AutoencoderDataset', 'DialogueDataset'],
-        'planned': ['TrainingLogger', 'CheckpointManager']
+        'in_development': ['DialogueDataset'],
+        'planned': ['TrainingLogger', 'CheckpointManager'],
+        'completed_stages': ['Stage 1.1 - CubeTrainer', 'Stage 1.2 - AutoencoderDataset']  # Новое поле!
     }
 
 # Экспорт функции информации
-__all__ = ['get_module_info', 'CubeTrainer', 'AutoencoderDataset', 'DialogueDataset'] 
+__all__ = [
+    'get_module_info', 
+    'CubeTrainer', 'TrainingConfig', 'EmbeddingMetrics',
+    'AutoencoderDataset', 'DatasetConfig', 'create_text_dataset', 'create_file_dataset',
+    'DialogueDataset'
+] 

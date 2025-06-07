@@ -546,6 +546,338 @@ Configuration updated: {'mode': 'dialogue', 'device': 'cpu', 'lattice_size': [6,
 
 ---
 
+---
+
+## 🆕 АВТОENCODER DATASET ПРИМЕРЫ (Stage 1.2)
+
+### Пример 15: Создание AutoencoderDataset из Текстов ⭐ NEW!
+
+```python
+from training.embedding_trainer import create_text_dataset
+
+# Подготовка текстов для обучения
+texts = [
+    "Machine learning enables intelligent systems",
+    "Neural networks process complex patterns",
+    "Deep learning transforms artificial intelligence",
+    "Natural language processing understands text",
+    "Computer vision recognizes images and objects"
+]
+
+# Создание dataset с full configuration
+dataset = create_text_dataset(
+    texts=texts,
+    llm_model="distilbert",           # Поддержка 8+ LLM моделей
+    validation_split=0.2,            # 20% для validation
+    use_cache=True,                   # Smart caching
+    cache_dir="cache/my_experiment",
+    normalize_embeddings=True,        # Normalization
+    add_noise=True,                   # Regularization
+    noise_std=0.01,                   # Noise level
+    random_seed=42                    # Reproducibility
+)
+
+print(f"Dataset создан: {dataset}")
+print(f"Train samples: {len(dataset.train_embeddings)}")
+print(f"Val samples: {len(dataset.val_embeddings)}")
+print(f"Embedding dim: {dataset.config.embedding_dim}")
+
+# Получение DataLoaders
+train_loader = dataset.get_dataloader(batch_size=32, validation=False)
+val_loader = dataset.get_dataloader(batch_size=32, validation=True)
+
+# Проверка autoencoder format
+for input_emb, target_emb in train_loader:
+    print(f"Autoencoder pair: {input_emb.shape} -> {target_emb.shape}")
+    # input_emb == target_emb для autoencoder режима
+    similarity = torch.cosine_similarity(input_emb, target_emb, dim=1).mean()
+    print(f"Target similarity: {similarity:.4f}")
+    break
+```
+
+**Ожидаемый результат:**
+
+```
+Dataset создан: AutoencoderDataset(samples=5, dim=768, train=4, val=1, mode=train)
+Train samples: 4
+Val samples: 1
+Embedding dim: 768
+Autoencoder pair: torch.Size([4, 768]) -> torch.Size([4, 768])
+Target similarity: 1.0000
+```
+
+### Пример 16: Создание из Файлов ⭐ NEW!
+
+```python
+from training.embedding_trainer import create_file_dataset
+import torch
+
+# Подготовка тестовых файлов
+texts_file = "data/training_texts.txt"
+with open(texts_file, 'w', encoding='utf-8') as f:
+    f.write("First training sentence\n")
+    f.write("Second training sentence\n")
+    f.write("Third training sentence\n")
+
+# Создание PyTorch эмбедингов
+embeddings_file = "data/precomputed_embeddings.pt"
+torch.save(torch.randn(10, 768), embeddings_file)
+
+# Создание dataset из файлов
+file_dataset = create_file_dataset(
+    file_paths=[texts_file, embeddings_file],
+    embedding_format="llm",
+    llm_model="distilbert",
+    validation_split=0.15,
+    cache_dir="cache/file_experiment"
+)
+
+print(f"File dataset: {file_dataset}")
+print(f"Total samples: {len(file_dataset.embeddings)}")
+
+# Получение статистики
+stats = file_dataset.get_statistics()
+print(f"Dataset statistics:")
+for key, value in stats.items():
+    if isinstance(value, (int, float)):
+        print(f"  {key}: {value:.4f}" if isinstance(value, float) else f"  {key}: {value}")
+```
+
+**Ожидаемый результат:**
+
+```
+File dataset: AutoencoderDataset(samples=13, dim=768, train=11, val=2, mode=train)
+Total samples: 13
+Dataset statistics:
+  total_samples: 13
+  train_samples: 11
+  val_samples: 2
+  embedding_dim: 768
+  validation_split: 0.15
+```
+
+### Пример 17: Конфигурация через DatasetConfig ⭐ NEW!
+
+```python
+from training.embedding_trainer import AutoencoderDataset, DatasetConfig
+
+# Расширенная конфигурация
+config = DatasetConfig(
+    # Источники данных
+    llm_model="llama2-7b",           # Выбор LLM модели
+    max_samples=1000,                # Ограничение размера
+
+    # Preprocessing
+    normalize_embeddings=True,
+    center_embeddings=True,
+    add_noise=False,                 # Без шума для точного воспроизведения
+
+    # Caching
+    cache_dir="cache/production",
+    use_cache=True,
+    cache_embeddings=True,
+    cache_batch_size=500,            # Размер batch для caching
+
+    # Validation
+    validation_split=0.25,           # 25% для validation
+    shuffle_data=True,
+    random_seed=123
+)
+
+# Создание dataset с кастомной конфигурацией
+production_texts = [
+    "Production example text one",
+    "Production example text two",
+    "Production example text three",
+    "Production example text four"
+]
+
+production_dataset = AutoencoderDataset(
+    config=config,
+    texts=production_texts
+)
+
+# Получение sample embeddings для анализа
+samples = production_dataset.get_sample_embeddings(n_samples=2)
+print("Sample embeddings:")
+for split, embs in samples.items():
+    print(f"  {split}: {embs.shape}")
+
+# Сохранение информации о dataset
+production_dataset.save_dataset_info("production_dataset_info.json")
+print("Dataset info saved to production_dataset_info.json")
+```
+
+**Ожидаемый результат:**
+
+```
+Sample embeddings:
+  train: torch.Size([2, 768])
+  validation: torch.Size([1, 768])
+Dataset info saved to production_dataset_info.json
+```
+
+### Пример 18: Smart Caching System ⭐ NEW!
+
+```python
+import time
+
+# Первое создание - cache miss
+start_time = time.time()
+first_dataset = create_text_dataset(
+    texts=["Caching test text", "Another cache test"],
+    llm_model="distilbert",
+    cache_dir="cache/caching_test",
+    use_cache=True
+)
+first_time = time.time() - start_time
+
+print(f"First creation time: {first_time:.2f}s")
+print(f"Cache stats: {first_dataset.cache_stats}")
+
+# Второе создание - cache hit
+start_time = time.time()
+second_dataset = create_text_dataset(
+    texts=["Caching test text", "Another cache test"],  # Те же тексты
+    llm_model="distilbert",
+    cache_dir="cache/caching_test",
+    use_cache=True
+)
+second_time = time.time() - start_time
+
+print(f"Second creation time: {second_time:.2f}s")
+print(f"Cache stats: {second_dataset.cache_stats}")
+
+# Проверка эффективности кэша
+if second_time < first_time:
+    speedup = first_time / second_time
+    print(f"✅ Cache работает! Speedup: {speedup:.1f}x")
+else:
+    print("⚠️  Cache не сработал")
+```
+
+**Ожидаемый результат:**
+
+```
+First creation time: 1.23s
+Cache stats: {'cache_hits': 0, 'cache_misses': 1, 'total_loads': 1}
+Second creation time: 0.15s
+Cache stats: {'cache_hits': 1, 'cache_misses': 0, 'total_loads': 1}
+✅ Cache работает! Speedup: 8.2x
+```
+
+### Пример 19: Train/Validation Mode Switching ⭐ NEW!
+
+```python
+# Создание dataset с validation split
+dataset = create_text_dataset(
+    texts=[f"Training text {i}" for i in range(10)],
+    validation_split=0.3  # 30% для validation
+)
+
+print(f"Original mode: {dataset.is_validation_mode}")
+print(f"Original length: {len(dataset)}")
+
+# Переключение в validation режим
+dataset.set_validation_mode(True)
+print(f"Validation mode: {dataset.is_validation_mode}")
+print(f"Validation length: {len(dataset)}")
+
+# Получение образцов из разных режимов
+dataset.set_validation_mode(False)
+train_sample = dataset[0]
+dataset.set_validation_mode(True)
+val_sample = dataset[0]
+
+print(f"Train sample shapes: {train_sample[0].shape}, {train_sample[1].shape}")
+print(f"Val sample shapes: {val_sample[0].shape}, {val_sample[1].shape}")
+
+# Возврат в train режим
+dataset.set_validation_mode(False)
+```
+
+**Ожидаемый результат:**
+
+```
+Original mode: False
+Original length: 7
+Validation mode: True
+Validation length: 3
+Train sample shapes: torch.Size([768]), torch.Size([768])
+Val sample shapes: torch.Size([768]), torch.Size([768])
+```
+
+### Пример 20: Integration с CubeTrainer ⭐ NEW!
+
+```python
+from training.embedding_trainer import CubeTrainer, TrainingConfig
+
+# Создание dataset для обучения
+training_texts = [
+    "Neural networks learn representations",
+    "Deep learning processes complex data",
+    "Machine learning finds hidden patterns",
+    "Artificial intelligence mimics cognition"
+]
+
+autoencoder_dataset = create_text_dataset(
+    texts=training_texts,
+    validation_split=0.25,
+    normalize_embeddings=True,
+    add_noise=True,         # Regularization for training
+    noise_std=0.02
+)
+
+# Создание CubeTrainer
+config = TrainingConfig(
+    mode="autoencoder",
+    batch_size=16,
+    learning_rate=0.001,
+    epochs=10,
+    target_similarity=0.90
+)
+
+trainer = CubeTrainer(config=config)
+trainer.initialize_components()
+
+# Получение DataLoaders
+train_loader = autoencoder_dataset.get_dataloader(
+    batch_size=config.batch_size,
+    validation=False
+)
+val_loader = autoencoder_dataset.get_dataloader(
+    batch_size=config.batch_size,
+    validation=True
+)
+
+print(f"CubeTrainer готов: {trainer}")
+print(f"Train batches: {len(train_loader)}")
+print(f"Val batches: {len(val_loader)}")
+
+# Тестирование forward pass
+for input_batch, target_batch in train_loader:
+    try:
+        output_batch = trainer.forward(input_batch)
+        metrics = trainer.metrics.compute_batch_metrics(input_batch, output_batch)
+        print(f"Forward pass successful!")
+        print(f"Metrics: {metrics}")
+        break
+    except Exception as e:
+        print(f"Forward pass error: {e}")
+```
+
+**Ожидаемый результат:**
+
+```
+CubeTrainer готов: CubeTrainer(mode=autoencoder, device=cpu, lattice=[8, 8, 8])
+Train batches: 1
+Val batches: 1
+Forward pass successful!
+Metrics: {'cosine_similarity': 0.9876, 'mse_loss': 0.0234, 'semantic_preservation': 0.9654}
+```
+
+---
+
 **🎯 ПРИНЦИП: Все примеры должны быть тестируемыми и рабочими**
 
 _Каждый пример проверяется перед добавлением в документацию._

@@ -1,18 +1,28 @@
 # Embedding Trainer - Технические Характеристики
 
-**Версия модуля:** v1.0.0  
+**Версия модуля:** v1.2.0  
 **Дата создания:** 6 июня 2025  
-**Статус:** 🎉 **Stage 1.1 ЗАВЕРШЕН!** (Phase 3.1)  
+**Последнее обновление:** 6 июня 2025 - Stage 1.2 ЗАВЕРШЕН!
+**Статус:** 🎉 **Stage 1.2 ЗАВЕРШЕН!** (Phase 3.1)  
 **Совместимость:** Python 3.8+, PyTorch 1.9+
 
 ## 🏆 MAJOR MILESTONE
 
-**CubeTrainer полностью реализован и протестирован!**
+**AutoencoderDataset полностью реализован и готов к production!**
 
-- ✅ 8/8 тестов пройдено успешно
-- ✅ Все основные классы функциональны
-- ✅ Система конфигурации работает
-- ✅ Интеграция с компонентами готова
+**Завершенные этапы:**
+
+- ✅ **Stage 1.1** - CubeTrainer (8/8 тестов пройдено)
+- ✅ **Stage 1.2** - AutoencoderDataset (10/10 тестов пройдено) ⭐ NEW!
+
+**Ключевые достижения Stage 1.2:**
+
+- ✅ Интеграция с EmbeddingLoader (8+ LLM моделей)
+- ✅ Smart caching система
+- ✅ Train/validation split
+- ✅ Batch processing с DataLoader
+- ✅ Конфигурационная система
+- ✅ Поддержка различных источников данных
 
 ---
 
@@ -21,13 +31,20 @@
 ### Основные классы
 
 ```python
-# ✅ ГОТОВЫЕ КЛАССЫ (Stage 1.1)
+# ✅ ГОТОВЫЕ КЛАССЫ (Stage 1.1 & 1.2)
 from training.embedding_trainer import CubeTrainer          # ✅ ЗАВЕРШЕН!
 from training.embedding_trainer import TrainingConfig      # ✅ ЗАВЕРШЕН!
 from training.embedding_trainer import EmbeddingMetrics    # ✅ ЗАВЕРШЕН!
 
-# 🚀 В РАЗРАБОТКЕ (Stage 1.2+)
-from training.embedding_trainer import AutoencoderDataset  # Stage 1.2
+# ✅ ГОТОВЫЕ DATASET КЛАССЫ (Stage 1.2) ⭐ NEW!
+from training.embedding_trainer import AutoencoderDataset  # ✅ ЗАВЕРШЕН!
+from training.embedding_trainer import DatasetConfig       # ✅ ЗАВЕРШЕН!
+
+# ✅ ГОТОВЫЕ ФУНКЦИИ СОЗДАНИЯ (Stage 1.2) ⭐ NEW!
+from training.embedding_trainer import create_text_dataset # ✅ ЗАВЕРШЕН!
+from training.embedding_trainer import create_file_dataset # ✅ ЗАВЕРШЕН!
+
+# 🚀 В РАЗРАБОТКЕ (Stage 1.3)
 from training.embedding_trainer import DialogueDataset     # Stage 1.3
 
 # 💡 ПЛАНИРУЕТСЯ (Stage 2+)
