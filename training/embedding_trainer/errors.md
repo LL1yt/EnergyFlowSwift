@@ -75,3 +75,105 @@ _На данный момент ошибки не зарегистрирован
 **🎯 ПРИНЦИП: Документируем только реальные ошибки, с которыми столкнулись.**
 
 _Гипотетические проблемы не добавляем - только практические находки._
+
+# Embedding Trainer - Лог Ошибок
+
+**Цель:** Документация РЕАЛЬНЫХ ошибок, встреченных в процессе разработки  
+**Последнее обновление:** 7 июня 2025 - Stage 2.1 решенные проблемы
+
+---
+
+## ✅ РЕШЕННЫЕ ПРОБЛЕМЫ Stage 2.1: Dialogue Training
+
+### 1. **Gradient Flow Issue** - РЕШЕНО! (7 июня 2025)
+
+**Проблема:** EmbeddingProcessor.forward() не сохранял torch tensors для градиентов
+
+```python
+# ❌ ОШИБКА - конвертация в numpy нарушала gradient flow
+def forward(self, input_embedding):
+    input_matrix = self.reshaper.vector_to_matrix(input_embedding.numpy())  # ОШИБКА!
+    # ... processing ...
+    return torch.tensor(output_vector)  # Градиенты потеряны!
+```
+
+**Решение:** Сохранение torch tensor format throughout pipeline
+
+```python
+# ✅ ИСПРАВЛЕНО - полное сохранение torch tensors
+def forward(self, input_embedding):
+    input_matrix = self.reshaper.vector_to_matrix(input_embedding)  # Tensor сохранен
+    # ... processing stays in torch ...
+    return self.reshaper.matrix_to_vector(output_matrix)  # Градиенты сохранены!
+```
+
+**Результат:** Training loss успешно уменьшается, backpropagation работает ✅
+
+### 2. **Dimension Mismatch** - РЕШЕНО! (7 июня 2025)
+
+**Проблема:** Cube [8,8,8]=512 не совместим с DistilBERT 768D
+
+**Ошибка:**
+
+```
+ValueError: Cannot reshape 768-dim embedding to [8,8,8]=512 cube
+```
+
+**Решение:** Изменение cube размера на [8,8,12]=768
+
+```python
+# ✅ ИСПРАВЛЕНО
+config = {
+    'lattice_size': [8, 8, 12],  # 8*8*12 = 768D
+    # Compatible с DistilBERT embeddings
+}
+```
+
+**Результат:** Perfect dimensional compatibility ✅
+
+### 3. **Batch Processing Issue** - РЕШЕНО! (7 июня 2025)
+
+**Проблема:** CubeTrainer.forward() ожидал single vectors, но получал batches
+
+**Ошибка:**
+
+```
+RuntimeError: CubeTrainer.forward() takes single embedding, got batch [4, 768]
+```
+
+**Решение:** Итерация по batch elements
+
+```python
+# ✅ ИСПРАВЛЕНО - правильная batch обработка
+predicted_answers = []
+for question_emb in question_embs:
+    predicted_answer = trainer.forward(question_emb)
+    predicted_answers.append(predicted_answer)
+predicted_answers = torch.stack(predicted_answers)
+```
+
+**Результат:** Batch training работает корректно ✅
+
+### 4. **Unicode Encoding Issue** - РЕШЕНО! (7 июня 2025)
+
+**Проблема:** Windows emoji characters в dialogue data
+
+**Ошибка:**
+
+```
+UnicodeEncodeError: 'charmap' codec can't encode character '🤖'
+```
+
+**Решение:** UTF-8 encoding + emoji removal
+
+```python
+# ✅ ИСПРАВЛЕНО
+with open(file_path, 'w', encoding='utf-8') as f:
+    # Also replaced 🤖 with [AI] for Windows compatibility
+```
+
+**Результат:** Full Windows compatibility ✅
+
+---
+
+## ✅ РЕШЕННЫЕ ПРОБЛЕМЫ Stage 1.2: AutoencoderDataset

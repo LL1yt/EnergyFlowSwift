@@ -1,77 +1,81 @@
 graph TD
-    subgraph "Embedding Trainer Architecture"
-        subgraph "Data Sources"
-            A1["Teacher LLM Encoder<br/>(Модуль 1)"]
-            A2["Text Corpus<br/>(Training Data)"]
-            A3["Dialogue Pairs<br/>(Q&A Data)"]
+    subgraph "Stage 2.1: DIALOGUE TRAINING FUNCTIONAL"
+        DT[Dialogue Training Pipeline]
+        RT[run_dialogue_training.py]
+        QA[Q→A Transformation]
+        
+        DT --> RT
+        RT --> QA
+        QA --> RES[Training Results]
+    end
+    
+    subgraph "EMBEDDING TRAINER MODULE v2.1.0"
+        CT[CubeTrainer]
+        TC[TrainingConfig]
+        EM[EmbeddingMetrics]
+        
+        subgraph "DATASET SYSTEM"
+            AD[AutoencoderDataset]
+            DD[DialogueDataset]
+            DC[DatasetConfig]
+            
+            CTD[create_text_dataset]
+            CFD[create_file_dataset]
+            CDD[create_dialogue_dataset]
         end
-
-        subgraph "Dataset Creation"
-            B1["AutoencoderDataset<br/>(embedding → embedding)"]
-            B2["DialogueDataset<br/>(question_emb → answer_emb)"]
-            B3["DataLoader<br/>(Batch Processing)"]
-        end
-
-        subgraph "Core Training Pipeline"
-            C1["CubeTrainer<br/>(Main Controller)"]
-            C2["Training Config<br/>(YAML Settings)"]
-            C3["Loss Functions<br/>(Cosine, MSE)"]
-        end
-
-        subgraph "3D Processing Chain"
-            D1["EmbeddingReshaper<br/>(768D → 8×8×12)"]
-            D2["3D Cubic Core<br/>(Lattice Processing)"]
-            D3["EmbeddingReshaper<br/>(8×8×12 → 768D)"]
-        end
-
-        subgraph "Training Infrastructure"
-            E1["Optimizer<br/>(Adam/SGD)"]
-            E2["EmbeddingMetrics<br/>(Cosine Similarity)"]
-            E3["TrainingLogger<br/>(Progress Tracking)"]
-            E4["CheckpointManager<br/>(Save/Load)"]
-        end
-
-        subgraph "Output & Evaluation"
-            F1["Trained Cube Model"]
-            F2["Training Metrics"]
-            F3["Evaluation Report"]
+        
+        subgraph "CORE INTEGRATION"
+            EP[EmbeddingProcessor]
+            ER[EmbeddingReshaper]
+            EL[EmbeddingLoader]
         end
     end
-
-    %% Data Flow
-    A1 -->|"Generate Embeddings"| B1
-    A2 -->|"Process Text"| A1
-    A3 -->|"Q&A Pairs"| B2
     
-    B1 --> B3
-    B2 --> B3
-    B3 -->|"Batched Data"| C1
+    subgraph "TRAINING MODES"
+        AUTO[Autoencoder Mode]
+        DIAL[Dialogue Mode]
+        MIXED[Mixed Mode]
+    end
     
-    C2 -->|"Configuration"| C1
-    C1 -->|"Forward Pass"| D1
-    D1 -->|"3D Matrix"| D2
-    D2 -->|"Processed Matrix"| D3
-    D3 -->|"Output Embedding"| C3
+    subgraph "TEACHER LLM ARCHITECTURE"
+        TLM[Teacher LLM]
+        QE[Question Embedding]
+        AE[Answer Embedding]
+        
+        TLM --> QE
+        TLM --> AE
+        QE --> CUBE[3D Cubic Core]
+        CUBE --> AE
+    end
     
-    C3 -->|"Loss Signal"| E1
-    E1 -->|"Parameter Updates"| D2
-    E2 -->|"Quality Metrics"| E3
-    E3 -->|"Log Data"| E4
+    %% Main connections
+    CT --> EP
+    CT --> ER
+    CT --> TC
+    CT --> EM
     
-    D2 -->|"Trained Model"| F1
-    E2 -->|"Performance Data"| F2
-    E3 -->|"Analysis"| F3
-
-    %% Critical Path (Training Loop)
-    D1 -.->|"CRITICAL: Tensor Flow"| D2
-    D2 -.->|"CRITICAL: Gradient Flow"| D3
-    C3 -.->|"CRITICAL: Loss Computation"| E1
-
-    %% Training Modes
-    classDef autoencoderMode fill:#ff9999,stroke:#ff0000,stroke-width:2px
-    classDef dialogueMode fill:#99ccff,stroke:#0000ff,stroke-width:2px
-    classDef trainingCore fill:#ffcc99,stroke:#ff8800,stroke-width:3px
+    AD --> EL
+    DD --> EL
+    DD --> TLM
     
-    class B1 autoencoderMode
-    class B2 dialogueMode
-    class C1,D2,E1 trainingCore 
+    CTD --> AD
+    CFD --> AD
+    CDD --> DD
+    
+    CT --> AUTO
+    CT --> DIAL
+    CT --> MIXED
+    
+    %% Stage 2.1 connections
+    DD --> DT
+    CT --> DT
+    DIAL --> QA
+    
+    %% Styling
+    classDef newFeature fill:#90EE90
+    classDef functional fill:#FFD700
+    classDef core fill:#87CEEB
+    
+    class DT,RT,QA,RES newFeature
+    class DD,CDD,DIAL functional
+    class CT,EP,ER core 

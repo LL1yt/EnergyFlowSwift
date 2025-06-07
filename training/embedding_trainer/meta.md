@@ -1,19 +1,21 @@
 # Embedding Trainer - Технические Характеристики
 
-**Версия модуля:** v1.2.0  
+**Версия модуля:** v2.1.0  
 **Дата создания:** 6 июня 2025  
-**Последнее обновление:** 6 июня 2025 - Stage 1.2 ЗАВЕРШЕН!
-**Статус:** 🎉 **Stage 1.2 ЗАВЕРШЕН!** (Phase 3.1)  
+**Последнее обновление:** 7 июня 2025 - Stage 2.1 DIALOGUE TRAINING ЗАВЕРШЕН!
+**Статус:** 🎉 **Stage 2.1 ЗАВЕРШЕН!** (Dialogue Training FUNCTIONAL)  
 **Совместимость:** Python 3.8+, PyTorch 1.9+
 
-## 🏆 MAJOR MILESTONE
+## 🏆 BREAKTHROUGH MILESTONE
 
-**AutoencoderDataset полностью реализован и готов к production!**
+**DIALOGUE TRAINING FUNCTIONAL!** - Полный pipeline работает!
 
 **Завершенные этапы:**
 
 - ✅ **Stage 1.1** - CubeTrainer (8/8 тестов пройдено)
-- ✅ **Stage 1.2** - AutoencoderDataset (10/10 тестов пройдено) ⭐ NEW!
+- ✅ **Stage 1.2** - AutoencoderDataset (10/10 тестов пройдено)
+- ✅ **Stage 1.3** - DialogueDataset (ALL тестов пройдено) ⭐
+- ✅ **Stage 2.1** - Dialogue Training Execution (FUNCTIONAL) ⭐ NEW!
 
 **Ключевые достижения Stage 1.2:**
 
@@ -44,8 +46,9 @@ from training.embedding_trainer import DatasetConfig       # ✅ ЗАВЕРШЕ�
 from training.embedding_trainer import create_text_dataset # ✅ ЗАВЕРШЕН!
 from training.embedding_trainer import create_file_dataset # ✅ ЗАВЕРШЕН!
 
-# 🚀 В РАЗРАБОТКЕ (Stage 1.3)
-from training.embedding_trainer import DialogueDataset     # Stage 1.3
+# ✅ ГОТОВЫЕ DIALOGUE КЛАССЫ (Stage 1.3) ⭐ NEW!
+from training.embedding_trainer import DialogueDataset        # ✅ ЗАВЕРШЕН!
+from training.embedding_trainer import create_dialogue_dataset # ✅ ЗАВЕРШЕН!
 
 # 💡 ПЛАНИРУЕТСЯ (Stage 2+)
 from training.embedding_trainer import TrainingLogger      # Stage 2.1

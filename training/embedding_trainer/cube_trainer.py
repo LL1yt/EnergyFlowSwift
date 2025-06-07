@@ -335,27 +335,19 @@ class CubeTrainer:
     
     def forward(self, input_embedding: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass через полный pipeline
+        Forward pass через 3D Cubic Core
         
         Args:
-            input_embedding: Входной эмбединг (batch_size, embedding_dim)
+            input_embedding: Входной эмбединг (embedding_dim,) или (batch_size, embedding_dim)
             
         Returns:
-            Обработанный эмбединг (batch_size, embedding_dim)
+            Обработанный эмбединг той же размерности
         """
-        if self.embedding_reshaper is None or self.embedding_processor is None:
-            raise ValueError("Components must be initialized before forward pass")
+        if self.embedding_processor is None:
+            raise ValueError("EmbeddingProcessor must be initialized before forward pass")
         
-        # 1. Конвертация 1D → 3D
-        matrix_3d = self.embedding_reshaper.vector_to_matrix(input_embedding)
-        
-        # 2. Обработка через 3D Cubic Core
-        processed_matrix = self.embedding_processor.process(matrix_3d)
-        
-        # 3. Конвертация 3D → 1D
-        output_embedding = self.embedding_reshaper.matrix_to_vector(processed_matrix)
-        
-        return output_embedding
+        # EmbeddingProcessor.forward() делает всё: 1D → 3D → обработка → 1D
+        return self.embedding_processor.forward(input_embedding)
     
     def get_info(self) -> Dict[str, Any]:
         """Получение информации о тренере"""

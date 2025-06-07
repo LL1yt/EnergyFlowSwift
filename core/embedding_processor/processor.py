@@ -145,9 +145,9 @@ class EmbeddingProcessor(nn.Module):
             matrices_3d = []
             
             for i in range(batch_size):
-                emb_1d = input_embedding[i].cpu().numpy()  # EmbeddingReshaper работает с numpy
-                matrix_3d = self.reshaper.vector_to_matrix(emb_1d)
-                matrices_3d.append(torch.from_numpy(matrix_3d).float())
+                emb_1d = input_embedding[i]  # Сохраняем torch тензор для градиентов
+                matrix_3d = self.reshaper.vector_to_matrix(emb_1d)  # EmbeddingReshaper поддерживает torch
+                matrices_3d.append(matrix_3d)
             
             # Объединяем в batch: [batch_size, depth, height, width]
             batch_3d = torch.stack(matrices_3d).to(self.device)
@@ -175,9 +175,9 @@ class EmbeddingProcessor(nn.Module):
             output_embeddings = []
             
             for i in range(batch_size):
-                matrix_3d = processed_batch[i].cpu().numpy()
-                emb_1d = self.reshaper.matrix_to_vector(matrix_3d)
-                output_embeddings.append(torch.from_numpy(emb_1d).float())
+                matrix_3d = processed_batch[i]  # Сохраняем torch тензор для градиентов
+                emb_1d = self.reshaper.matrix_to_vector(matrix_3d)  # EmbeddingReshaper поддерживает torch
+                output_embeddings.append(emb_1d)
             
             output_batch = torch.stack(output_embeddings).to(self.device)
             
