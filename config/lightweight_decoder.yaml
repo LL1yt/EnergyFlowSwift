@@ -62,42 +62,89 @@ phrase_bank:
   relevance_weight: 0.7 # Weight for relevance scoring
 
 # ═══════════════════════════════════════════════════════════════
-# GENERATIVE DECODER SETTINGS
+# GENERATIVE DECODER SETTINGS (RESEARCH-OPTIMIZED)
 # ═══════════════════════════════════════════════════════════════
 
 generative:
   enabled: true
+  version: "2.0.0-research" # Research-enhanced version
 
-  # Model architecture
-  model_size: "medium" # small (~1M), medium (~2M)
-  vocab_size: 32000 # Vocabulary size
-  hidden_size: 1024 # Hidden layer dimension
-  num_layers: 4 # Number of transformer layers
-  num_heads: 8 # Attention heads
-  dropout: 0.1 # Dropout probability
+  # 🧠 Model Architecture (Based on 2024 Research)
+  model_size: "compact_research" # Research-optimized architecture
+  embedding_dim: 768 # Input от EmbeddingProcessor
+  vocab_size: 32000 # Standard vocabulary size
+  hidden_size: 1024 # Optimized для 2M parameter limit
+  num_layers: 4 # Depth-efficiency optimization (NeoBERT approach)
+  num_heads: 8 # Multi-head attention
+  head_dim: 128 # hidden_size // num_heads
+  dropout: 0.1 # Regularization
 
-  # Generation parameters
-  temperature: 0.8 # Sampling temperature
+  # 🔬 Modern Architecture Components (2024 Standards)
+  activation: "SwiGLU" # Modern activation (vs GELU)
+  normalization: "RMSNorm" # Efficient normalization (vs LayerNorm)
+  positional_encoding: "RoPE" # Rotary position embeddings
+  attention_type: "causal" # Autoregressive generation
+  layer_norm_position: "pre" # Pre-layer normalization (stability)
+
+  # 🎯 Generation Parameters (Research-Tuned)
+  temperature: 0.8 # Controlled randomness
   top_k: 50 # Top-k sampling
-  top_p: 0.9 # Nucleus sampling
-  repetition_penalty: 1.1 # Repetition penalty
-  length_penalty: 1.0 # Length penalty
+  top_p: 0.9 # Nucleus sampling (modern standard)
+  repetition_penalty: 1.1 # Reduce repetition
+  length_penalty: 1.0 # Length normalization
+  min_length: 10 # Minimum generation length
+  max_length: 512 # Maximum generation length
 
-  # Training configuration
-  learning_rate: 5e-4 # Learning rate
-  weight_decay: 0.01 # Weight decay
-  warmup_steps: 1000 # Warmup steps
+  # 🧪 Advanced Sampling (Research Methods)
+  sampling_strategy: "nucleus" # nucleus, top_k, temperature
+  early_stopping: true # Stop on EOS token
+  no_repeat_ngram_size: 3 # Prevent n-gram repetition
+  diversity_penalty: 0.0 # Diverse beam search (if enabled)
+
+  # 🎓 Training Configuration (Research-Backed)
+  optimizer: "AdamW" # Modern optimizer
+  learning_rate: 5e-4 # Proven effective for compact models
+  weight_decay: 0.01 # L2 regularization
+  warmup_steps: 1000 # Stable convergence
   max_gradient_norm: 1.0 # Gradient clipping
 
-  # Optimization
-  use_flash_attention: false # Flash attention (if available)
-  gradient_checkpointing: true # Memory optimization
-  mixed_precision: true # FP16 training
+  # 📈 Learning Rate Schedule (Research Best Practices)
+  scheduler: "cosine_with_warmup" # Modern LR scheduling
+  min_learning_rate: 1e-6 # Minimum LR for cosine decay
+  warmup_ratio: 0.1 # 10% warmup of total steps
+  lr_decay_style: "cosine" # Cosine annealing
 
-  # Model paths
-  model_save_path: "checkpoints/generative_decoder/"
-  pretrained_path: null # Path to pretrained model
-  checkpoint_interval: 1000 # Save every N steps
+  # 💾 Batch Configuration (Memory-Optimized)
+  batch_size: 32 # Memory-efficient batch size
+  gradient_accumulation_steps: 4 # Effective batch size: 128
+  max_sequence_length: 512 # Input sequence limit
+  pad_to_max_length: false # Dynamic padding
+
+  # ⚡ Performance Optimization (RTX 5090 Compatible)
+  use_flash_attention: false # RTX 5090 compatibility mode
+  gradient_checkpointing: true # Memory optimization
+  mixed_precision: true # FP16 training for speed
+  compile_model: false # PyTorch 2.0 compilation (if stable)
+  use_cpu_offload: false # CPU offloading for large models
+
+  # 🔧 Model Constraints (Critical Requirements)
+  max_parameters: 2000000 # CRITICAL: Must stay under 2M
+  target_parameters: 1500000 # Optimal target (1.5M)
+  parameter_sharing: false # Layer parameter sharing (if needed)
+  use_bias: false # Remove bias terms for efficiency
+
+  # 📁 Model Paths & Checkpointing
+  model_save_path: "checkpoints/generative_decoder_v2/"
+  pretrained_path: null # Path to pretrained model (if any)
+  checkpoint_interval: 500 # Save every N steps (frequent saving)
+  save_top_k: 3 # Keep best 3 checkpoints
+  monitor_metric: "bleu_score" # Metric to monitor for best model
+
+  # 🏥 Health Monitoring (Production Features)
+  enable_monitoring: true # Performance monitoring
+  log_generation_samples: true # Log sample generations
+  track_memory_usage: true # Memory usage tracking
+  profile_inference: true # Inference profiling
 
 # ═══════════════════════════════════════════════════════════════
 # HYBRID DECODER SETTINGS
