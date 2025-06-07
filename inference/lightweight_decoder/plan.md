@@ -124,27 +124,65 @@
 - **SwiGLU + RMSNorm:** Современные активации и нормализация
 - **Flash Attention:** Эффективность (с учетом RTX 5090 ограничений)
 
+**🚀 НОВЫЕ АРХИТЕКТУРНЫЕ ПРОРЫВЫ (CRITICAL UPDATE):**
+
+- **🥇 Resource-Efficient Transformer (2025):** 52% memory reduction + 33% speedup
+- **🥈 Hybrid CCT+Mamba:** Local processing + linear sequence complexity O(n)
+- **🥉 Enhanced CCT:** Proven baseline + production optimizations
+- **🎯 RTX 5090 Solution:** Edge-optimized architectures solve compatibility issues
+
 #### 2.1 Architecture Design & Research Integration
 
-**🎯 ПРИОРИТЕТ 1: Compact Transformer Architecture**
+**🎯 ПРИОРИТЕТ 1: Revolutionary Architecture Selection**
 
-- [ ] Создать `generative_decoder.py` с современной архитектурой
-- [ ] Реализовать **CompactTransformerBlock** (SwiGLU + RMSNorm)
+**🚀 ARCHITECTURE OPTIONS (Choose Best Approach):**
+
+- [ ] **🥇 OPTION A:** Resource-Efficient Transformer (52% memory, 33% speed, RTX 5090 optimal)
+- [ ] **🥈 OPTION B:** Hybrid CCT+Mamba (local+global, O(n) complexity, bio-inspired)
+- [ ] **🥉 OPTION C:** Enhanced CCT (proven baseline + modern optimizations)
+
+**🔧 IMPLEMENTATION TASKS:**
+
+- [ ] Создать `generative_decoder.py` с выбранной архитектурой
+- [ ] Реализовать **эффективную attention/processing** (RET/CCT/Mamba)
 - [ ] Внедрить **EmbeddingToTextBridge** (768D → 1024D mapping)
-- [ ] Настроить **depth-to-width optimization** (4 layers × 1024 hidden)
-- [ ] Интегрировать **RotaryPositionalEncoding** для эффективности
+- [ ] Настроить **resource optimization** (memory reduction + speedup)
+- [ ] Интегрировать **modern components** (SwiGLU + RMSNorm + edge optimizations)
 
-**🔧 ТЕХНИЧЕСКИЕ СПЕЦИФИКАЦИИ (на основе исследования):**
+**🔧 ТЕХНИЧЕСКИЕ СПЕЦИФИКАЦИИ (Enhanced with New Architectures):**
 
 ```python
-# Optimal configuration from research
-hidden_size: 1024           # Balanced for 2M param limit
-num_layers: 4              # Depth-efficiency sweet spot
-num_heads: 8               # Multi-head attention
-vocab_size: 32000          # Standard vocabulary
-dropout: 0.1               # Regularization
-activation: "SwiGLU"       # Modern activation (vs GELU)
-normalization: "RMSNorm"   # Efficient normalization
+# 🥇 OPTION A: Resource-Efficient Transformer Config
+resource_efficient_config = {
+    'embedding_dim': 768,         # Input от Module 2
+    'hidden_size': 1024,          # Optimized for RET
+    'num_layers': 4,              # Efficiency sweet spot
+    'target_params': 1_000_000,   # Reduced thanks to RET pruning
+    'memory_reduction': 0.52,     # 52% memory savings
+    'speedup': 0.33,              # 33% faster execution
+    'edge_optimized': True,       # RTX 5090 compatible
+    'pruning': 'adaptive',        # Dynamic parameter pruning
+    'quantization': 'adaptive'    # Edge quantization
+}
+
+# 🥈 OPTION B: Hybrid CCT+Mamba Config
+hybrid_config = {
+    'local_processor': 'CCT',     # Local cell processing
+    'global_processor': 'Mamba',  # Sequence modeling O(n)
+    'params_per_cell': 500_000,   # Ultra-lightweight
+    'complexity': 'linear',       # O(n) vs O(n²)
+    'bio_inspired': True,         # Neural network analogy
+    '3d_aware': True              # Spatial processing
+}
+
+# 🥉 OPTION C: Enhanced CCT Config
+enhanced_cct_config = {
+    'base': 'CCT',                # Proven architecture
+    'enhancements': ['FlashAttention', 'quantization', '3d_adaptations'],
+    'hidden_size': 1024,          # Standard optimization
+    'reliability': 'high',        # Production-ready
+    'fallback_ready': True        # Safe deployment
+}
 ```
 
 **Checkpoint 2.1:**

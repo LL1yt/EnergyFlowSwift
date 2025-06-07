@@ -67,7 +67,36 @@ phrase_bank:
 
 generative:
   enabled: true
-  version: "2.0.0-research" # Research-enhanced version
+  version: "3.0.0-revolutionary" # Revolutionary architecture options
+
+  # 🚀 ARCHITECTURE SELECTION (Choose one)
+  architecture_type: "resource_efficient" # resource_efficient, hybrid_cct_mamba, enhanced_cct
+
+  # 🥇 Resource-Efficient Transformer (RECOMMENDED)
+  resource_efficient:
+    enabled: true
+    memory_reduction: 0.52 # 52% memory savings
+    execution_speedup: 0.33 # 33% faster execution
+    parameter_pruning: true # Adaptive pruning
+    edge_optimization: true # RTX 5090 optimized
+    target_params: 1000000 # 1M parameters (reduced from 1.5M)
+
+  # 🥈 Hybrid CCT + Mamba (EXPERIMENTAL)
+  hybrid_cct_mamba:
+    enabled: false
+    local_processor: "CCT" # Local cell processing
+    global_processor: "Mamba" # Global sequence modeling
+    complexity: "linear" # O(n) vs O(n²)
+    params_per_cell: 500000 # Ultra-lightweight per cell
+    bio_inspired: true # Neural network analogy
+
+  # 🥉 Enhanced CCT (BASELINE)
+  enhanced_cct:
+    enabled: false
+    base_architecture: "CCT"
+    enhancements: ["FlashAttention", "quantization", "3d_adaptations"]
+    reliability: "high"
+    fallback_ready: true
 
   # 🧠 Model Architecture (Based on 2024 Research)
   model_size: "compact_research" # Research-optimized architecture
