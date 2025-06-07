@@ -74,7 +74,7 @@ cellular-neural-network/
 │   ├── 🆕 generation_metrics/    # Качество эмбединг→текст
 │   └── 🆕 end_to_end_metrics/    # Качество всей системы
 ├── 🛠️ utils/                     # Общие утилиты
-│   └── ✅ config_manager/        # Система конфигурации
+│   └── ✅ config_manager/        # Система конфигурации **ИНТЕГРИРОВАНА**
 └── ✅ demos/                     # Демонстрации и примеры
 ```
 

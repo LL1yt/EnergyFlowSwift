@@ -4,6 +4,53 @@
 
 Модуль `lattice_3d` реализует трехмерную решетку "умных клеток" для клеточной нейронной сети. Каждая клетка взаимодействует с соседями и может обрабатывать внешние входы.
 
+## 🔧 Новые Примеры с ConfigManager
+
+### Пример 0: Использование ConfigManager для Конфигурации
+
+```python
+from core.lattice_3d import load_lattice_config, Lattice3D
+from utils.config_manager import get_global_config_manager
+
+# Метод 1: Автоматическая загрузка через ConfigManager
+config_manager = get_global_config_manager()
+
+# ConfigManager автоматически загружает и синхронизирует конфигурацию
+lattice_config = load_lattice_config()  # Использует ConfigManager
+lattice = Lattice3D(lattice_config)
+
+print("ConfigManager настройки:")
+print(f"  Размеры решетки: {lattice_config.dimensions}")
+print(f"  Конфигурация cell_prototype автоматически синхронизирована")
+
+# Метод 2: Прямой доступ к настройкам через ConfigManager
+dimensions = config_manager.get_config('lattice_3d', 'dimensions', default=[8, 8, 8])
+boundary = config_manager.get_config('lattice_3d', 'boundary_conditions', default='walls')
+io_strategy = config_manager.get_section('lattice_3d').get('io_strategy', {})
+
+print(f"\nПрямой доступ через ConfigManager:")
+print(f"  Dimensions: {dimensions}")
+print(f"  Boundary: {boundary}")
+print(f"  IO Strategy: {io_strategy}")
+
+# Метод 3: Fallback на файловую конфигурацию
+config_fallback = load_lattice_config('core/lattice_3d/config/default.yaml')
+lattice_fallback = Lattice3D(config_fallback)
+
+print(f"\nFallback конфигурация:")
+print(f"  Размеры: {config_fallback.dimensions}")
+print(f"  Источник: прямая загрузка из файла")
+
+# Проверяем работу обеих конфигураций
+io_info_cm = lattice.get_io_point_info()
+io_info_fb = lattice_fallback.get_io_point_info()
+
+print(f"\nСравнение результатов:")
+print(f"  ConfigManager I/O: {io_info_cm['input_points']['count']} точек")
+print(f"  Fallback I/O: {io_info_fb['input_points']['count']} точек")
+print(f"  Идентичность: {io_info_cm == io_info_fb}")
+```
+
 ## 🆕 Новые Примеры с I/O Стратегией
 
 ### Пример 1: Пропорциональная I/O Стратегия

@@ -353,18 +353,49 @@ class EmbeddingLoader:
         return list(SUPPORTED_LLM_MODELS.keys())
     
     def _load_config(self, config_path: str = None) -> Dict[str, Any]:
-        """Загрузка конфигурации из YAML файла."""
-        if config_path is None:
-            # Используем конфигурацию по умолчанию из модуля
-            config_path = Path(__file__).parent / "config" / "embedding_config.yaml"
-        
+        """Загрузка конфигурации через ConfigManager или из YAML файла."""
         try:
+            # Сначала пробуем загрузить через ConfigManager
+            if config_path is None:
+                try:
+                    from utils.config_manager import get_global_config_manager
+                    config_manager = get_global_config_manager()
+                    
+                    if config_manager:
+                        # Пробуем получить конфигурацию embedding_loader
+                        config = config_manager.get_config('embedding_loader')
+                        if config:
+                            logger.info("✅ Loaded embedding_loader config from ConfigManager")
+                            return config
+                        
+                        # Пробуем секции с префиксом embedding_loader_*
+                        full_config = config_manager.get_config()
+                        embedding_config = {}
+                        
+                        for section_name, section_data in full_config.items():
+                            if section_name.startswith('embedding_loader_'):
+                                subsection = section_name.replace('embedding_loader_', '')
+                                embedding_config[subsection] = section_data
+                        
+                        if embedding_config:
+                            logger.info("✅ Loaded embedding_loader config from ConfigManager (prefixed sections)")
+                            return embedding_config
+                            
+                except ImportError:
+                    logger.warning("ConfigManager not available, falling back to file loading")
+                except Exception as e:
+                    logger.warning(f"ConfigManager error: {e}, falling back to file loading")
+            
+            # Fallback: загружаем из файла
+            if config_path is None:
+                config_path = Path(__file__).parent / "config" / "embedding_config.yaml"
+            
             import yaml
             
             if Path(config_path).exists():
                 with open(config_path, 'r', encoding='utf-8') as f:
                     config = yaml.safe_load(f)
-                logger.info(f"Configuration loaded from: {config_path}")
+                logger.info(f"Configuration loaded from file: {config_path}")
                 return config
             else:
                 logger.warning(f"Config file not found: {config_path}, using defaults")

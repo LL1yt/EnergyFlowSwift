@@ -69,8 +69,14 @@ class BertHandler(FormatHandler):
   - **Статус**: ✅ Доступен
 
 - **core/cell_prototype**:
+
   - `NeuralCell.get_embedding_dim()` - размерность эмбедингов
   - **Статус**: ✅ Доступен
+
+- **utils/config_manager**:
+  - `get_global_config_manager()` - централизованное управление конфигурацией
+  - `ConfigManager.get_config()` - получение параметров конфигурации
+  - **Статус**: ✅ Интегрирован с fallback поддержкой
 
 #### Phase 2 модули:
 

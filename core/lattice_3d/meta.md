@@ -16,9 +16,10 @@
 
 ### Внутренние Зависимости (Модули Проекта)
 
-| Модуль                | Статус   | Используемые Компоненты                    | Назначение                            |
-| --------------------- | -------- | ------------------------------------------ | ------------------------------------- |
-| `core.cell_prototype` | ✅ Готов | `CellPrototype`, `create_cell_from_config` | Создание отдельных клеток для решетки |
+| Модуль                 | Статус   | Используемые Компоненты                    | Назначение                                |
+| ---------------------- | -------- | ------------------------------------------ | ----------------------------------------- |
+| `core.cell_prototype`  | ✅ Готов | `CellPrototype`, `create_cell_from_config` | Создание отдельных клеток для решетки     |
+| `utils.config_manager` | ✅ Готов | `get_global_config_manager`                | Централизованное управление конфигурацией |
 
 ### Внешние Зависимости (Python Пакеты)
 
@@ -99,13 +100,16 @@ class PlacementStrategy(Enum):
 
 ```python
 def load_lattice_config(config_path: Optional[str] = None) -> LatticeConfig:
-    """Загрузка конфигурации из YAML"""
+    """Загрузка конфигурации с поддержкой ConfigManager и файлового fallback"""
 
 def create_lattice_from_config(config_path: Optional[str] = None) -> Lattice3D:
-    """Создание решетки из конфигурации"""
+    """Создание решетки из конфигурации с автоматической синхронизацией cell_prototype"""
 
 def validate_lattice_config(config: LatticeConfig) -> Dict[str, Any]:
     """Валидация конфигурации решетки"""
+
+def _build_lattice_config_from_data(data: Any) -> LatticeConfig:
+    """Построение конфигурации из данных ConfigManager или YAML"""
 ```
 
 ### Типы Данных

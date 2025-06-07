@@ -77,27 +77,36 @@ def setup_project_structure():
 
 def load_configuration(config_path="config/main_config.yaml"):
     """
-    Загружает конфигурацию проекта
+    Загружает конфигурацию проекта через ConfigManager
     
     Параметры:
         config_path (str): Путь к файлу конфигурации
         
     Возвращает:
-        dict: Словарь с настройками
+        ConfigManager: Настроенный менеджер конфигурации
     """
-    print(f"⚙️  Загрузка конфигурации из {config_path}...")
+    print(f"⚙️  Инициализация ConfigManager из {config_path}...")
     
     try:
-        import yaml
-        with open(config_path, 'r', encoding='utf-8') as file:
-            config = yaml.safe_load(file)
-        print("  ✅ Конфигурация загружена успешно")
+        from utils.config_manager import create_config_manager, set_global_config_manager
+        
+        # Создаем ConfigManager
+        config = create_config_manager(
+            base_config=config_path,
+            environment="development",
+            enable_hot_reload=True
+        )
+        
+        # Устанавливаем как глобальный
+        set_global_config_manager(config)
+        
+        print("  ✅ ConfigManager инициализирован успешно")
+        print(f"  📊 Загружено секций: {len(config.get_config())}")
+        print(f"  🔍 Обнаружено модульных конфигураций: {config.get_stats()['config_loads']}")
+        
         return config
-    except FileNotFoundError:
-        print(f"  ❌ Файл конфигурации не найден: {config_path}")
-        return None
     except Exception as e:
-        print(f"  ❌ Ошибка загрузки конфигурации: {e}")
+        print(f"  ❌ Ошибка инициализации ConfigManager: {e}")
         return None
 
 
@@ -106,7 +115,7 @@ def setup_logging(config):
     Настраивает систему логирования
     
     Параметры:
-        config (dict): Конфигурация проекта
+        config (ConfigManager): Менеджер конфигурации проекта
     """
     print("📝 Настройка системы логирования...")
     
@@ -114,18 +123,32 @@ def setup_logging(config):
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
+    # Получаем настройки логирования из ConfigManager
+    log_level = config.get_config('logging', 'level', 'INFO')
+    log_to_file = config.get_config('logging', 'log_to_file', True)
+    log_file = config.get_config('logging', 'log_file', 'logs/main.log')
+    log_to_console = config.get_config('logging', 'log_to_console', True)
+    
     # Настраиваем логгер
+    handlers = []
+    
+    if log_to_file:
+        handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
+    
+    if log_to_console:
+        handlers.append(logging.StreamHandler(sys.stdout))
+    
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, log_level.upper(), logging.INFO),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('logs/main.log', encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)
-        ]
+        handlers=handlers
     )
     
     logger = logging.getLogger(__name__)
     logger.info("✅ Система логирования настроена")
+    logger.info(f"📊 Уровень логирования: {log_level}")
+    logger.info(f"📁 Файл логов: {log_file if log_to_file else 'отключен'}")
+    
     return logger
 
 
@@ -328,32 +351,39 @@ def run_simple_test():
     # Демонстрируем РЕАЛЬНЫЙ модуль cell_prototype
     print("\n🧬 ТЕСТИРУЕМ РЕАЛЬНУЮ КЛЕТКУ CELL_PROTOTYPE...")
     try:
-        # Создаем клетку из конфигурации  
-        config = load_configuration()
-        if config:
-            real_cell = create_cell_from_config(config)
-            print(f"  ✅ Реальная клетка создана: {real_cell}")
-            
-            # Создаем тестовые данные
-            batch_size = 2
-            neighbor_states = torch.randn(batch_size, 6, config['cell_prototype']['state_size'])
-            own_state = torch.randn(batch_size, config['cell_prototype']['state_size'])
-            external_input = torch.randn(batch_size, config['cell_prototype']['input_size'])
-            
-            # Тестируем forward pass
-            with torch.no_grad():
-                new_state = real_cell(neighbor_states, own_state, external_input)
-            
-            print(f"  📊 Входное состояние: {own_state[0].numpy()}")
-            print(f"  📊 Новое состояние:   {new_state[0].numpy()}")
-            print(f"  📊 Диапазон выхода:   [{new_state.min():.3f}, {new_state.max():.3f}]")
-            
-            # Показываем информацию о модели
-            info = real_cell.get_info()
-            print(f"  📋 Параметров в модели: {info['total_parameters']}")
-            print(f"  📋 Размер модели: {info['model_size_mb']:.2f} MB")
-            
-            print("  ✅ Тест реальной клетки прошел успешно!")
+        # Получаем глобальный ConfigManager
+        from utils.config_manager import get_global_config_manager
+        config_manager = get_global_config_manager()
+        
+        if config_manager:
+            # Получаем конфигурацию cell_prototype
+            cell_config = config_manager.get_config('cell_prototype')
+            if cell_config:
+                real_cell = create_cell_from_config(cell_config)
+                print(f"  ✅ Реальная клетка создана: {real_cell}")
+                
+                # Создаем тестовые данные
+                batch_size = 2
+                neighbor_states = torch.randn(batch_size, 6, cell_config['state_size'])
+                own_state = torch.randn(batch_size, cell_config['state_size'])
+                external_input = torch.randn(batch_size, cell_config['input_size'])
+                
+                # Тестируем forward pass
+                with torch.no_grad():
+                    new_state = real_cell(neighbor_states, own_state, external_input)
+                
+                print(f"  📊 Входное состояние: {own_state[0].numpy()}")
+                print(f"  📊 Новое состояние:   {new_state[0].numpy()}")
+                print(f"  📊 Диапазон выхода:   [{new_state.min():.3f}, {new_state.max():.3f}]")
+                
+                # Показываем информацию о модели
+                info = real_cell.get_info()
+                print(f"  📋 Параметров в модели: {info['total_parameters']}")
+                print(f"  📋 Размер модели: {info['model_size_mb']:.2f} MB")
+                
+                print("  ✅ Тест реальной клетки прошел успешно!")
+            else:
+                print("  ⚠️  Конфигурация cell_prototype не найдена")
             
         else:
             print("  ⚠️  Конфигурация недоступна, используем простую заглушку")

@@ -5,8 +5,12 @@ graph TB
         
         subgraph "📥 Input Layer"
             CONFIG["`**LatticeConfig**<br/>• dimensions: (X,Y,Z)<br/>• boundary_conditions<br/>• placement_strategy<br/>• io_strategy_config`"]
-            YAML["`**YAML Config**<br/>config/default.yaml`"]
+            CONFIGMGR["`**ConfigManager**<br/>utils.config_manager<br/>• Centralized config<br/>• Hot reloading<br/>• Auto cell_prototype sync`"]
+            YAML["`**YAML Config**<br/>config/default.yaml<br/>Fallback source`"]
+            
+            CONFIGMGR --> CONFIG
             YAML --> CONFIG
+            CONFIGMGR -.-> YAML
         end
         
         subgraph "🆕 I/O Strategy System"

@@ -429,18 +429,45 @@ class LatticeConfig:
 
 def load_lattice_config(config_path: Optional[str] = None) -> LatticeConfig:
     """
-    Загрузка конфигурации решетки из YAML файла.
+    Загрузка конфигурации решетки через ConfigManager или из файла.
     
     Args:
-        config_path: Путь к файлу конфигурации. Если None, используется default.yaml
+        config_path: Путь к файлу конфигурации. Если None, пробуем ConfigManager, затем default.yaml
         
     Returns:
         LatticeConfig: Загруженная конфигурация
     """
-    if config_path is None:
-        config_path = Path(__file__).parent / "config" / "default.yaml"
-    
     try:
+        # Сначала пробуем загрузить через ConfigManager
+        if config_path is None:
+            try:
+                from utils.config_manager import get_global_config_manager
+                config_manager = get_global_config_manager()
+                
+                if config_manager:
+                    # Пробуем получить конфигурацию lattice_3d
+                    lattice_data = config_manager.get_config('lattice_3d')
+                    if lattice_data:
+                        logging.info("✅ Loaded lattice config from ConfigManager")
+                    else:
+                        # Пробуем секцию lattice
+                        lattice_data = config_manager.get_config('lattice')
+                        if lattice_data:
+                            logging.info("✅ Loaded lattice config from ConfigManager (lattice section)")
+                    
+                    if lattice_data:
+                        # Преобразуем конфигурацию через ConfigManager
+                        return _build_lattice_config_from_data(lattice_data)
+                        
+            except ImportError:
+                logging.warning("ConfigManager not available, falling back to file loading")
+            except Exception as e:
+                logging.warning(f"ConfigManager error: {e}, falling back to file loading")
+        
+        # Fallback: загружаем из файла
+        if config_path is None:
+            config_path = Path(__file__).parent / "config" / "default.yaml"
+        
         with open(config_path, 'r', encoding='utf-8') as f:
             yaml_data = yaml.safe_load(f)
             
@@ -527,7 +554,7 @@ def load_lattice_config(config_path: Optional[str] = None) -> LatticeConfig:
                 logging.warning(f"Could not auto-sync cell_prototype config: {e}")
                 config_params['auto_sync_cell_config'] = False
         
-        return LatticeConfig(**config_params)
+        return _build_lattice_config_from_data(lattice_data)
         
     except FileNotFoundError:
         logging.warning(f"Config file not found: {config_path}. Using default configuration.")
@@ -535,6 +562,104 @@ def load_lattice_config(config_path: Optional[str] = None) -> LatticeConfig:
     except Exception as e:
         logging.error(f"Error loading config from {config_path}: {e}")
         raise
+
+
+def _build_lattice_config_from_data(lattice_data: Dict[str, Any]) -> LatticeConfig:
+    """
+    Создание LatticeConfig из словаря данных.
+    
+    Args:
+        lattice_data: Словарь с конфигурацией lattice_3d
+        
+    Returns:
+        LatticeConfig: Настроенная конфигурация
+    """
+    # Преобразуем в параметры LatticeConfig
+    config_params = {
+        'dimensions': tuple(lattice_data.get('dimensions', [8, 8, 8])),
+        'boundary_conditions': lattice_data.get('boundary_conditions', 'walls'),
+        'parallel_processing': lattice_data.get('parallel_processing', True),
+        'gpu_enabled': lattice_data.get('gpu_enabled', True),
+        'batch_size': lattice_data.get('batch_size', 1),
+    }
+    
+    # Добавляем вложенные параметры
+    if 'initialization' in lattice_data:
+        init_data = lattice_data['initialization']
+        config_params.update({
+            'initialization_method': init_data.get('method', 'normal'),
+            'initialization_std': init_data.get('std', 0.1),
+            'initialization_mean': init_data.get('mean', 0.0),
+        })
+        
+    if 'topology' in lattice_data:
+        topo_data = lattice_data['topology']
+        config_params.update({
+            'neighbors': topo_data.get('neighbors', 6),
+            'validate_connections': topo_data.get('validate_connections', True),
+            'cache_neighbors': topo_data.get('cache_neighbors', True),
+        })
+        
+    if 'io_interfaces' in lattice_data:
+        io_data = lattice_data['io_interfaces']
+        config_params.update({
+            'input_face': Face(io_data.get('input_face', 'front')),
+            'output_face': Face(io_data.get('output_face', 'back')),
+            'embedding_mapping': io_data.get('embedding_mapping', 'linear'),
+        })
+        
+    # НОВОЕ: Загрузка конфигурации I/O стратегии
+    if 'io_strategy' in lattice_data:
+        io_strategy_data = lattice_data['io_strategy']
+        config_params.update({
+            'placement_strategy': PlacementStrategy(io_strategy_data.get('placement_method', 'proportional')),
+            'io_strategy_config': io_strategy_data,
+        })
+    else:
+        # Значения по умолчанию
+        config_params.update({
+            'placement_strategy': PlacementStrategy.PROPORTIONAL,
+            'io_strategy_config': {
+                'coverage_ratio': {'min_percentage': 7.8, 'max_percentage': 15.6},
+                'absolute_limits': {'min_points': 5, 'max_points': 0},
+                'seed': 42
+            },
+        })
+        
+    if 'diagnostics' in lattice_data:
+        diag_data = lattice_data['diagnostics']
+        config_params.update({
+            'enable_logging': diag_data.get('enable_logging', True),
+            'log_level': diag_data.get('log_level', 'INFO'),
+            'track_performance': diag_data.get('track_performance', True),
+            'validate_states': diag_data.get('validate_states', True),
+        })
+        
+    if 'optimization' in lattice_data:
+        opt_data = lattice_data['optimization']
+        config_params.update({
+            'memory_efficient': opt_data.get('memory_efficient', True),
+            'use_checkpointing': opt_data.get('use_checkpointing', False),
+            'mixed_precision': opt_data.get('mixed_precision', False),
+        })
+    
+    # Загружаем конфигурацию cell_prototype если требуется автосинхронизация
+    try:
+        from utils.config_manager import get_global_config_manager
+        config_manager = get_global_config_manager()
+        if config_manager:
+            cell_config = config_manager.get_config('cell_prototype')
+            if cell_config:
+                config_params['cell_config'] = cell_config
+                config_params['auto_sync_cell_config'] = True
+                logging.info("Auto-synced with cell_prototype configuration from ConfigManager")
+            else:
+                logging.info("cell_prototype config not found in ConfigManager")
+    except Exception as e:
+        logging.warning(f"Could not auto-sync cell_prototype config: {e}")
+        config_params['auto_sync_cell_config'] = False
+    
+    return LatticeConfig(**config_params)
 
 
 # =============================================================================

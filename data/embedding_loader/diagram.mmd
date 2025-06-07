@@ -6,6 +6,7 @@ graph TB
         GLOVE[GloVe Files<br/>.txt]
         BERT[BERT Embeddings<br/>.pt/.pkl]
         CONFIG[embedding_config.yaml]
+        CONFIGMGR[ConfigManager<br/>utils.config_manager<br/>Centralized config]
     end
     
     subgraph "data/embedding_loader/"
@@ -67,7 +68,9 @@ graph TB
     W2V -->|"Load Text"| W2VH
     GLOVE -->|"Load Text"| GH
     BERT -->|"Load Tensors"| BH
-    CONFIG -->|"Configuration"| EL
+    CONFIGMGR -->|"Primary config"| EL
+    CONFIG -->|"Fallback config"| EL
+    CONFIGMGR -.->|"fallback"| CONFIG
     
     %% Format Handler Inheritance
     FH -.->|"inherits"| W2VH
