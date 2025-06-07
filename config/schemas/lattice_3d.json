@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Lattice 3D Configuration Schema",
+  "description": "Schema for validating 3D cellular neural network lattice configuration",
+  "type": "object",
+  "properties": {
+    "dimensions": {
+      "type": "object",
+      "description": "Размеры 3D решетки",
+      "properties": {
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "description": "Глубина решетки (количество слоев)"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "description": "Высота решетки"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "description": "Ширина решетки"
+        }
+      },
+      "required": ["depth", "height", "width"],
+      "additionalProperties": false
+    },
+    "connectivity": {
+      "type": "object",
+      "description": "Настройки соединений между клетками",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["6-neighbors", "18-neighbors", "26-neighbors"],
+          "description": "Тип соединений между соседними клетками"
+        },
+        "weight_sharing": {
+          "type": "boolean",
+          "description": "Использовать ли общие веса для однотипных соединений"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "boundary_conditions": {
+      "type": "string",
+      "enum": ["walls", "periodic", "reflective", "absorbing"],
+      "description": "Граничные условия для решетки"
+    },
+    "initialization": {
+      "type": "object",
+      "description": "Параметры инициализации клеток",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["random", "zeros", "ones", "custom"],
+          "description": "Метод инициализации значений клеток"
+        },
+        "random_seed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seed для воспроизводимой случайной инициализации"
+        },
+        "custom_pattern": {
+          "type": "string",
+          "description": "Кастомный паттерн инициализации"
+        }
+      },
+      "required": ["method"],
+      "additionalProperties": false
+    },
+    "device": {
+      "type": "object",
+      "description": "Настройки устройства для вычислений",
+      "properties": {
+        "use_gpu": {
+          "type": "boolean",
+          "description": "Использовать GPU для вычислений"
+        },
+        "gpu_device": {
+          "type": "string",
+          "pattern": "^cuda:\\d+$",
+          "description": "Конкретное GPU устройство (например, cuda:0)"
+        },
+        "fallback_to_cpu": {
+          "type": "boolean",
+          "description": "Переключаться на CPU если GPU недоступен"
+        }
+      },
+      "required": ["use_gpu", "fallback_to_cpu"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["dimensions", "connectivity", "boundary_conditions"],
+  "additionalProperties": false
+}

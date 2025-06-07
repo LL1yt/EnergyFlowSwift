@@ -1,0 +1,96 @@
+graph TB
+    subgraph "🏢 ConfigManager Enhanced Architecture"
+        subgraph "📋 Core Components"
+            CM[ConfigManager<br/>🔧 Main Controller]
+            CMS[ConfigManagerSettings<br/>⚙️ Configuration]
+            CS[ConfigSection<br/>📦 Section Wrapper]
+        end
+        
+        subgraph "🔍 Validation Systems"
+            CV[ConfigValidator<br/>📝 Basic Validation]
+            CVB[ConfigValidatorBuilder<br/>🏗️ Validator Factory]
+            ECV[EnhancedConfigValidator<br/>🆕 Multi-Severity]
+            VR[ValidationResult<br/>🆕 Detailed Results]
+        end
+        
+        subgraph "🆕 Enhanced Validation"
+            SM[SchemaManager<br/>📋 JSON Schema Controller]
+            SVR[SchemaValidationRule<br/>🔍 JSON Schema Rule]
+            DVR[DependencyValidationRule<br/>🔗 Field Dependencies]
+            CVR[ConditionalValidationRule<br/>❓ If-Then Logic]
+            STR[StructureValidationRule<br/>🏗️ Complex Objects]
+        end
+        
+        subgraph "🆕 Versioning System"
+            CVM[ConfigVersionManager<br/>📚 Version Controller]
+            CC[ConfigChange<br/>📝 Change Description]
+            CVer[ConfigVersion<br/>🏷️ Version Metadata]
+            CMig[ConfigMigration<br/>🔄 Migration Handler]
+        end
+        
+        subgraph "💾 Storage Layer"
+            YF[YAML Files<br/>📄 Configuration Files]
+            JS[JSON Schemas<br/>🔍 Validation Schemas]
+            VH[Version History<br/>📚 Config Versions]
+            Cache[Memory Cache<br/>⚡ Performance Layer]
+        end
+        
+        subgraph "🌐 External Dependencies"
+            YAML[PyYAML Library<br/>📄 YAML Processing]
+            JSONSCHEMA[jsonschema Library<br/>🆕 Schema Validation]
+            FS[File System<br/>💿 File Operations]
+            TH[Threading<br/>🔒 Thread Safety]
+        end
+    end
+    
+    %% Core connections
+    CM --> CMS
+    CM --> CS
+    CM --> CV
+    CM --> Cache
+    
+    %% Enhanced validation connections
+    CM --> ECV
+    ECV --> VR
+    ECV --> SM
+    SM --> SVR
+    SM --> DVR
+    SM --> CVR
+    SM --> STR
+    
+    %% Versioning connections
+    CM --> CVM
+    CVM --> CC
+    CVM --> CVer
+    CVM --> CMig
+    
+    %% Storage connections
+    CM --> YF
+    SM --> JS
+    CVM --> VH
+    
+    %% External dependencies
+    CM --> YAML
+    SM --> JSONSCHEMA
+    CM --> FS
+    CM --> TH
+    
+    %% Data flow arrows
+    YF -.->|"load"| Cache
+    Cache -.->|"validate"| ECV
+    ECV -.->|"results"| VR
+    CM -.->|"version"| CVM
+    CVM -.->|"track"| CC
+    
+    %% Styling
+    classDef coreClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef enhancedClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef newClass fill:#e8f5e8,stroke:#1b5e20,stroke-width:3px
+    classDef storageClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef externalClass fill:#fafafa,stroke:#424242,stroke-width:1px
+    
+    class CM,CMS,CS,CV,CVB coreClass
+    class ECV,VR,SM,SVR,DVR,CVR,STR enhancedClass
+    class CVM,CC,CVer,CMig newClass
+    class YF,JS,VH,Cache storageClass
+    class YAML,JSONSCHEMA,FS,TH externalClass 

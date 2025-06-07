@@ -17,6 +17,7 @@ build/
 
 # Testing
 coverage/
+demos/
 
 # Environment variables
 .venv

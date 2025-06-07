@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Training Configuration Schema",
+  "description": "Schema for validating neural network training configuration",
+  "type": "object",
+  "properties": {
+    "batch_size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1024,
+      "description": "Размер батча для обучения"
+    },
+    "learning_rate": {
+      "type": "number",
+      "minimum": 1e-6,
+      "maximum": 1.0,
+      "description": "Скорость обучения"
+    },
+    "num_epochs": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "Количество эпох обучения"
+    },
+    "time_steps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Количество временных шагов для обучения"
+    },
+    "optimizer": {
+      "type": "object",
+      "description": "Настройки оптимизатора",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["Adam", "SGD", "RMSprop", "AdamW"],
+          "description": "Тип оптимизатора"
+        },
+        "lr": {
+          "type": "number",
+          "minimum": 1e-6,
+          "maximum": 1.0,
+          "description": "Learning rate (переопределяет глобальный)"
+        },
+        "weight_decay": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.0,
+          "description": "Вес регуляризации L2"
+        },
+        "momentum": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.0,
+          "description": "Momentum для SGD"
+        },
+        "betas": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1.0
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Beta параметры для Adam"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "scheduler": {
+      "type": "object",
+      "description": "Настройки планировщика learning rate",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "StepLR",
+            "ExponentialLR",
+            "ReduceLROnPlateau",
+            "CosineAnnealingLR"
+          ],
+          "description": "Тип планировщика"
+        },
+        "step_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Размер шага для StepLR"
+        },
+        "gamma": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.0,
+          "description": "Коэффициент уменьшения LR"
+        },
+        "patience": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Терпение для ReduceLROnPlateau"
+        },
+        "factor": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.0,
+          "description": "Фактор уменьшения для ReduceLROnPlateau"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "loss": {
+      "type": "object",
+      "description": "Настройки функции потерь",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["MSE", "CrossEntropy", "BCELoss", "L1Loss", "SmoothL1Loss"],
+          "description": "Тип функции потерь"
+        },
+        "reduction": {
+          "type": "string",
+          "enum": ["mean", "sum", "none"],
+          "description": "Способ агрегации потерь"
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Вес функции потерь"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "validation": {
+      "type": "object",
+      "description": "Настройки валидации",
+      "properties": {
+        "validation_split": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.0,
+          "description": "Доля данных для валидации"
+        },
+        "validation_frequency": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Частота валидации (каждые N эпох)"
+        },
+        "early_stopping": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Включить early stopping"
+            },
+            "patience": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Количество эпох без улучшения"
+            },
+            "min_delta": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Минимальное изменение для считается улучшением"
+            }
+          },
+          "required": ["enabled"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "checkpointing": {
+      "type": "object",
+      "description": "Настройки сохранения checkpoints",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Включить сохранение checkpoints"
+        },
+        "save_frequency": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Частота сохранения (каждые N эпох)"
+        },
+        "save_best_only": {
+          "type": "boolean",
+          "description": "Сохранять только лучшие модели"
+        },
+        "checkpoint_dir": {
+          "type": "string",
+          "description": "Директория для сохранения checkpoints"
+        }
+      },
+      "required": ["enabled"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["batch_size", "learning_rate", "num_epochs", "optimizer"],
+  "additionalProperties": false
+}

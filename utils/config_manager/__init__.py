@@ -29,6 +29,27 @@ from .config_schema import (
     SchemaBuilder,
     DEFAULT_SCHEMAS
 )
+# 🆕 Новые модули для версионирования и enhanced validation
+from .config_versioning import (
+    ConfigVersionManager,
+    ConfigChange,
+    ConfigVersion,
+    ConfigMigration,
+    ChangeType,
+    DEFAULT_MIGRATIONS
+)
+from .enhanced_validator import (
+    EnhancedConfigValidator,
+    EnhancedFieldValidator,
+    ValidationResult,
+    ValidationSeverity,
+    SchemaManager,
+    SchemaValidationRule,
+    DependencyValidationRule,
+    ConditionalValidationRule,
+    StructureValidationRule,
+    ENHANCED_VALIDATORS
+)
 
 __all__ = [
     # Основные классы
@@ -43,6 +64,24 @@ __all__ = [
     'FieldType',
     'SchemaBuilder',
     
+    # 🆕 Версионирование
+    'ConfigVersionManager',
+    'ConfigChange',
+    'ConfigVersion',
+    'ConfigMigration',
+    'ChangeType',
+    
+    # 🆕 Enhanced Validation
+    'EnhancedConfigValidator',
+    'EnhancedFieldValidator',
+    'ValidationResult',
+    'ValidationSeverity',
+    'SchemaManager',
+    'SchemaValidationRule',
+    'DependencyValidationRule',
+    'ConditionalValidationRule',
+    'StructureValidationRule',
+    
     # Helper функции
     'create_config_manager',
     'get_global_config_manager',
@@ -51,4 +90,6 @@ __all__ = [
     # Предустановленные валидаторы и схемы
     'DEFAULT_VALIDATORS',
     'DEFAULT_SCHEMAS',
+    'DEFAULT_MIGRATIONS',
+    'ENHANCED_VALIDATORS',
 ] 
