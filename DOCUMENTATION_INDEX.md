@@ -105,7 +105,8 @@ inference/lightweight_decoder/
 ├── diagram.mmd                          # Архитектура декодера
 ├── examples.md                          # Примеры декодирования
 ├── STAGE_2_1_COMPLETION_REPORT.md      # Отчет Stage 2.1 (RET v2.1)
-└── STAGE_2_2_COMPLETION_REPORT.md      # Отчет Stage 2.2 (Integration)
+├── STAGE_2_2_COMPLETION_REPORT.md      # Отчет Stage 2.2 (Integration)
+└── STAGE_2_3_COMPLETION_REPORT.md      # Отчет Stage 2.3 (Quality Optimization)
 ```
 
 ---
@@ -170,11 +171,11 @@ main.py                                  # Точка интеграции мо�
 
 ### **🚀 АКТИВНЫЕ МОДУЛИ (в разработке):**
 
-**GenerativeDecoder (Stage 2.3):**
+**GenerativeDecoder (ЗАВЕРШЕН):**
 
-- **Активный план:** [`inference/lightweight_decoder/plan.md`](inference/lightweight_decoder/plan.md)
-- **Статус:** RET v2.1 integration complete (16/16 тестов)
-- **Следующий шаг:** Quality optimization & training preparation
+- **Завершенный план:** [`inference/lightweight_decoder/plan.md`](inference/lightweight_decoder/plan.md)
+- **Статус:** Quality optimization complete (28/28 тестов)
+- **Следующий шаг:** Phase 3 - Модульное обучение
 
 ### **💡 ПЛАНИРУЕМЫЕ МОДУЛИ:**
 
@@ -187,29 +188,30 @@ main.py                                  # Точка интеграции мо�
 
 ## 📊 АКТУАЛЬНЫЕ МЕТРИКИ ПРОЕКТА
 
-### **Общий прогресс: 82% 🚀**
+### **Общий прогресс: 85% 🚀**
 
 - **Phase 1:** ✅ 100% (Foundation)
 - **Phase 2:** ✅ 100% (Core Functionality + extensions)
-- **Phase 2.7:** 🚀 90% (Lightweight Decoder)
+- **Phase 2.7:** ✅ 95% (Lightweight Decoder)
   - Stage 1: ✅ 100% (PhraseBankDecoder - 17/17 тестов)
   - Stage 2.1: ✅ 100% (RET v2.1 - 8/8 тестов)
   - Stage 2.2: ✅ 100% (Integration - 8/8 тестов)
-  - Stage 2.3: 🎯 Активный (Quality optimization)
+  - Stage 2.3: ✅ 100% (Quality optimization - 12/12 тестов)
 - **Phase 3:** 💡 0% (Training Infrastructure - готов к запуску)
 
 ### **Модульная готовность:**
 
 - **🔴 Модуль 1 (Teacher LLM Encoder):** ✅ 100%
 - **🔵 Модуль 2 (3D Cubic Core):** ✅ 100%
-- **🟡 Модуль 3 (Lightweight Decoder):** 🚀 90%
+- **🟡 Модуль 3 (Lightweight Decoder):** ✅ 95%
 
-### **Покрытие тестами: 34/34 пройдено (100%)**
+### **Покрытие тестами: 46/46 пройдено (100%)**
 
 - **Phase 1 tests:** 8/8 ✅
 - **Phase 2 tests:** 10/10 ✅
 - **PhraseBankDecoder:** 17/17 ✅
 - **GenerativeDecoder:** 16/16 ✅ (Stage 2.1 + 2.2)
+- **Quality Optimizer:** 12/12 ✅ (Stage 2.3)
 
 ---
 
@@ -237,7 +239,7 @@ main.py                                  # Точка интеграции мо�
 
 1. [`PROJECT_PLAN.md`](PROJECT_PLAN.md) - общий статус
 2. [`PHASE_2_7_PLAN.md`](PHASE_2_7_PLAN.md) - текущая активная фаза
-3. [`inference/lightweight_decoder/plan.md`](inference/lightweight_decoder/plan.md) - детали Stage 2.3
+3. [`inference/lightweight_decoder/plan.md`](inference/lightweight_decoder/plan.md) - завершенный Stage 2.3
 
 ---
 
