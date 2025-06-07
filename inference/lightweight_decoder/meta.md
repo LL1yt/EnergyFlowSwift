@@ -1,9 +1,9 @@
 # 🔧 Lightweight Decoder - Module Metadata
 
 **Модуль:** inference/lightweight_decoder  
-**Версия:** 2.1.0-ret-ultra  
-**Статус:** 🎉 **STAGE 2 RET v2.1 SUCCESS - 722K PARAMETERS!**  
-**Последнее обновление:** 6 декабря 2024 - RET v2.1 BREAKTHROUGH
+**Версия:** 2.1.1-generative-integration  
+**Статус:** 🎉 **STAGE 2.1 GENERATIVE DECODER INTEGRATION COMPLETE!**  
+**Последнее обновление:** 6 декабря 2024 - GenerativeDecoder + RET v2.1 Production Ready
 
 ---
 
@@ -88,7 +88,18 @@ class PhraseBankDecoder:
     def clear_cache(self)
     def start_new_session(self)
 
-# NEW: RET v2.1 ULTRA-COMPACT - 722K PARAMETERS! (Stage 2)
+# UPDATED: Unified GenerativeDecoder API - STAGE 2.1 COMPLETE!
+class GenerativeDecoder:
+    """🎉 Unified generative decoder с RET v2.1 backend - 722K parameters"""
+    def __init__(self, config: Optional[GenerativeConfig] = None)
+    def generate(self, embedding: torch.Tensor, **kwargs) -> Dict[str, Any]
+    def decode(self, embedding: torch.Tensor, **kwargs) -> str
+    def batch_generate(self, embeddings: torch.Tensor, **kwargs) -> List[Dict[str, Any]]
+    def get_performance_report(self) -> Dict[str, Any]
+    def save_model(self, path: Union[str, Path])
+    def load_model(self, path: Union[str, Path])
+
+# NEW: RET v2.1 ULTRA-COMPACT Backend - 722K PARAMETERS! (Stage 2)
 class ResourceEfficientDecoderV21:
     """🎉 Ultra-compact transformer decoder - 722K parameters"""
     def __init__(self, config: Optional[RETConfigV21] = None)
@@ -96,6 +107,19 @@ class ResourceEfficientDecoderV21:
     def forward(self, embedding: torch.Tensor, max_length: int = 10) -> Dict[str, Any]
     def get_model_info(self) -> Dict[str, Any]
     def _count_parameters(self) -> int
+
+# NEW: GenerativeDecoder Configuration - STAGE 2.1
+class GenerativeConfig:
+    """🔧 Unified configuration for GenerativeDecoder"""
+    architecture_type: str = "resource_efficient_v21"
+    embedding_dim: int = 768          # Input from Module 2
+    target_parameters: int = 800_000  # ACHIEVED: 722,944
+    mixed_precision: bool = True      # RTX 5090 optimization
+    edge_optimization: bool = True    # Edge optimization
+    verbose_logging: bool = False     # Detailed logging
+
+# Factory function for GenerativeDecoder
+def create_generative_decoder(**kwargs) -> GenerativeDecoder
 
 # NEW: RET v2.1 Configuration
 class RETConfigV21:

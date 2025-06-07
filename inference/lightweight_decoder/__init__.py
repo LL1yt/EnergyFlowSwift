@@ -26,13 +26,18 @@ __version__ = "0.1.0"
 from .phrase_bank_decoder import PhraseBankDecoder, DecodingConfig
 from .phrase_bank import PhraseBank, PhraseEntry, PhraseLoader
 
-# Экспорты будут добавлены по мере реализации
+# Import GenerativeDecoder (Stage 2.1 Integration)
+from .generative_decoder import GenerativeDecoder, GenerativeConfig, create_generative_decoder
+
+# Экспорты с новым GenerativeDecoder
 __all__ = [
     "PhraseBankDecoder",     # Phase 2.7.1 ✅
     "DecodingConfig",        # Configuration ✅
     "PhraseBank",            # Infrastructure ✅
     "PhraseEntry",           # Data structure ✅
     "PhraseLoader",          # Utilities ✅
-    # "GenerativeDecoder",     # Phase 2.7.2 
-    # "HybridDecoder",         # Phase 2.7.3
+    "GenerativeDecoder",     # Phase 2.7.2 ✅ STAGE 2.1 READY!
+    "GenerativeConfig",      # Configuration ✅
+    "create_generative_decoder",  # Factory ✅
+    # "HybridDecoder",         # Phase 2.7.3 🔜 PLANNED
 ] 

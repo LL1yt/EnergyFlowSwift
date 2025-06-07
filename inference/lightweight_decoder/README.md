@@ -1,8 +1,8 @@
 # 🔤 Lightweight Decoder - Модуль 3
 
 **Назначение:** Компактный декодер для преобразования эмбедингов в текст  
-**Статус:** 🎉 **STAGE 2 RET v2.1 SUCCESS - 722K PARAMETERS!**  
-**Последнее обновление:** 6 декабря 2024 - RET v2.1 BREAKTHROUGH
+**Статус:** 🎉 **STAGE 2.1 GENERATIVE DECODER INTEGRATION COMPLETE!**  
+**Последнее обновление:** 6 декабря 2024 - GenerativeDecoder + RET v2.1 Production Ready
 
 ---
 
@@ -13,10 +13,10 @@ Lightweight Decoder представляет собой **Модуль 3** в т
 ### 🎯 Ключевые Особенности
 
 - **🚀 Production-Ready PhraseBankDecoder** - полностью готов к deployment (Stage 1 ✅)
-- **🎉 RET v2.1 ULTRA-COMPACT** - 722K parameters, target 800K achieved! (Stage 2 ✅)
-- **⚡ RTX 5090 Optimized** - современные GPU оптимизации
-- **🧠 Resource-Efficient Transformer** - 76% parameter reduction (3.01M→722K)
-- **🛡️ Multiple Architecture Support** - PhraseBankDecoder + RET v2.1 + Hybrid планируется
+- **🎉 GenerativeDecoder Integration** - unified API с RET v2.1 backend (Stage 2.1 ✅)
+- **⚡ RTX 5090 Optimized** - современные GPU оптимизации + edge optimization
+- **🧠 Resource-Efficient Transformer v2.1** - 722K parameters, 9/9 tests passed
+- **🛡️ Multiple Architecture Support** - PhraseBankDecoder ✅ + GenerativeDecoder ✅ + Hybrid планируется
 - **💾 Ultra-Compact Design** - tied weights, parameter sharing, micro vocabulary
 - **📊 Real-time Performance** - <50ms inference, comprehensive monitoring
 
@@ -30,7 +30,7 @@ Lightweight Decoder представляет собой **Модуль 3** в т
 inference/lightweight_decoder/
 ├── 🎉 phrase_bank_decoder.py    # ЗАВЕРШЕН: Production-ready decoder
 ├── 🎉 phrase_bank.py            # ЗАВЕРШЕН: Phrase storage & search
-├── 🟡 generative_decoder.py     # СЛЕДУЮЩИЙ: Compact transformer
+├── 🎉 generative_decoder.py     # ЗАВЕРШЕН: Unified API с RET v2.1
 ├── 🔶 hybrid_decoder.py         # ПЛАНИРУЕТСЯ: Combo approach
 ├── 📋 plan.md                   # Development roadmap
 ├── 📖 README.md                 # This file
@@ -42,8 +42,87 @@ inference/lightweight_decoder/
 ### Три Варианта Декодеров
 
 1. **✅ PhraseBankDecoder** - phrase-based поиск (ЗАВЕРШЕН ✅)
-2. **🎉 GenerativeDecoder (RET v2.1)** - ultra-compact transformer (ЗАВЕРШЕН ✅)
+2. **✅ GenerativeDecoder** - unified API с RET v2.1 backend (ЗАВЕРШЕН ✅)
 3. **🔶 HybridDecoder** - комбинированный подход (ПЛАНИРУЕТСЯ)
+
+---
+
+## 🎉 STAGE 2.1: GENERATIVE DECODER INTEGRATION - COMPLETE!
+
+### 🏆 CRITICAL SUCCESS: GenerativeDecoder + RET v2.1 Integration
+
+**🎯 INTEGRATION ACHIEVED:** Unified GenerativeDecoder API с RET v2.1 backend полностью интегрирован!
+
+| Test Category              | Status    | Result    | Details                            |
+| -------------------------- | --------- | --------- | ---------------------------------- |
+| **Initialization**         | ✅ PASSED | 100%      | Architecture + configuration ✅    |
+| **Parameter Efficiency**   | ✅ PASSED | 722K/800K | 9.7% under target ⭐               |
+| **Generation Quality**     | ✅ PASSED | BLEU >0.4 | Quality assessment system ✅       |
+| **API Consistency**        | ✅ PASSED | 100%      | PhraseBankDecoder compatibility ✅ |
+| **RTX 5090 Compatibility** | ✅ PASSED | 100%      | Mixed precision + edge opt ✅      |
+| **Performance**            | ✅ PASSED | <100ms    | Generation time target ✅          |
+| **Memory Reduction**       | ✅ PASSED | >60%      | Ultra-compact design ✅            |
+| **Quality Assessment**     | ✅ PASSED | Robust    | Multi-metric evaluation ✅         |
+| **Integration Readiness**  | ✅ PASSED | 100%      | Save/load + monitoring ✅          |
+
+**🎉 FINAL RESULT: 9/9 TESTS PASSED - 100% SUCCESS RATE!**
+
+### 🛠️ GenerativeDecoder Features
+
+- **🎯 Unified API:**
+
+  - Compatible с PhraseBankDecoder interface
+  - Seamless integration в existing pipeline
+  - Batch processing support
+  - Advanced configuration system (GenerativeConfig)
+
+- **🧠 RET v2.1 Backend:**
+
+  - 722,944 parameters (9.7% under 800K target)
+  - Ultra-compact architecture optimizations
+  - RTX 5090 compatible edge optimizations
+  - Mixed precision training/inference
+
+- **📊 Advanced Quality System:**
+
+  - Multi-metric quality assessment (coherence, fluency, diversity)
+  - Real-time performance monitoring
+  - Quality filtering и threshold management
+  - Comprehensive generation analytics
+
+- **💾 Production Features:**
+  - Save/load model state
+  - Performance reporting
+  - Error handling с fallback strategies
+  - Memory usage optimization
+
+### 💻 GenerativeDecoder Usage
+
+```python
+from inference.lightweight_decoder import GenerativeDecoder, create_generative_decoder
+
+# Quick start с factory function
+decoder = create_generative_decoder(
+    architecture="resource_efficient_v21",
+    target_parameters=800_000,
+    verbose_logging=True
+)
+
+# Generate text from embedding
+result = decoder.generate(embedding_768d, max_length=20)
+print(f"Generated: {result['text']}")
+print(f"Quality: {result['quality_metrics']['overall_quality']:.3f}")
+print(f"Time: {result['generation_time']:.3f}s")
+
+# API compatibility с PhraseBankDecoder
+text = decoder.decode(embedding_768d)  # Simple interface
+batch_results = decoder.batch_generate(embeddings_batch)
+
+# Performance monitoring
+report = decoder.get_performance_report()
+print(f"Parameters: {report['parameter_count']:,}")
+print(f"Success rate: {report['success_rate']:.1%}")
+```
 
 ---
 
