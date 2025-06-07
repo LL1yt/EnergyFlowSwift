@@ -1,0 +1,36 @@
+{
+  "test_environment": {
+    "device": "cuda",
+    "cuda_available": true,
+    "device_name": "NVIDIA GeForce RTX 5090"
+  },
+  "baseline_performance": {
+    "memory_mb": 9.2509765625,
+    "inference_time_ms": 1.3999700546264648,
+    "parameters": 67186944,
+    "model_type": "baseline_transformer"
+  },
+  "ret_performance": {
+    "memory_mb": 7.517578125,
+    "inference_time_ms": 0.7001161575317383,
+    "parameters": 62925824,
+    "model_type": "resource_efficient_transformer"
+  },
+  "improvements": {
+    "memory_reduction_percent": 18.7374643724269,
+    "speed_improvement_percent": 49.990633355472674,
+    "parameter_reduction_percent": 6.342184576813019,
+    "memory_target_achieved": false,
+    "speed_target_achieved": true,
+    "parameter_target_achieved": false
+  },
+  "rtx5090_compatibility": {
+    "device_detected": "cuda",
+    "cuda_available": true,
+    "rtx_5090_optimizations": true,
+    "edge_quantization_works": true,
+    "gradient_checkpointing_works": true,
+    "mixed_precision_works": true
+  },
+  "test_passed": false
+}

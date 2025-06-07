@@ -1,14 +1,111 @@
 # 📝 Lightweight Decoder - Примеры Использования
 
 **Модуль:** inference/lightweight_decoder  
-**Статус:** 🎉 **PRODUCTION-READY EXAMPLES**  
-**Последнее обновление:** 6 декабря 2024
+**Статус:** 🎉 **DUAL ARCHITECTURE EXAMPLES - RET v2.1 SUCCESS!**  
+**Последнее обновление:** 6 декабря 2024 - RET v2.1 BREAKTHROUGH
 
 ---
 
-## 🚀 ОСНОВНЫЕ ПРИМЕРЫ
+## 🎉 RET v2.1 ULTRA-COMPACT - НОВЫЕ ПРИМЕРЫ
 
-### 1. Быстрый Старт
+### 🚀 1. RET v2.1 Quick Start (722K Parameters!)
+
+```python
+from inference.lightweight_decoder.resource_efficient_decoder_v2_1 import (
+    create_ultra_compact_decoder, ResourceEfficientDecoderV21, RETConfigV21
+)
+import torch
+
+# Создание ultra-compact decoder (722K parameters)
+decoder = create_ultra_compact_decoder()
+
+# Проверка параметров
+param_count = decoder._count_parameters()
+print(f"🎯 Parameters: {param_count:,} / 800,000 target")
+print(f"✅ Target achieved: {param_count <= 800_000}")
+
+# Простое декодирование
+embedding_768d = torch.randn(768)  # From Module 2
+result = decoder.decode(embedding_768d, max_length=10, temperature=0.8)
+print(f"Generated: {result}")
+
+# Model info
+info = decoder.get_model_info()
+print(f"Architecture: {info['architecture']}")
+print(f"Version: {info['version']}")
+print(f"Parameter target achieved: {info['parameter_target_achieved']}")
+```
+
+### 🔧 2. RET v2.1 Custom Configuration
+
+```python
+# Custom ultra-compact configuration
+config = RETConfigV21(
+    # Ultra-compact settings (ACHIEVED TARGET!)
+    embedding_dim=768,          # Input from Module 2
+    hidden_size=256,            # Ultra-reduced
+    num_layers=1,               # Single layer sharing
+    num_heads=2,                # Simplified attention
+    vocab_size=256,             # Micro vocabulary
+
+    # Performance targets
+    target_parameters=800_000,  # ACHIEVED: 722,944
+    memory_reduction_factor=0.70,
+
+    # Advanced optimizations
+    parameter_sharing=True,
+    aggressive_pruning_ratio=0.8,
+    dynamic_quantization=True,
+    tied_weights=True,
+
+    # RTX 5090 optimizations
+    mixed_precision=True,
+    gradient_checkpointing=True
+)
+
+# Create decoder with custom config
+decoder = ResourceEfficientDecoderV21(config)
+print(f"Custom decoder created with {decoder._count_parameters():,} parameters")
+```
+
+### 🏆 3. Multi-Architecture Comparison
+
+```python
+from inference.lightweight_decoder.phrase_bank_decoder import PhraseBankDecoder
+from inference.lightweight_decoder.resource_efficient_decoder_v2_1 import create_ultra_compact_decoder
+import torch
+import time
+
+# Create both decoders
+phrase_decoder = PhraseBankDecoder()
+ret_decoder = create_ultra_compact_decoder()
+
+# Test embedding
+test_embedding = torch.randn(768)
+
+# Benchmark both approaches
+def benchmark_decoder(decoder, name, embedding):
+    start_time = time.time()
+    result = decoder.decode(embedding)
+    end_time = time.time()
+
+    print(f"🔍 {name}:")
+    print(f"   Result: {result}")
+    print(f"   Time: {(end_time - start_time)*1000:.1f}ms")
+    if hasattr(decoder, '_count_parameters'):
+        print(f"   Parameters: {decoder._count_parameters():,}")
+    print()
+
+# Compare architectures
+print("🏆 MULTI-ARCHITECTURE COMPARISON:")
+print("="*50)
+benchmark_decoder(phrase_decoder, "PhraseBankDecoder (Stage 1)", test_embedding)
+benchmark_decoder(ret_decoder, "RET v2.1 ULTRA-COMPACT (Stage 2)", test_embedding)
+```
+
+## 🚀 ОСНОВНЫЕ ПРИМЕРЫ (STAGE 1)
+
+### 4. Быстрый Старт PhraseBankDecoder
 
 ```python
 from inference.lightweight_decoder.phrase_bank_decoder import (

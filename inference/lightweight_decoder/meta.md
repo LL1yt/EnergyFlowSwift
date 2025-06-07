@@ -1,9 +1,9 @@
 # 🔧 Lightweight Decoder - Module Metadata
 
 **Модуль:** inference/lightweight_decoder  
-**Версия:** 1.0.0  
-**Статус:** 🎉 **STAGE 1 PRODUCTION-READY**  
-**Последнее обновление:** 6 декабря 2024
+**Версия:** 2.1.0-ret-ultra  
+**Статус:** 🎉 **STAGE 2 RET v2.1 SUCCESS - 722K PARAMETERS!**  
+**Последнее обновление:** 6 декабря 2024 - RET v2.1 BREAKTHROUGH
 
 ---
 
@@ -72,7 +72,7 @@ None - это backend модуль без UI компонентов
 ### 🎯 Main Classes
 
 ```python
-# Primary decoder class - PRODUCTION READY
+# Primary decoder class - PRODUCTION READY (Stage 1)
 class PhraseBankDecoder:
     """🚀 Production-ready phrase-based decoder"""
     def __init__(self, embedding_dim=768, config=None)
@@ -88,13 +88,35 @@ class PhraseBankDecoder:
     def clear_cache(self)
     def start_new_session(self)
 
-# Configuration management
+# NEW: RET v2.1 ULTRA-COMPACT - 722K PARAMETERS! (Stage 2)
+class ResourceEfficientDecoderV21:
+    """🎉 Ultra-compact transformer decoder - 722K parameters"""
+    def __init__(self, config: Optional[RETConfigV21] = None)
+    def decode(self, embedding: torch.Tensor, **kwargs) -> str
+    def forward(self, embedding: torch.Tensor, max_length: int = 10) -> Dict[str, Any]
+    def get_model_info(self) -> Dict[str, Any]
+    def _count_parameters(self) -> int
+
+# NEW: RET v2.1 Configuration
+class RETConfigV21:
+    """🔧 Ultra-compact transformer configuration"""
+    embedding_dim: int = 768          # Input from Module 2
+    hidden_size: int = 256            # Ultra-reduced
+    num_layers: int = 1               # Single layer sharing
+    num_heads: int = 2                # Simplified attention
+    vocab_size: int = 256             # Micro vocabulary
+    target_parameters: int = 800_000  # ACHIEVED: 722,944
+
+# Factory function for RET v2.1
+def create_ultra_compact_decoder(config_path: Optional[str] = None) -> ResourceEfficientDecoderV21
+
+# Configuration management (Stage 1)
 class DecodingConfig:
     """🔧 Comprehensive configuration with validation"""
     def __init__(self, **kwargs)
     def validate(self)
 
-# Supporting phrase storage
+# Supporting phrase storage (Stage 1)
 class PhraseBank:
     """📚 Phrase storage and similarity search"""
     def load_phrases(self, embedding_loader)

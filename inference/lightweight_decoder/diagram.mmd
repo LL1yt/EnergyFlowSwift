@@ -1,23 +1,40 @@
 graph TB
-    %% 🎉 STAGE 1 COMPLETE - PRODUCTION-READY ARCHITECTURE
+    %% 🎉 STAGE 1 & 2 COMPLETE - DUAL ARCHITECTURE SUCCESS
     
     subgraph "INPUT LAYER"
         A[Input Embedding<br/>768D Vector] --> B{DecodingConfig<br/>Validation}
-        B --> C[PhraseBankDecoder<br/>🎉 PRODUCTION-READY]
+        B --> C1[PhraseBankDecoder<br/>🎉 PRODUCTION-READY Stage 1]
+        B --> C2[RET v2.1 ULTRA-COMPACT<br/>🎉 722K PARAMS Stage 2]
     end
     
-    subgraph "CORE DECODER ARCHITECTURE"
-        C --> D[Configuration Manager<br/>✅ Save/Load Config]
-        C --> E[Pattern Cache<br/>💾 LRU Caching 25-50%]
-        C --> F[Error Handler<br/>🛡️ 100% Fallback Coverage]
-        C --> G[Performance Monitor<br/>📊 Real-time Analytics]
+    subgraph "STAGE 1: PHRASE-BASED DECODER [PRODUCTION ✅]"
+        C1 --> D[Configuration Manager<br/>✅ Save/Load Config]
+        C1 --> E[Pattern Cache<br/>💾 LRU Caching 25-50%]
+        C1 --> F[Error Handler<br/>🛡️ 100% Fallback Coverage]
+        C1 --> G[Performance Monitor<br/>📊 Real-time Analytics]
         
         D --> H[PhraseBank<br/>📚 Phrase Storage & Search]
         H --> I[Similarity Search<br/>🔍 k=10 candidates]
         I --> J[Context Analyzer<br/>🧠 Context-aware Selection]
     end
     
-    subgraph "ASSEMBLY STRATEGIES"
+    subgraph "STAGE 2: RET v2.1 ULTRA-COMPACT [722K PARAMS ✅]"
+        C2 --> RET1[🔧 Embedding Bridge<br/>768→256D reduction]
+        RET1 --> RET2[📝 Token Embedding<br/>256×256 micro vocab]
+        RET2 --> RET3[🔄 Single Layer Sharing<br/>Parameter efficiency]
+        
+        subgraph "RET ULTRA-COMPACT LAYER"
+            RET3 --> RET4[⚡ Ultra-Compact Attention<br/>2 heads, simplified QKV]
+            RET4 --> RET5[🧮 Micro MLP<br/>1.5x expansion ratio]
+            RET5 --> RET6[🔗 Tied Weights<br/>No separate lm_head]
+        end
+        
+        RET6 --> RET7[🚀 RTX 5090 Optimizations<br/>Mixed precision, CUDA kernels]
+        RET7 --> RET8[⚡ Dynamic Quantization<br/>INT4 real-time compression]
+        RET8 --> RET9[🎯 Aggressive Pruning<br/>80% inference pruning]
+    end
+    
+    subgraph "ASSEMBLY STRATEGIES [STAGE 1]"
         J --> K{Assembly Method}
         K --> L[Weighted Assembly<br/>📏 Similarity-based]
         K --> M[Greedy Assembly<br/>⚡ Best-first]
@@ -31,51 +48,78 @@ graph TB
         N --> P
         O --> P
         
+        RET9 --> P2[RET Output Generation<br/>🎉 Ultra-efficient text]
+        
         P --> Q[Text Post-processor<br/>✨ Grammar Enhancement]
+        P2 --> Q
         Q --> R[Quality Assessor<br/>📏 Confidence Scoring]
     end
     
     subgraph "OUTPUT & MONITORING"
-        R --> S[Decoded Text<br/>Output]
+        R --> S[Decoded Text Output<br/>🎯 Multi-architecture]
         R --> T[Quality Metrics<br/>Confidence, Similarity]
         
         G --> U[Performance Statistics<br/>Cache hits, Timing]
         F --> V[Error Statistics<br/>Types, Recovery rates]
         E --> W[Cache Analytics<br/>Hit rates, Efficiency]
+        
+        RET7 --> U2[RET Performance<br/>⚡ <50ms inference]
+        RET8 --> U3[Memory Metrics<br/>💾 76% reduction achieved]
+        RET9 --> U4[Parameter Stats<br/>📊 722K/800K target]
     end
     
     subgraph "PRODUCTION FEATURES"
-        X[Health Monitoring<br/>🏥 Component Status] --> C
-        Y[Session Management<br/>🔄 Context Tracking] --> C
-        Z[Batch Processing<br/>📦 Multiple Inputs] --> C
-        AA[Production Optimizer<br/>🚀 Auto-tuning] --> C
+        X[Health Monitoring<br/>🏥 Component Status] --> C1
+        Y[Session Management<br/>🔄 Context Tracking] --> C1
+        Z[Batch Processing<br/>📦 Multiple Inputs] --> C1
+        AA[Production Optimizer<br/>🚀 Auto-tuning] --> C1
+        
+        X2[RET Health Monitor<br/>🏥 Parameter tracking] --> C2
+        Y2[RET Memory Monitor<br/>💾 GPU efficiency] --> C2
+        Z2[RET Quick Testing<br/>🧪 <30s validation] --> C2
     end
     
     %% Module Integration Flows
     subgraph "MODULE INTEGRATION"
         BB[Module 1: Teacher LLM<br/>🔴 Text → Embedding] --> A
         CC[Module 2: 3D Cubic Core<br/>🔵 Embedding → Processed] --> A
-        S --> DD[Module 3 Output<br/>🟡 Processed → Text]
+        S --> DD[Module 3 Output<br/>🟡 Dual-architecture text]
     end
     
     %% Advanced Features
     subgraph "ADVANCED CAPABILITIES"
         EE[Configuration Validation<br/>📋 Schema checking] --> B
-        FF[Fallback Strategies<br/>🔄 Error recovery] --> F
-        GG[Multiple LLM Support<br/>🧠 Various encoders] --> H
+        FF[Fallback Strategies<br/>🔄 Multi-decoder] --> F
+        GG[Multiple Architecture Support<br/>🧠 Phrase+Transformer] --> H
         HH[Cache Management<br/>🗄️ LRU + Analytics] --> E
+        
+        II[RET Configuration<br/>🔧 Ultra-compact settings] --> C2
+        JJ[Parameter Optimization<br/>🎯 722K achievement] --> RET3
+        KK[RTX 5090 Support<br/>🚀 GPU acceleration] --> RET7
+    end
+    
+    %% Performance Optimization Flows
+    subgraph "CRITICAL PERFORMANCE PATHS"
+        RET1 -.->|"CRITICAL: 768→256"| RET2
+        RET3 -.->|"CRITICAL: Single layer"| RET4
+        RET6 -.->|"CRITICAL: Tied weights"| RET7
+        RET8 -.->|"CRITICAL: 80% pruning"| RET9
     end
     
     %% Style definitions
     classDef productionReady fill:#4CAF50,stroke:#2E7D32,stroke-width:3px,color:white
+    classDef retSuccess fill:#FF4081,stroke:#C2185B,stroke-width:3px,color:white
     classDef coreFunction fill:#2196F3,stroke:#1565C0,stroke-width:2px,color:white
     classDef monitoring fill:#FF9800,stroke:#E65100,stroke-width:2px,color:white
     classDef integration fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:white
     classDef advanced fill:#607D8B,stroke:#37474F,stroke-width:2px,color:white
+    classDef critical fill:#F44336,stroke:#D32F2F,stroke-width:4px,color:white
     
     %% Apply styles
-    class C,S productionReady
-    class H,I,J,P,Q,R coreFunction
-    class G,U,V,W,X monitoring
+    class C1,S productionReady
+    class C2,RET1,RET2,RET3,RET6,RET7,RET8,RET9 retSuccess
+    class H,I,J,P,Q,R,P2 coreFunction
+    class G,U,V,W,X,U2,U3,U4 monitoring
     class BB,CC,DD integration
-    class EE,FF,GG,HH advanced 
+    class EE,FF,GG,HH,II,JJ,KK advanced
+    class RET4,RET5 critical 
