@@ -65,6 +65,53 @@ data:
     test_data: "data/test/"
     embeddings: "data/embeddings/"
 
+# === НАСТРОЙКИ TEACHER МОДЕЛЕЙ ===
+teacher_models:
+  # Основная модель для Knowledge Distillation
+  primary_model: "llama3-8b-local"
+
+  # Конфигурации моделей
+  models:
+    # Локальная модель (приоритет)
+    llama3-8b-local:
+      path: "C:/Users/n0n4a/Meta-Llama-3-8B"
+      type: "local"
+      embedding_dim: 4096
+      pooling_strategy: "mean"
+
+    # Fallback модели
+    distilbert:
+      path: "distilbert-base-uncased"
+      type: "huggingface"
+      embedding_dim: 768
+      pooling_strategy: "mean"
+
+    roberta:
+      path: "roberta-base"
+      type: "huggingface"
+      embedding_dim: 768
+      pooling_strategy: "mean"
+
+    gpt2:
+      path: "gpt2"
+      type: "huggingface"
+      embedding_dim: 768
+      pooling_strategy: "mean"
+
+  # Multi-teacher конфигурация
+  multi_teacher:
+    enabled: true
+    models: ["llama3-8b-local", "distilbert", "roberta"]
+    adaptive_weighting: true
+    distillation_temperature: 3.0
+
+  # Настройки генерации эмбедингов
+  generation:
+    batch_size: 8
+    max_length: 512
+    use_cache: true
+    cache_dir: "cache/embeddings/"
+
 # === НАСТРОЙКИ ВИЗУАЛИЗАЦИИ ===
 visualization:
   # Что показывать
@@ -86,7 +133,7 @@ logging:
 
 # === НАСТРОЙКИ УСТРОЙСТВА ===
 device:
-  use_gpu: false # Принудительно отключаем GPU для RTX 5090 (PyTorch совместимость)
+  use_gpu: true # Включаем GPU для RTX 5090 - теперь поддерживается PyTorch
   gpu_device: "cuda:0" # Какой GPU использовать
   fallback_to_cpu: true # Переключиться на CPU если GPU недоступен
 

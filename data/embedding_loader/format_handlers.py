@@ -286,9 +286,53 @@ class LLMHandler(FormatHandler):
         self.model_name = model_name
         self.model = None
         self.tokenizer = None
-        # Принудительно используем CPU для RTX 5090 совместимости (PyTorch sm_120 limitation)
-        self._device = "cpu"
-        logger.info(f"Initialized LLM handler for {model_name} on {self._device} (forced CPU mode)")
+        
+        # Определяем устройство из центрального конфига
+        self._device = self._get_device_from_config()
+        logger.info(f"Initialized LLM handler for {model_name} on {self._device}")
+    
+    def _get_device_from_config(self) -> str:
+        """Получить устройство из центрального конфига"""
+        try:
+            # Проверяем доступность torch.cuda
+            import torch
+            if not torch.cuda.is_available():
+                logger.warning("CUDA not available, using CPU")
+                return "cpu"
+            
+            # Загружаем конфиг
+            try:
+                from utils.config_loader import config_manager
+                if config_manager.should_use_gpu():
+                    device = config_manager.get_gpu_device()
+                    logger.info(f"Using GPU from config: {device}")
+                    return device
+                else:
+                    logger.info("GPU disabled in config, using CPU")
+                    return "cpu"
+            except Exception as e:
+                logger.warning(f"Could not load config, defaulting to GPU: {e}")
+                return "cuda:0"  # Fallback to GPU if config fails
+                
+        except ImportError:
+            logger.warning("PyTorch not available, using CPU")
+            return "cpu"
+    
+    def _is_large_model(self) -> bool:
+        """Определить, является ли модель большой (требует device_map)"""
+        large_model_patterns = [
+            "llama", "Llama", "LLaMA", "LLAMA",
+            "mistral", "Mistral",
+            "codellama", "CodeLlama",
+            # Локальные пути тоже считаем большими моделями
+            "Meta-Llama", "meta-llama"
+        ]
+        
+        model_name_lower = self.model_name.lower()
+        for pattern in large_model_patterns:
+            if pattern.lower() in model_name_lower:
+                return True
+        return False
     
     def load_model(self):
         """Ленивая загрузка LLM модели и токенайзера."""
@@ -298,8 +342,19 @@ class LLMHandler(FormatHandler):
                 
                 logger.info(f"Loading LLM model: {self.model_name}")
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-                self.model = AutoModel.from_pretrained(self.model_name)
-                self.model.to(self._device)
+                
+                # Для больших моделей используем device_map
+                if self._device.startswith("cuda") and self._is_large_model():
+                    logger.info(f"Loading large model with device_map auto")
+                    self.model = AutoModel.from_pretrained(
+                        self.model_name,
+                        device_map="auto",
+                        torch_dtype=torch.float16  # Используем FP16 для экономии памяти
+                    )
+                else:
+                    self.model = AutoModel.from_pretrained(self.model_name)
+                    self.model.to(self._device)
+                
                 self.model.eval()
                 
                 logger.info(f"Successfully loaded {self.model_name}")
@@ -457,9 +512,12 @@ class LLMHandler(FormatHandler):
 
 # Поддерживаемые LLM модели для Knowledge Distillation
 SUPPORTED_LLM_MODELS = {
+    # Локальные модели (приоритет)
+    "llama3-8b-local": r"C:\Users\n0n4a\Meta-Llama-3-8B",
+    "llama3-8b": "meta-llama/Meta-Llama-3-8B",  # Fallback для онлайн версии
+    
     # Открытые модели
     "llama2-7b": "meta-llama/Llama-2-7b-hf",
-    "llama3-8b": "meta-llama/Meta-Llama-3-8B",
     "mistral-7b": "mistralai/Mistral-7B-v0.1", 
     "codellama-7b": "codellama/CodeLlama-7b-hf",
     

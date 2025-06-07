@@ -1,0 +1,35 @@
+{
+  "test_run_timestamp": 1749313005.2408745,
+  "total_tests": 5,
+  "passed_tests": 5,
+  "success_rate": 1.0,
+  "total_time_seconds": 0.8354306221008301,
+  "stage_2_3_ready": true,
+  "detailed_results": [
+    {
+      "test": "Dataset Expansion",
+      "success": true,
+      "message": "Dataset expansion: 12 pairs generated"
+    },
+    {
+      "test": "Advanced Loss Functions",
+      "success": true,
+      "message": "Advanced loss functions: 7 components working"
+    },
+    {
+      "test": "Multi-Teacher Distillation",
+      "success": true,
+      "message": "Multi-teacher distillation: 1 teachers working"
+    },
+    {
+      "test": "Integrated Training System",
+      "success": true,
+      "message": "Integrated training system: setup complete, 10 pairs target"
+    },
+    {
+      "test": "Integration Compatibility",
+      "success": true,
+      "message": "Integration compatibility: all components compatible"
+    }
+  ]
+}
