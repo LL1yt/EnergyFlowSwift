@@ -248,11 +248,22 @@ class CubeTrainer:
             )
             self.logger.info(f"✅ EmbeddingReshaper initialized: {self.config.embedding_dim}D ↔ {self.config.lattice_size}")
             
-            # 2. EmbeddingProcessor (3D Cubic Core)
-            self.embedding_processor = EmbeddingProcessor(
-                lattice_size=self.config.lattice_size,
-                device=self.config.device
-            )
+            # 2. EmbeddingProcessor (3D Cubic Core) 
+            from core.embedding_processor import EmbeddingConfig, create_dialogue_config
+            
+            # Создаем конфигурацию в зависимости от режима
+            if self.config.mode == "dialogue":
+                processor_config = create_dialogue_config()
+            else:
+                processor_config = EmbeddingConfig()
+            
+            # Обновляем конфигурацию под наши параметры
+            processor_config.lattice_size = tuple(self.config.lattice_size)
+            processor_config.device = self.config.device
+            processor_config.input_dim = self.config.embedding_dim
+            processor_config.output_dim = self.config.embedding_dim
+            
+            self.embedding_processor = EmbeddingProcessor(config=processor_config)
             self.logger.info(f"✅ EmbeddingProcessor initialized: {self.config.lattice_size}")
             
             # 3. EmbeddingLoader для данных

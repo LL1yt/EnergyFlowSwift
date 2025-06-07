@@ -22,7 +22,7 @@ Embedding Trainer - Модуль для обучения 3D Cubic Core
 
 __version__ = "1.0.0"
 __author__ = "3D Cellular Neural Network Project"
-__status__ = "Phase 3.1 - Active Development"
+__status__ = "Phase 3.1 - Stage 1.3 Complete"
 
 # Импорты реализованных компонентов
 try:
@@ -57,6 +57,26 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("AutoencoderDataset dependencies not available")
 
+# 🚀 STAGE 1.3: DialogueDataset - ГОТОВ!
+try:
+    from .dialogue_dataset import (
+        DialogueDataset, 
+        DialogueConfig, 
+        create_dialogue_dataset, 
+        create_conversation_dataset,
+        load_dialogue_dataset_from_files
+    )
+    DIALOGUE_DATASET_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  DialogueDataset not available: {e}")
+    DIALOGUE_DATASET_AVAILABLE = False
+    
+    # Заглушка если недоступен
+    class DialogueDataset:
+        """Заглушка для dialogue датасета"""
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError("DialogueDataset dependencies not available")
+
 # TODO: Добавить импорты после реализации:
 # from .logger import TrainingLogger
 # from .checkpoint_manager import CheckpointManager
@@ -65,11 +85,6 @@ except ImportError as e:
 #     save_training_checkpoint,
 #     load_training_checkpoint
 # )
-
-class DialogueDataset:
-    """Заглушка для dialogue датасета - будет реализована в Stage 1.3"""
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError("DialogueDataset will be implemented in Stage 1.3")
 
 # Базовая проверка зависимостей
 def _check_dependencies():
@@ -115,17 +130,19 @@ def get_module_info():
         ready_components.extend(['CubeTrainer', 'TrainingConfig', 'EmbeddingMetrics'])
     if AUTOENCODER_DATASET_AVAILABLE:
         ready_components.extend(['AutoencoderDataset', 'DatasetConfig', 'create_text_dataset', 'create_file_dataset'])
+    if DIALOGUE_DATASET_AVAILABLE:
+        ready_components.extend(['DialogueDataset', 'DialogueConfig', 'create_dialogue_dataset', 'create_conversation_dataset', 'load_dialogue_dataset_from_files'])
     
     return {
         'name': 'EmbeddingTrainer',
         'version': __version__,
         'status': __status__,
-        'phase': 'Phase 3.1 - Stage 1.2',  # Обновлен статус!
+        'phase': 'Phase 3.1 - Stage 1.3 Complete',  # Обновлен статус!
         'description': 'Training system for 3D Cubic Core (Module 2)',
         'ready_components': ready_components,
-        'in_development': ['DialogueDataset'],
+        'in_development': [],
         'planned': ['TrainingLogger', 'CheckpointManager'],
-        'completed_stages': ['Stage 1.1 - CubeTrainer', 'Stage 1.2 - AutoencoderDataset']  # Новое поле!
+        'completed_stages': ['Stage 1.1 - CubeTrainer', 'Stage 1.2 - AutoencoderDataset', 'Stage 1.3 - DialogueDataset']  # НОВОЕ!
     }
 
 # Экспорт функции информации
@@ -133,5 +150,6 @@ __all__ = [
     'get_module_info', 
     'CubeTrainer', 'TrainingConfig', 'EmbeddingMetrics',
     'AutoencoderDataset', 'DatasetConfig', 'create_text_dataset', 'create_file_dataset',
-    'DialogueDataset'
+    'DialogueDataset', 'DialogueConfig', 'create_dialogue_dataset', 'create_conversation_dataset', 'load_dialogue_dataset_from_files',
+    'CUBE_TRAINER_AVAILABLE', 'AUTOENCODER_DATASET_AVAILABLE', 'DIALOGUE_DATASET_AVAILABLE'
 ] 
