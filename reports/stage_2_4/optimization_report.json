@@ -1,0 +1,58 @@
+{
+  "stage": "2.4",
+  "timestamp": "2025-06-07 21:41:02",
+  "configuration": {
+    "target_qa_similarity": 0.5,
+    "max_experiments": 3,
+    "quick_mode": true,
+    "test_mode": true
+  },
+  "results": {
+    "total_experiments": 6,
+    "successful_experiments": 6,
+    "success_rate": 1.0,
+    "best_qa_similarity": 0.36565664741728043,
+    "mean_qa_similarity": 0.3602505189874185,
+    "std_qa_similarity": 0.011535277350931043,
+    "target_achieved": "False",
+    "improvement_from_stage_2_3": -0.018343352582719574,
+    "mean_training_time": 10.119133869806925,
+    "total_optimization_time": 60.71480321884155,
+    "best_config": {
+      "target_pairs": 100,
+      "quality_threshold": 0.6,
+      "use_curriculum_learning": true,
+      "use_triplet_loss": true,
+      "use_contrastive_loss": true,
+      "curriculum_warmup_epochs": 5,
+      "use_multi_teacher": true,
+      "teacher_models": [
+        "llama3-8b-local",
+        "distilbert",
+        "roberta"
+      ],
+      "distillation_temperature": 3.0,
+      "learning_rate": 0.0001,
+      "batch_size": 6,
+      "epochs": 15,
+      "target_qa_similarity": 0.5,
+      "convergence_threshold": 0.01,
+      "validation_patience": 5
+    },
+    "convergence_analysis": {
+      "mean_convergence_epochs": 7.0,
+      "best_learning_rate": 0.0001,
+      "best_batch_size": 6,
+      "lr_performance": {
+        "0.0001": 0.3602505189874185
+      },
+      "bs_performance": {
+        "4": 0.334477295478185,
+        "6": 0.36565664741728043,
+        "8": 0.36439922877720426
+      }
+    }
+  },
+  "execution_time_seconds": 60.73380708694458,
+  "status": "PARTIAL_SUCCESS"
+}

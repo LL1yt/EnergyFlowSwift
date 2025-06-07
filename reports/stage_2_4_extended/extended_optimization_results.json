@@ -1,0 +1,151 @@
+{
+  "total_experiments": 23,
+  "successful_experiments": 23,
+  "success_rate": 1.0,
+  "best_qa_similarity": 0.38475097458938073,
+  "mean_qa_similarity": 0.3745476365446843,
+  "target_achieved": "False",
+  "improvement_from_baseline": 0.0007509745893807263,
+  "improvement_from_stage_2_3": 0.0007509745893807263,
+  "total_optimization_time": 175.64995741844177,
+  "experiments_history": [
+    {
+      "experiment_name": "baseline_stage_2_3",
+      "qa_similarity": 0.3721988830301497,
+      "training_time": 15.30994987487793,
+      "success": true
+    },
+    {
+      "experiment_name": "conservative_1",
+      "qa_similarity": 0.36565664741728043,
+      "training_time": 1.784593105316162,
+      "success": true
+    },
+    {
+      "experiment_name": "conservative_2",
+      "qa_similarity": 0.3670107561808366,
+      "training_time": 1.855494737625122,
+      "success": true
+    },
+    {
+      "experiment_name": "conservative_3",
+      "qa_similarity": 0.36439922877720426,
+      "training_time": 1.7608511447906494,
+      "success": true
+    },
+    {
+      "experiment_name": "conservative_4",
+      "qa_similarity": 0.36565664741728043,
+      "training_time": 1.7781953811645508,
+      "success": true
+    },
+    {
+      "experiment_name": "conservative_5",
+      "qa_similarity": 0.36565664741728043,
+      "training_time": 1.7893297672271729,
+      "success": true
+    },
+    {
+      "experiment_name": "conservative_6",
+      "qa_similarity": 0.36565664741728043,
+      "training_time": 1.8089900016784668,
+      "success": true
+    },
+    {
+      "experiment_name": "conservative_7",
+      "qa_similarity": 0.36565664741728043,
+      "training_time": 1.8095059394836426,
+      "success": true
+    },
+    {
+      "experiment_name": "conservative_8",
+      "qa_similarity": 0.36565664741728043,
+      "training_time": 1.7902510166168213,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_1",
+      "qa_similarity": 0.37815943517183004,
+      "training_time": 27.7036292552948,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_2",
+      "qa_similarity": 0.3803701361543254,
+      "training_time": 3.086160659790039,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_3",
+      "qa_similarity": 0.37709333641188486,
+      "training_time": 2.5175232887268066,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_4",
+      "qa_similarity": 0.3798031806945801,
+      "training_time": 2.5132856369018555,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_5",
+      "qa_similarity": 0.37664202973246574,
+      "training_time": 28.37882971763611,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_6",
+      "qa_similarity": 0.37701958666245144,
+      "training_time": 3.267392635345459,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_7",
+      "qa_similarity": 0.37787240972885716,
+      "training_time": 2.6064608097076416,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_8",
+      "qa_similarity": 0.37815943517183004,
+      "training_time": 2.6961429119110107,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_9",
+      "qa_similarity": 0.37787240972885716,
+      "training_time": 2.5697038173675537,
+      "success": true
+    },
+    {
+      "experiment_name": "aggressive_10",
+      "qa_similarity": 0.37787240972885716,
+      "training_time": 2.6235203742980957,
+      "success": true
+    },
+    {
+      "experiment_name": "architecture_1",
+      "qa_similarity": 0.38475097458938073,
+      "training_time": 29.132503747940063,
+      "success": true
+    },
+    {
+      "experiment_name": "architecture_2",
+      "qa_similarity": 0.3826868037382762,
+      "training_time": 3.8183839321136475,
+      "success": true
+    },
+    {
+      "experiment_name": "architecture_3",
+      "qa_similarity": 0.3841789283535697,
+      "training_time": 30.237351655960083,
+      "success": true
+    },
+    {
+      "experiment_name": "architecture_4",
+      "qa_similarity": 0.38456581216869934,
+      "training_time": 4.703008651733398,
+      "success": true
+    }
+  ]
+}
