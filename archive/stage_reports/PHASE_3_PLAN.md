@@ -202,3 +202,5 @@ self.optimizer = bnb.optim.AdamW8bit(self.parameters(), lr=self.config.learning_
 **Timeline:** 1-2 weeks для Phase 2 completion, then Phase 3 advanced features.
 
 **Expected Outcome:** GPU-accelerated emergent training system готов для production-scale testing.
+
+Task Optional : PyTorch Geometric - добавить позже для memory optimization

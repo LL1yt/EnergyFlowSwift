@@ -1,0 +1,130 @@
+# 🎯 Production Training Configuration
+# Конфигурация для полноценного реального обучения
+
+# Training stages configuration
+stages:
+  validation:
+    description: "System validation - проверка работоспособности всех компонентов"
+    epochs: 3
+    target_loss: 1.0
+    target_similarity: 0.15
+    batch_size: 2
+    learning_rate: 0.001
+    early_stopping_patience: 5
+    save_checkpoints: true
+
+  convergence:
+    description: "Convergence testing - проверка схождения на средних данных"
+    epochs: 10
+    target_loss: 0.5
+    target_similarity: 0.25
+    batch_size: 4
+    learning_rate: 0.0005
+    early_stopping_patience: 8
+    save_checkpoints: true
+
+  production:
+    description: "Production training - долгосрочное обучение для достижения целей"
+    epochs: 50
+    target_loss: 0.3
+    target_similarity: 0.40 # Realistic based on current 38.5%
+    batch_size: 8
+    learning_rate: 0.0003
+    early_stopping_patience: 15
+    save_checkpoints: true
+
+  optimization:
+    description: "Final optimization - fine-tuning для максимальной производительности"
+    epochs: 25
+    target_loss: 0.2
+    target_similarity: 0.45
+    batch_size: 6
+    learning_rate: 0.0001
+    early_stopping_patience: 10
+    save_checkpoints: true
+
+# Model configuration
+model:
+  cube_dimensions: [15, 15, 11] # Full 3D lattice
+  teacher_model: "llama3-8b-local"
+  adapter_strategy: "hierarchical"
+  enable_nca: true
+  mixed_precision: true # Enable if CUDA available
+
+# Training behavior
+training:
+  checkpoint_frequency: 5 # Save checkpoint every N epochs
+  validation_frequency: 2 # Run validation every N epochs
+  log_frequency: 1 # Log metrics every N batches
+
+  # Early stopping
+  early_stopping:
+    monitor: "loss" # or "similarity"
+    mode: "min" # or "max" for similarity
+    patience: 10
+    min_delta: 0.001
+
+  # Failure handling
+  failure_handling:
+    validation_abort_threshold: 2.0 # Abort if validation loss > this
+    convergence_retry_attempts: 2
+    continue_on_failure: true # Continue to next stage даже при failure
+
+# Dataset configuration
+dataset:
+  cache_embeddings: true
+  normalize_embeddings: true
+  validation_split: 0.1 # 10% for validation
+  augmentation:
+    noise_level: 0.01
+    rotation_probability: 0.1
+
+# Resource management
+resources:
+  max_memory_gb: 8 # Maximum GPU memory to use
+  num_workers: 4 # DataLoader workers
+  pin_memory: true
+  persistent_workers: true
+
+# Monitoring and logging
+monitoring:
+  log_level: "INFO"
+  save_plots: true
+  save_metrics: true
+  tensorboard: false # Enable TensorBoard logging
+
+  # Metrics to track
+  track_metrics:
+    - "loss"
+    - "similarity"
+    - "gradient_norm"
+    - "learning_rate"
+    - "epoch_time"
+    - "memory_usage"
+
+# Output configuration
+output:
+  checkpoint_dir: "checkpoints"
+  results_dir: "results"
+  log_dir: "logs"
+  save_model_every_stage: true
+  compress_checkpoints: false
+
+# Advanced features
+advanced:
+  gradient_clipping: 1.0
+  weight_decay: 0.01
+  warmup_epochs: 3
+  cosine_lr_schedule: false
+
+  # NCA specific
+  nca:
+    stochastic_update_rate: 0.7
+    pattern_preservation_weight: 0.1
+    spatial_coherence_weight: 0.05
+
+  # GPU optimization
+  gpu:
+    channels_last: true
+    compile_model: false # PyTorch 2.0 compilation
+    gradient_accumulation_steps: 1

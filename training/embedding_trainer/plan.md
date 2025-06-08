@@ -311,6 +311,8 @@ embedding_768d → Decoder → text                         # Модуль 3 ✅
 
 **🚀 ПЕРЕХОД К STAGE 3.1:**
 
+      Task Optional : PyTorch Geometric - для memory optimization
+
 - [ ] **Stage 2.4.1: Critical Bottleneck Analysis** 🔬 (🎯 PRIORITY 1)
 
   - [ ] Анализ gradient flow через embedding processor
