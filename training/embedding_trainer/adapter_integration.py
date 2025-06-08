@@ -59,10 +59,44 @@ class AdapterIntegrationConfig:
     
     def __post_init__(self):
         if self.teacher_embedding_dim is None:
+            # Сопоставляем наши ключи с известными моделями
+            model_mapping = {
+                "distilbert": "DistilBERT",
+                "distilbert-base-uncased": "DistilBERT",
+                "roberta": "RoBERTa-base", 
+                "roberta-base": "RoBERTa-base",
+                "gpt2": "GPT-3.5",  # Приблизительно
+                "dialogpt": "GPT-3.5",  # Приблизительно
+                "llama3-8b-local": "Meta-Llama-3-8B",
+                "llama3-8b": "Meta-Llama-3-8B",
+                "meta-llama/meta-llama-3-8b": "Meta-Llama-3-8B"
+            }
+            
+            # Проверяем прямое соответствие или через маппинг
             if self.teacher_model in KNOWN_MODELS:
                 self.teacher_embedding_dim = KNOWN_MODELS[self.teacher_model]["embedding_dim"]
+            elif self.teacher_model.lower() in model_mapping:
+                mapped_model = model_mapping[self.teacher_model.lower()]
+                self.teacher_embedding_dim = KNOWN_MODELS[mapped_model]["embedding_dim"]
+                # Обновляем teacher_model для дальнейшего использования
+                self.teacher_model = mapped_model
             else:
-                raise ValueError(f"Unknown teacher model: {self.teacher_model}")
+                # Пытаемся определить автоматически на основе имени модели
+                if "distilbert" in self.teacher_model.lower():
+                    self.teacher_embedding_dim = 768
+                    self.teacher_model = "DistilBERT"
+                elif "roberta" in self.teacher_model.lower():
+                    self.teacher_embedding_dim = 768 
+                    self.teacher_model = "RoBERTa-base"
+                elif "llama" in self.teacher_model.lower():
+                    self.teacher_embedding_dim = 4096
+                    self.teacher_model = "Meta-Llama-3-8B"
+                elif "gpt" in self.teacher_model.lower():
+                    self.teacher_embedding_dim = 1536
+                    self.teacher_model = "GPT-3.5"
+                else:
+                    raise ValueError(f"Unknown teacher model: {self.teacher_model}. "
+                                   f"Known models: {list(KNOWN_MODELS.keys())} or supported keys: {list(model_mapping.keys())}")
 
 
 class AdapterCubeTrainer:

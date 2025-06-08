@@ -456,7 +456,17 @@ class LLMHandler(FormatHandler):
         if os.path.exists(self.model_name):
             return self.model_name
         
-        # Проверяем есть ли кэшированная версия
+        # Проверяем есть ли кэшированная версия используя model_key если доступен
+        if hasattr(self, 'model_key') and self.model_key in LOCAL_MODEL_PATHS:
+            local_path = LOCAL_MODEL_PATHS[self.model_key]
+            if os.path.exists(local_path):
+                logger.info(f"Using cached model for {self.model_key}: {local_path}")
+                return local_path
+            else:
+                logger.info(f"Model {self.model_key} not cached yet, will download: {self.model_name}")
+                return self.model_name
+        
+        # Проверяем есть ли кэшированная версия по полному имени модели
         for model_key, local_path in LOCAL_MODEL_PATHS.items():
             if SUPPORTED_LLM_MODELS[model_key] == self.model_name:
                 if os.path.exists(local_path):
@@ -472,7 +482,21 @@ class LLMHandler(FormatHandler):
     def _cache_model_locally(self, original_model_path: str):
         """Сохраняет модель в локальном кэше для будущего использования."""
         try:
-            # Находим соответствующий локальный путь
+            # Используем model_key если доступен
+            if hasattr(self, 'model_key') and self.model_key in LOCAL_MODEL_PATHS:
+                local_path = LOCAL_MODEL_PATHS[self.model_key]
+                if not os.path.exists(local_path):
+                    logger.info(f"Caching model {self.model_key} locally: {local_path}")
+                    
+                    # Сохраняем модель
+                    os.makedirs(local_path, exist_ok=True)
+                    self.model.save_pretrained(local_path)
+                    self.tokenizer.save_pretrained(local_path)
+                    
+                    logger.info(f"Model {self.model_key} cached successfully: {local_path}")
+                return
+            
+            # Fallback: находим соответствующий локальный путь по полному имени
             for model_key, local_path in LOCAL_MODEL_PATHS.items():
                 if SUPPORTED_LLM_MODELS[model_key] == original_model_path:
                     if not os.path.exists(local_path):
@@ -681,4 +705,11 @@ def create_llm_handler(model_key: str) -> LLMHandler:
                         f"Supported: {list(SUPPORTED_LLM_MODELS.keys())}")
     
     model_name = SUPPORTED_LLM_MODELS[model_key]
-    return LLMHandler(model_name) 
+    
+    # Создаем handler с правильным именем модели
+    handler = LLMHandler(model_name)
+    
+    # Сохраняем оригинальный ключ для логирования
+    handler.model_key = model_key
+    
+    return handler 

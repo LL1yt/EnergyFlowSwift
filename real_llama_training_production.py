@@ -93,7 +93,7 @@ from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
 )
 from training.embedding_trainer.dialogue_dataset import DialogueDataset, create_dialogue_dataset
 from data.embedding_adapter.universal_adapter import UniversalEmbeddingAdapter
-from utils.llm_handler import LLMHandler
+from data.embedding_loader.format_handlers import create_llm_handler
 
 # Конфигурация модели - используем DistilBERT для экономии ресурсов
 MODEL_CONFIG = {
@@ -276,23 +276,27 @@ class ProductionTrainingManager:
         try:
             # 1. Check LLM model availability
             logger.info(f"1️⃣ Testing {self.model_name} model access...")
-            llm_handler = LLMHandler(self.model_name)
-            test_embedding = llm_handler.generate_embedding("Test validation text")
+            llm_handler = create_llm_handler(self.model_name)
+            test_embedding = llm_handler.generate_embeddings(["Test validation text"])
             logger.info(f"✅ {self.model_name} working: {test_embedding.shape}")
             
             # 2. Check Universal Adapter
             logger.info("2️⃣ Testing Universal Adapter...")
+            # DistilBERT has 768 dimensions, not 4096
+            input_dim = test_embedding.shape[-1]  # Get actual dimensions from test_embedding
+            output_dim = 15 * 15  # Surface size for 15x15
             adapter = UniversalEmbeddingAdapter(
-                input_dim=4096,
-                output_shape=(15, 15),
+                input_dim=input_dim,
+                output_dim=output_dim,
                 strategy='hierarchical'
             )
-            test_surface = adapter.forward(test_embedding.unsqueeze(0))
+            test_surface = adapter.forward(test_embedding)
             logger.info(f"✅ Universal Adapter working: {test_surface.shape}")
             
             # 3. Check EmergentCubeTrainer
             logger.info("3️⃣ Testing EmergentCubeTrainer...")
             config = EmergentTrainingConfig()
+            config.teacher_model = self.model_name  # Use selected model (DistilBERT or LLaMA)
             config.cube_dimensions = (15, 15, 1)  # Minimal для validation
             config.batch_size = 1
             config.epochs = 1
@@ -318,15 +322,17 @@ class ProductionTrainingManager:
             logger.info("5️⃣ Testing mini training step...")
             sample = dataset[0]
             
-            # Convert to appropriate format for training
+                                            # Convert to appropriate format for training
             if isinstance(sample, tuple):
                 input_emb, target_emb = sample
-                # Adapt to surface format
-                input_surface = adapter.forward(input_emb.unsqueeze(0))
-                target_surface = adapter.forward(target_emb.unsqueeze(0))
                 
-                # Single training step
-                metrics = trainer.train_step(input_surface, target_surface)
+                # Move original embeddings to the same device as trainer (trainer handles adaptation internally)
+                device = trainer.device
+                input_emb = input_emb.unsqueeze(0).to(device)  # Add batch dimension
+                target_emb = target_emb.unsqueeze(0).to(device)  # Add batch dimension
+                
+                # Single training step with original embeddings
+                metrics = trainer.train_step(input_emb, target_emb)
                 logger.info(f"✅ Training step successful: loss = {metrics.get('loss', 'N/A')}")
             
             logger.info("🎉 System validation completed successfully!")
@@ -388,6 +394,10 @@ class ProductionTrainingManager:
                 try:
                     # Prepare batch
                     batch_data = self._prepare_batch(dataset, batch_idx, stage.batch_size)
+                    
+                    # Move batch data to trainer device
+                    device = trainer.device
+                    batch_data = tuple(tensor.to(device) for tensor in batch_data)
                     
                     # Training step
                     metrics = trainer.train_step(*batch_data)
@@ -565,21 +575,11 @@ class ProductionTrainingManager:
                 batch_inputs.append(input_emb)
                 batch_targets.append(target_emb)
         
-        # Convert to tensors and adapt to surface format
+        # Convert to tensors - return original embeddings, let trainer handle adaptation
         batch_input_tensor = torch.stack(batch_inputs)
         batch_target_tensor = torch.stack(batch_targets)
         
-        # Use Universal Adapter для conversion to surface format
-        adapter = UniversalEmbeddingAdapter(
-            input_dim=batch_input_tensor.shape[-1],
-            output_shape=(15, 15),
-            strategy='hierarchical'
-        )
-        
-        input_surfaces = adapter.forward(batch_input_tensor)
-        target_surfaces = adapter.forward(batch_target_tensor)
-        
-        return input_surfaces, target_surfaces
+        return batch_input_tensor, batch_target_tensor
     
     def _save_checkpoint(self, trainer, stage: TrainingStage, epoch: int, loss: float, similarity: float):
         """Сохранение checkpoint"""

@@ -56,7 +56,7 @@ class EmergentTrainingConfig:
     """Конфигурация для emergent training с full cube влиянием"""
     
     # Base configuration
-    teacher_model: str = "Meta-Llama-3-8B"
+    teacher_model: str = "distilbert-base-uncased"  # Default to DistilBERT for resource efficiency
     cube_dimensions: Tuple[int, int, int] = (15, 15, 11)
     
     # Emergent processing settings
@@ -145,8 +145,21 @@ class EmergentMultiObjectiveLoss(nn.Module):
         # Dimension projection для dialogue similarity (адаптивно под размер куба)
         cube_dims = config.cube_dimensions
         surface_size = cube_dims[0] * cube_dims[1]  # width × height
-        self.surface_to_embedding = nn.Linear(surface_size, 4096, bias=False)  # surface_size → 4096D
-        self.embedding_to_surface = nn.Linear(4096, surface_size, bias=False)  # 4096D → surface_size
+        
+        # Определяем размерность эмбеддингов на основе teacher_model
+        if "distilbert" in config.teacher_model.lower():
+            embedding_dim = 768
+        elif "roberta" in config.teacher_model.lower():
+            embedding_dim = 768
+        elif "gpt2" in config.teacher_model.lower():
+            embedding_dim = 768
+        else:
+            # Default для LLaMA и других больших моделей
+            embedding_dim = 4096
+            
+        self.embedding_dim = embedding_dim
+        self.surface_to_embedding = nn.Linear(surface_size, embedding_dim, bias=False)  # surface_size → embedding_dim
+        self.embedding_to_surface = nn.Linear(embedding_dim, surface_size, bias=False)  # embedding_dim → surface_size
         
         # Adaptive weighting (if enabled)
         if config.adaptive_loss_weighting:
@@ -1754,7 +1767,7 @@ class EmergentCubeTrainer(nn.Module):
 # Helper functions
 
 def create_emergent_trainer(cube_dimensions: Tuple[int, int, int] = (15, 15, 11),
-                           teacher_model: str = "Meta-Llama-3-8B",
+                           teacher_model: str = "distilbert-base-uncased",
                            device: Optional[str] = None) -> EmergentCubeTrainer:
     """Create configured emergent trainer for Stage 3.1.4.1"""
     
