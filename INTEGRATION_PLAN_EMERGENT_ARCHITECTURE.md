@@ -294,6 +294,7 @@
 **Действия:**
 
 1. **Implement State Pool:**
+
    ```python
    class StatePool:
        def __init__(self, pool_size=32):

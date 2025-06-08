@@ -105,8 +105,8 @@ training_optimization:
     patience: 3
 
   # Memory optimization
-  gradient_checkpointing: false # Not needed for 15×15×11
-  mixed_precision: false # Disabled for stability
+  gradient_checkpointing: true # RESEARCH INTEGRATION: Enabled for computational graph management
+  mixed_precision: true # RESEARCH INTEGRATION: Enabled for 50% memory reduction + 1.6-2.75x speedup
 
   # GPU settings
   device: "cpu" # Auto-detect available

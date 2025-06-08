@@ -40,6 +40,11 @@ from core.lattice_3d import Lattice3D, LatticeConfig
 from core.embedding_processor import EmbeddingProcessor, ProcessingMode
 from core.cell_prototype.architectures.gmlp_cell import GatedMLPCell
 
+# RESEARCH INTEGRATION: Add imports for computational graph management
+from torch.utils.checkpoint import checkpoint
+from torch.amp import autocast, GradScaler
+import gc
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,6 +76,10 @@ class EmergentTrainingConfig:
     # Optimization settings
     gradient_balancing: bool = True
     adaptive_loss_weighting: bool = True
+    
+    # RESEARCH INTEGRATION: GPU optimization settings
+    mixed_precision: bool = True
+    gradient_checkpointing: bool = True
     
     def __post_init__(self):
         if self.gmlp_config is None:
@@ -351,9 +360,11 @@ class EmergentGMLPCell(nn.Module):
             self.cross_layer_projection = nn.Linear(state_size, state_size)
             
             # Emergent specialization tracking
-            self.specialization_tracker = nn.Parameter(
-                torch.zeros(1, state_size), requires_grad=False
-            )
+                    # Используем buffer вместо Parameter для избежания version tracking issues
+        self.register_buffer(
+            'specialization_tracker',
+            torch.zeros(1, state_size)
+        )
             
         # Debug tracking
         self.forward_count = 0
@@ -385,21 +396,13 @@ class EmergentGMLPCell(nn.Module):
         
         self.forward_count += 1
         
-        # Debug logging for tensor reuse detection
-        state_id = id(own_state)
-        logger.debug(f"🔍 [EmergentGMLPCell] Forward #{self.forward_count}, state_id={state_id}")
-        
-        if self.last_output_id and hasattr(own_state, 'grad_fn'):
-            if own_state.grad_fn and hasattr(own_state.grad_fn, 'next_functions'):
-                logger.debug(f"🔍 [EmergentGMLPCell] State grad_fn: {own_state.grad_fn}")
-        
-        # Check for memory state reuse
-        if hasattr(self.base_gmlp, 'memory_state') and self.base_gmlp.memory_state is not None:
-            mem_id = id(self.base_gmlp.memory_state)
-            logger.debug(f"🔍 [EmergentGMLPCell] Memory state id={mem_id}, requires_grad={self.base_gmlp.memory_state.requires_grad}")
-        
         # === ЭТАП 1: Base gMLP Processing ===
-        base_output = self.base_gmlp(neighbor_states, own_state, external_input)
+        # Clone inputs для избежания inplace modifications
+        neighbor_states_safe = neighbor_states.clone()
+        own_state_safe = own_state.clone()
+        external_input_safe = external_input.clone() if external_input is not None else None
+        
+        base_output = self.base_gmlp(neighbor_states_safe, own_state_safe, external_input_safe)
         
         if not self.spatial_connections:
             return base_output
@@ -407,14 +410,14 @@ class EmergentGMLPCell(nn.Module):
         # === ЭТАП 2: Spatial Connectivity Enhancement ===
         
         # Spatial weighting для neighbor influence
-        if neighbor_states.numel() > 0:
-            batch_size = own_state.shape[0]
+        if neighbor_states_safe.numel() > 0:
+            batch_size = own_state_safe.shape[0]
             
             # Compute spatial weights для каждого neighbor
             spatial_weights_input = []
-            for i in range(neighbor_states.shape[1]):  # For each neighbor
-                neighbor_state = neighbor_states[:, i]  # [batch, state_size]
-                combined = torch.cat([own_state, neighbor_state], dim=-1)  # [batch, state_size*2]
+            for i in range(neighbor_states_safe.shape[1]):  # For each neighbor
+                neighbor_state = neighbor_states_safe[:, i]  # [batch, state_size]
+                combined = torch.cat([own_state_safe, neighbor_state], dim=-1)  # [batch, state_size*2]
                 spatial_weights_input.append(combined)
             
             if spatial_weights_input:
@@ -422,36 +425,33 @@ class EmergentGMLPCell(nn.Module):
                 
                 # Generate adaptive weights для каждого neighbor
                 spatial_weights = []
-                for i in range(neighbor_states.shape[1]):
+                for i in range(neighbor_states_safe.shape[1]):
                     weight = self.spatial_weight_generator(spatial_weights_input[:, i])  # [batch, neighbor_count]
                     spatial_weights.append(weight[:, i:i+1])  # Take weight for this neighbor
                 
                 spatial_weights = torch.cat(spatial_weights, dim=-1)  # [batch, neighbor_count]
                 
                 # Apply spatial weighting
-                weighted_neighbors = neighbor_states * spatial_weights.unsqueeze(-1)  # [batch, neighbor_count, state_size]
+                weighted_neighbors = neighbor_states_safe * spatial_weights.unsqueeze(-1)  # [batch, neighbor_count, state_size]
                 spatial_influence = torch.mean(weighted_neighbors, dim=1)  # [batch, state_size]
                 
-                # Combine с base output
-                base_output = base_output + 0.1 * spatial_influence
+                # Combine с base output (избегаем inplace)
+                base_output = torch.add(base_output, spatial_influence, alpha=0.1)
         
         # === ЭТАП 3: Cross-layer Influence ===
         if layer_context is not None:
             cross_layer_influence = self.cross_layer_projection(layer_context)
-            base_output = base_output + 0.05 * cross_layer_influence
+            base_output = torch.add(base_output, cross_layer_influence, alpha=0.05)
             
         # === ЭТАП 4: Emergent Specialization Tracking ===
         with torch.no_grad():
-            # Update specialization tracker (running average активации)
-            current_activation = torch.mean(torch.abs(base_output), dim=0, keepdim=True)
-            self.specialization_tracker.data = (
-                0.99 * self.specialization_tracker.data + 
-                0.01 * current_activation
-            )
+            # Update specialization tracker (running average активации) - безопасное обновление buffer
+            current_activation = torch.mean(torch.abs(base_output.detach()), dim=0, keepdim=True)
+            # Безопасное обновление buffer без inplace операций над версионированными тензорами
+            self.specialization_tracker.mul_(0.99).add_(current_activation, alpha=0.01)
         
         # Store output id for debugging
         self.last_output_id = id(base_output)
-        logger.debug(f"🔍 [EmergentGMLPCell] Output id={self.last_output_id}, requires_grad={base_output.requires_grad}")
         
         return base_output
     
@@ -514,7 +514,7 @@ class EmergentCubeTrainer(nn.Module):
         # 3. Spatial propagation system
         self.spatial_propagation = EmergentSpatialPropagation(
             self.config.cube_dimensions,
-            cell_state_size=32  # gMLP state size
+            cell_state_size=self.config.gmlp_config['state_size']
         ).to(self._device)
         
         # 4. Multi-objective loss
@@ -587,57 +587,32 @@ class EmergentCubeTrainer(nn.Module):
         
         total_params = sum(p.numel() for p in params)
         self.logger.info(f"✅ Optimizer setup: {total_params:,} total parameters")
+        
+        # RESEARCH INTEGRATION: Initialize training step counter for tensor lifecycle management
+        self.training_step = 0
+        
+        # RESEARCH INTEGRATION: Mixed precision scaler
+        self.scaler = GradScaler() if self.config.mixed_precision else None
     
     def forward(self, surface_embeddings: torch.Tensor) -> Dict[str, torch.Tensor]:
-        """Forward pass через emergent cube processing + debugging"""
+        """Forward pass через emergent cube processing"""
         
         batch_size = surface_embeddings.shape[0]
-        logger.debug(f"🔍 [FORWARD] Starting forward pass, batch_size={batch_size}")
-        logger.debug(f"🔍 [FORWARD] Input surface: shape={surface_embeddings.shape}, requires_grad={surface_embeddings.requires_grad}")
-        logger.debug(f"🔍 [FORWARD] Input tensor id={id(surface_embeddings)}")
         
         # Step 1: Surface injection into cube
-        logger.debug("🔍 [FORWARD] Step 1: Surface injection...")
         cube_states = self._inject_surface_to_cube(surface_embeddings)
-        logger.debug(f"🔍 [FORWARD] Cube states created: shape={cube_states.shape}, requires_grad={cube_states.requires_grad}")
-        logger.debug(f"🔍 [FORWARD] Cube states id={id(cube_states)}")
         
         # Step 2: Full cube processing (emergent behavior)
-        logger.debug("🔍 [FORWARD] Step 2: Full cube processing...")
-        
-        # Track tensor IDs before processing
-        cube_id_before = id(cube_states)
-        
         processed_cube = self._process_full_cube(cube_states)
         
-        cube_id_after = id(processed_cube)
-        logger.debug(f"🔍 [FORWARD] Cube processing complete: shape={processed_cube.shape}, requires_grad={processed_cube.requires_grad}")
-        logger.debug(f"🔍 [FORWARD] Cube ID before={cube_id_before}, after={cube_id_after}, changed={cube_id_before != cube_id_after}")
-        
         # Step 3: Spatial propagation
-        logger.debug("🔍 [FORWARD] Step 3: Spatial propagation...")
-        
         propagated_cube = self.spatial_propagation(processed_cube)
-        logger.debug(f"🔍 [FORWARD] Spatial propagation complete: shape={propagated_cube.shape}, requires_grad={propagated_cube.requires_grad}")
-        logger.debug(f"🔍 [FORWARD] Propagated cube id={id(propagated_cube)}")
         
         # Step 4: Output extraction
-        logger.debug("🔍 [FORWARD] Step 4: Output extraction...")
-        
         final_output = self._extract_output_surface(propagated_cube)
-        logger.debug(f"🔍 [FORWARD] Final output extracted: shape={final_output.shape}, requires_grad={final_output.requires_grad}")
-        logger.debug(f"🔍 [FORWARD] Final output id={id(final_output)}")
-        
-        # Check for computational graph connections
-        if hasattr(final_output, 'grad_fn') and final_output.grad_fn:
-            logger.debug(f"🔍 [FORWARD] Final output grad_fn: {final_output.grad_fn}")
         
         # Step 5: Internal state analysis
-        logger.debug("🔍 [FORWARD] Step 5: Internal state analysis...")
-        
         internal_state = self._analyze_internal_state(propagated_cube)
-        logger.debug(f"🔍 [FORWARD] Internal state: shape={internal_state.shape}, requires_grad={internal_state.requires_grad}")
-        logger.debug(f"🔍 [FORWARD] Internal state id={id(internal_state)}")
         
         # Prepare outputs
         outputs = {
@@ -647,23 +622,10 @@ class EmergentCubeTrainer(nn.Module):
             'internal_state': internal_state
         }
         
-        # Log output tensor relationships
-        logger.debug("🔍 [FORWARD] Output tensor analysis:")
-        for key, tensor in outputs.items():
-            if torch.is_tensor(tensor):
-                logger.debug(f"   {key}: id={id(tensor)}, requires_grad={tensor.requires_grad}")
-                if hasattr(tensor, 'grad_fn') and tensor.grad_fn:
-                    logger.debug(f"   {key} grad_fn: {tensor.grad_fn}")
-        
-        logger.debug("🔍 [FORWARD] Forward pass completed")
-        
         return outputs
     
     def _process_full_cube(self, cube_states: torch.Tensor) -> torch.Tensor:
-        """Process entire cube through gMLP cells с debugging"""
-        
-        logger.debug("🔍 [PROCESS_CUBE] Starting full cube processing...")
-        logger.debug(f"🔍 [PROCESS_CUBE] Input cube: shape={cube_states.shape}, id={id(cube_states)}")
+        """Process entire cube through gMLP cells"""
         
         batch_size, depth, height, width, state_size = cube_states.shape
         
@@ -671,35 +633,29 @@ class EmergentCubeTrainer(nn.Module):
         flattened_states = cube_states.view(batch_size, -1, state_size)
         total_cells = flattened_states.shape[1]
         
-        logger.debug(f"🔍 [PROCESS_CUBE] Processing {total_cells} cells...")
-        
-        # Process each cell
+        # Process each cell с RESEARCH INTEGRATION: gradient checkpointing
         processed_states = []
         
         for cell_idx in range(total_cells):
-            if cell_idx < 5:  # Log first 5 cells
-                logger.debug(f"🔍 [PROCESS_CUBE] Processing cell {cell_idx}")
-            
-            cell_state = flattened_states[:, cell_idx, :]  # [batch, state_size]
+            cell_state = flattened_states[:, cell_idx, :].clone()  # [batch, state_size] - clone for safety
             
             # Get cell neighbors
             neighbors = self._get_cell_neighbors(cell_idx, flattened_states, batch_size, depth, height, width)
             
             # External input (zero for internal cells)
-            external_input = torch.zeros(batch_size, self.config.external_input_size, 
+            external_input = torch.zeros(batch_size, self.config.gmlp_config['external_input_size'], 
                                        device=cell_state.device)
             
-            # Process через соответствующую cell
-            gmlp_cell = self.gmlp_cells[cell_idx % len(self.gmlp_cells)]
-            
-            # Track tensor reuse
-            if cell_idx < 5:
-                logger.debug(f"🔍 [PROCESS_CUBE] Cell {cell_idx} input id={id(cell_state)}")
-            
-            cell_output = gmlp_cell(cell_state, neighbors, external_input)
-            
-            if cell_idx < 5:
-                logger.debug(f"🔍 [PROCESS_CUBE] Cell {cell_idx} output id={id(cell_output)}")
+            # RESEARCH INTEGRATION: Gradient checkpointing every 50 cells (√2475 ≈ 50)
+            if self.training and cell_idx % 50 == 0:
+                cell_output = checkpoint(
+                    self._process_single_cell, 
+                    cell_state, neighbors, external_input, cell_idx
+                )
+            else:
+                # Normal processing
+                gmlp_cell = self.gmlp_cells[cell_idx % len(self.gmlp_cells)]
+                cell_output = gmlp_cell(neighbors, cell_state, external_input)
             
             processed_states.append(cell_output)
         
@@ -708,8 +664,6 @@ class EmergentCubeTrainer(nn.Module):
         
         # Reshape back to cube
         processed_cube = processed_flattened.view(batch_size, depth, height, width, state_size)
-        
-        logger.debug(f"🔍 [PROCESS_CUBE] Cube processing complete: shape={processed_cube.shape}, id={id(processed_cube)}")
         
         return processed_cube
     
@@ -736,7 +690,7 @@ class EmergentCubeTrainer(nn.Module):
             else:
                 # Boundary condition: zero state
                 neighbor_state = torch.zeros(
-                    batch_size, self.config.state_size, 
+                    batch_size, self.config.gmlp_config['state_size'], 
                     device=flattened_states.device
                 )
             
@@ -747,13 +701,9 @@ class EmergentCubeTrainer(nn.Module):
     def _inject_surface_to_cube(self, surface_embeddings: torch.Tensor) -> torch.Tensor:
         """Inject 225D surface embeddings into 3D cube structure"""
         
-        logger.debug("🔍 [INJECT_SURFACE] Starting surface injection...")
-        
         batch_size = surface_embeddings.shape[0]
         width, height, depth = self.config.cube_dimensions  # [15, 15, 11]
-        state_size = self.config.state_size  # 32
-        
-        logger.debug(f"🔍 [INJECT_SURFACE] Cube dims: {width}×{height}×{depth}, state_size: {state_size}")
+        state_size = self.config.gmlp_config['state_size']  # 32
         
         # Initialize cube with zeros
         cube_states = torch.zeros(
@@ -793,8 +743,6 @@ class EmergentCubeTrainer(nn.Module):
         for d in range(1, depth):
             decay_factor = 0.9 ** d
             cube_states[:, d] = cube_states[:, 0] * decay_factor
-        
-        logger.debug(f"🔍 [INJECT_SURFACE] Cube injection complete: {cube_states.shape}")
         
         return cube_states
     
@@ -848,52 +796,107 @@ class EmergentCubeTrainer(nn.Module):
         """Compute multi-objective loss"""
         return self.loss_function(outputs, targets, outputs.get('internal_state'))
     
+    # RESEARCH INTEGRATION: Strategic tensor lifecycle management methods
+    def _detach_spatial_connections(self):
+        """Безопасное отключение связей пространственной propagation без inplace операций"""
+        
+        # Безопасное обнуление градиентов без inplace detach_()
+        if hasattr(self.spatial_propagation, 'layer_connections'):
+            param = self.spatial_propagation.layer_connections
+            if param.grad is not None:
+                param.grad = None  # Вместо detach_()
+        
+        # Безопасная очистка gMLP cell states без inplace операций  
+        for i, cell in enumerate(self.gmlp_cells):
+            # Безопасная очистка memory states
+            if hasattr(cell.base_gmlp, 'memory_state') and cell.base_gmlp.memory_state is not None:
+                # Создаем новое состояние вместо inplace операций
+                cell.base_gmlp.memory_state = cell.base_gmlp.memory_state.detach().clone()
+            
+            # Specialization tracker теперь buffer - не требует detach_()
+            # Clear any cached outputs that might cause inplace issues
+            if hasattr(cell, 'last_output_id'):
+                cell.last_output_id = None
+    
+    def _manage_tensor_lifecycle(self):
+        """Безопасное управление жизненным циклом тензоров без inplace операций"""
+        
+        # Безопасное обнуление градиентов вместо detach_()
+        for param in self.spatial_propagation.parameters():
+            if param.grad is not None:
+                param.grad = None  # Вместо detach_()
+        
+        # Безопасная очистка градиентов gMLP cell parameters 
+        for cell in self.gmlp_cells:
+            for param in cell.parameters():
+                if param.grad is not None:
+                    param.grad = None  # Вместо detach_()
+                    
+            # Clear intermediate states
+            if hasattr(cell, 'last_hidden_state'):
+                cell.last_hidden_state = None
+        
+        # Безопасная очистка loss function parameters gradients
+        for param in self.loss_function.parameters():
+            if param.grad is not None:
+                param.grad = None  # Вместо detach_()
+        
+        # Force garbage collection to clear unused tensors
+        gc.collect()
+    
+    def _process_single_cell(self, cell_state: torch.Tensor, neighbor_states: torch.Tensor, 
+                           external_input: torch.Tensor, cell_idx: int) -> torch.Tensor:
+        """Process single cell (используется для gradient checkpointing)"""
+        gmlp_cell = self.gmlp_cells[cell_idx % len(self.gmlp_cells)]
+        return gmlp_cell(neighbor_states, cell_state, external_input)
+    
     def train_step(self, question_embeddings: torch.Tensor, 
                    answer_embeddings: torch.Tensor) -> Dict[str, float]:
-        """Single training step с emergent processing + detailed debugging"""
-        
-        logger.debug("🔍 [TRAIN_STEP] Starting train_step...")
-        logger.debug(f"🔍 [TRAIN_STEP] Input shapes: Q={question_embeddings.shape}, A={answer_embeddings.shape}")
-        logger.debug(f"🔍 [TRAIN_STEP] Input requires_grad: Q={question_embeddings.requires_grad}, A={answer_embeddings.requires_grad}")
+        """Single training step с emergent processing + RESEARCH INTEGRATION: tensor lifecycle management"""
         
         self.train()
         
+        # RESEARCH INTEGRATION: Strategic tensor lifecycle management every 3 iterations
+        if self.training_step % 3 == 0:
+            self._detach_spatial_connections()
+        
+        # RESEARCH INTEGRATION: Создание независимых копий с градиентами
+        question_embeddings = question_embeddings.detach().clone().requires_grad_(True)
+        answer_embeddings = answer_embeddings.detach().clone().requires_grad_(True)
+        
         # Clear gradients first
-        logger.debug("🔍 [TRAIN_STEP] Clearing gradients...")
         self.optimizer.zero_grad()
         
-        # Check for retained gradients
-        for name, param in self.named_parameters():
-            if param.grad is not None:
-                logger.warning(f"⚠️ [TRAIN_STEP] Parameter {name} still has gradients after zero_grad()!")
-        
-        # Forward pass (create new computation graph)
-        logger.debug("🔍 [TRAIN_STEP] Starting forward pass...")
+        # RESEARCH INTEGRATION: Forward pass с mixed precision support
         try:
-            question_outputs = self.forward(question_embeddings)
-            logger.debug(f"🔍 [TRAIN_STEP] Forward completed. Output keys: {list(question_outputs.keys())}")
-            
-            # Check computational graph attachment
-            for key, tensor in question_outputs.items():
-                if torch.is_tensor(tensor):
-                    logger.debug(f"🔍 [TRAIN_STEP] {key}: shape={tensor.shape}, requires_grad={tensor.requires_grad}, grad_fn={tensor.grad_fn}")
+            if self.config.mixed_precision and self.scaler is not None:
+                with autocast('cpu'):  # Specify device type
+                    question_outputs = self.forward(question_embeddings)
+            else:
+                question_outputs = self.forward(question_embeddings)
             
         except Exception as e:
-            logger.error(f"❌ [TRAIN_STEP] Forward pass failed: {e}")
+            logger.error(f"Forward pass failed: {e}")
             raise
         
-        # Prepare targets
-        logger.debug("🔍 [TRAIN_STEP] Preparing targets...")
+        # Prepare targets (с клонированием для безопасности)
         targets = {
-            'target_embedding': answer_embeddings.detach(),  # Detach targets
-            'target_surface': question_outputs['input_surface'].detach()  # Detach reconstruction target
+            'target_embedding': answer_embeddings.detach().clone(),  # Detach and clone targets
+            'target_surface': question_outputs['input_surface'].detach().clone()  # Detach and clone reconstruction target
         }
         
-        # Compute loss
+        # Compute loss с mixed precision support
         logger.debug("🔍 [TRAIN_STEP] Computing loss...")
         try:
-            losses = self.compute_loss(question_outputs, targets)
-            logger.debug(f"🔍 [TRAIN_STEP] Loss computed. Components: {list(losses.keys())}")
+            if self.config.mixed_precision and self.scaler is not None:
+                with autocast('cpu'):  # Specify device type
+                    losses = self.compute_loss(question_outputs, targets)
+                logger.debug("🔍 [TRAIN_STEP] Loss computed with mixed precision")
+            else:
+                losses = self.compute_loss(question_outputs, targets)
+                logger.debug("🔍 [TRAIN_STEP] Loss computed without mixed precision")
+            
+            logger.debug(f"🔍 [TRAIN_STEP] Loss components: {list(losses.keys())}")
             
             # Check loss computational graph
             for key, loss_tensor in losses.items():
@@ -904,7 +907,7 @@ class EmergentCubeTrainer(nn.Module):
             logger.error(f"❌ [TRAIN_STEP] Loss computation failed: {e}")
             raise
         
-        # Backward pass
+        # RESEARCH INTEGRATION: Backward pass с strategic tensor management
         logger.debug("🔍 [TRAIN_STEP] Starting backward pass...")
         try:
             total_loss = losses['total_loss']
@@ -914,8 +917,20 @@ class EmergentCubeTrainer(nn.Module):
             if hasattr(total_loss, '_backward_hooks') and total_loss._backward_hooks:
                 logger.warning(f"⚠️ [TRAIN_STEP] Total loss already has backward hooks: {total_loss._backward_hooks}")
             
-            total_loss.backward()
-            logger.debug("🔍 [TRAIN_STEP] Backward completed successfully")
+            # RESEARCH INTEGRATION: Strategic retain_graph usage
+            # Only retain graph for multi-objective loss components if needed
+            retain_graph = self.config.adaptive_loss_weighting and len(losses) > 1
+            
+            if retain_graph:
+                logger.debug("🔍 [TRAIN_STEP] Using retain_graph=True for multi-objective loss")
+            
+            # RESEARCH INTEGRATION: Mixed precision backward pass
+            if self.config.mixed_precision and self.scaler is not None:
+                self.scaler.scale(total_loss).backward(retain_graph=retain_graph)
+                logger.debug("🔍 [TRAIN_STEP] Backward completed with mixed precision")
+            else:
+                total_loss.backward(retain_graph=retain_graph)
+                logger.debug("🔍 [TRAIN_STEP] Backward completed without mixed precision")
             
         except RuntimeError as e:
             if "backward through the graph a second time" in str(e):
@@ -935,13 +950,25 @@ class EmergentCubeTrainer(nn.Module):
             logger.debug("🔍 [TRAIN_STEP] Applying gradient clipping...")
             torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
         
-        # Optimizer step
+        # RESEARCH INTEGRATION: Optimizer step с mixed precision support
         logger.debug("🔍 [TRAIN_STEP] Taking optimizer step...")
-        self.optimizer.step()
+        if self.config.mixed_precision and self.scaler is not None:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            logger.debug("🔍 [TRAIN_STEP] Optimizer step completed with mixed precision")
+        else:
+            self.optimizer.step()
+            logger.debug("🔍 [TRAIN_STEP] Optimizer step completed without mixed precision")
+        
+        # RESEARCH INTEGRATION: Tensor lifecycle management after step
+        self._manage_tensor_lifecycle()
         
         # Clear gradients after step to free graph
         logger.debug("🔍 [TRAIN_STEP] Final gradient clearing...")
         self.optimizer.zero_grad()
+        
+        # Increment training step counter
+        self.training_step += 1
         
         # Return metrics (detach all tensors для избежания graph retention)
         with torch.no_grad():
