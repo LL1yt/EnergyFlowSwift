@@ -161,8 +161,10 @@ class GatedMLPCell(nn.Module):
         # === INTERNAL STATE ===
         self.memory_state = None  # Persistent memory между forward calls
         
-        # Подсчет параметров
-        self._log_parameter_count()
+        # Подсчет параметров (только при первом создании)
+        if not hasattr(GatedMLPCell, '_param_count_logged'):
+            self._log_parameter_count()
+            GatedMLPCell._param_count_logged = True
         
     def _log_parameter_count(self):
         """Логирование количества параметров"""

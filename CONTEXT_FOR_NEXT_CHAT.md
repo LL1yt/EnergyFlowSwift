@@ -1,202 +1,175 @@
-# 🚀 CONTEXT FOR NEXT CHAT - 3D Cellular Neural Network Project
+# 📋 CONTEXT FOR NEXT CHAT - Stage 3.1.4.1 Emergent Training Infrastructure
 
-## 📍 ТЕКУЩИЙ СТАТУС (Декабрь 2024)
+## 🎯 ТЕКУЩИЙ СТАТУС (Декабрь 2024)
 
-### **Фаза:** Phase 3 - Advanced Training Systems (57% завершено)
+### **Фаза:** Phase 3 - Advanced Training Systems (65% завершено)
 
-### **Стадия:** Готовы к Stage 3.1.3 - Model-Agnostic Training
+### **Стадия:** ✅ Stage 3.1.3 ЗАВЕРШЕНА → 🚀 Stage 3.1.4.1 НАЧИНАЕМ
 
-### **Последнее достижение:** ✅ Stage 3.1.2 полностью завершена (100%)
-
----
-
-## 🎯 ЧТО ЗАВЕРШЕНО В STAGE 3.1.2
-
-### **Архитектурные достижения:**
-
-- ✅ **AdapterCubeTrainer полностью интегрирован** с EmbeddingProcessor.SURFACE_ONLY
-- ✅ **Удален SimpleWrapper** - теперь прямая интеграция без промежуточных слоев
-- ✅ **Исправлен gradient flow** - добавлены learnable parameters в SURFACE_ONLY режим
-- ✅ **Полная рефакторизация** training workflows (joint, separate, warmup, processor-only)
-
-### **Техническая архитектура:**
-
-```
-Teacher Model (LLaMA-3-8B: 4096D)
-    ↓
-Universal Adapter (4096D → 225D surface)
-    ↓
-EmbeddingProcessor.SURFACE_ONLY (225D → 225D)
-    ├── Learnable spatial diffusion ✅
-    ├── Emergent internal processing (11 layers) ✅
-    └── Surface extraction weights ✅
-    ↓
-Training Loss & Backpropagation ✅
-```
-
-### **Тестирование:**
-
-- ✅ **6/6 comprehensive integration tests passed**
-- ✅ **Gradient flow verified** через всю систему
-- ✅ **Performance benchmark** - эффективная обработка различных batch sizes
-- ✅ **End-to-end pipeline** работает корректно
+### **Последнее достижение:** ✅ LLaMA-3-8B optimization полностью завершена
 
 ---
 
-## 🧠 КЛЮЧЕВЫЕ АРХИТЕКТУРНЫЕ ИНСАЙТЫ
+## 🏆 ЧТО ЗАВЕРШЕНО В STAGE 3.1.3
 
-### **Emergent Architecture Clarification:**
+### **LLaMA-3-8B Integration Success:**
 
-**Training Mode (полное влияние на куб):**
+- ✅ **Meta-LLaMA-3-8B** (8B parameters) успешно интегрирована
+- ✅ **Hierarchical strategy** оптимальна (quality: 0.587, loss: 0.051, time: 28.6s)
+- ✅ **Compression confirmed:** 4096D → 225D (18.2x compression)
+- ✅ **Production ready:** lr=0.001, batch=8, stable training
 
-- Input: 225D surface → PROPAGATION через 11 layers → Output: 225D surface
-- Gradient flow: Surface ↔ Internal layers ↔ Surface
-- Цель: Научить куб внутренней self-organization
-
-**Inference Mode (поверхностный I/O):**
-
-- Input: 225D front surface → [EMERGENT PROCESSING] → Output: 225D back surface
-- Внутренние layers работают emergent без внешнего control
-- Информация хранится как **behavior patterns**, не как raw data
-
-**Информационная емкость:**
-
-- 225D surface достаточно для I/O
-- 2,475 клеток с ~61M parameters обеспечивают processing power
-- **Key insight:** Information capacity = processing power, не surface size
-
----
-
-## 🔄 СЛЕДУЮЩАЯ СТАДИЯ: Stage 3.1.3 - Model-Agnostic Training
-
-### **Цель:**
-
-Адаптировать систему для работы с различными Teacher models (GPT-4, Claude, Gemini, etc.)
-
-### **Ключевые задачи:**
-
-1. **Dynamic Adapter Creation** - автоматическое создание адаптеров для разных размерностей
-2. **Model Detection System** - определение типа и конфигурации teacher model
-3. **Unified Training Interface** - единый API для всех моделей
-4. **Configuration Management** - автоматическая настройка под размерности модели
-
-### **Техническая архитектура для Stage 3.1.3:**
+### **Готовая архитектура:**
 
 ```
-Multiple Teacher Models:
-├── GPT-4 (1536D) → Universal Adapter → 225D surface
-├── Claude-3 (2048D) → Universal Adapter → 225D surface
-├── LLaMA-3 (4096D) → Universal Adapter → 225D surface
-└── Gemini (3072D) → Universal Adapter → 225D surface
-            ↓
-    Unified EmbeddingProcessor.SURFACE_ONLY (225D)
-            ↓
-    Single 15×15×11 lattice with emergent processing
+Meta-LLaMA-3-8B (8B params, GPU)
+    ↓ [реальная генерация embeddings]
+4096D Teacher Embeddings
+    ↓ [Universal Adapter - 45.9M params]
+225D Surface Embeddings
+    ↓ [EmbeddingProcessor.SURFACE_ONLY]
+15×15×11 Lattice (2,475 cells)
+    ↓ [AdapterCubeTrainer]
+Successful Training
 ```
 
 ---
 
-## 📂 АКТИВНЫЕ КОМПОНЕНТЫ
+## 🧠 СЛЕДУЮЩАЯ ЦЕЛЬ: Stage 3.1.4.1 Emergent Training Infrastructure
 
-### **Готовые модули:**
+### **Цель Stage 3.1.4.1:**
 
-- ✅ `core/lattice_3d/` - 3D решетка (100% готова)
-- ✅ `core/embedding_processor/` - с SURFACE_ONLY + learnable params (100% готова)
-- ✅ `training/universal_adapter/` - базовый адаптер (100% готов)
-- ✅ `training/embedding_trainer/adapter_integration.py` - интеграция (100% готова)
+Implement **Emergent Processing** концепцию согласно @EMERGENT_ARCHITECTURE_CLARIFICATION.md
 
-### **Файлы конфигурации:**
+### **Ключевая архитектурная концепция:**
 
-- `config/main_config.yaml` - основная конфигурация
-- `config/surface_only_config.yaml` - SURFACE_ONLY режим
-- `config/training_config.yaml` - параметры training
+**Training Mode (что нужно реализовать):**
 
-### **Тестовая инфраструктура:**
-
-- `tests/test_adapter_integration.py` - comprehensive integration tests
-- `test_lattice_3d_basic.py` - базовые тесты решетки
-- `test_embedding_loader_basic.py` - тесты загрузки embeddings
-
----
-
-## 🎛️ КОМАНДЫ ДЛЯ БЫСТРОГО СТАРТА
-
-### **Тестирование текущей системы:**
-
-```bash
-# Comprehensive integration tests
-python tests/test_adapter_integration.py
-
-# Basic component tests
-python test_lattice_3d_basic.py
-python test_embedding_loader_basic.py
-
-# Demo mode
-python main.py --mode demo --debug
+```
+4096D LLaMA → 225D Surface → FULL CUBE INFLUENCE (2,475 cells) → 225D Surface → Learning
 ```
 
-### **Отладка:**
+**Inference Mode (будущая цель):**
 
-```bash
-# Логи
-tail -f logs/main.log
-
-# Конфигурация
-cat config/main_config.yaml
+```
+Question → 225D Front Surface → [EMERGENT PROCESSING] → 225D Back Surface → Answer
 ```
 
 ---
 
-## 🚨 ВАЖНЫЕ ПРИНЦИПЫ ДЛЯ ПРОДОЛЖЕНИЯ
+## 🔧 ТЕХНИЧЕСКИЕ ТРЕБОВАНИЯ Stage 3.1.4.1
 
-### **Development Rules:**
+### **1. Full Cube Gradient Flow:**
 
-1. **Extreme Modularity** - очень маленькие, фокусированные модули
-2. **Documentation-First** - обновлять ВСЮ документацию после каждого изменения
-3. **Manual Testing** - проверять функциональность вручную после каждого шага
-4. **Incremental Development** - крошечные, проверяемые шаги
+- Градиенты распространяются через **все 2,475 клеток**
+- Spatial propagation через **все 11 layers** depth
+- Cross-layer influence между соседними cells
 
-### **Architecture Principles:**
+### **2. Multi-Objective Loss Function:**
 
-1. **225D Surface I/O** - оптимальный размер для input/output
-2. **Emergent Internal Processing** - 11 layers с self-organization
-3. **Learnable Spatial Diffusion** - параметры обучаются автоматически
-4. **Universal Adapter Strategy** - единый подход для всех teacher models
+```python
+total_loss = 0.3 * surface_reconstruction_loss +
+             0.3 * internal_consistency_loss +
+             0.4 * dialogue_similarity_loss
+```
+
+### **3. gMLP Neuron Architecture (ВАЖНО!):**
+
+```python
+# Каждая клетка = gMLP с ~25K параметрами
+class gMLPCell:
+    hidden_dim: 128        # Оптимизировано для 25K params
+    memory_dim: 32         # Внутренняя память
+    spatial_connections: True  # Связи с соседями
+    emergent_specialization: True  # Функциональная специализация
+```
+
+### **4. Spatial Propagation System:**
+
+- **Input injection:** 225D surface → propagation через layers
+- **Internal processing:** Layers 1-10 self-organization
+- **Output extraction:** Final layer → 225D surface output
 
 ---
 
-## 📋 НЕМЕДЛЕННЫЕ СЛЕДУЮЩИЕ ШАГИ
+## 📂 ГОТОВЫЕ КОМПОНЕНТЫ
 
-### **1. Анализ требований Stage 3.1.3:**
+### **Работающие модули:**
 
-- Изучить `training/embedding_trainer/plan.md` для деталей Stage 3.1.3
-- Определить список target teacher models для поддержки
-- Проанализировать их размерности и особенности
+- ✅ `core/lattice_3d/` - 3D решетка 15×15×11
+- ✅ `core/embedding_processor/` - SURFACE_ONLY режим
+- ✅ `training/universal_adapter/` - LLaMA-3-8B optimized
+- ✅ `training/embedding_trainer/adapter_integration.py` - current training
 
-### **2. Техническое планирование:**
+### **Конфигурация:**
 
-- Создать `ModelDetectionSystem` для автоматического определения модели
-- Спроектировать `DynamicAdapterFactory` для создания адаптеров
-- Определить unified training interface
+- ✅ `config/main_config.yaml` - основная конфигурация
+- ✅ `config/surface_only_config.yaml` - SURFACE_ONLY настройки
+- ✅ LLaMA-3-8B: hierarchical + lr=0.001 + batch=8
 
-### **3. Implementation Strategy:**
+---
 
-- Начать с поддержки 2-3 основных моделей (GPT-4, Claude, LLaMA)
-- Создать configuration templates для каждой модели
-- Протестировать end-to-end workflow с разными моделями
+## 🎯 ЧТО НУЖНО СОЗДАТЬ В Stage 3.1.4.1
+
+### **1. Enhanced Training Script:**
+
+- Emergent processing training pipeline
+- Full cube gradient flow implementation
+- Multi-objective loss integration
+
+### **2. gMLP Cell Enhancement:**
+
+- Optimize для 25K parameters per cell
+- Spatial connection mechanisms
+- Emergent specialization capabilities
+
+### **3. Loss Function Modification:**
+
+- Surface reconstruction loss
+- Internal consistency loss
+- Dialogue similarity loss
+- Multi-objective optimization
+
+### **4. Spatial Propagation System:**
+
+- Input injection на surface
+- Cross-layer signal propagation
+- Internal state coherence mechanisms
+
+---
+
+## 🚀 IMMEDIATE NEXT STEPS
+
+### **Stage 3.1.4.1 Tasks:**
+
+1. **Create enhanced training script** с emergent processing
+2. **Modify loss function** для multi-objective approach
+3. **Implement full cube gradient flow** vs current surface-only
+4. **Test gMLP cell optimization** для 25K parameter target
+
+### **Target Architecture:**
+
+```python
+# 2,475 cells × 25K params = ~61M total parameters
+# Optimal для emergent behavior + memory efficiency
+lattice_3d: [15, 15, 11]
+cell_type: gMLP(hidden=128, memory=32)
+training_mode: full_cube_influence
+inference_mode: surface_only_io
+```
 
 ---
 
 ## 🔗 КЛЮЧЕВЫЕ ФАЙЛЫ ДЛЯ REFERENCE
 
-- `@PROJECT_PLAN.md` - общий план проекта
-- `@training/embedding_trainer/plan.md` - детальный план training модуля
-- `@EMERGENT_ARCHITECTURE_CLARIFICATION.md` - архитектурные инсайты
-- `@training/embedding_trainer/adapter_integration.py` - текущая реализация
-- `@core/embedding_processor/processor.py` - SURFACE_ONLY реализация
+- `@EMERGENT_ARCHITECTURE_CLARIFICATION.md` - архитектурная концепция
+- `@training/embedding_trainer/plan.md` - текущий план (Stage 3.1.4.1)
+- `@training/embedding_trainer/llama_direct_test.py` - working LLaMA integration
+- `@core/lattice_3d/` - 3D cube implementation
+- `@core/embedding_processor/processor.py` - SURFACE_ONLY processor
 
 ---
 
-**🎯 READY FOR STAGE 3.1.3: Model-Agnostic Training Implementation**
+**🎯 READY FOR Stage 3.1.4.1: Emergent Training Infrastructure Implementation**
 
-_Система готова к расширению поддержки multiple teacher models с unified training interface._
+_Начинаем с создания enhanced training script с full cube gradient flow и gMLP neurons (25K params each)._
