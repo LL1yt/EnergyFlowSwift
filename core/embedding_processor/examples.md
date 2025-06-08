@@ -104,30 +104,33 @@ else:
 
 ## 💬 Пример 3: Диалоговый Режим
 
-**Цель:** Контекстные диалоговые ответы
+**Цель:** Преобразование вопрос→ответ
 
 ```python
-# Создание конфигурации диалога
+# Создание диалоговой конфигурации
 config = create_dialogue_config()
 processor = EmbeddingProcessor(config)
 
-# Симуляция диалогового контекста
-question_embedding = create_test_embedding()  # Вопрос
-context_embedding = create_test_embedding()   # Контекст
+# Симуляция диалогового эмбединга
+question_embedding = create_test_embedding()
+answer_embedding = processor.process(question_embedding)
 
-# Обработка с учетом контекста (пример комбинирования)
-combined_input = (question_embedding + context_embedding) / 2
-response_embedding = processor.process(combined_input)
-
-# Проверка релевантности
-relevance = cosine_similarity(
+# Анализ релевантности
+semantic_similarity = cosine_similarity(
     question_embedding.unsqueeze(0),
-    response_embedding.unsqueeze(0)
+    answer_embedding.unsqueeze(0)
 )[0, 0]
 
-print(f"Context Relevance: {relevance:.4f}")
+print(f"Semantic Similarity: {semantic_similarity:.4f}")
 print(f"Target: ≥{config.similarity_targets[ProcessingMode.DIALOGUE]:.2f}")
-print(f"✅ Релевантно!" if relevance >= 0.80 else "❌ Низкая релевантность")
+
+# Эксперимент с различными типами вопросов
+question_types = ["technical", "creative", "analytical"]
+for q_type in question_types:
+    test_q = create_test_embedding()  # В реальности загружаем по типу
+    test_a = processor.process(test_q)
+    sim = cosine_similarity(test_q.unsqueeze(0), test_a.unsqueeze(0))[0, 0]
+    print(f"{q_type.capitalize()} Q→A similarity: {sim:.3f}")
 ```
 
 ---
@@ -324,6 +327,59 @@ def test_validation():
     print(f"NaN embedding: {is_valid} - {message}")
 
 test_validation()
+```
+
+---
+
+## 🔄 Пример 4: Surface-Only Режим (Universal Adapter)
+
+**Цель:** Обработка surface embeddings без full cube reshaping
+
+```python
+# Создание surface-only конфигурации
+from core.embedding_processor import create_surface_only_config
+
+config = create_surface_only_config(
+    surface_size=225,      # 15×15 surface
+    surface_dims=(15, 15)  # Surface dimensions
+)
+processor = EmbeddingProcessor(config)
+
+# Симуляция surface embeddings от Universal Adapter
+surface_embedding = torch.randn(225, dtype=torch.float32)  # 15×15 = 225D
+
+# Обработка через emergent surface processing
+processed_surface = processor.forward(surface_embedding)
+
+print(f"Input surface shape: {surface_embedding.shape}")
+print(f"Output surface shape: {processed_surface.shape}")
+
+# Проверка качества обработки
+similarity = torch.cosine_similarity(
+    surface_embedding,
+    processed_surface,
+    dim=0
+).item()
+
+print(f"Surface preservation: {similarity:.4f}")
+print(f"Target: ≥{config.target_similarity:.2f}")
+
+# Batch processing тест
+batch_surfaces = torch.randn(4, 225, dtype=torch.float32)
+batch_processed = processor.forward(batch_surfaces)
+
+print(f"\nBatch processing:")
+print(f"Input batch: {batch_surfaces.shape}")
+print(f"Output batch: {batch_processed.shape}")
+
+# Quality analysis для каждого примера в batch
+for i in range(4):
+    sim = torch.cosine_similarity(
+        batch_surfaces[i],
+        batch_processed[i],
+        dim=0
+    ).item()
+    print(f"Batch item {i}: similarity = {sim:.3f}")
 ```
 
 ---

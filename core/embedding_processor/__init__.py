@@ -31,6 +31,7 @@ from .config import (
     create_autoencoder_config,
     create_generator_config,
     create_dialogue_config,
+    create_surface_only_config,
     load_config_from_dict,
     validate_config
 )
@@ -59,6 +60,7 @@ __all__ = [
     "create_autoencoder_config",
     "create_generator_config", 
     "create_dialogue_config",
+    "create_surface_only_config",
     "load_config_from_dict",
     "validate_config",
     

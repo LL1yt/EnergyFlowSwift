@@ -16,6 +16,7 @@ class ProcessingMode(Enum):
     AUTOENCODER = "autoencoder"    # Восстановление входного эмбединга (для обучения)
     GENERATOR = "generator"        # Семантическая трансформация эмбедингов  
     DIALOGUE = "dialogue"          # Вопрос→ответ преобразования
+    SURFACE_ONLY = "surface_only"  # Surface-only обработка (для Universal Adapter)
 
 
 @dataclass
@@ -44,6 +45,11 @@ class EmbeddingConfig:
     target_similarity: float = 0.90                 # Целевая схожесть (Phase 2.5)
     quality_check_enabled: bool = True               # Проверка качества
     metrics_logging: bool = True                     # Логирование метрик
+    
+    # === SURFACE PROCESSING ПАРАМЕТРЫ ===
+    surface_dimensions: Tuple[int, int] = (15, 15)   # Размеры surface для SURFACE_ONLY режима
+    enable_surface_reshaping: bool = False            # Нужен ли reshape для surface
+    surface_processing_depth: int = 11               # Количество internal layers для emergent processing
     
     # === ПРОИЗВОДИТЕЛЬНОСТЬ ===
     batch_processing: bool = True                    # Батчевая обработка
@@ -91,6 +97,23 @@ def create_dialogue_config() -> EmbeddingConfig:
     )
 
 
+def create_surface_only_config(surface_size: int = 225, 
+                              surface_dims: Tuple[int, int] = (15, 15)) -> EmbeddingConfig:
+    """Создать конфигурацию для surface-only режима (Universal Adapter интеграция)"""
+    return EmbeddingConfig(
+        processing_mode=ProcessingMode.SURFACE_ONLY,
+        input_dim=surface_size,      # Surface embedding размер
+        output_dim=surface_size,     # Same размер на выходе
+        surface_dimensions=surface_dims,
+        enable_surface_reshaping=False,  # Direct surface processing
+        surface_processing_depth=11,     # 11 internal layers для emergent processing
+        target_similarity=0.85,     # Reasonable target для surface processing
+        propagation_steps=20,       # Adequate для emergent behavior
+        batch_processing=True,      # Essential для training
+        debug_mode=False           # Production ready
+    )
+
+
 def load_config_from_dict(config_dict: Dict[str, Any]) -> EmbeddingConfig:
     """Загрузить конфигурацию из словаря"""
     
@@ -121,10 +144,17 @@ def load_config_from_dict(config_dict: Dict[str, Any]) -> EmbeddingConfig:
 def validate_config(config: EmbeddingConfig) -> bool:
     """Валидировать конфигурацию процессора"""
     
-    # Проверка соответствия размеров
-    cube_volume = config.cube_shape[0] * config.cube_shape[1] * config.cube_shape[2]
-    if cube_volume != config.input_dim:
-        raise ValueError(f"Cube volume {cube_volume} != input_dim {config.input_dim}")
+    # Проверка соответствия размеров (только для non-surface режимов)
+    if config.processing_mode != ProcessingMode.SURFACE_ONLY:
+        cube_volume = config.cube_shape[0] * config.cube_shape[1] * config.cube_shape[2]
+        if cube_volume != config.input_dim:
+            raise ValueError(f"Cube volume {cube_volume} != input_dim {config.input_dim}")
+    
+    # Для SURFACE_ONLY режима проверяем surface dimensions
+    if config.processing_mode == ProcessingMode.SURFACE_ONLY:
+        surface_area = config.surface_dimensions[0] * config.surface_dimensions[1]
+        if surface_area != config.input_dim:
+            raise ValueError(f"Surface area {surface_area} != input_dim {config.input_dim}")
     
     if config.input_dim != config.output_dim:
         raise ValueError(f"Input dim {config.input_dim} != output dim {config.output_dim}")
