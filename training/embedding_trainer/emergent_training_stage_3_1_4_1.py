@@ -552,6 +552,11 @@ class EmergentCubeTrainer(nn.Module):
         self.logger.info(f"   Full gradient flow: {self.config.enable_full_cube_gradient}")
         self.logger.info(f"   Spatial propagation depth: {self.config.spatial_propagation_depth}")
     
+    @property
+    def device(self) -> torch.device:
+        """Public device property for compatibility"""
+        return self._device
+    
     def _initialize_components(self):
         """Initialize all emergent training components"""
         

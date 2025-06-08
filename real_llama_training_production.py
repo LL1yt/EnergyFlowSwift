@@ -48,7 +48,7 @@ from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
     EmergentCubeTrainer, EmergentTrainingConfig
 )
 from training.embedding_trainer.dialogue_dataset import DialogueDataset, create_dialogue_dataset
-from core.universal_adapter.universal_embedding_adapter import UniversalEmbeddingAdapter
+from data.embedding_adapter.universal_adapter import UniversalEmbeddingAdapter
 from utils.llm_handler import LLMHandler
 
 @dataclass

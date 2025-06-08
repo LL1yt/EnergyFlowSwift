@@ -217,8 +217,13 @@ class UniversalEmbeddingAdapter(nn.Module):
         if not self.initialized:
             raise RuntimeError("Adapter не инициализирован. Используйте initialize_from_data() или задайте размеры в конструкторе")
         
-        # Обработка размерности
+        # Обработка размерности и типов данных
         original_shape = x.shape
+        
+        # Приведение к float32 для совместимости (LLaMA может давать float16)
+        if x.dtype == torch.float16:
+            x = x.float()
+        
         if len(x.shape) == 1:
             x = x.unsqueeze(0)  # Добавляем batch dimension
             single_sample = True
