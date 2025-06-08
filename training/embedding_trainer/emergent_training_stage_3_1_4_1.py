@@ -548,6 +548,8 @@ class EmergentCubeTrainer(nn.Module):
         self.base_trainer = AdapterCubeTrainer(adapter_config, str(self._device))
         self.base_trainer.initialize_components()
         
+        # Note: base_trainer device transfer handled in _ensure_device_consistency()
+        
         # 2. Enhanced lattice с gMLP cells
         self._setup_enhanced_lattice()
         
@@ -562,6 +564,9 @@ class EmergentCubeTrainer(nn.Module):
         
         # 5. Optimizer for full system
         self._setup_optimizer()
+        
+        # RESEARCH INTEGRATION: Final device consistency check
+        self._ensure_device_consistency()
     
     def _setup_enhanced_lattice(self):
         """Setup enhanced lattice с gMLP cells + RESEARCH INTEGRATION: Channels-last memory format"""
@@ -580,7 +585,7 @@ class EmergentCubeTrainer(nn.Module):
         
         self.gmlp_cells = nn.ModuleList([
             EmergentGMLPCell(**self.config.gmlp_config) for _ in range(total_cells)
-        ])
+        ]).to(self._device)
         
         # RESEARCH INTEGRATION: Initialize cube states template for memory optimization
         # Note: channels_last_3d format requires specific conditions
@@ -1516,6 +1521,76 @@ class EmergentCubeTrainer(nn.Module):
             'loss_components': list(self.config.loss_weights.keys()),
             'current_epoch': self.current_epoch
         }
+
+    def _ensure_device_consistency(self):
+        """RESEARCH INTEGRATION: Ensure all components are on the correct device"""
+        self.logger.info(f"🔧 RESEARCH INTEGRATION: Ensuring device consistency on {self._device}")
+        
+        # Move all components to correct device
+        components_moved = []
+        
+        # 1. Base trainer components (AdapterCubeTrainer is not nn.Module)
+        if hasattr(self, 'base_trainer'):
+            # Move individual PyTorch components
+            if hasattr(self.base_trainer, 'adapter') and hasattr(self.base_trainer.adapter, 'to'):
+                self.base_trainer.adapter = self.base_trainer.adapter.to(self._device)
+                components_moved.append("adapter")
+            
+            if hasattr(self.base_trainer, 'cube_trainer') and hasattr(self.base_trainer.cube_trainer, 'to'):
+                self.base_trainer.cube_trainer = self.base_trainer.cube_trainer.to(self._device)
+                components_moved.append("cube_trainer")
+            
+            if hasattr(self.base_trainer, 'lattice') and hasattr(self.base_trainer.lattice, 'to'):
+                self.base_trainer.lattice = self.base_trainer.lattice.to(self._device)
+                components_moved.append("lattice")
+                
+            components_moved.append("base_trainer_components")
+        
+        # 2. Enhanced lattice
+        if hasattr(self, 'enhanced_lattice') and hasattr(self.enhanced_lattice, 'to'):
+            self.enhanced_lattice = self.enhanced_lattice.to(self._device)
+            components_moved.append("enhanced_lattice")
+        
+        # 3. gMLP cells
+        if hasattr(self, 'gmlp_cells') and hasattr(self.gmlp_cells, 'to'):
+            self.gmlp_cells = self.gmlp_cells.to(self._device)
+            components_moved.append("gmlp_cells")
+        
+        # 4. Spatial propagation
+        if hasattr(self, 'spatial_propagation') and hasattr(self.spatial_propagation, 'to'):
+            self.spatial_propagation = self.spatial_propagation.to(self._device)
+            components_moved.append("spatial_propagation")
+        
+        # 5. Loss function
+        if hasattr(self, 'loss_function') and hasattr(self.loss_function, 'to'):
+            self.loss_function = self.loss_function.to(self._device)
+            components_moved.append("loss_function")
+        
+        # 6. Template tensors
+        if hasattr(self, 'cube_states_template'):
+            self.cube_states_template = self.cube_states_template.to(self._device)
+            components_moved.append("cube_states_template")
+        
+        # 7. Move the entire module to device (ensure everything is consistent)
+        self.to(self._device)
+        
+        self.logger.info(f"✅ Device consistency ensured: {', '.join(components_moved)} → {self._device}")
+        
+        # Verify no components are on wrong device
+        self._verify_device_consistency()
+
+    def _verify_device_consistency(self):
+        """Verify all parameters are on the correct device"""
+        wrong_device_params = []
+        
+        for name, param in self.named_parameters():
+            if param.device != self._device:
+                wrong_device_params.append(f"{name}: {param.device}")
+        
+        if wrong_device_params:
+            self.logger.warning(f"⚠️ Parameters on wrong device: {wrong_device_params[:5]}")  # Show first 5
+        else:
+            self.logger.info(f"✅ All parameters verified on {self._device}")
 
 # Helper functions
 
