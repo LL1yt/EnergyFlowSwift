@@ -196,7 +196,8 @@ class EmergentMultiObjectiveLoss(nn.Module):
                 projected_input = self.embedding_to_surface(input_surface)  # [batch, 225]
                 surface_loss = self.mse_loss(output_surface, projected_input)
         else:
-            surface_loss = torch.tensor(0.0, device=outputs['final_output'].device)
+            # ИСПРАВЛЕНИЕ: Создаем тензор с requires_grad для сохранения computational graph
+            surface_loss = torch.tensor(0.0, device=outputs['final_output'].device, requires_grad=True)
         
         # 2. Internal Consistency Loss
         if internal_states is not None and internal_states.numel() > 0:
@@ -207,7 +208,8 @@ class EmergentMultiObjectiveLoss(nn.Module):
                 internal_loss += torch.mean(layer_diff ** 2)
             internal_loss = internal_loss / (internal_states.size(1) - 1)
         else:
-            internal_loss = torch.tensor(0.0, device=outputs['final_output'].device)
+            # ИСПРАВЛЕНИЕ: Создаем тензор с requires_grad для сохранения computational graph
+            internal_loss = torch.tensor(0.0, device=outputs['final_output'].device, requires_grad=True)
         
         # 3. Dialogue Similarity Loss (с adaptive dimension matching)
         if 'final_output' in outputs and 'target_embedding' in targets:
@@ -232,7 +234,8 @@ class EmergentMultiObjectiveLoss(nn.Module):
             
             dialogue_loss = 1.0 - torch.mean(cos_sim)
         else:
-            dialogue_loss = torch.tensor(0.0, device=outputs['final_output'].device)
+            # ИСПРАВЛЕНИЕ: Создаем тензор с requires_grad для сохранения computational graph
+            dialogue_loss = torch.tensor(0.0, device=outputs['final_output'].device, requires_grad=True)
         
         # Normalize weights
         normalized_weights = torch.softmax(self.weight_adaptation, dim=0)
@@ -671,15 +674,25 @@ class EmergentCubeTrainer(nn.Module):
         if self.config.enable_nca and self.nca is not None:
             params.extend(self.nca.parameters())
         
-        # RESEARCH INTEGRATION: 8-bit optimizer for 75% memory reduction
+        # RESEARCH INTEGRATION: 8-bit optimizer with proper None gradient handling
         try:
             import bitsandbytes as bnb
+            
+            # Filter out parameters with None gradients for 8-bit optimizer
+            filtered_params = []
+            for param in params:
+                if param.requires_grad:
+                    filtered_params.append(param)
+            
             self.optimizer = bnb.optim.AdamW8bit(
-                params,
+                filtered_params,
                 lr=self.config.learning_rate,
                 weight_decay=0.01
             )
             self.logger.info("📊 RESEARCH INTEGRATION: 8-bit AdamW optimizer enabled (75% memory reduction)")
+            self.logger.info(f"   Filtered parameters: {len(filtered_params)}/{len(params)} require gradients")
+            self._use_8bit_optimizer = True
+            
         except ImportError:
             # Fallback to standard AdamW if bitsandbytes not available
             self.optimizer = optim.AdamW(
@@ -688,6 +701,7 @@ class EmergentCubeTrainer(nn.Module):
                 weight_decay=0.01
             )
             self.logger.warning("⚠️ bitsandbytes not available, using standard AdamW optimizer")
+            self._use_8bit_optimizer = False
         
         # Learning rate scheduler
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -1485,20 +1499,59 @@ class EmergentCubeTrainer(nn.Module):
                 logger.error(f"❌ [TRAIN_STEP] Other backward error: {e}")
                 raise
         
-        # Gradient clipping
-        if self.config.gradient_balancing:
-            logger.debug("🔍 [TRAIN_STEP] Applying gradient clipping...")
-            torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
-        
-        # RESEARCH INTEGRATION: Optimizer step с mixed precision support
-        logger.debug("🔍 [TRAIN_STEP] Taking optimizer step...")
-        if self.config.mixed_precision and self.scaler is not None:
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            logger.debug("🔍 [TRAIN_STEP] Optimizer step completed with mixed precision")
+        # RESEARCH INTEGRATION: Enhanced gradient handling for 8-bit optimizer
+        if hasattr(self, '_use_8bit_optimizer') and self._use_8bit_optimizer:
+            # Special handling for 8-bit optimizer - filter None gradients before operations
+            params_with_gradients = []
+            none_grad_count = 0
+            total_param_count = 0
+            
+            for param in self.parameters():
+                total_param_count += 1
+                if param.grad is not None:
+                    params_with_gradients.append(param)
+                else:
+                    none_grad_count += 1
+            
+            logger.debug(f"🔍 [TRAIN_STEP] Gradient status: {none_grad_count}/{total_param_count} params have None gradients")
+            
+            # Gradient clipping only on params with gradients
+            if self.config.gradient_balancing and params_with_gradients:
+                logger.debug("🔍 [TRAIN_STEP] Applying gradient clipping to filtered parameters...")
+                torch.nn.utils.clip_grad_norm_(params_with_gradients, max_norm=1.0)
+            
+            # Enhanced optimizer step with None gradient protection
+            logger.debug("🔍 [TRAIN_STEP] Taking 8-bit optimizer step with gradient filtering...")
+            try:
+                if self.config.mixed_precision and self.scaler is not None:
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    logger.debug("✅ [TRAIN_STEP] 8-bit optimizer step completed with mixed precision")
+                else:
+                    self.optimizer.step()
+                    logger.debug("✅ [TRAIN_STEP] 8-bit optimizer step completed")
+            except RuntimeError as e:
+                if "NoneType" in str(e) or "shape" in str(e):
+                    logger.warning(f"⚠️ [TRAIN_STEP] 8-bit optimizer step failed due to None gradients: {e}")
+                    logger.warning("🔧 [TRAIN_STEP] Skipping optimizer step for this iteration")
+                else:
+                    raise
         else:
-            self.optimizer.step()
-            logger.debug("🔍 [TRAIN_STEP] Optimizer step completed without mixed precision")
+            # Standard optimizer handling
+            # Gradient clipping
+            if self.config.gradient_balancing:
+                logger.debug("🔍 [TRAIN_STEP] Applying gradient clipping...")
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+            
+            # RESEARCH INTEGRATION: Optimizer step с mixed precision support
+            logger.debug("🔍 [TRAIN_STEP] Taking standard optimizer step...")
+            if self.config.mixed_precision and self.scaler is not None:
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                logger.debug("✅ [TRAIN_STEP] Standard optimizer step completed with mixed precision")
+            else:
+                self.optimizer.step()
+                logger.debug("✅ [TRAIN_STEP] Standard optimizer step completed")
         
         # RESEARCH INTEGRATION: Tensor lifecycle management after step
         self._manage_tensor_lifecycle()

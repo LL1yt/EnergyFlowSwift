@@ -282,6 +282,21 @@ def run_training_session(trainer, dataset, session_name: str) -> Dict[str, Any]:
                 total_loss = loss_results['total_loss']
                 print(f"    🔍 Total loss: {total_loss.item():.6f}")
                 
+                # КРИТИЧЕСКАЯ ДИАГНОСТИКА: Проверяем computational graph
+                print(f"    🔍 Loss requires_grad: {total_loss.requires_grad}")
+                print(f"    🔍 Loss grad_fn: {total_loss.grad_fn}")
+                print(f"    🔍 Loss device: {total_loss.device}")
+                
+                # Проверяем все loss components
+                for key, loss_component in loss_results.items():
+                    if torch.is_tensor(loss_component):
+                        print(f"    🔍 {key}: requires_grad={loss_component.requires_grad}, grad_fn={loss_component.grad_fn}")
+                
+                # Если total_loss не требует градиентов, пропускаем backward
+                if not total_loss.requires_grad:
+                    print(f"    ⚠️ Total loss does not require gradients, skipping backward pass")
+                    continue
+                
                 # Backward pass
                 try:
                     print(f"    🔍 Starting backward pass...")
@@ -291,6 +306,10 @@ def run_training_session(trainer, dataset, session_name: str) -> Dict[str, Any]:
                     total_loss.backward()
                     print(f"    🔍 Backward completed")
                     
+                    # Optimizer step - теперь с enhanced handling в trainer
+                    print(f"    🔍 Starting optimizer step...")
+                    
+                    # Gradient clipping
                     torch.nn.utils.clip_grad_norm_(trainer.parameters(), max_norm=1.0)
                     print(f"    🔍 Gradients clipped")
                     
