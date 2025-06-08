@@ -276,3 +276,28 @@ performance:
   cudnn_benchmark: true
   pin_memory: true
   non_blocking_transfer: true
+
+# === PHASE 3: NEURAL CELLULAR AUTOMATA ===
+neural_cellular_automata:
+  # Enable NCA for emergent behavior preservation
+  enable_nca: true
+
+  # Stochastic update settings
+  update_probability: 0.7 # 70% of cells update each step
+  stochastic_scheduling: true
+  synchronization_avoidance: true
+
+  # Residual update settings
+  residual_learning_rate: 0.1
+  stability_threshold: 0.01
+  max_update_magnitude: 0.5
+
+  # Pattern formation settings
+  pattern_detection_enabled: true
+  spatial_coherence_weight: 0.3
+  temporal_consistency_weight: 0.2
+
+  # Emergent metrics settings
+  track_emergent_specialization: true
+  specialization_threshold: 0.15
+  diversity_preservation_weight: 0.25

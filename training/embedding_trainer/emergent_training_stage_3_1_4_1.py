@@ -45,6 +45,9 @@ from torch.utils.checkpoint import checkpoint
 from torch.amp import autocast, GradScaler
 import gc
 
+# PHASE 3: Neural Cellular Automata integration
+from .neural_cellular_automata import NeuralCellularAutomata, NCAConfig, create_nca_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,6 +88,10 @@ class EmergentTrainingConfig:
     gradient_accumulation_steps: int = 4  # 8 * 4 = effective batch 32
     effective_batch_size: int = 32
     
+    # PHASE 3: Neural Cellular Automata settings
+    enable_nca: bool = True
+    nca_config: Optional[NCAConfig] = None
+    
     def __post_init__(self):
         if self.gmlp_config is None:
             # OPTIMIZED configuration для точного 25K params target
@@ -106,6 +113,14 @@ class EmergentTrainingConfig:
                 'internal_consistency': 0.3,    # Internal layer coherence
                 'dialogue_similarity': 0.4      # Final Q→A similarity
             }
+        
+        # PHASE 3: Initialize NCA config if not provided
+        if self.nca_config is None and self.enable_nca:
+            self.nca_config = create_nca_config(
+                update_probability=0.7,
+                residual_learning_rate=0.1,
+                enable_pattern_detection=True
+            )
 
 
 class EmergentMultiObjectiveLoss(nn.Module):
@@ -562,7 +577,19 @@ class EmergentCubeTrainer(nn.Module):
         # 4. Multi-objective loss
         self.loss_function = EmergentMultiObjectiveLoss(self.config).to(self._device)
         
-        # 5. Optimizer for full system
+        # 5. PHASE 3: Neural Cellular Automata
+        if self.config.enable_nca:
+            self.nca = NeuralCellularAutomata(
+                config=self.config.nca_config,
+                cube_dimensions=self.config.cube_dimensions,
+                state_size=self.config.gmlp_config['state_size']
+            ).to(self._device)
+            self.logger.info("🧠 PHASE 3: Neural Cellular Automata enabled")
+        else:
+            self.nca = None
+            self.logger.info("⚠️ PHASE 3: Neural Cellular Automata disabled")
+        
+        # 6. Optimizer for full system
         self._setup_optimizer()
         
         # RESEARCH INTEGRATION: Final device consistency check
@@ -639,6 +666,10 @@ class EmergentCubeTrainer(nn.Module):
         # Loss function parameters (if adaptive)
         if self.config.adaptive_loss_weighting:
             params.extend(self.loss_function.parameters())
+        
+        # PHASE 3: NCA parameters
+        if self.config.enable_nca and self.nca is not None:
+            params.extend(self.nca.parameters())
         
         # RESEARCH INTEGRATION: 8-bit optimizer for 75% memory reduction
         try:
@@ -759,7 +790,57 @@ class EmergentCubeTrainer(nn.Module):
         # Reshape back to cube
         processed_cube = processed_flattened.view(batch_size, depth, height, width, state_size)
         
-        return processed_cube
+        # PHASE 3: Apply Neural Cellular Automata if enabled
+        if self.config.enable_nca and self.nca is not None:
+            # ДИАГНОСТИКА: Проверяем входы для NCA
+            logger.debug(f"🔍 [NCA] cube_states: {cube_states.shape if cube_states is not None else 'None'}")
+            logger.debug(f"🔍 [NCA] processed_cube: {processed_cube.shape if processed_cube is not None else 'None'}")
+            
+            if cube_states is None:
+                logger.error("❌ [NCA] cube_states is None!")
+                final_processed_cube = processed_cube
+            elif processed_cube is None:
+                logger.error("❌ [NCA] processed_cube is None!")
+                final_processed_cube = cube_states
+            else:
+                try:
+                    # Apply NCA rules to preserve emergent behavior
+                    nca_results = self.nca(
+                        current_states=cube_states,  # Original states before gMLP
+                        raw_updates=processed_cube,   # gMLP outputs
+                        enable_stochastic=True,
+                        enable_residual=True
+                    )
+                    
+                    # ДИАГНОСТИКА: Проверяем результат NCA
+                    if nca_results is None:
+                        logger.error("❌ [NCA] nca_results is None!")
+                        final_processed_cube = processed_cube
+                    elif 'updated_states' not in nca_results:
+                        logger.error("❌ [NCA] No 'updated_states' in nca_results!")
+                        final_processed_cube = processed_cube
+                    elif nca_results['updated_states'] is None:
+                        logger.error("❌ [NCA] updated_states is None!")
+                        final_processed_cube = processed_cube
+                    else:
+                        # Use NCA-refined states
+                        final_processed_cube = nca_results['updated_states']
+                        logger.debug(f"✅ [NCA] Success: {final_processed_cube.shape}")
+                        
+                        # Store NCA metrics for monitoring (if tracking)
+                        if hasattr(self, '_nca_metrics_cache'):
+                            self._nca_metrics_cache.update(nca_results.get('pattern_metrics', {}))
+                        else:
+                            self._nca_metrics_cache = nca_results.get('pattern_metrics', {})
+                            
+                except Exception as e:
+                    logger.error(f"❌ [NCA] Error during NCA processing: {e}")
+                    final_processed_cube = processed_cube
+        else:
+            # Standard processing without NCA
+            final_processed_cube = processed_cube
+        
+        return final_processed_cube
     
     def _get_cell_neighbors(self, cell_idx: int, flattened_states: torch.Tensor, 
                            batch_size: int, depth: int, height: int, width: int) -> torch.Tensor:
@@ -903,6 +984,26 @@ class EmergentCubeTrainer(nn.Module):
                      targets: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Compute multi-objective loss"""
         return self.loss_function(outputs, targets, outputs.get('internal_state'))
+    
+    def get_nca_metrics(self) -> Dict[str, Any]:
+        """Получить метрики Neural Cellular Automata для monitoring"""
+        if self.config.enable_nca and self.nca is not None:
+            nca_summary = self.nca.get_nca_summary()
+            
+            # Add cached pattern metrics if available
+            if hasattr(self, '_nca_metrics_cache'):
+                nca_summary['recent_patterns'] = self._nca_metrics_cache
+            
+            return nca_summary
+        else:
+            return {"status": "disabled", "message": "NCA is not enabled"}
+    
+    def reset_nca_tracking(self):
+        """Reset NCA tracking statistics (полезно для нового training run)"""
+        if self.config.enable_nca and self.nca is not None:
+            self.nca.reset_tracking()
+            if hasattr(self, '_nca_metrics_cache'):
+                self._nca_metrics_cache.clear()
     
     # RESEARCH INTEGRATION: Strategic tensor lifecycle management methods
     def _detach_spatial_connections(self):
