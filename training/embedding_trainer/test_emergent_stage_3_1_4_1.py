@@ -490,10 +490,20 @@ def test_emergent_behavior_indicators():
         print(f"   📊 Output surface norm: {output_norm:.6f}")
         print(f"   📊 Information ratio: {output_norm / input_norm:.3f}")
         
-        # Surface transformation
-        surface_similarity = torch.nn.functional.cosine_similarity(
-            input_surface, output_surface, dim=-1
-        ).item()
+        # Surface transformation (с dimension matching)
+        if input_surface.shape[-1] != output_surface.shape[-1]:
+            # Project input to output dimensions для comparison
+            from training.embedding_trainer.emergent_training_stage_3_1_4_1 import EmergentMultiObjectiveLoss
+            temp_config = trainer.config
+            temp_loss = EmergentMultiObjectiveLoss(temp_config)
+            projected_input = temp_loss.embedding_to_surface(input_surface)  # [1, 225]
+            surface_similarity = torch.nn.functional.cosine_similarity(
+                projected_input, output_surface, dim=-1
+            ).item()
+        else:
+            surface_similarity = torch.nn.functional.cosine_similarity(
+                input_surface, output_surface, dim=-1
+            ).item()
         
         print(f"   📊 Input→Output similarity: {surface_similarity:.3f}")
         

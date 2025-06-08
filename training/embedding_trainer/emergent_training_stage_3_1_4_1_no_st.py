@@ -123,11 +123,9 @@ class EmergentMultiObjectiveLoss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.cosine_similarity = nn.CosineSimilarity(dim=-1)
         
-        # Dimension projection для dialogue similarity (адаптивно под размер куба)
-        cube_dims = config.cube_dimensions
-        surface_size = cube_dims[0] * cube_dims[1]  # width × height
-        self.surface_to_embedding = nn.Linear(surface_size, 4096, bias=False)  # surface_size → 4096D
-        self.embedding_to_surface = nn.Linear(4096, surface_size, bias=False)  # 4096D → surface_size
+        # Dimension projection для dialogue similarity (225D ↔ 4096D)
+        self.surface_to_embedding = nn.Linear(225, 4096, bias=False)  # 225D → 4096D
+        self.embedding_to_surface = nn.Linear(4096, 225, bias=False)  # 4096D → 225D
         
         # Adaptive weighting (if enabled)
         if config.adaptive_loss_weighting:
@@ -158,24 +156,9 @@ class EmergentMultiObjectiveLoss(nn.Module):
             Dict with individual and total losses
         """
         
-        # 1. Surface Reconstruction Loss (с dimension matching)
+        # 1. Surface Reconstruction Loss
         if 'input_surface' in outputs and 'output_surface' in outputs:
-            output_surface = outputs['output_surface']  # [batch, 225]
-            input_surface = outputs['input_surface']    # [batch, 4096]
-            
-            # Если есть target_surface - используем его, иначе проектируем input_surface
-            if 'target_surface' in targets:
-                target_surface = targets['target_surface']
-                if target_surface.shape[-1] == output_surface.shape[-1]:
-                    surface_loss = self.mse_loss(output_surface, target_surface)
-                else:
-                    # Project target to match output dimensions
-                    projected_target = self.embedding_to_surface(target_surface)
-                    surface_loss = self.mse_loss(output_surface, projected_target)
-            else:
-                # Project input_surface down to output surface size для comparison
-                projected_input = self.embedding_to_surface(input_surface)  # [batch, 225]
-                surface_loss = self.mse_loss(output_surface, projected_input)
+            surface_loss = self.mse_loss(outputs['output_surface'], targets.get('target_surface', outputs['input_surface']))
         else:
             surface_loss = torch.tensor(0.0, device=outputs['final_output'].device)
         
@@ -190,20 +173,16 @@ class EmergentMultiObjectiveLoss(nn.Module):
         else:
             internal_loss = torch.tensor(0.0, device=outputs['final_output'].device)
         
-        # 3. Dialogue Similarity Loss (с adaptive dimension matching)
+        # 3. Dialogue Similarity Loss (с dimension matching)
         if 'final_output' in outputs and 'target_embedding' in targets:
-            final_output = outputs['final_output']  # [batch, surface_size]
+            final_output = outputs['final_output']  # [batch, 225]
             target_embedding = targets['target_embedding']  # [batch, 4096]
             
-            # Определяем surface_size адаптивно
-            cube_dims = self.config.cube_dimensions
-            expected_surface_size = cube_dims[0] * cube_dims[1]
-            
-            # Strategy: project target_embedding down to surface_size (более efficient)
-            if target_embedding.shape[-1] == 4096 and final_output.shape[-1] == expected_surface_size:
-                projected_target = self.embedding_to_surface(target_embedding)  # [batch, surface_size]
+            # Strategy: project target_embedding down to 225D (более efficient)
+            if target_embedding.shape[-1] == 4096 and final_output.shape[-1] == 225:
+                projected_target = self.embedding_to_surface(target_embedding)  # [batch, 225]
                 cos_sim = self.cosine_similarity(final_output, projected_target)
-            elif target_embedding.shape[-1] == expected_surface_size and final_output.shape[-1] == expected_surface_size:
+            elif target_embedding.shape[-1] == 225 and final_output.shape[-1] == 225:
                 # Already same dimension
                 cos_sim = self.cosine_similarity(final_output, target_embedding)
             else:
@@ -465,14 +444,12 @@ class EmergentGMLPCell(nn.Module):
             base_output = torch.add(base_output, cross_layer_influence, alpha=0.05)
             
         # === ЭТАП 4: Emergent Specialization Tracking ===
-        # ФИНАЛЬНОЕ РЕШЕНИЕ: Полностью безопасное обновление без ANY inplace операций
-        with torch.no_grad():
-            # Update specialization tracker (running average активации)
-            current_activation = torch.mean(torch.abs(base_output.detach()), dim=0, keepdim=True)
-            # КРИТИЧЕСКОЕ: Создаем новый тензор полностью без inplace операций
-            new_tracker = self.specialization_tracker * 0.99 + current_activation * 0.01
-            # Безопасное переприсваивание buffer через direct assignment
-            self.specialization_tracker.data = new_tracker.data
+        # ВРЕМЕННО ОТКЛЮЧЕНО для диагностики version conflict issues
+        # with torch.no_grad():
+        #     # Update specialization tracker (running average активации) - безопасное обновление buffer
+        #     current_activation = torch.mean(torch.abs(base_output.detach()), dim=0, keepdim=True)
+        #     # Безопасное обновление buffer без inplace операций над версионированными тензорами
+        #     self.specialization_tracker.mul_(0.99).add_(current_activation, alpha=0.01)
         
         # Store output id for debugging
         self.last_output_id = id(base_output)
@@ -638,15 +615,12 @@ class EmergentCubeTrainer(nn.Module):
         # Step 5: Internal state analysis
         internal_state = self._analyze_internal_state(propagated_cube)
         
-        # Prepare outputs - все ожидаемые ключи для тестов
+        # Prepare outputs
         outputs = {
-            'input_surface': surface_embeddings,      # Keep original input
-            'cube_states': propagated_cube,           # Full cube after processing
-            'processed_states': processed_cube,       # Cube after gMLP processing (до spatial propagation)
-            'enhanced_states': propagated_cube,       # Same as cube_states для compatibility
-            'final_output': final_output,             # Surface output
-            'output_surface': final_output,           # Same as final_output для test compatibility
-            'internal_state': internal_state          # Internal analysis
+            'input_surface': surface_embeddings,  # Keep original input
+            'cube_states': propagated_cube,
+            'final_output': final_output,
+            'internal_state': internal_state
         }
         
         return outputs
@@ -726,15 +700,11 @@ class EmergentCubeTrainer(nn.Module):
         return torch.stack(neighbors, dim=1)  # [batch, 6, state_size]
     
     def _inject_surface_to_cube(self, surface_embeddings: torch.Tensor) -> torch.Tensor:
-        """Inject surface embeddings into 3D cube structure (адаптивно под размер куба)"""
+        """Inject 225D surface embeddings into 3D cube structure"""
         
         batch_size = surface_embeddings.shape[0]
-        width, height, depth = self.config.cube_dimensions  # Например [3, 3, 3] или [15, 15, 11]
+        width, height, depth = self.config.cube_dimensions  # [15, 15, 11]
         state_size = self.config.gmlp_config['state_size']  # 32
-        
-        # Вычисляем ожидаемый размер surface для данного куба
-        expected_surface_size = width * height
-        input_size = surface_embeddings.shape[-1]
         
         # Initialize cube with zeros
         cube_states = torch.zeros(
@@ -742,20 +712,17 @@ class EmergentCubeTrainer(nn.Module):
             device=surface_embeddings.device, dtype=surface_embeddings.dtype
         )
         
-        # АДАПТИВНАЯ обработка surface embeddings
-        if input_size == expected_surface_size:
-            # Размер точно соответствует - прямой reshape
+        # Surface embeddings should be 225D (15×15)
+        if surface_embeddings.shape[-1] == 225:
+            # Reshape to front face: [batch, 225] → [batch, 15, 15]
             front_face = surface_embeddings.view(batch_size, height, width)
         else:
-            # Размер не соответствует - нужна проекция
-            if not hasattr(self, 'surface_projection') or self.surface_projection.in_features != input_size:
-                # Создаем или пересоздаем projection layer для нового размера
+            # Project to 225D if different size
+            if not hasattr(self, 'surface_projection'):
                 self.surface_projection = nn.Linear(
-                    input_size, expected_surface_size, 
+                    surface_embeddings.shape[-1], 225, 
                     device=surface_embeddings.device
                 )
-                logger.debug(f"🔧 Created surface projection: {input_size} → {expected_surface_size}")
-            
             projected = self.surface_projection(surface_embeddings)
             front_face = projected.view(batch_size, height, width)
         
@@ -781,7 +748,7 @@ class EmergentCubeTrainer(nn.Module):
         return cube_states
     
     def _extract_output_surface(self, cube_states: torch.Tensor) -> torch.Tensor:
-        """Extract surface output from processed cube (адаптивно под размер куба)"""
+        """Extract 225D surface output from processed cube"""
         
         logger.debug("🔍 [EXTRACT_OUTPUT] Starting output extraction...")
         
@@ -793,9 +760,8 @@ class EmergentCubeTrainer(nn.Module):
         # Average across state dimensions to get surface values
         surface_values = torch.mean(back_layer, dim=-1)  # [batch, height, width]
         
-        # Flatten to surface dimensions (адаптивно)
-        expected_surface_size = height * width
-        output_surface = surface_values.view(batch_size, expected_surface_size)  # [batch, height*width]
+        # Flatten to 225D
+        output_surface = surface_values.view(batch_size, -1)  # [batch, 225]
         
         logger.debug(f"🔍 [EXTRACT_OUTPUT] Output extraction complete: {output_surface.shape}")
         
@@ -903,34 +869,25 @@ class EmergentCubeTrainer(nn.Module):
         
         logger.debug("🔧 [STATE_RESET] Starting full state reset...")
         
-        # 1. ЯДЕРНОЕ РЕШЕНИЕ: Полная реинициализация всех stateful компонентов
+        # 1. КРИТИЧЕСКОЕ: Полная реинициализация specialization_tracker buffers
         for i, cell in enumerate(self.gmlp_cells):
-            # Полностью пересоздаем specialization_tracker
+            # ГЛАВНАЯ ПРОБЛЕМА: specialization_tracker версии
             if hasattr(cell, 'specialization_tracker'):
-                state_size = cell.specialization_tracker.shape[-1]
+                old_version = cell.specialization_tracker._version if hasattr(cell.specialization_tracker, '_version') else 'N/A'
+                logger.debug(f"🔧 [STATE_RESET] Cell {i} old tracker version: {old_version}")
+                
+                # Полная реинициализация buffer вместо inplace операций
                 cell.register_buffer(
                     'specialization_tracker',
-                    torch.zeros(1, state_size, device=cell.specialization_tracker.device)
+                    torch.zeros_like(cell.specialization_tracker).detach()
                 )
+                
+                new_version = cell.specialization_tracker._version if hasattr(cell.specialization_tracker, '_version') else 'N/A'
+                logger.debug(f"🔧 [STATE_RESET] Cell {i} new tracker version: {new_version}")
             
-            # Пересоздаем все промежуточные состояния в base_gmlp
+            # Очистка memory states
             if hasattr(cell.base_gmlp, 'memory_state'):
                 cell.base_gmlp.memory_state = None
-            
-            # Очищаем любые cached values в spatial_weight_generator
-            if hasattr(cell, 'spatial_weight_generator'):
-                for module in cell.spatial_weight_generator.modules():
-                    if hasattr(module, 'reset_parameters'):
-                        # НЕ вызываем reset_parameters - это изменит веса!
-                        pass
-                    # Очищаем только internal states
-                    for buffer_name, buffer in module.named_buffers():
-                        if buffer is not None:
-                            buffer.zero_()
-            
-            # СОХРАНЯЕМ memory states для continuity обучения
-            # if hasattr(cell.base_gmlp, 'memory_state'):
-            #     cell.base_gmlp.memory_state = None
             
             # Очистка debug tracking
             if hasattr(cell, 'forward_count'):
@@ -944,76 +901,14 @@ class EmergentCubeTrainer(nn.Module):
         if hasattr(self.spatial_propagation, 'propagation_count'):
             self.spatial_propagation.propagation_count = 0
         
-        # 3. РАДИКАЛЬНАЯ очистка всех параметров + computational graph
+        # 3. Полная очистка всех параметров с градиентами
         for param in self.parameters():
             param.grad = None
-            # Принудительно обнуляем все cached computations
-            if hasattr(param, '_grad_fn'):
-                param._grad_fn = None
         
-        # 4. Очищаем все tensors с градиентами в модулях
-        for module in self.modules():
-            if hasattr(module, '_parameters'):
-                for name, param in module._parameters.items():
-                    if param is not None and param.grad is not None:
-                        param.grad = None
-        
-        # 5. Принудительная сборка мусора + освобождение CUDA cache
+        # 4. Принудительная сборка мусора
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
         
         logger.debug("🔧 [STATE_RESET] Full state reset completed")
-    
-    def _smart_state_reset(self):
-        """SMART RESET: Селективная очистка критических компонентов"""
-        
-        logger.debug("🧠 [SMART_RESET] Starting smart state reset...")
-        
-        # 1. Очищаем только проблемные gradients
-        for param in self.parameters():
-            param.grad = None
-        
-        # 2. Очищаем spatial propagation cache (основной источник проблем)
-        if hasattr(self.spatial_propagation, 'last_layer_states'):
-            self.spatial_propagation.last_layer_states.clear()
-        if hasattr(self.spatial_propagation, 'propagation_count'):
-            self.spatial_propagation.propagation_count = 0
-            
-        # 3. ДИАГНОСТИКА: Временно очищаем memory states для диагностики version conflicts
-        for cell in self.gmlp_cells:
-            if hasattr(cell.base_gmlp, 'memory_state'):
-                cell.base_gmlp.memory_state = None
-        
-        # 4. Сбрасываем только debug tracking
-        for cell in self.gmlp_cells:
-            if hasattr(cell, 'forward_count'):
-                cell.forward_count = 0
-            if hasattr(cell, 'last_output_id'):
-                cell.last_output_id = None
-        
-        # 5. Мягкая сборка мусора
-        import gc
-        gc.collect()
-        
-        logger.debug("🧠 [SMART_RESET] Smart reset completed - preserving memory states")
-    
-    def _lightweight_cleanup(self):
-        """LIGHTWEIGHT: Минимальная очистка только критических градиентов"""
-        
-        # Очищаем только градиенты без затрагивания состояний
-        for param in self.parameters():
-            param.grad = None
-            
-        # Очищаем только кэш spatial propagation (потенциальный источник конфликтов)
-        if hasattr(self.spatial_propagation, 'last_layer_states') and len(self.spatial_propagation.last_layer_states) > 3:
-            # Очищаем только старые cached states (оставляем последние 3)
-            keys_to_remove = list(self.spatial_propagation.last_layer_states.keys())[:-3]
-            for key in keys_to_remove:
-                del self.spatial_propagation.last_layer_states[key]
-        
-        logger.debug("🪶 [LIGHTWEIGHT] Minimal cleanup completed")
     
     def _process_single_cell(self, cell_state: torch.Tensor, neighbor_states: torch.Tensor, 
                            external_input: torch.Tensor, cell_idx: int) -> torch.Tensor:
@@ -1027,37 +922,25 @@ class EmergentCubeTrainer(nn.Module):
         
         self.train()
         
-        # ДИАГНОСТИКА: Проверяем версии тензоров перед началом шага (только при отладке)
-        if logger.isEnabledFor(logging.DEBUG):
-            self._debug_tensor_versions(f"BEFORE Step {self.training_step + 1}")
+        # ДИАГНОСТИКА: Проверяем версии тензоров перед началом шага
+        self._debug_tensor_versions(f"BEFORE Step {self.training_step + 1}")
         
-        # УМНАЯ СТРАТЕГИЯ ОЧИСТКИ: адаптивная на основе состояния системы
+        # ОБХОДНОЕ РЕШЕНИЕ 1: Полная реконструкция computational graph каждый шаг
+        # Принудительно обнуляем ВСЕ градиенты и состояния перед каждым шагом
         self.optimizer.zero_grad()
         
-        # ДИАГНОСТИКА: Временно делаем full reset каждые 2 шага для отладки version conflicts
-        needs_full_reset = (
-            self.training_step == 0 or  # Первый шаг всегда
-            self.training_step % 2 == 0 or  # ВРЕМЕННО: каждые 2 шага для диагностики
-            (hasattr(self, '_last_error_step') and self.training_step - self._last_error_step < 3)  # После ошибок
-        )
+        # Очищаем все промежуточные состояния и кэши
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
         
-        if needs_full_reset:
-            logger.debug(f"🔧 Smart full reset at step {self.training_step}")
-            self._smart_state_reset()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        else:
-            # Легкая очистка с focus на градиенты
-            self._lightweight_cleanup()
+        # Полная очистка всех состояний модели
+        self._full_state_reset()
         
-        # ДИАГНОСТИКА: Проверяем версии тензоров после очистки (только при отладке)
-        if logger.isEnabledFor(logging.DEBUG):
-            self._debug_tensor_versions(f"AFTER RESET Step {self.training_step + 1}")
+        # ДИАГНОСТИКА: Проверяем версии тензоров после очистки
+        self._debug_tensor_versions(f"AFTER RESET Step {self.training_step + 1}")
         
-        # РАДИКАЛЬНОЕ РЕШЕНИЕ: Полная изоляция входных данных
-        with torch.no_grad():
-            question_embeddings = question_embeddings.detach().clone().requires_grad_(True)
-            answer_embeddings = answer_embeddings.detach().clone().requires_grad_(True)
+        # RESEARCH INTEGRATION: Создание полностью независимых копий
+        question_embeddings = torch.tensor(question_embeddings.data, requires_grad=True, device=question_embeddings.device)
+        answer_embeddings = torch.tensor(answer_embeddings.data, requires_grad=True, device=answer_embeddings.device)
         
         # RESEARCH INTEGRATION: Forward pass с mixed precision support
         try:
@@ -1129,18 +1012,9 @@ class EmergentCubeTrainer(nn.Module):
                 logger.error("❌ [TRAIN_STEP] COMPUTATIONAL GRAPH REUSE DETECTED!")
                 logger.error("🔍 [DEBUG] Analyzing computational graph...")
                 
-                # Запоминаем шаг с ошибкой для адаптивной очистки
-                self._last_error_step = self.training_step
-                
                 # Detailed graph analysis
                 self._debug_computational_graph(question_outputs, losses, targets)
                 logger.error(f"❌ [TRAIN_STEP] Full error: {e}")
-                raise
-            elif "is at version" in str(e) and "expected version" in str(e):
-                logger.error(f"❌ [TRAIN_STEP] TENSOR VERSION CONFLICT: {e}")
-                
-                # Запоминаем шаг с ошибкой для адаптивной очистки
-                self._last_error_step = self.training_step
                 raise
             else:
                 logger.error(f"❌ [TRAIN_STEP] Other backward error: {e}")

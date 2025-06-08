@@ -263,8 +263,11 @@ class GatedMLPCell(nn.Module):
                 )
             
             # GRU memory update
-            memory_output, self.memory_state = self.memory_gate(x_memory, self.memory_state)
+            memory_output, new_memory_state = self.memory_gate(x_memory, self.memory_state)
             memory_output = memory_output.squeeze(1)  # [batch, memory_dim]
+            
+            # КРИТИЧЕСКОЕ: Детачим memory_state от computational graph
+            self.memory_state = new_memory_state.detach()
             
             # Интегрируем memory в основной поток
             memory_contribution = self.memory_to_output(memory_output)

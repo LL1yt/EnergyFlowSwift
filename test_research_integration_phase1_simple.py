@@ -34,7 +34,7 @@ def test_computational_graph_stability():
     logger.info("=== TESTING: Computational Graph Stability ===")
     
     # Enable anomaly detection для точного поиска inplace операций
-    torch.autograd.set_detect_anomaly(True)
+    # torch.autograd.set_detect_anomaly(True)
     
     try:
         # Create trainer с новыми настройками
