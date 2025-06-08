@@ -1,0 +1,163 @@
+# 🎯 TRIPLE-SURFACE 15×15×11 ARCHITECTURE CONFIG
+# Решение проблемы размерности: 768D → 675D (12% потеря vs 71%)
+# Multi-surface I/O + Optimized gMLP 25K params
+
+# === LATTICE 3D CONFIGURATION ===
+lattice_3d:
+  dimensions: [15, 15, 11] # Original target размеры
+  total_cells: 2475 # 15×15×11 = 2,475 cells
+  io_strategy: "triple_surface" # 3 грани для I/O
+
+  # Surface definitions
+  surfaces:
+    front: [15, 15] # z=0, Input primary (semantic core)
+    back: [15, 15] # z=10, Output primary (generation)
+    top: [15, 11] # y=14, Context/memory
+
+  # I/O layers
+  input_layers: [0, 10, 14] # front_z, back_z, top_y
+  output_layers: [0, 10, 14] # Same surfaces для output
+  processing_layers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13] # Internal processing
+
+# === EMBEDDING PROCESSOR ===
+embedding_processor:
+  input_dim: 768 # DistilBERT embeddings
+  surface_mapping: "triple" # 3-surface approach
+
+  total_surface_elements: 675 # 15×15×3 = 675 ≈ 768
+  information_preservation: 0.88 # 675/768 = 88% сохранение
+
+  # Surface allocation strategy
+  surface_allocation:
+    front_semantic: 225 # Primary semantic content
+    back_generation: 225 # Output generation focus
+    top_context: 225 # Context and memory
+
+  # Learned mapping parameters
+  learned_projection:
+    enabled: true # Use learned Linear layers
+    reconstruction_loss: 0.1 # Weight для reconstruction training
+
+# === CELL PROTOTYPE ===
+cell_prototype:
+  state_size: 32
+  input_size: 12
+  num_neighbors: 6
+
+  # OPTIMIZED gMLP для 25K parameters
+  architecture:
+    type: "gMLP"
+    hidden_dim: 128 # Reduced from 512 для 25K target
+    memory_dim: 32 # Reduced from 128 для efficiency
+    use_memory: true
+    activation: "gelu"
+    dropout: 0.1
+
+    # Spatial Gating configuration
+    spatial_gating:
+      sequence_length: 7 # 6 neighbors + own state
+      init_eps: 0.001
+
+    # Feed Forward configuration
+    ffn:
+      hidden_multiplier: 2.0 # 128 × 2 = 256 intermediate
+      use_swiglu: false # Simplified для parameter efficiency
+
+  # Parameter targeting
+  target_parameters: 25000 # Target: exactly 25K per cell
+  total_system_parameters: 61875000 # 2,475 × 25K = 61.875M
+
+# === TRAINING CONFIGURATION ===
+training:
+  batch_size: 1 # Memory constraint
+  learning_rate: 0.0001 # Conservative для stability
+  epochs: 20
+  gradient_checkpointing: true # Memory optimization
+
+  # Multi-objective loss
+  loss_weights:
+    reconstruction: 0.3 # Surface→embedding reconstruction
+    dialogue_similarity: 0.5 # Q→A similarity (primary)
+    surface_coherence: 0.2 # Inter-surface consistency
+
+  # Optimizer settings
+  optimizer: "AdamW"
+  weight_decay: 0.01
+  lr_scheduler: "ReduceLROnPlateau"
+  patience: 3
+
+  # Target metrics
+  target_similarity: 0.50 # 50% Q→A similarity goal
+  expected_improvement: 0.115 # From current 38.5% to 50%
+
+# === SURFACE MAPPING STRATEGY ===
+surface_mapping:
+  method: "intelligent_learned"
+
+  # Front surface (Primary Input) - Semantic Core
+  front_surface:
+    focus: "semantic_core"
+    content_type: "primary_meaning"
+    embedding_components: [0, 255] # First 256 dims of embedding
+    processing_priority: "high"
+
+  # Back surface (Primary Output) - Generation
+  back_surface:
+    focus: "output_generation"
+    content_type: "generative_aspects"
+    embedding_components: [256, 511] # Middle 256 dims
+    processing_priority: "high"
+
+  # Top surface (Context/Memory)
+  top_surface:
+    focus: "context_memory"
+    content_type: "contextual_information"
+    embedding_components: [512, 767] # Last 256 dims
+    processing_priority: "medium"
+
+# === EXPECTED PERFORMANCE ===
+performance_analysis:
+  information_preservation:
+    input_dims: 768
+    surface_dims: 675 # 15×15×3
+    preservation_rate: 0.878 # 675/768 = 87.8%
+    loss_rate: 0.122 # Much better than 71% single surface
+
+  parameter_efficiency:
+    per_cell_params: 25000 # Target achieved
+    total_params: 61875000 # 2,475 × 25K
+    memory_gb_estimate: 2.8 # Conservative estimate
+
+  training_targets:
+    qa_similarity_target: 0.50 # 50% goal
+    current_baseline: 0.385 # Current best
+    expected_improvement: 0.115 # Breakthrough gap
+
+  computational_feasibility:
+    forward_pass_ms: 150 # Per cell estimate
+    full_lattice_s: 3.7 # 2,475 cells × 150ms / 1000
+    epoch_time_min: 8 # With 100 steps per epoch
+    memory_feasible: true # Under 4GB constraint
+
+# === BIOLOGICAL INSPIRATION ===
+biological_principles:
+  multi_surface_io: true # Like cortical surface I/O
+  semantic_specialization: true # Different surfaces → different functions
+  depth_processing: true # 11-layer cortical analog
+  learned_projection: true # Adaptive dimensionality mapping
+
+# === IMPLEMENTATION PRIORITY ===
+implementation_phases:
+  phase_1: "TripleSurfaceReshaper implementation"
+  phase_2: "MultiSurfaceLattice3D adaptation"
+  phase_3: "Optimized gMLP integration"
+  phase_4: "Multi-objective training setup"
+  phase_5: "Comprehensive testing & validation"
+
+# === SUCCESS CRITERIA ===
+success_metrics:
+  primary: "Q→A similarity >50%"
+  secondary: "Parameter count ~25K per cell"
+  tertiary: "Information preservation >85%"
+  quaternary: "Training stability & convergence"
+  system: "Full pipeline functionality"

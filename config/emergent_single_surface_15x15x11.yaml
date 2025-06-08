@@ -1,0 +1,166 @@
+# 🎯 EMERGENT SINGLE-SURFACE 15×15×11 ARCHITECTURE
+# Эмерджентная архитектура: surface I/O + внутренняя организация через обучение
+# Информация сохраняется в behavior patterns, не в размере surface
+
+# === LATTICE 3D CONFIGURATION ===
+lattice_3d:
+  dimensions: [15, 15, 11] # Целевые размеры
+  total_cells: 2475 # 15×15×11 = 2,475 cells
+  io_strategy: "emergent_surface" # Single surface + emergent processing
+
+  # Layer specialization (emerges during training)
+  layers:
+    input_layer: 0 # z=0, front surface для input
+    output_layer: 10 # z=10, back surface для output
+    processing_layers: [1, 2, 3, 4, 5, 6, 7, 8, 9] # Internal emergent specialization
+
+# === EMBEDDING PROCESSOR ===
+embedding_processor:
+  # TRAINING MODE: Full information flow
+  training_mode:
+    input_compression:
+      method: "learned_linear" # 768D → 225D learned mapping
+      preserve_gradients: true # Full gradient flow to all cells
+      reconstruction_loss: true # Ensure information preservation
+
+    internal_processing:
+      gradient_flow: "full_cube" # All 2,475 cells влияют на training
+      emergent_specialization: true # Allow spatial function emergence
+
+  # INFERENCE MODE: Direct surface I/O
+  inference_mode:
+    input_mapping: "direct_225D" # Direct input to 15×15 surface
+    processing: "emergent_autonomous" # Куб сам организует processing
+    output_mapping: "direct_225D" # Direct output from 15×15 surface
+
+# === CELL PROTOTYPE ===
+cell_prototype:
+  state_size: 32
+  input_size: 12
+  num_neighbors: 6
+
+  # OPTIMIZED gMLP для emergent behavior
+  architecture:
+    type: "gMLP_emergent"
+    hidden_dim: 128 # Target: 25K parameters
+    memory_dim: 32 # Minimal but effective
+    use_memory: true
+
+    # Spatial propagation capabilities
+    spatial_connections:
+      lateral: true # Влияние соседних клеток
+      depth: true # Влияние через layers
+      emergent_routing: true # Adaptive connection strengths
+
+    # Function specialization potential
+    specialization:
+      allow_divergence: true # Клетки могут специализироваться
+      semantic_regions: "auto" # Автоматическое формирование регионов
+      processing_hierarchy: "emergent" # Иерархия возникает сама
+
+# === TRAINING CONFIGURATION ===
+training:
+  # Emergent learning strategy
+  learning_approach: "emergent_spatial"
+
+  # Core training parameters
+  batch_size: 1
+  learning_rate: 0.0001
+  epochs: 25 # Больше epochs для emergent patterns
+  gradient_checkpointing: true
+
+  # Multi-objective loss для emergent behavior
+  loss_composition:
+    dialogue_similarity: 0.5 # Primary: Q→A quality
+    reconstruction_quality: 0.2 # 768D → 225D → 768D preservation
+    spatial_coherence: 0.2 # Internal layer consistency
+    emergent_specialization: 0.1 # Reward function specialization
+
+  # Emergent pattern development
+  emergent_training:
+    warmup_epochs: 5 # Простое reconstruction сначала
+    specialization_epochs: 15 # Развитие spatial patterns
+    refinement_epochs: 5 # Fine-tuning emergent behavior
+
+# === INFORMATION FLOW STRATEGY ===
+information_flow:
+  # TRAINING: Complex learned flow
+  training_flow:
+    input: "768D embedding"
+    compression: "learned 768D→225D" # Preserve maximal information
+    processing: "15×15×11 emergent" # All cells participate
+    expansion: "learned 225D→768D" # Reconstruct full information
+
+  # INFERENCE: Simple direct flow
+  inference_flow:
+    input: "225D surface (or compressed 768D)"
+    processing: "15×15×11 emergent" # Autonomous processing
+    output: "225D surface (or expanded 768D)"
+
+# === EMERGENT BEHAVIOR EXPECTATIONS ===
+emergent_patterns:
+  # Spatial specialization (should emerge naturally)
+  expected_regions:
+    semantic_core: "central layers 4-7" # Deep semantic processing
+    syntax_processing: "layers 2-3, 8-9" # Structure analysis/generation
+    context_edges: "boundary regions" # Context and memory
+
+  # Temporal patterns
+  processing_flow:
+    - "Input surface activation"
+    - "Semantic decomposition (layers 2-4)"
+    - "Core processing (layers 5-7)"
+    - "Output formation (layers 8-10)"
+    - "Surface output generation"
+
+# === PARAMETER OPTIMIZATION ===
+parameter_analysis:
+  target_per_cell: 25000 # 25K parameters each
+  total_system: 61875000 # 2,475 × 25K = 61.875M
+
+  # Detailed breakdown для 25K target
+  gmlp_optimization:
+    input_projection: 6144 # (32×6+32+12) × 128 ÷ 4
+    spatial_gating: 8192 # 128 × 128 ÷ 2
+    ffn_layers: 7168 # 128 × 256 ÷ 4.5
+    memory_gru: 2048 # 128 × 32 ÷ 2
+    output_layers: 1440 # Various small layers
+    # Total: ~25K parameters ✅
+
+# === DIMENSIONAL STRATEGY ===
+dimensional_approach:
+  core_insight: "Information = Processing Power, не Surface Size"
+
+  # Current approach
+  surface_dimensions: 225 # 15×15 surface
+  processing_capacity: 61875000 # 61.9M parameters
+  information_ratio: 275000 # 61.9M ÷ 225 = 275K proc power per surface element
+
+  # Why this works
+  reasoning:
+    - "225D surface активирует learned patterns в 61.9M parameters"
+    - "Internal processing создает emergent representations"
+    - "Output surface содержит результат всей внутренней работы"
+    - "Information preserved через behavior, не через size"
+
+# === SUCCESS METRICS ===
+success_criteria:
+  primary: "Q→A similarity >50%" # Breakthrough target
+  emergent: "Spatial specialization visible" # Function regions emerge
+  efficiency: "~25K parameters per cell" # Resource efficiency
+  biological: "Cortical-like processing" # Brain-inspired behavior
+
+# === IMPLEMENTATION PHASES ===
+implementation:
+  phase_1: "Learned compression layer (768D→225D)"
+  phase_2: "Full gradient flow через all cells"
+  phase_3: "Emergent pattern development monitoring"
+  phase_4: "Inference mode optimization"
+  phase_5: "Production deployment"
+
+# === BIOLOGICAL INSPIRATION ===
+biological_principles:
+  cortical_analogy: "Surface I/O + internal processing layers"
+  emergent_specialization: "Function regions develop naturally"
+  distributed_memory: "Information в connection patterns"
+  hierarchical_processing: "Layer-wise abstraction levels"

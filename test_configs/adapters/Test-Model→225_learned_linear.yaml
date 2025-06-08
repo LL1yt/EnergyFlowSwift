@@ -1,0 +1,6 @@
+compression_ratio: 0.439453125
+config: {}
+input_dim: 512
+output_dim: 225
+parameter_count: 232611
+strategy: learned_linear

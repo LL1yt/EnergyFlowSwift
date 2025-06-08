@@ -1,0 +1,6 @@
+compression_ratio: 0.29296875
+config: {}
+input_dim: 768
+output_dim: 225
+parameter_count: 1402797
+strategy: hierarchical

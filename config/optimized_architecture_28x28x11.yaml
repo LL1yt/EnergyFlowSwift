@@ -1,0 +1,101 @@
+# 🎯 OPTIMIZED 28×28×11 ARCHITECTURE CONFIG
+# Surface-focused approach: 784 ≈ 768 dimensions
+# Решение проблемы размерности через surface I/O mapping
+
+# === LATTICE 3D CONFIGURATION ===
+lattice_3d:
+  dimensions: [28, 28, 11] # Surface-optimized dimensions
+  total_cells: 8624 # 28×28×11 = 8,624 cells
+  io_strategy: "surface_2d" # I/O только на поверхности
+  surface_layers: [0, 10] # Front и back layers для I/O
+  internal_layers: [1, 2, 3, 4, 5, 6, 7, 8, 9] # Internal processing
+
+# === EMBEDDING PROCESSOR ===
+embedding_processor:
+  cube_shape: [28, 28, 1] # 784 elements для I/O (близко к 768)
+  mapping_strategy: "surface_2d"
+  surface_shape: [28, 28] # 784 elements surface
+  padding_size: 16 # 784 - 768 = 16 padding elements
+  depth_processing: 11 # 11 layers обработки
+
+# === CELL PROTOTYPE ===
+cell_prototype:
+  state_size: 32
+  input_size: 12
+  num_neighbors: 6
+
+  # Differentiated architecture для efficiency
+  surface_cells:
+    architecture: "gMLP" # Rich processing для I/O cells
+    hidden_dim: 512 # Full gMLP power для surface
+    target_params: 25000 # ~25K parameters each
+    use_memory: true
+    memory_dim: 128
+
+  internal_cells:
+    architecture: "SimpleMLP" # Lighter processing для internal
+    hidden_dim: 256 # Smaller internal processing
+    target_params: 5000 # ~5K parameters each
+    use_memory: false # No memory для internal cells
+
+# === TRAINING CONFIGURATION ===
+training:
+  batch_size: 1 # Memory constraint
+  learning_rate: 0.0002 # Conservative для stability
+  epochs: 15
+  gradient_checkpointing: true # Memory optimization
+
+  # Memory optimization
+  optimizer: "AdamW"
+  weight_decay: 0.01
+  lr_scheduler: "ReduceLROnPlateau"
+  patience: 3
+
+  # Target metrics
+  target_similarity: 0.50 # 50% Q→A similarity goal
+
+# === MEMORY ESTIMATIONS ===
+memory_analysis:
+  surface_cells: 1568 # 28×28×2 (front+back layers)
+  internal_cells: 7056 # 28×28×9 (internal layers)
+
+  surface_params: 39200000 # 1,568 × 25K = 39.2M
+  internal_params: 35280000 # 7,056 × 5K = 35.3M
+  total_params: 74480000 # 74.5M total parameters
+
+  estimated_memory_gb: 3.2 # Conservative estimate
+  feasible: true # Within 4GB RAM constraint
+
+# === I/O STRATEGY ===
+io_configuration:
+  input_surface: "front" # z=0 layer
+  output_surface: "back" # z=10 layer
+  signal_propagation: "depth_wise"
+  processing_depth: 11
+
+  # Surface processing
+  embedding_to_surface:
+    method: "reshape_with_padding"
+    source_dim: 768
+    target_dim: 784 # 28×28
+    padding_strategy: "zero_pad"
+
+  surface_to_embedding:
+    method: "reshape_with_trimming"
+    source_dim: 784 # 28×28
+    target_dim: 768
+    trimming_strategy: "end_trim"
+
+# === EXPECTED PERFORMANCE ===
+performance_targets:
+  qa_similarity: 0.50 # Target: >50% (from current 38.5%)
+  training_time_per_epoch: 300 # 5 minutes max
+  inference_time_ms: 2000 # 2 seconds per Q→A
+  memory_usage_gb: 3.5 # Under 4GB constraint
+
+# === BIOLOGICAL INSPIRATION ===
+biological_principles:
+  cortical_layers: 11 # Like neocortex layers
+  surface_io: true # I/O на surface как в мозге
+  depth_processing: true # Internal processing layers
+  memory_consolidation: true # Long-term potentiation analog

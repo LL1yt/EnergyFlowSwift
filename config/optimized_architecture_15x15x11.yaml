@@ -1,0 +1,248 @@
+# 🚀 OPTIMIZED ARCHITECTURE CONFIGURATION: 15×15×11 + gMLP
+# ================================================================
+#
+# Революционная архитектура основанная на:
+# - Area-focused scaling (приоритет X×Y над Z)
+# - Golden Ratio пропорции 15:15:11 ≈ 1:1:0.73
+# - gMLP Spatial Gating Units (2024/2025 state-of-the-art)
+# - 4.8x больше клеток (512 → 2,475)
+# - 25x больше параметров на клетку (1K → 25K)
+
+# === PROJECT METADATA ===
+project:
+  name: "3D Cellular Neural Network - Optimized gMLP Architecture"
+  version: "2.0.0-revolutionary"
+  description: "Area-focused 15×15×11 lattice с gMLP cells для breakthrough >50% Q→A similarity"
+  architecture_type: "optimized_gmpl_15x15x11"
+
+# === REVOLUTIONARY LATTICE CONFIGURATION ===
+lattice_3d:
+  # 🎯 Area-Focused Scaling: 15×15×11 = 2,475 клеток
+  dimensions: [15, 15, 11] # Golden Ratio inspired: 1:1:0.73
+  total_cells: 2475 # 4.8x increase от 512
+
+  # Граничные условия
+  boundary_conditions: "walls" # Стабильно для больших решеток
+
+  # Производительность (оптимизировано для 2,475 клеток)
+  parallel_processing: true
+  gpu_enabled: true # Критично для 4.8x клеток
+  batch_size: 2 # Уменьшено из-за memory constraints
+
+  # Инициализация (стабильная для больших систем)
+  initialization:
+    method: "xavier_uniform" # Лучше для gMLP
+    std: 0.05 # Консервативнее для stability
+    mean: 0.0
+
+  # Топология (оптимизированная для area-focused design)
+  topology:
+    neighbors: 6 # 3D connectivity
+    validate_connections: true
+    cache_neighbors: true # Критично для производительности
+
+  # I/O strategy (больше surface area)
+  io_interfaces:
+    input_face: "front" # Z=0 плоскость
+    output_face: "back" # Z=11 плоскость
+    embedding_mapping: "adaptive" # Intelligent mapping для 15×15
+
+  # 🆕 OPTIMIZED I/O Strategy для больших решеток
+  io_strategy:
+    placement_method: "proportional"
+    coverage_ratio:
+      min_percentage: 6.0 # Для 15×15 = 225 cells/face
+      max_percentage: 12.0 # 13-27 I/O points per face
+    absolute_limits:
+      min_points: 13 # Minimum для 15×15 face
+      max_points: 45 # Maximum для stability
+    seed: 42
+
+    # Size-specific optimizations
+    size_specific:
+      "15x15": { min_points: 13, max_points: 27 }
+      "32x32": { min_points: 60, max_points: 120 }
+
+# === REVOLUTIONARY CELL ARCHITECTURE ===
+cell_prototype:
+  # 🔬 gMLP Architecture (vs простой MLP)
+  architecture_type: "gMLP" # Ключевая инновация
+  architecture_version: "2024" # Latest research
+
+  # Базовые размеры (адаптированы для 15×15×11)
+  state_size: 32 # Оптимизированный размер
+  input_size: 12 # Внешний вход
+  output_size: 32 # = state_size
+  num_neighbors: 6 # 3D connectivity
+
+  # 🧠 gMLP Specific Configuration
+  architecture:
+    # Архитектурный тип
+    type: "GatedMLP" # vs "SimpleMLP"
+
+    # Core gMLP parameters
+    hidden_dim: 256 # Spatial processing dimension
+    spatial_gating: true # Ключевая инновация SGU
+
+    # Modern activations
+    activation: "gelu" # vs "tanh" (современнее)
+    output_activation: "gelu" # Consistency
+
+    # Regularization
+    dropout: 0.05 # Консервативная regularization
+    use_bias: true
+
+    # 🧠 Memory Component (emergent behavior)
+    use_memory: true # GRU memory state
+    memory_dim: 64 # Memory state size
+
+    # Target parameters
+    target_parameters: 25000 # ~25K per cell
+    parameter_efficiency: true # Optimize parameter usage
+
+# === EMBEDDING PROCESSOR OPTIMIZATION ===
+embedding_processor:
+  # Совместимость с 15×15×11
+  cube_shape: [15, 15, 11] # 2,475 elements
+  lattice_size: [15, 15, 11] # Consistency
+
+  # Размерности (адаптированы)
+  input_dim: 768 # DistilBERT compatibility
+  output_dim: 768 # Same as input
+
+  # Режим обработки
+  processing_mode: "dialogue" # Target: Q→A similarity
+
+  # 🎯 Advanced parameters для больших решеток
+  propagation_steps: 15 # Увеличено для 2,475 клеток
+  convergence_threshold: 0.0005 # Stricter convergence
+
+  # EmbeddingReshaper adaptations
+  reshaping_method: "learned_projection" # Smart 768→2475 mapping
+  preserve_semantics: true
+  semantic_threshold: 0.95
+
+  # Quality targets
+  target_similarity: 0.55 # Ambitious target >50%
+  quality_check_enabled: true
+
+  # Memory management для больших решеток
+  memory_efficient: true
+  gradient_checkpointing: true # Essential для 61M parameters
+
+  # Device optimization
+  device: "cuda" # Required для такого размера
+  mixed_precision: true # Memory efficiency
+
+# === TRAINING CONFIGURATION ===
+training:
+  # Training mode
+  mode: "dialogue" # Q→A optimization
+
+  # Architecture-specific settings
+  lattice_size: [15, 15, 11] # Consistency
+  embedding_dim: 768 # Input dimension
+
+  # 🎯 Optimized training parameters
+  learning_rate: 0.0002 # Conservative для stability
+  optimizer: "adamw" # Best для large models
+  weight_decay: 0.01 # Regularization
+
+  # Batch settings (memory-aware)
+  batch_size: 1 # Conservative start
+  gradient_accumulation_steps: 4 # Effective batch = 4
+
+  # Training schedule
+  epochs: 15 # Focused training
+  warmup_epochs: 2 # Gradual start
+  early_stopping_patience: 5 # Conservative stopping
+
+  # Advanced loss functions
+  loss_function: "combined" # Multi-objective
+  loss_weights:
+    cosine_similarity: 0.6 # Primary objective
+    mse: 0.2 # Reconstruction quality
+    curriculum: 0.1 # Progressive difficulty
+    triplet: 0.1 # Semantic alignment
+
+  # Quality targets
+  target_similarity: 0.55 # >50% breakthrough goal
+  convergence_threshold: 0.001
+
+  # Monitoring
+  log_interval: 5 # Frequent monitoring
+  save_interval: 10
+  checkpoint_dir: "checkpoints/optimized_gmpl_15x15x11"
+
+# === DATASET CONFIGURATION ===
+dataset:
+  # Enhanced dialogue dataset
+  type: "dialogue"
+  size: "large" # 100+ high-quality pairs
+
+  # Quality filtering
+  semantic_threshold: 0.8 # High-quality pairs only
+  difficulty_progression: true # Curriculum learning
+
+  # Multi-domain coverage
+  domains: ["AI_ML", "Programming", "Data_Science", "NLP", "CS_Theory"]
+
+  # Data augmentation
+  augmentation: true
+  synthetic_pairs: true # Generated examples
+
+# === MEMORY & PERFORMANCE OPTIMIZATION ===
+performance:
+  # Memory management
+  max_memory_gb: 8 # Realistic constraint
+  memory_monitoring: true
+
+  # Gradient optimization
+  gradient_clipping: 1.0 # Stability
+  gradient_checkpointing: true # Memory efficiency
+
+  # Computation optimization
+  compiled_model: false # May cause issues с experimental features
+  attention_implementation: "sdpa" # Scaled Dot Product Attention
+
+  # Профилирование
+  profile_memory: true
+  profile_timing: true
+
+# === EXPERIMENTAL FEATURES ===
+experimental:
+  # Future enhancements
+  hierarchical_processing: false # Stage 3 feature
+  mamba_coordination: false # For >32K cells
+  attention_mechanisms: false # Advanced spatial processing
+
+  # Research features
+  emergent_analysis: true # Track emergent patterns
+  pattern_visualization: true # Spatial pattern analysis
+  information_flow_tracking: true # Data flow analysis
+
+# === LOGGING & MONITORING ===
+logging:
+  level: "INFO"
+  detailed_metrics: true
+  tensorboard: true
+
+  # Specific monitoring
+  memory_usage: true
+  gradient_norms: true
+  parameter_evolution: true
+  spatial_patterns: true
+
+  # Export settings
+  export_results: true
+  results_format: ["json", "png", "tensorboard"]
+
+# === BACKWARD COMPATIBILITY ===
+compatibility:
+  # Fallback configurations
+  fallback_to_8x8x8: true # Emergency fallback
+  legacy_cell_support: true # Support old SimpleMLP
+
+  # Migration settings
+  auto_migration: false # Manual control preferred
+  migration_verification: true # Test after migration
