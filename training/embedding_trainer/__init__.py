@@ -145,11 +145,25 @@ def get_module_info():
         'completed_stages': ['Stage 1.1 - CubeTrainer', 'Stage 1.2 - AutoencoderDataset', 'Stage 1.3 - DialogueDataset']  # НОВОЕ!
     }
 
+# Импорт integration компонентов
+try:
+    from .adapter_integration import (
+        AdapterIntegrationConfig,
+        AdapterCubeTrainer,
+        create_llama3_cube_trainer,
+        create_distilbert_cube_trainer
+    )
+    ADAPTER_INTEGRATION_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  Adapter Integration not available: {e}")
+    ADAPTER_INTEGRATION_AVAILABLE = False
+
 # Экспорт функции информации
 __all__ = [
     'get_module_info', 
     'CubeTrainer', 'TrainingConfig', 'EmbeddingMetrics',
     'AutoencoderDataset', 'DatasetConfig', 'create_text_dataset', 'create_file_dataset',
     'DialogueDataset', 'DialogueConfig', 'create_dialogue_dataset', 'create_conversation_dataset', 'load_dialogue_dataset_from_files',
-    'CUBE_TRAINER_AVAILABLE', 'AUTOENCODER_DATASET_AVAILABLE', 'DIALOGUE_DATASET_AVAILABLE'
+    'AdapterIntegrationConfig', 'AdapterCubeTrainer', 'create_llama3_cube_trainer', 'create_distilbert_cube_trainer',
+    'CUBE_TRAINER_AVAILABLE', 'AUTOENCODER_DATASET_AVAILABLE', 'DIALOGUE_DATASET_AVAILABLE', 'ADAPTER_INTEGRATION_AVAILABLE'
 ] 

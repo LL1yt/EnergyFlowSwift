@@ -511,13 +511,23 @@ embedding_768d → Decoder → text                         # Модуль 3 ✅
   - [x] Performance benchmarking и memory usage analysis (all strategies tested)
   - [x] Reconstruction quality assessment (MSE loss validation working)
 
-- [ ] **Stage 3.1.2: Integration with Training System** 🔗 (🎯 PRIORITY 2)
+- [ ] **Stage 3.1.2: Integration with Training System** 🔗 (🎯 PRIORITY 2) ⚠️ **АРХИТЕКТУРНАЯ ПРОБЛЕМА**
 
-  - [ ] Интеграция UniversalAdapter с CubeTrainer
-  - [ ] Обновление EmbeddingProcessor для использования adapter
+  - [x] Интеграция UniversalAdapter с CubeTrainer (adapter working: 4096D → 225D ✅)
+  - [ ] **BLOCKER:** EmbeddingProcessor ожидает full cube (768D), получает surface (225D)
+  - [ ] **РЕШЕНИЕ:** Реализовать surface-only processing mode в EmbeddingProcessor
+  - [ ] **АЛЬТЕРНАТИВА:** Создать новый SurfaceProcessor для surface-only обработки
   - [ ] Multi-objective loss: reconstruction + dialogue similarity
   - [ ] Gradient flow validation через adapter + cube
   - [ ] End-to-end training pipeline testing
+
+- [ ] **Stage 3.1.2b: Surface-Only Processing Implementation** 🔧 (🎯 IMMEDIATE PRIORITY)
+
+  - [ ] Исследовать EmbeddingProcessor architecture
+  - [ ] Реализовать surface-only processing mode
+  - [ ] Обновить lattice operations для surface-focused approach
+  - [ ] Тестирование surface → surface трансформаций
+  - [ ] Интеграция с Universal Adapter pipeline
 
 - [ ] **Stage 3.1.3: Model-Agnostic Training** 🤖 (🎯 PRIORITY 3)
   - [ ] Тестирование с Meta-Llama-3-8B (4096D → 225D)
@@ -643,10 +653,10 @@ embedding_768d → Decoder → text                         # Модуль 3 ✅
 
 ### Ближайшие шаги
 
-1. **Сейчас:** Интеграция universal adapter с CubeTrainer (Stage 3.1.2) 🚀
-2. **Сегодня:** Обновление EmbeddingProcessor для использования adapter
-3. **На этой неделе:** End-to-end training pipeline тестирование
-4. **Следующая неделя:** Model-agnostic training с LLaMA-3-8B (Stage 3.1.3)
+1. **Сейчас:** Surface-Only Processing Implementation (Stage 3.1.2b) 🚀
+2. **Сегодня:** Исследование EmbeddingProcessor для surface-only режима
+3. **На этой неделе:** Реализация surface → surface трансформаций
+4. **Следующая неделя:** Интеграция с Universal Adapter + Model-agnostic training
 
 ### Новые возможности (Universal Adapter)
 
