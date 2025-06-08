@@ -34,6 +34,7 @@ logs/
 *.log
 *.pyc
 *.pt
+cache/
 
 # Temporary files
 tmp/
