@@ -399,27 +399,47 @@ class LLMHandler(FormatHandler):
         return False
     
     def load_model(self):
-        """Ленивая загрузка LLM модели и токенайзера."""
+        """Ленивая загрузка LLM модели и токенайзера с локальным кэшированием."""
         if self.model is None:
             try:
                 from transformers import AutoModel, AutoTokenizer
                 
-                logger.info(f"Loading LLM model: {self.model_name}")
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                # Определяем путь для загрузки (локальный или удаленный)
+                model_path = self._get_model_path()
+                
+                logger.info(f"Loading LLM model: {self.model_name} from {model_path}")
+                
+                # Создаем папку для модели если её нет
+                if model_path.startswith(LOCAL_MODELS_DIR):
+                    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+                
+                # Загружаем токенайзер
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    model_path, 
+                    cache_dir=LOCAL_MODELS_DIR if not os.path.exists(model_path) else None
+                )
                 
                 # Для больших моделей используем device_map
                 if self._device.startswith("cuda") and self._is_large_model():
                     logger.info(f"Loading large model with device_map auto")
                     self.model = AutoModel.from_pretrained(
-                        self.model_name,
+                        model_path,
                         device_map="auto",
-                        torch_dtype=torch.float16  # Используем FP16 для экономии памяти
+                        torch_dtype=torch.float16,  # Используем FP16 для экономии памяти
+                        cache_dir=LOCAL_MODELS_DIR if not os.path.exists(model_path) else None
                     )
                 else:
-                    self.model = AutoModel.from_pretrained(self.model_name)
+                    self.model = AutoModel.from_pretrained(
+                        model_path,
+                        cache_dir=LOCAL_MODELS_DIR if not os.path.exists(model_path) else None
+                    )
                     self.model.to(self._device)
                 
                 self.model.eval()
+                
+                # После первой загрузки, сохраняем модель локально если это кэшируемая модель
+                if model_path in [SUPPORTED_LLM_MODELS[key] for key in LOCAL_MODEL_PATHS.keys()]:
+                    self._cache_model_locally(model_path)
                 
                 logger.info(f"Successfully loaded {self.model_name}")
                 
@@ -428,6 +448,46 @@ class LLMHandler(FormatHandler):
                                 "Install with: pip install transformers")
             except Exception as e:
                 raise ValueError(f"Failed to load LLM model {self.model_name}: {e}")
+    
+    def _get_model_path(self) -> str:
+        """Определяет оптимальный путь для загрузки модели (локальный или удаленный)."""
+        
+        # Если это уже локальный путь, используем как есть
+        if os.path.exists(self.model_name):
+            return self.model_name
+        
+        # Проверяем есть ли кэшированная версия
+        for model_key, local_path in LOCAL_MODEL_PATHS.items():
+            if SUPPORTED_LLM_MODELS[model_key] == self.model_name:
+                if os.path.exists(local_path):
+                    logger.info(f"Using cached model: {local_path}")
+                    return local_path
+                else:
+                    logger.info(f"Model not cached yet, will download: {self.model_name}")
+                    return self.model_name
+        
+        # Для всех остальных случаев используем оригинальное имя
+        return self.model_name
+    
+    def _cache_model_locally(self, original_model_path: str):
+        """Сохраняет модель в локальном кэше для будущего использования."""
+        try:
+            # Находим соответствующий локальный путь
+            for model_key, local_path in LOCAL_MODEL_PATHS.items():
+                if SUPPORTED_LLM_MODELS[model_key] == original_model_path:
+                    if not os.path.exists(local_path):
+                        logger.info(f"Caching model locally: {local_path}")
+                        
+                        # Сохраняем модель
+                        os.makedirs(local_path, exist_ok=True)
+                        self.model.save_pretrained(local_path)
+                        self.tokenizer.save_pretrained(local_path)
+                        
+                        logger.info(f"Model cached successfully: {local_path}")
+                    break
+        except Exception as e:
+            logger.warning(f"Failed to cache model locally: {e}")
+            # Не критичная ошибка, продолжаем работу
     
     def load(self, path: str) -> np.ndarray:
         """
@@ -574,6 +634,9 @@ class LLMHandler(FormatHandler):
         }
 
 
+# Локальная папка для кэширования моделей
+LOCAL_MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models", "local_cache")
+
 # Поддерживаемые LLM модели для Knowledge Distillation
 SUPPORTED_LLM_MODELS = {
     # Локальные модели (приоритет)
@@ -585,13 +648,21 @@ SUPPORTED_LLM_MODELS = {
     "mistral-7b": "mistralai/Mistral-7B-v0.1", 
     "codellama-7b": "codellama/CodeLlama-7b-hf",
     
-    # Более легкие модели
+    # Более легкие модели (с локальным кэшированием)
     "distilbert": "distilbert-base-uncased",
     "roberta": "roberta-base",
     "gpt2": "gpt2",
     
     # Для тестирования
     "dialogpt": "microsoft/DialoGPT-medium",
+}
+
+# Локальные пути для кэшированных моделей
+LOCAL_MODEL_PATHS = {
+    "distilbert": os.path.join(LOCAL_MODELS_DIR, "distilbert-base-uncased"),
+    "roberta": os.path.join(LOCAL_MODELS_DIR, "roberta-base"),
+    "gpt2": os.path.join(LOCAL_MODELS_DIR, "gpt2"),
+    "dialogpt": os.path.join(LOCAL_MODELS_DIR, "DialoGPT-medium"),
 }
 
 

@@ -18,6 +18,7 @@
 
 import sys
 import os
+import io
 sys.path.insert(0, os.path.abspath('.'))
 
 import torch
@@ -33,15 +34,58 @@ from dataclasses import dataclass, asdict
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Enhanced logging configuration
+# Enhanced logging configuration with UTF-8 support
+
+# Ensure logs directory exists
+os.makedirs('logs', exist_ok=True)
+
+# Configure logging with UTF-8 support
+log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# File handler with UTF-8 encoding
+file_handler = logging.FileHandler('logs/real_training_production.log', encoding='utf-8')
+file_handler.setFormatter(log_formatter)
+
+# Console handler with UTF-8 support
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+# For Windows, wrap stdout to handle Unicode properly
+if sys.platform == 'win32':
+    # Create a UTF-8 wrapper for stdout
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    # Use a custom formatter that replaces problematic Unicode chars for console
+    class SafeFormatter(logging.Formatter):
+        def format(self, record):
+            formatted = super().format(record)
+            # Replace Unicode emojis with safe alternatives for console
+            emoji_replacements = {
+                '🚀': '[START]',
+                '🎯': '[TARGET]', 
+                '📊': '[METRICS]',
+                '✅': '[OK]',
+                '❌': '[ERROR]',
+                '⚠️': '[WARNING]',
+                '📈': '[PROGRESS]',
+                '💾': '[SAVE]',
+                '🔧': '[TOOL]',
+                '📋': '[INFO]',
+                '🔄': '[RETRY]',
+                '▶️': '[CONTINUE]',
+                '🎉': '[SUCCESS]'
+            }
+            for emoji, replacement in emoji_replacements.items():
+                formatted = formatted.replace(emoji, replacement)
+            return formatted
+    
+    console_handler.setFormatter(SafeFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+# Setup root logger
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/real_training_production.log'),
-        logging.StreamHandler()
-    ]
+    handlers=[file_handler, console_handler]
 )
+
 logger = logging.getLogger(__name__)
 
 from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
@@ -50,6 +94,13 @@ from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
 from training.embedding_trainer.dialogue_dataset import DialogueDataset, create_dialogue_dataset
 from data.embedding_adapter.universal_adapter import UniversalEmbeddingAdapter
 from utils.llm_handler import LLMHandler
+
+# Конфигурация модели - используем DistilBERT для экономии ресурсов
+MODEL_CONFIG = {
+    "lightweight": "distilbert",       # Для быстрого тестирования и экономии ресурсов
+    "production": "llama3-8b-local",   # Для полноценного обучения (если доступна)
+    "current": "distilbert"            # Текущая модель
+}
 
 @dataclass
 class TrainingStage:
@@ -73,11 +124,14 @@ class ProductionTrainingManager:
     - Метрики и диагностика
     """
     
-    def __init__(self, config_path: str = "config/emergent_training_3_1_4_1.yaml"):
+    def __init__(self, config_path: str = "config/emergent_training_3_1_4_1.yaml", use_lightweight_model: bool = True):
         self.config_path = config_path
         self.training_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.checkpoint_dir = Path(f"checkpoints/real_training_{self.training_id}")
         self.results_dir = Path(f"results/real_training_{self.training_id}")
+        
+        # Model selection
+        self.model_name = MODEL_CONFIG["lightweight"] if use_lightweight_model else MODEL_CONFIG["production"]
         
         # Create directories
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -91,11 +145,13 @@ class ProductionTrainingManager:
             'stages': [],
             'best_metrics': {'loss': float('inf'), 'similarity': 0.0},
             'total_time': 0,
-            'decisions': []
+            'decisions': [],
+            'model_used': self.model_name
         }
         
-        logger.info(f"🚀 Production Training Manager initialized")
+        logger.info(f"[START] Production Training Manager initialized")
         logger.info(f"Training ID: {self.training_id}")
+        logger.info(f"Model: {self.model_name}")
         logger.info(f"Checkpoints: {self.checkpoint_dir}")
         logger.info(f"Results: {self.results_dir}")
     
@@ -218,11 +274,11 @@ class ProductionTrainingManager:
         logger.info("🔍 Validating system components...")
         
         try:
-            # 1. Check LLaMA-3-8B availability
-            logger.info("1️⃣ Testing LLaMA-3-8B model access...")
-            llm_handler = LLMHandler('llama3-8b-local')
+            # 1. Check LLM model availability
+            logger.info(f"1️⃣ Testing {self.model_name} model access...")
+            llm_handler = LLMHandler(self.model_name)
             test_embedding = llm_handler.generate_embedding("Test validation text")
-            logger.info(f"✅ LLaMA-3-8B working: {test_embedding.shape}")
+            logger.info(f"✅ {self.model_name} working: {test_embedding.shape}")
             
             # 2. Check Universal Adapter
             logger.info("2️⃣ Testing Universal Adapter...")
@@ -252,7 +308,7 @@ class ProductionTrainingManager:
             
             dataset = create_dialogue_dataset(
                 test_dialogue,
-                teacher_model="llama3-8b-local",
+                teacher_model=self.model_name,
                 cache_embeddings=False,
                 validation_split=0.0
             )
@@ -432,7 +488,7 @@ class ProductionTrainingManager:
         
         return create_dialogue_dataset(
             dialogue_pairs,
-            teacher_model="llama3-8b-local",
+            teacher_model=self.model_name,
             cache_embeddings=True,  # Enable caching для production
             validation_split=0.0,
             normalize_embeddings=True
@@ -715,10 +771,27 @@ class ProductionTrainingManager:
 
 def main():
     """Main entry point для production training"""
-    logger.info("🚀 Starting Production Real Training")
+    import sys
+    
+    # Parse command line arguments для model selection
+    use_lightweight = True  # Default to DistilBERT для экономии ресурсов
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--llama":
+            use_lightweight = False
+        elif sys.argv[1] == "--distilbert":
+            use_lightweight = True
+        elif sys.argv[1] == "--help":
+            print("Usage: python real_llama_training_production.py [--distilbert|--llama]")
+            print("  --distilbert: Use DistilBERT (default, resource efficient)")
+            print("  --llama: Use LLaMA-3-8B (requires local model)")
+            return {}
+    
+    model_name = "DistilBERT" if use_lightweight else "LLaMA-3-8B"
+    logger.info(f"[START] Starting Production Real Training with {model_name}")
     
     # Initialize training manager
-    manager = ProductionTrainingManager()
+    manager = ProductionTrainingManager(use_lightweight_model=use_lightweight)
     
     # Run full training pipeline
     results = manager.run_full_training_pipeline()
