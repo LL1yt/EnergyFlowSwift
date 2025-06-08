@@ -65,7 +65,20 @@ class EmbeddingProcessor(nn.Module):
             self.lattice = None  # Не используется в surface-only режиме
             logger.info("🎲 Lattice3D пропущен для SURFACE_ONLY режима")
         
-        # 3. Метрики для контроля качества
+        # 3. Learnable параметры для SURFACE_ONLY режима
+        if config.processing_mode == ProcessingMode.SURFACE_ONLY:
+            self._init_surface_learnable_params()
+        else:
+            # Для non-surface режимов обнуляем surface параметры
+            self.diffusion_alpha = None
+            self.diffusion_beta = None
+            self.expansion_weights = None
+            self.extraction_weights = None
+            self.activation_scale = None
+            self.activation_bias = None
+            self.surface_modules = None
+        
+        # 4. Метрики для контроля качества
         self.metrics = ProcessingMetrics()
         
         # === ВНУТРЕННЕЕ СОСТОЯНИЕ ===
@@ -79,6 +92,40 @@ class EmbeddingProcessor(nn.Module):
         logger.info(f"📊 Режим: {config.processing_mode.value}")
         logger.info(f"🎯 Целевая схожесть: {config.target_similarity:.1%}")
         logger.info(f"🔄 Шаги распространения: {config.propagation_steps}")
+    
+    def _init_surface_learnable_params(self):
+        """Инициализация learnable параметров для SURFACE_ONLY режима"""
+        h, w = self.config.surface_dimensions
+        depth = self.config.surface_processing_depth
+        
+        # Создаем nn.Parameter объекты как атрибуты класса
+        self.diffusion_alpha = nn.Parameter(torch.tensor(0.7))
+        self.diffusion_beta = nn.Parameter(torch.tensor(0.3))
+        self.expansion_weights = nn.Parameter(torch.randn(depth, h, w) * 0.1)
+        self.extraction_weights = nn.Parameter(torch.randn(h, w) * 0.1)
+        self.activation_scale = nn.Parameter(torch.tensor(1.0))
+        self.activation_bias = nn.Parameter(torch.tensor(0.0))
+        
+        # Создаем nn.Module объекты в ModuleDict
+        self.surface_modules = nn.ModuleDict({
+            # Emergent transformation layers
+            'layer_transform': nn.Sequential(
+                nn.Linear(h * w, h * w),
+                nn.Tanh(),
+                nn.Linear(h * w, h * w)
+            )
+        })
+        
+        logger.info(f"✅ Surface learnable parameters initialized:")
+        total_params = (
+            sum(p.numel() for p in [
+                self.diffusion_alpha, self.diffusion_beta, 
+                self.expansion_weights, self.extraction_weights,
+                self.activation_scale, self.activation_bias
+            ]) +
+            sum(p.numel() for p in self.surface_modules.parameters())
+        )
+        logger.info(f"   📊 Total learnable parameters: {total_params:,}")
     
     def _init_embedding_reshaper(self) -> EmbeddingReshaper:
         """Инициализировать EmbeddingReshaper"""
@@ -445,103 +492,134 @@ class EmbeddingProcessor(nn.Module):
         """
         h, w = surface_2d.shape
         
-        # Создаем 3D volume и инициализируем surface слои
-        volume = torch.zeros(depth, h, w, device=surface_2d.device, dtype=surface_2d.dtype)
+        # Создаем список layers вместо inplace модификации
+        layers = []
         
         # Front surface (input layer)
-        volume[0] = surface_2d.clone()
+        layers.append(surface_2d.clone())
         
-        # Propagation в internal layers через learned patterns
+        # Propagation в internal layers через learned patterns (NO INPLACE)
         for layer in range(1, depth):
-            # Простая emergent propagation (можно заменить на более сложную)
-            prev_layer = volume[layer - 1]
+            # Простая emergent propagation
+            prev_layer = layers[layer - 1]
             
             # Spatial diffusion + learnable transformation
             diffused = self._spatial_diffusion(prev_layer)
             
-            # Learnable layer transformation (если needed)
-            volume[layer] = diffused
+            # Добавляем новый layer
+            layers.append(diffused)
+        
+        # Объединяем в 3D volume
+        volume = torch.stack(layers, dim=0)
         
         return volume
     
     def _spatial_diffusion(self, layer_2d: torch.Tensor) -> torch.Tensor:
-        """Spatial diffusion для emergent propagation"""
+        """Spatial diffusion для emergent propagation с learnable параметрами"""
         
-        # Простой spatial filter для diffusion
-        # В реальной реализации здесь будут learnable параметры
-        
+        # Применяем layer transformation через learnable linear layers
         h, w = layer_2d.shape
-        result = layer_2d.clone()
         
-        # Применяем spatial averaging с небольшими трансформациями
+        # Flatten для linear layer
+        flat_input = layer_2d.view(-1)
+        
+        # Learnable transformation
+        transformed = self.surface_modules['layer_transform'](flat_input)
+        
+        # Reshape обратно
+        result = transformed.view(h, w)
+        
+        # Spatial averaging с learnable alpha (NO INPLACE)
         if h > 2 and w > 2:
-            # Простая convolution-like операция
             center = layer_2d[1:-1, 1:-1]
             neighbors = (
                 layer_2d[:-2, 1:-1] + layer_2d[2:, 1:-1] +   # vertical neighbors
                 layer_2d[1:-1, :-2] + layer_2d[1:-1, 2:]     # horizontal neighbors
             ) / 4.0
             
-            # Mixing с центральными значениями
-            alpha = 0.7  # Learnable parameter в реальной реализации
-            result[1:-1, 1:-1] = alpha * center + (1 - alpha) * neighbors
+            # Learnable mixing с градиентами (NO INPLACE)
+            alpha = torch.sigmoid(self.diffusion_alpha)  # Ensure [0,1]
+            mixed_center = alpha * center + (1 - alpha) * neighbors
+            
+            # Создаем новый тензор вместо inplace modification
+            result_new = result.clone()
+            result_new[1:-1, 1:-1] = mixed_center
+            result = result_new
         
-        # Добавляем немного нелинейности для emergent behavior
-        result = torch.tanh(result)
+        # Learnable activation с scale и bias
+        scale = self.activation_scale
+        bias = self.activation_bias
+        result = torch.tanh(scale * result + bias)
         
         return result
     
     def _emergent_spatial_propagation(self, volume_3d: torch.Tensor) -> torch.Tensor:
         """
-        Emergent spatial propagation через все internal layers
+        Emergent spatial propagation через все internal layers с learnable параметрами
         
-        Эмулирует self-organization и emergent patterns
+        Реализует итеративное распространение сигналов через internal volume
+        для создания emergent behavior patterns.
         """
         depth, h, w = volume_3d.shape
         result = volume_3d.clone()
         
-        # Multiple propagation steps для emergent behavior
+        # Итеративное propagation через layers с learnable weights (NO INPLACE)
         for step in range(self.config.propagation_steps):
+            new_result = result.clone()  # Создаем копию для каждого step
             
-            # Cross-layer influence (depth propagation)
-            for layer in range(1, depth - 1):
-                prev_layer = result[layer - 1]
+            for layer in range(1, depth):
                 curr_layer = result[layer]
-                next_layer = result[layer + 1]
+                prev_layer = result[layer - 1]
                 
-                # Emergent mixing между layers
-                depth_mixing = (prev_layer + 2 * curr_layer + next_layer) / 4.0
+                # Spatial diffusion текущего layer
+                spatial_mixed = self._spatial_diffusion(curr_layer)
                 
-                # Spatial mixing в текущем layer
-                spatial_mixed = self._spatial_diffusion(depth_mixing)
+                # Learnable combination с предыдущим layer
+                expansion_weight = self.expansion_weights[layer]
+                influence = torch.sigmoid(expansion_weight)  # Learnable influence map
                 
-                # Update с learnable mixing ratio
-                beta = 0.8  # В реальной реализации - learnable parameter
-                result[layer] = beta * curr_layer + (1 - beta) * spatial_mixed
+                # Weighted update с learnable параметрами (NO INPLACE)
+                beta = torch.sigmoid(self.diffusion_beta)
+                new_result[layer] = beta * spatial_mixed + (1 - beta) * (prev_layer * influence)
+            
+            result = new_result  # Update result после полного step
         
         return result
     
     def _extract_surface_from_volume(self, volume_3d: torch.Tensor) -> torch.Tensor:
         """
-        Extraction финального surface из обработанного volume
+        Extraction surface из internal volume с learnable weights
         
-        Эмулирует "output surface extraction" 
+        Args:
+            volume_3d: Internal 3D volume [depth, height, width]
+            
+        Returns:
+            torch.Tensor: Output surface [height, width]
         """
         depth, h, w = volume_3d.shape
         
-        # Back surface (output layer) 
-        back_surface = volume_3d[-1]
-        
-        # Можно также смешивать несколько layers для более богатого output
-        # Weighted combination последних layers
+        # Learnable weighted extraction из multiple layers
         if depth >= 3:
-            # Взвешенная комбинация последних 3 layers
-            weights = torch.tensor([0.2, 0.3, 0.5], device=volume_3d.device)  # Больше вес для последнего layer
-            weighted_output = (
-                weights[0] * volume_3d[-3] + 
-                weights[1] * volume_3d[-2] + 
-                weights[2] * volume_3d[-1]
-            )
-            return weighted_output
+            # Используем learnable extraction weights
+            extraction_weights = torch.softmax(self.extraction_weights, dim=0)
+            
+            # Weighted combination последних layers
+            weighted_output = torch.zeros(h, w, device=volume_3d.device)
+            for i in range(min(3, depth)):
+                layer_idx = -(i+1)  # Последние 3 layer
+                if i < extraction_weights.numel():
+                    weighted_output += extraction_weights.flatten()[i] * volume_3d[layer_idx]
+            
+            output_surface = weighted_output
+        elif depth >= 1:
+            # Fallback для небольших depth
+            output_surface = volume_3d[-1]  # Last layer
         else:
-            return back_surface 
+            output_surface = volume_3d[0]  # Single layer
+        
+        # Final learnable transformation
+        scale = self.activation_scale
+        bias = self.activation_bias
+        output_surface = torch.tanh(scale * output_surface + bias)
+        
+        return output_surface 

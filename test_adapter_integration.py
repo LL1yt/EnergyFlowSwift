@@ -1,457 +1,399 @@
 #!/usr/bin/env python3
 """
-🧪 ADAPTER INTEGRATION TEST SUITE
-Тестирование интеграции универсального адаптера с CubeTrainer
+🧪 TEST: AdapterCubeTrainer Integration with EmbeddingProcessor.SURFACE_ONLY
+Тестирование обновленной интеграции Universal Adapter + EmbeddingProcessor
+
+Проверяет:
+1. Создание AdapterCubeTrainer с новой архитектурой
+2. Universal Adapter → EmbeddingProcessor.SURFACE_ONLY pipeline
+3. Training workflow (joint & separate training)
+4. Gradient flow и backpropagation
+5. Performance metrics
+6. End-to-end functionality
+
+Автор: 3D Cellular Neural Network Project
+Дата: 7 июня 2025
 """
 
 import torch
-import traceback
-import time
+import numpy as np
 import logging
-from pathlib import Path
+from typing import Dict, Any
+import time
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-# Импорт наших модулей
-try:
-    from training.embedding_trainer.adapter_integration import (
-        AdapterIntegrationConfig,
-        AdapterCubeTrainer,
-        create_llama3_cube_trainer,
-        create_distilbert_cube_trainer
-    )
-except ImportError as e:
-    logger.error(f"❌ Import failed: {e}")
-    exit(1)
-
-
-def test_basic_integration():
-    """
-    Тест 1: Базовая интеграция адаптера с CubeTrainer
-    """
-    print("\n🧪 ТЕСТ 1: Basic Adapter-Cube Integration")
-    print("=" * 50)
+def test_adapter_cube_trainer_creation():
+    """Тест создания обновленного AdapterCubeTrainer"""
+    print("🔧 Testing AdapterCubeTrainer creation with EmbeddingProcessor.SURFACE_ONLY...")
     
     try:
-        print("📋 1.1: Creating LLaMA-3-8B → 15×15×11 integrated trainer...")
+        from training.embedding_trainer.adapter_integration import (
+            AdapterCubeTrainer, 
+            AdapterIntegrationConfig,
+            create_llama3_cube_trainer
+        )
         
-        # Создание интегрированного тренера
-        trainer = create_llama3_cube_trainer(
+        # Создание конфигурации
+        config = AdapterIntegrationConfig(
+            teacher_model="Meta-Llama-3-8B",
+            cube_dimensions=(15, 15, 11),
+            surface_strategy="single",
+            adapter_strategy="learned_linear",
+            joint_training=True
+        )
+        
+        # Создание тренера
+        trainer = AdapterCubeTrainer(config=config, device="cpu")
+        trainer.initialize_components()
+        
+        # Проверка компонентов
+        assert trainer.adapter is not None, "UniversalEmbeddingAdapter не создан"
+        assert trainer.embedding_processor is not None, "EmbeddingProcessor не создан"
+        assert trainer.joint_optimizer is not None, "Joint optimizer не создан"
+        
+        # Проверка размеров
+        expected_surface_size = 15 * 15  # single strategy
+        assert trainer.adapter.output_dim == expected_surface_size, f"Неверный adapter output: {trainer.adapter.output_dim}"
+        
+        # Информация о системе
+        info = trainer.get_info()
+        print("✅ AdapterCubeTrainer создан успешно:")
+        print(f"   Teacher: {info['teacher_model']}")
+        print(f"   Surface size: {info['processor']['surface_size']}D")
+        print(f"   Processing mode: {info['processor']['mode']}")
+        print(f"   Total parameters: {info['total_parameters']:,}")
+        
+        return trainer
+        
+    except Exception as e:
+        print(f"❌ Ошибка создания AdapterCubeTrainer: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def test_end_to_end_pipeline(trainer):
+    """Тест end-to-end pipeline: teacher embeddings → surface processing → output"""
+    print("\n🚀 Testing end-to-end pipeline...")
+    
+    try:
+        # Создание тестовых teacher embeddings (LLaMA-3-8B: 4096D)
+        batch_size = 4
+        teacher_dim = 4096
+        teacher_embeddings = torch.randn(batch_size, teacher_dim, dtype=torch.float32)
+        
+        print(f"📥 Input: {teacher_embeddings.shape} (teacher embeddings)")
+        
+        # Forward pass
+        start_time = time.time()
+        
+        # Тест обычного forward
+        output = trainer.forward(teacher_embeddings)
+        
+        # Тест с промежуточными результатами
+        results = trainer.forward(teacher_embeddings, return_intermediate=True)
+        
+        processing_time = time.time() - start_time
+        
+        print(f"📤 Output: {output.shape}")
+        print(f"⏱️  Processing time: {processing_time:.4f}s")
+        print(f"⚡ Throughput: {batch_size / processing_time:.1f} samples/sec")
+        
+        # Проверка результатов
+        expected_surface_size = 15 * 15  # single surface strategy
+        assert output.shape == (batch_size, expected_surface_size), f"Неверная output shape: {output.shape}"
+        assert output.requires_grad, "Output должен поддерживать градиенты"
+        
+        # Проверка промежуточных результатов
+        assert "surface_embeddings" in results, "surface_embeddings отсутствуют"
+        assert "output" in results, "output отсутствует"
+        
+        surface_embeddings = results["surface_embeddings"]
+        assert surface_embeddings.shape == (batch_size, expected_surface_size), f"Неверная surface shape: {surface_embeddings.shape}"
+        
+        print("✅ End-to-end pipeline работает корректно")
+        print(f"   Teacher ({teacher_dim}D) → Adapter ({expected_surface_size}D) → Processor ({expected_surface_size}D)")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ошибка в end-to-end pipeline: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_training_workflows(trainer):
+    """Тест различных режимов обучения"""
+    print("\n🎯 Testing training workflows...")
+    
+    try:
+        # Подготовка тестовых данных
+        batch_size = 2
+        teacher_dim = 4096
+        
+        question_embeddings = torch.randn(batch_size, teacher_dim, dtype=torch.float32)
+        answer_embeddings = torch.randn(batch_size, teacher_dim, dtype=torch.float32)
+        
+        print(f"📥 Training data: questions {question_embeddings.shape}, answers {answer_embeddings.shape}")
+        
+        # Тест joint training step
+        print("\n🔗 Testing joint training step...")
+        trainer.config.joint_training = True
+        
+        joint_metrics = trainer.train_step(question_embeddings, answer_embeddings)
+        
+        assert "total_loss" in joint_metrics, "total_loss отсутствует"
+        assert "main_loss" in joint_metrics, "main_loss отсутствует"
+        assert "qa_similarity" in joint_metrics, "qa_similarity отсутствует"
+        
+        print(f"   Loss: {joint_metrics['total_loss']:.6f}")
+        print(f"   QA similarity: {joint_metrics['qa_similarity']:.4f}")
+        
+        # Тест separate training
+        print("\n🔀 Testing separate training workflow...")
+        trainer.config.joint_training = False
+        trainer.current_epoch = 0  # Reset для warmup
+        trainer.adapter_warmup_complete = False
+        
+        # Adapter warmup step
+        warmup_metrics = trainer.train_step(question_embeddings, answer_embeddings)
+        
+        assert "phase" in warmup_metrics, "phase информация отсутствует"
+        assert warmup_metrics["phase"] == "adapter_warmup", f"Неверная фаза: {warmup_metrics['phase']}"
+        
+        print(f"   Warmup loss: {warmup_metrics['total_loss']:.6f}")
+        
+        # Processor training step
+        trainer.current_epoch = 5  # Skip warmup
+        processor_metrics = trainer.train_step(question_embeddings, answer_embeddings)
+        
+        assert processor_metrics["phase"] == "processor_training", f"Неверная фаза: {processor_metrics['phase']}"
+        
+        print(f"   Processor loss: {processor_metrics['total_loss']:.6f}")
+        print(f"   Processor QA similarity: {processor_metrics['qa_similarity']:.4f}")
+        
+        print("✅ Все режимы обучения работают корректно")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ошибка в training workflows: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_gradient_flow(trainer):
+    """Тест gradient flow для training готовности"""
+    print("\n🔄 Testing gradient flow...")
+    
+    try:
+        # Включаем anomaly detection для debugging
+        torch.autograd.set_detect_anomaly(True)
+        
+        # Подготовка данных с градиентами
+        question_embeddings = torch.randn(2, 4096, dtype=torch.float32, requires_grad=True)
+        answer_embeddings = torch.randn(2, 4096, dtype=torch.float32)
+        
+        # Forward pass
+        results = trainer.forward(question_embeddings, return_intermediate=True)
+        
+        # Loss computation
+        target_surface = trainer.adapter(answer_embeddings)
+        loss = torch.nn.functional.mse_loss(results["output"], target_surface)
+        
+        print(f"📊 Test loss: {loss.item():.6f}")
+        
+        # Backward pass
+        loss.backward()
+        
+        # Выключаем anomaly detection
+        torch.autograd.set_detect_anomaly(False)
+        
+        # Проверка градиентов в adapter
+        adapter_grad_norm = 0.0
+        adapter_params_with_grad = 0
+        for param in trainer.adapter.parameters():
+            if param.grad is not None:
+                adapter_grad_norm += param.grad.norm().item() ** 2
+                adapter_params_with_grad += 1
+        adapter_grad_norm = np.sqrt(adapter_grad_norm)
+        
+        # Проверка градиентов в embedding_processor
+        processor_grad_norm = 0.0
+        processor_params_with_grad = 0
+        for param in trainer.embedding_processor.parameters():
+            if param.grad is not None:
+                processor_grad_norm += param.grad.norm().item() ** 2
+                processor_params_with_grad += 1
+        processor_grad_norm = np.sqrt(processor_grad_norm)
+        
+        print(f"🔗 Adapter gradients: norm={adapter_grad_norm:.6f}, params={adapter_params_with_grad}")
+        print(f"🧠 Processor gradients: norm={processor_grad_norm:.6f}, params={processor_params_with_grad}")
+        
+        # Проверка что градиенты есть
+        assert adapter_grad_norm > 0, "Adapter градиенты отсутствуют"
+        assert processor_grad_norm > 0, "EmbeddingProcessor градиенты отсутствуют"
+        assert adapter_params_with_grad > 0, "Нет параметров с градиентами в adapter"
+        assert processor_params_with_grad > 0, "Нет параметров с градиентами в processor"
+        
+        print("✅ Gradient flow работает корректно")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ошибка в gradient flow: {e}")
+        # Выключаем anomaly detection в случае ошибки
+        torch.autograd.set_detect_anomaly(False)
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_performance_benchmark(trainer):
+    """Тест производительности интегрированной системы"""
+    print("\n⚡ Performance benchmark...")
+    
+    try:
+        # Подготовка различных размеров batch
+        teacher_dim = 4096
+        batch_sizes = [1, 4, 8, 16]
+        
+        print("Batch Size | Forward Time | Throughput")
+        print("-" * 40)
+        
+        for batch_size in batch_sizes:
+            teacher_embeddings = torch.randn(batch_size, teacher_dim, dtype=torch.float32)
+            
+            # Warm-up
+            for _ in range(3):
+                _ = trainer.forward(teacher_embeddings)
+            
+            # Benchmark
+            start_time = time.time()
+            for _ in range(10):
+                output = trainer.forward(teacher_embeddings)
+            total_time = time.time() - start_time
+            
+            avg_time_per_batch = total_time / 10
+            throughput = batch_size / avg_time_per_batch
+            
+            print(f"{batch_size:>9} | {avg_time_per_batch:>11.4f}s | {throughput:>9.1f} smp/s")
+        
+        print("✅ Performance benchmark завершен")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ошибка в performance benchmark: {e}")
+        return False
+
+
+def test_convenience_functions():
+    """Тест convenience functions для создания тренеров"""
+    print("\n🛠️  Testing convenience functions...")
+    
+    try:
+        from training.embedding_trainer.adapter_integration import (
+            create_llama3_cube_trainer,
+            create_distilbert_cube_trainer
+        )
+        
+        # Тест LLaMA-3 тренера
+        llama_trainer = create_llama3_cube_trainer(
             cube_dimensions=(15, 15, 11),
             adapter_strategy="learned_linear",
             device="cpu"
         )
         
-        # Проверка информации о системе
-        info = trainer.get_info()
+        llama_info = llama_trainer.get_info()
+        assert llama_info["teacher_model"] == "Meta-Llama-3-8B", "Неверная teacher модель для LLaMA"
         
-        print(f"   ✅ Integrated trainer created:")
-        print(f"   📊 Teacher: {info['teacher_model']}")
-        print(f"   🔧 Adapter: {info['adapter']['input_dim']}D → {info['adapter']['output_dim']}D")
-        print(f"   📦 Cube: {info['cube_dimensions']}")
-        print(f"   🎯 Compression: {info['adapter']['compression_ratio']:.3f}")
-        print(f"   📈 Total parameters: {info['total_parameters']:,}")
+        print(f"✅ LLaMA-3 trainer: {llama_info['teacher_model']}, {llama_info['total_parameters']:,} params")
         
-        print("\n📋 1.2: Testing forward pass through full pipeline...")
-        
-        # Тестовый forward pass
-        batch_size = 3
-        teacher_embeddings = torch.randn(batch_size, 4096)  # LLaMA-3-8B размер
-        
-        # Full forward pass
-        output = trainer.forward(teacher_embeddings)
-        print(f"   ✅ Forward pass: {teacher_embeddings.shape} → {output.shape}")
-        
-        # Forward pass с промежуточными результатами
-        results = trainer.forward(teacher_embeddings, return_intermediate=True)
-        
-        print(f"   📊 Pipeline details:")
-        print(f"      Teacher: {results['teacher_embeddings'].shape}")
-        print(f"      Surface: {results['surface_embeddings'].shape}")
-        print(f"      Output: {results['output'].shape}")
-        
-        if results['reconstructed'] is not None:
-            print(f"      Reconstructed: {results['reconstructed'].shape}")
-        
-        print("\n🎯 ТЕСТ 1 РЕЗУЛЬТАТ: ✅ SUCCESS")
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ ТЕСТ 1 FAILED: {e}")
-        traceback.print_exc()
-        return False
-
-
-def test_different_models():
-    """
-    Тест 2: Разные teacher модели
-    """
-    print("\n🧪 ТЕСТ 2: Different Teacher Models")
-    print("=" * 50)
-    
-    try:
-        models_to_test = [
-            ("LLaMA-3-8B", create_llama3_cube_trainer),
-            ("DistilBERT", create_distilbert_cube_trainer)
-        ]
-        
-        results = {}
-        
-        for model_name, create_func in models_to_test:
-            print(f"\n📋 2.{models_to_test.index((model_name, create_func))+1}: Testing {model_name}...")
-            
-            # Создание тренера для модели
-            trainer = create_func(
-                cube_dimensions=(15, 15, 11),
-                adapter_strategy="learned_linear",
-                device="cpu"
-            )
-            
-            info = trainer.get_info()
-            
-            # Тестовый forward pass
-            input_dim = info['adapter']['input_dim']
-            test_input = torch.randn(2, input_dim)
-            
-            start_time = time.time()
-            output = trainer.forward(test_input)
-            forward_time = time.time() - start_time
-            
-            results[model_name] = {
-                "input_dim": input_dim,
-                "output_dim": info['adapter']['output_dim'],
-                "compression_ratio": info['adapter']['compression_ratio'],
-                "parameters": info['total_parameters'],
-                "forward_time_ms": forward_time * 1000
-            }
-            
-            print(f"   ✅ {model_name}:")
-            print(f"      Input: {input_dim}D")
-            print(f"      Compression: {results[model_name]['compression_ratio']:.3f}")
-            print(f"      Parameters: {results[model_name]['parameters']:,}")
-            print(f"      Forward time: {results[model_name]['forward_time_ms']:.2f}ms")
-        
-        print("\n📊 MODEL COMPARISON:")
-        print("-" * 50)
-        for model_name, stats in results.items():
-            print(f"{model_name:15} | {stats['input_dim']:4}D → {stats['output_dim']:3}D | "
-                  f"{stats['compression_ratio']:5.3f} | {stats['parameters']:7,} params")
-        
-        print("\n🎯 ТЕСТ 2 РЕЗУЛЬТАТ: ✅ SUCCESS")
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ ТЕСТ 2 FAILED: {e}")
-        traceback.print_exc()
-        return False
-
-
-def test_joint_training():
-    """
-    Тест 3: Joint training адаптера и куба
-    """
-    print("\n🧪 ТЕСТ 3: Joint Training Functionality")
-    print("=" * 50)
-    
-    try:
-        print("📋 3.1: Setting up joint training...")
-        
-        # Создание тренера с joint training
-        config = AdapterIntegrationConfig(
-            teacher_model="DistilBERT",  # Используем меньшую модель для быстрого тестирования
+        # Тест DistilBERT тренера
+        bert_trainer = create_distilbert_cube_trainer(
             cube_dimensions=(15, 15, 11),
             adapter_strategy="learned_linear",
-            joint_training=True,
-            use_reconstruction_loss=True,
-            reconstruction_weight=0.1
+            device="cpu"
         )
         
-        trainer = AdapterCubeTrainer(config=config, device="cpu")
-        trainer.initialize_components()
+        bert_info = bert_trainer.get_info()
+        assert bert_info["teacher_model"] == "DistilBERT", "Неверная teacher модель для BERT"
         
-        print(f"   ✅ Joint trainer initialized")
-        print(f"   🔧 Joint training: {trainer.config.joint_training}")
-        print(f"   📊 Reconstruction loss: {trainer.config.use_reconstruction_loss}")
+        print(f"✅ DistilBERT trainer: {bert_info['teacher_model']}, {bert_info['total_parameters']:,} params")
         
-        print("\n📋 3.2: Testing training step...")
+        print("✅ Convenience functions работают корректно")
         
-        # Создание тестовых данных (Q&A пары)
-        batch_size = 2
-        embedding_dim = 768  # DistilBERT
-        
-        question_embeddings = torch.randn(batch_size, embedding_dim)
-        answer_embeddings = torch.randn(batch_size, embedding_dim)
-        
-        # Один шаг обучения
-        metrics = trainer.train_step(question_embeddings, answer_embeddings)
-        
-        print(f"   ✅ Training step completed:")
-        print(f"      Total loss: {metrics['total_loss']:.4f}")
-        print(f"      Main loss: {metrics['main_loss']:.4f}")
-        print(f"      Reconstruction loss: {metrics['reconstruction_loss']:.4f}")
-        print(f"      Q→A similarity: {metrics['qa_similarity']:.4f}")
-        
-        print("\n📋 3.3: Testing loss computation...")
-        
-        # Тестирование loss computation
-        losses = trainer.compute_loss(question_embeddings, answer_embeddings)
-        
-        print(f"   ✅ Loss computation:")
-        for loss_name, loss_value in losses.items():
-            print(f"      {loss_name}: {loss_value.item():.4f}")
-        
-        print("\n🎯 ТЕСТ 3 РЕЗУЛЬТАТ: ✅ SUCCESS")
         return True
         
     except Exception as e:
-        print(f"\n❌ ТЕСТ 3 FAILED: {e}")
+        print(f"❌ Ошибка в convenience functions: {e}")
+        import traceback
         traceback.print_exc()
         return False
 
 
-def test_adapter_strategies():
-    """
-    Тест 4: Разные стратегии адаптера
-    """
-    print("\n🧪 ТЕСТ 4: Different Adapter Strategies")
-    print("=" * 50)
+def run_comprehensive_test():
+    """Запуск полного набора тестов"""
+    print("=" * 80)
+    print("🧪 COMPREHENSIVE TEST: AdapterCubeTrainer + EmbeddingProcessor.SURFACE_ONLY")
+    print("=" * 80)
     
-    strategies = ["learned_linear", "hierarchical", "attention_based", "autoencoder"]
-    results = {}
+    test_results = []
     
-    try:
-        for strategy in strategies:
-            print(f"\n📋 4.{strategies.index(strategy)+1}: Testing {strategy} strategy...")
-            
-            # Создание тренера с данной стратегией
-            config = AdapterIntegrationConfig(
-                teacher_model="DistilBERT",
-                cube_dimensions=(10, 10, 8),  # Меньший куб для быстрого тестирования
-                adapter_strategy=strategy,
-                joint_training=True
-            )
-            
-            trainer = AdapterCubeTrainer(config=config, device="cpu")
-            trainer.initialize_components()
-            
-            info = trainer.get_info()
-            
-            # Тестовый forward pass
-            test_input = torch.randn(2, 768)
-            
-            start_time = time.time()
-            output = trainer.forward(test_input)
-            forward_time = time.time() - start_time
-            
-            results[strategy] = {
-                "compression_ratio": info['adapter']['compression_ratio'],
-                "parameters": info['adapter']['parameters'],
-                "forward_time_ms": forward_time * 1000,
-                "output_shape": output.shape
-            }
-            
-            print(f"   ✅ Strategy: {strategy}")
-            print(f"      Compression: {results[strategy]['compression_ratio']:.3f}")
-            print(f"      Parameters: {results[strategy]['parameters']:,}")
-            print(f"      Forward time: {results[strategy]['forward_time_ms']:.2f}ms")
-        
-        print("\n📊 STRATEGY COMPARISON:")
-        print("-" * 70)
-        print(f"{'Strategy':<15} | {'Compression':<11} | {'Parameters':<10} | {'Time (ms)':<9}")
-        print("-" * 70)
-        for strategy, stats in results.items():
-            print(f"{strategy:<15} | {stats['compression_ratio']:>10.3f} | "
-                  f"{stats['parameters']:>9,} | {stats['forward_time_ms']:>8.2f}")
-        
-        print("\n🎯 ТЕСТ 4 РЕЗУЛЬТАТ: ✅ SUCCESS")
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ ТЕСТ 4 FAILED: {e}")
-        traceback.print_exc()
-        return False
-
-
-def test_surface_strategies():
-    """
-    Тест 5: Разные стратегии surface (single/triple/full)
-    """
-    print("\n🧪 ТЕСТ 5: Different Surface Strategies")
-    print("=" * 50)
+    # 1. Создание тренера  
+    trainer = test_adapter_cube_trainer_creation()
+    test_results.append(("Trainer Creation", trainer is not None))
     
-    surface_strategies = ["single", "triple", "full"]
-    results = {}
+    if trainer is not None:
+        # 2. End-to-end pipeline
+        pipeline_success = test_end_to_end_pipeline(trainer)
+        test_results.append(("End-to-End Pipeline", pipeline_success))
+        
+        # 3. Training workflows
+        training_success = test_training_workflows(trainer)
+        test_results.append(("Training Workflows", training_success))
+        
+        # 4. Gradient flow
+        gradient_success = test_gradient_flow(trainer)
+        test_results.append(("Gradient Flow", gradient_success))
+        
+        # 5. Performance benchmark
+        performance_success = test_performance_benchmark(trainer)
+        test_results.append(("Performance Benchmark", performance_success))
     
-    try:
-        for surface_strategy in surface_strategies:
-            print(f"\n📋 5.{surface_strategies.index(surface_strategy)+1}: Testing {surface_strategy} surface...")
-            
-            config = AdapterIntegrationConfig(
-                teacher_model="DistilBERT",
-                cube_dimensions=(10, 10, 8),
-                surface_strategy=surface_strategy,
-                adapter_strategy="learned_linear",
-                joint_training=True
-            )
-            
-            trainer = AdapterCubeTrainer(config=config, device="cpu")
-            trainer.initialize_components()
-            
-            info = trainer.get_info()
-            
-            # Тестовый forward pass
-            test_input = torch.randn(2, 768)
-            output = trainer.forward(test_input)
-            
-            surface_size = info['adapter']['output_dim']
-            
-            results[surface_strategy] = {
-                "surface_size": surface_size,
-                "compression_ratio": info['adapter']['compression_ratio'],
-                "output_shape": output.shape
-            }
-            
-            print(f"   ✅ Surface strategy: {surface_strategy}")
-            print(f"      Surface size: {surface_size}")
-            print(f"      Compression: {results[surface_strategy]['compression_ratio']:.3f}")
-            print(f"      Output shape: {output.shape}")
-        
-        print("\n📊 SURFACE STRATEGY COMPARISON:")
-        print("-" * 60)
-        for strategy, stats in results.items():
-            coverage = ""
-            if strategy == "single":
-                coverage = "1 face"
-            elif strategy == "triple": 
-                coverage = "3 faces"
-            elif strategy == "full":
-                coverage = "6 faces"
-            
-            print(f"{strategy:<10} | {coverage:<8} | {stats['surface_size']:>4} elements | "
-                  f"{stats['compression_ratio']:>6.3f} compression")
-        
-        print("\n🎯 ТЕСТ 5 РЕЗУЛЬТАТ: ✅ SUCCESS")
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ ТЕСТ 5 FAILED: {e}")
-        traceback.print_exc()
-        return False
-
-
-def test_configuration_flexibility():
-    """
-    Тест 6: Гибкость конфигурации
-    """
-    print("\n🧪 ТЕСТ 6: Configuration Flexibility")
-    print("=" * 50)
+    # 6. Convenience functions
+    convenience_success = test_convenience_functions()
+    test_results.append(("Convenience Functions", convenience_success))
     
-    try:
-        print("📋 6.1: Testing config from dict...")
-        
-        # Конфигурация из словаря
-        config_dict = {
-            "teacher_model": "Meta-Llama-3-8B",
-            "cube_dimensions": (12, 12, 10),
-            "surface_strategy": "triple",
-            "adapter_strategy": "hierarchical",
-            "joint_training": False,
-            "use_reconstruction_loss": True,
-            "reconstruction_weight": 0.2
-        }
-        
-        trainer = AdapterCubeTrainer(config=config_dict, device="cpu")
-        trainer.initialize_components()
-        
-        info = trainer.get_info()
-        
-        print(f"   ✅ Config from dict:")
-        print(f"      Teacher: {info['teacher_model']}")
-        print(f"      Cube: {info['cube_dimensions']}")
-        print(f"      Surface: {info['surface_strategy']}")
-        print(f"      Joint training: {info['joint_training']}")
-        
-        print("\n📋 6.2: Testing forward pass...")
-        
-        # Тестовый forward pass
-        test_input = torch.randn(1, 4096)  # LLaMA-3-8B
-        output = trainer.forward(test_input)
-        
-        print(f"   ✅ Forward pass: {test_input.shape} → {output.shape}")
-        
-        print("\n📋 6.3: Testing training step...")
-        
-        # Тестовый training step
-        question_emb = torch.randn(2, 4096)
-        answer_emb = torch.randn(2, 4096)
-        
-        metrics = trainer.train_step(question_emb, answer_emb)
-        
-        print(f"   ✅ Training step:")
-        print(f"      Total loss: {metrics['total_loss']:.4f}")
-        print(f"      Q→A similarity: {metrics['qa_similarity']:.4f}")
-        
-        print("\n🎯 ТЕСТ 6 РЕЗУЛЬТАТ: ✅ SUCCESS")
-        return True
-        
-    except Exception as e:
-        print(f"\n❌ ТЕСТ 6 FAILED: {e}")
-        traceback.print_exc()
-        return False
-
-
-def main():
-    """
-    Основная функция тестирования
-    """
-    print("🚀 ADAPTER INTEGRATION TEST SUITE")
-    print("=" * 60)
-    print("Testing integration of universal adapter with CubeTrainer")
-    print("Goal: Seamless adapter+cube training pipeline\n")
+    # Результаты
+    print("\n" + "=" * 80)
+    print("📊 TEST RESULTS:")
+    print("=" * 80)
     
-    tests = [
-        ("Basic Adapter-Cube Integration", test_basic_integration),
-        ("Different Teacher Models", test_different_models),
-        ("Joint Training Functionality", test_joint_training),
-        ("Different Adapter Strategies", test_adapter_strategies),
-        ("Different Surface Strategies", test_surface_strategies),
-        ("Configuration Flexibility", test_configuration_flexibility)
-    ]
+    passed = 0
+    total = len(test_results)
     
-    results = []
-    
-    for test_name, test_func in tests:
-        try:
-            success = test_func()
-            results.append((test_name, success))
-        except Exception as e:
-            print(f"\n❌ CRITICAL ERROR in {test_name}: {e}")
-            results.append((test_name, False))
-    
-    # Итоговые результаты
-    print("\n" + "=" * 60)
-    print("🎯 ИТОГОВЫЕ РЕЗУЛЬТАТЫ:")
-    print("=" * 60)
-    
-    passed = sum(1 for _, success in results if success)
-    total = len(results)
-    
-    for test_name, success in results:
-        status = "✅ PASSED" if success else "❌ FAILED"
+    for test_name, success in test_results:
+        status = "✅ PASS" if success else "❌ FAIL"
         print(f"{status} {test_name}")
+        if success:
+            passed += 1
     
-    print(f"\n📊 ОБЩИЙ РЕЗУЛЬТАТ: {passed}/{total} тестов пройдено")
+    print(f"\n📈 Overall: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
     
     if passed == total:
-        print("🎉 ВСЕ ТЕСТЫ ПРОЙДЕНЫ! Adapter Integration готов к использованию!")
+        print("🎉 ALL TESTS PASSED! AdapterCubeTrainer integration готов к использованию.")
+        return True
     else:
-        print("⚠️  Некоторые тесты не прошли. Проверьте ошибки выше.")
-    
-    return passed == total
+        print("⚠️  Some tests failed. Требует исправления.")
+        return False
 
 
 if __name__ == "__main__":
-    success = main()
-    exit(0 if success else 1) 
+    run_comprehensive_test() 

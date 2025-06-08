@@ -21,37 +21,14 @@ from data.embedding_adapter.universal_adapter import (
     create_adapter_for_cube,
     KNOWN_MODELS
 )
+# Новый импорт для EmbeddingProcessor.SURFACE_ONLY
+from core.embedding_processor import (
+    EmbeddingProcessor, 
+    create_surface_only_config,
+    ProcessingMode
+)
 
 logger = logging.getLogger(__name__)
-
-
-class SimpleWrapper:
-    """
-    Простой wrapper для EmbeddingProcessor чтобы имитировать CubeTrainer API
-    Используется когда мы работаем напрямую с surface embeddings
-    """
-    
-    def __init__(self, embedding_processor, device: str, learning_rate: float):
-        self.embedding_processor = embedding_processor
-        self.device = device
-        
-        # Создаем optimizer для embedding_processor
-        self.optimizer = optim.AdamW(
-            self.embedding_processor.parameters(), 
-            lr=learning_rate
-        )
-    
-    def forward(self, surface_embeddings: torch.Tensor) -> torch.Tensor:
-        """Forward pass через embedding processor"""
-        return self.embedding_processor.forward(surface_embeddings)
-    
-    def get_info(self) -> Dict[str, Any]:
-        """Информация о processor"""
-        return {
-            "type": "SimpleWrapper",
-            "device": self.device,
-            "total_parameters": sum(p.numel() for p in self.embedding_processor.parameters())
-        }
 
 
 @dataclass
@@ -94,7 +71,7 @@ class AdapterCubeTrainer:
     
     Комбинирует:
     - UniversalEmbeddingAdapter (любая модель → surface размер)
-    - CubeTrainer (3D cubic processing)
+    - EmbeddingProcessor.SURFACE_ONLY (surface processing)
     - Joint training pipeline
     """
     
@@ -117,7 +94,7 @@ class AdapterCubeTrainer:
         
         # Компоненты системы
         self.adapter = None
-        self.cube_trainer = None
+        self.embedding_processor = None  # Заменяем cube_trainer на direct EmbeddingProcessor
         self.adapter_optimizer = None
         self.joint_optimizer = None
         
@@ -167,8 +144,8 @@ class AdapterCubeTrainer:
         # 1. Создание универсального адаптера
         self._setup_adapter()
         
-        # 2. Настройка CubeTrainer
-        self._setup_cube_trainer()
+        # 2. Настройка EmbeddingProcessor (заменяет CubeTrainer)
+        self._setup_embedding_processor()
         
         # 3. Настройка оптимизаторов
         self._setup_optimizers()
@@ -202,39 +179,45 @@ class AdapterCubeTrainer:
         self.logger.info(f"   Compression: {compression_ratio:.3f} ({compression_ratio*100:.1f}%)")
         self.logger.info(f"   Parameters: {param_count:,}")
     
-    def _setup_cube_trainer(self):
-        """Настройка CubeTrainer с правильными размерами"""
-        self.logger.info("🔧 Setting up CubeTrainer...")
+    def _setup_embedding_processor(self):
+        """Настройка EmbeddingProcessor.SURFACE_ONLY (заменяет SimpleWrapper)"""
+        self.logger.info("🔧 Setting up EmbeddingProcessor.SURFACE_ONLY...")
         
-        # Для универсального адаптера нам нужен direct EmbeddingProcessor
-        # без EmbeddingReshaper, так как мы работаем с surface embeddings
+        # Вычисляем параметры surface processing
         surface_size = self._calculate_surface_size()
+        surface_dims = self.config.cube_dimensions[:2]  # (15, 15)
+        
+        # Создаем surface-only конфигурацию
+        processor_config = create_surface_only_config(
+            surface_size=surface_size,
+            surface_dims=surface_dims
+        )
+        
+        # Настройка устройства
+        processor_config.device = str(self.device)
         
         # Создаем EmbeddingProcessor напрямую
-        from core.embedding_processor import EmbeddingProcessor, EmbeddingConfig
+        self.embedding_processor = EmbeddingProcessor(processor_config)
+        self.embedding_processor.to(self.device)
         
-        processor_config = EmbeddingConfig(
-            lattice_size=tuple(self.config.cube_dimensions),
-            device=str(self.device),
-            input_dim=surface_size,  # Surface размер
-            output_dim=surface_size,  # Surface размер
-            processing_mode="surface_direct"  # Новый режим для surface-only
-        )
-        
-        self.embedding_processor = EmbeddingProcessor(config=processor_config)
-        
-        # Создаем простой wrapper для совместимости с CubeTrainer API
-        self.cube_trainer = SimpleWrapper(
-            embedding_processor=self.embedding_processor,
-            device=self.device,
-            learning_rate=self.config.cube_learning_rate
-        )
-        
-        self.logger.info(f"✅ Direct EmbeddingProcessor initialized for {surface_size}D surface embeddings")
+        self.logger.info(f"✅ EmbeddingProcessor.SURFACE_ONLY initialized:")
+        self.logger.info(f"   Mode: {ProcessingMode.SURFACE_ONLY.value}")
+        self.logger.info(f"   Surface size: {surface_size}D")
+        self.logger.info(f"   Surface dims: {surface_dims}")
+        self.logger.info(f"   Processing depth: {processor_config.surface_processing_depth}")
     
     def _setup_optimizers(self):
         """Настройка оптимизаторов для joint training"""
         self.logger.info("🔧 Setting up optimizers...")
+        
+        # Всегда создаем все оптимизаторы для гибкости переключения режимов
+        self.adapter_optimizer = optim.Adam(self.adapter.parameters(), lr=self.config.adapter_learning_rate)
+        
+        # Создаем отдельный optimizer для EmbeddingProcessor
+        self.processor_optimizer = optim.AdamW(
+            self.embedding_processor.parameters(), 
+            lr=self.config.cube_learning_rate
+        )
         
         if self.config.joint_training:
             # Joint optimizer для обоих компонентов
@@ -242,10 +225,9 @@ class AdapterCubeTrainer:
             self.joint_optimizer = optim.AdamW(all_params, lr=self.config.cube_learning_rate)
             self.logger.info("✅ Joint optimizer configured (adapter + embedding_processor)")
         else:
-            # Separate optimizers
-            self.adapter_optimizer = optim.Adam(self.adapter.parameters(), lr=self.config.adapter_learning_rate)
-            # cube_trainer уже имеет свой optimizer
-            self.logger.info("✅ Separate optimizers configured")
+            self.joint_optimizer = None
+            
+        self.logger.info("✅ All optimizers configured (adapter, processor, joint)")
     
     def _calculate_surface_size(self) -> int:
         """Вычисление размера surface в зависимости от стратегии"""
@@ -286,7 +268,7 @@ class AdapterCubeTrainer:
     
     def forward(self, teacher_embeddings: torch.Tensor, return_intermediate: bool = False) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        Full forward pass через adapter + cube
+        Full forward pass через adapter + EmbeddingProcessor.SURFACE_ONLY
         
         Args:
             teacher_embeddings: Эмбединги от teacher модели [batch, teacher_dim]
@@ -303,7 +285,7 @@ class AdapterCubeTrainer:
             surface_embeddings = self.adapter(teacher_embeddings)
             reconstructed = None
         
-        # 2. Cube: surface_size → surface_size
+        # 2. EmbeddingProcessor.SURFACE_ONLY: surface_size → surface_size
         processed_embeddings = self.embedding_processor.forward(surface_embeddings)
         
         if return_intermediate:
@@ -382,7 +364,7 @@ class AdapterCubeTrainer:
     def _joint_train_step(self, 
                          question_embeddings: torch.Tensor, 
                          answer_embeddings: torch.Tensor) -> Dict[str, float]:
-        """Joint training step (adapter + cube одновременно)"""
+        """Joint training step (adapter + EmbeddingProcessor одновременно)"""
         self.adapter.train()
         self.embedding_processor.train()
         
@@ -421,21 +403,21 @@ class AdapterCubeTrainer:
     def _separate_train_step(self, 
                            question_embeddings: torch.Tensor, 
                            answer_embeddings: torch.Tensor) -> Dict[str, float]:
-        """Separate training (adapter first, then cube)"""
+        """Separate training (adapter first, then EmbeddingProcessor)"""
         if not self.adapter_warmup_complete and self.current_epoch < self.config.adapter_warmup_epochs:
             # Adapter warmup phase
             return self._adapter_warmup_step(question_embeddings, answer_embeddings)
         else:
             # Main training phase
             self.adapter_warmup_complete = True
-            return self._cube_training_step(question_embeddings, answer_embeddings)
+            return self._processor_training_step(question_embeddings, answer_embeddings)
     
     def _adapter_warmup_step(self, 
                            question_embeddings: torch.Tensor, 
                            answer_embeddings: torch.Tensor) -> Dict[str, float]:
         """Adapter warmup step (только adapter)"""
         self.adapter.train()
-        self.embedding_processor.eval()  # Freeze cube
+        self.embedding_processor.eval()  # Freeze EmbeddingProcessor
         
         # Adapter training только на reconstruction
         _, reconstructed = self.adapter(question_embeddings, return_reconstruction=True)
@@ -452,10 +434,10 @@ class AdapterCubeTrainer:
             "phase": "adapter_warmup"
         }
     
-    def _cube_training_step(self, 
+    def _processor_training_step(self, 
                           question_embeddings: torch.Tensor, 
                           answer_embeddings: torch.Tensor) -> Dict[str, float]:
-        """Cube training step (только cube, adapter frozen)"""
+        """EmbeddingProcessor training step (только EmbeddingProcessor, adapter frozen)"""
         self.adapter.eval()  # Freeze adapter
         self.embedding_processor.train()
         
@@ -464,7 +446,7 @@ class AdapterCubeTrainer:
             question_surface = self.adapter(question_embeddings)
             answer_surface = self.adapter(answer_embeddings)
         
-        # Cube training
+        # EmbeddingProcessor training
         processed_surface = self.embedding_processor.forward(question_surface)
         
         main_loss = nn.functional.cosine_embedding_loss(
@@ -473,9 +455,9 @@ class AdapterCubeTrainer:
             torch.ones(answer_surface.size(0)).to(self.device)
         )
         
-        self.cube_trainer.optimizer.zero_grad()
+        self.processor_optimizer.zero_grad()
         main_loss.backward()
-        self.cube_trainer.optimizer.step()
+        self.processor_optimizer.step()
         
         # Metrics
         with torch.no_grad():
@@ -489,7 +471,7 @@ class AdapterCubeTrainer:
             "total_loss": main_loss.item(),
             "main_loss": main_loss.item(),
             "qa_similarity": qa_similarity,
-            "phase": "cube_training"
+            "phase": "processor_training"
         }
     
     def get_info(self) -> Dict[str, Any]:
@@ -502,7 +484,13 @@ class AdapterCubeTrainer:
             "parameters": self.adapter.get_parameter_count() if self.adapter else None
         }
         
-        cube_info = self.cube_trainer.get_info() if self.cube_trainer else {}
+        processor_info = {
+            "type": "EmbeddingProcessor.SURFACE_ONLY",
+            "mode": ProcessingMode.SURFACE_ONLY.value,
+            "surface_size": self._calculate_surface_size(),
+            "surface_dims": self.config.cube_dimensions[:2],
+            "total_parameters": sum(p.numel() for p in self.embedding_processor.parameters()) if self.embedding_processor else 0
+        }
         
         return {
             "teacher_model": self.config.teacher_model,
@@ -512,9 +500,9 @@ class AdapterCubeTrainer:
             "current_epoch": self.current_epoch,
             "adapter_warmup_complete": self.adapter_warmup_complete,
             "adapter": adapter_info,
-            "cube": cube_info,
+            "processor": processor_info,
             "total_parameters": (adapter_info.get("parameters", 0) + 
-                               cube_info.get("total_parameters", 0) if cube_info else 0)
+                               processor_info.get("total_parameters", 0))
         }
 
 
