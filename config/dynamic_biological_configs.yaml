@@ -9,6 +9,12 @@ broca_area_dynamic:
   name: "Broca Area Dynamic Configuration"
   description: "Fully configurable biologically accurate architecture"
 
+  # === PIPELINE CONFIGURATION ===
+  pipeline:
+    mode: "direct_embedding" # direct_embedding, text_to_text, hybrid_embedding
+    skip_tokenization: true # Skip tokenization for embedding-based modes
+    use_existing_components: true # Leverage phrase_bank_decoder, universal_adapter
+
   # === CORE BIOLOGICAL PARAMETERS ===
   biological:
     brain_region: "broca" # broca, wernicke, custom
@@ -190,6 +196,90 @@ broca_area_dynamic:
       graph_stabilization: true # Mamba-based graph stabilization
       memory_management: true # Advanced memory management
       fallback_strategies: true # Enable fallback strategies
+
+# =============================================================================
+# PIPELINE-SPECIFIC CONFIGURATIONS
+# =============================================================================
+
+direct_embedding_pipeline:
+  parent: "broca_area_dynamic"
+  name: "Direct Embedding Pipeline (Recommended)"
+  description: "Text → Teacher Embeddings → 3D Lattice → phrase_bank_decoder"
+
+  pipeline:
+    mode: "direct_embedding"
+    skip_tokenization: true
+    use_existing_components: true
+
+  components:
+    teacher_model: true # Use teacher model for embeddings
+    embedding_projector: true # Direct embedding to 3D projection
+    phrase_bank_decoder: true # Use existing phrase_bank_decoder
+    universal_adapter: false # Not needed for direct mode
+    cct_encoder: false # Skip CCT encoding
+    cct_decoder: false # Skip CCT decoding
+    tokenization: false # Skip tokenization
+
+  memory_efficiency: "high" # Most memory efficient approach
+  development_speed: "fastest" # Fastest to implement
+
+text_to_text_pipeline:
+  parent: "broca_area_dynamic"
+  name: "Full Text-to-Text Pipeline"
+  description: "Text → Tokenization → CCT → 3D Lattice → CCT → Text"
+
+  pipeline:
+    mode: "text_to_text"
+    skip_tokenization: false
+    use_existing_components: false
+
+  components:
+    teacher_model: false # Don't need teacher model
+    embedding_projector: false # Use CCT encoder instead
+    phrase_bank_decoder: false # Use CCT decoder
+    universal_adapter: false # Not needed
+    cct_encoder: true # Full CCT encoding
+    cct_decoder: true # Full CCT decoding
+    tokenization: true # Need tokenization
+
+  cct:
+    encoder:
+      adaptive_spatial_reshape: true
+      conv_tokenization: true # Need conv tokenization
+      transformer_blocks: 4
+
+    decoder:
+      adaptive_upsampling: true
+      transformer_blocks: 2
+
+  memory_efficiency: "medium" # Higher memory usage
+  quality_target: "highest" # Potentially highest quality
+
+hybrid_embedding_pipeline:
+  parent: "broca_area_dynamic"
+  name: "Hybrid Embedding Pipeline (Research)"
+  description: "Embeddings → universal_adapter → 3D Lattice → phrase_bank_decoder"
+
+  pipeline:
+    mode: "hybrid_embedding"
+    skip_tokenization: true
+    use_existing_components: true
+
+  components:
+    teacher_model: false # Input embeddings directly
+    embedding_projector: false # Use universal_adapter
+    phrase_bank_decoder: true # Output via phrase_bank
+    universal_adapter: true # Key component for embedding adaptation
+    cct_encoder: false # Skip CCT
+    cct_decoder: false # Skip CCT
+    tokenization: false # Skip tokenization
+
+  universal_adapter:
+    strategy: "learned_linear" # Or hierarchical, attention_based
+    reconstruction_loss: 0.01 # Target reconstruction quality
+
+  memory_efficiency: "high" # Efficient like direct embedding
+  research_flexibility: "maximum" # Maximum research potential
 
 # =============================================================================
 # DEVELOPMENT SCALE CONFIGURATIONS

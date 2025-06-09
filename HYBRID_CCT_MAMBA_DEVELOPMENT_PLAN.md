@@ -39,10 +39,24 @@
 - **gMLP параметры:** ~10,000 (локальные связи)
 - **Общие параметры:** ~2-5M (vs текущие 73M)
 
-### **Полный Pipeline:**
+### **Flexible Pipeline Options:**
+
+#### **Option 1: Direct Embedding Pipeline (Recommended)**
 
 ```
-Input Text → Tokenization → CCT Encoder → 3D Lattice (333×333×166) → Mamba Processing → CCT Decoder → Output Text
+Input Text → Teacher Model Embeddings → Direct 3D Projection → Cellular Processing → phrase_bank_decoder → Output Text
+```
+
+#### **Option 2: Full Text-to-Text Pipeline (Alternative)**
+
+```
+Input Text → Tokenization → CCT Encoder → 3D Lattice → Mamba Processing → CCT Decoder → Output Text
+```
+
+#### **Option 3: Hybrid Embedding Pipeline (Research)**
+
+```
+Input Embeddings → universal_adapter → 3D Lattice → Cellular Processing → Embedding Reconstruction → phrase_bank_decoder
 ```
 
 ---
@@ -56,28 +70,64 @@ Input Text → Tokenization → CCT Encoder → 3D Lattice (333×333×166) → M
 
 #### **Key Components:**
 
-- [ ] **Text Processing Pipeline**
+- [ ] **Flexible Processing Pipeline**
 
   ```python
-  class TextToCellularPipeline:
-      def __init__(self, config: CellularConfig):
-          self.tokenizer = AutoTokenizer.from_pretrained(config.base_model)
-          self.cct_encoder = CCTEncoder(config)
-          self.cellular_lattice = CellularLattice3D(
-              size=(config.lattice_x, config.lattice_y, config.lattice_z),
-              gmlp_params=config.gmlp_params
-          )
-          self.mamba_processor = MambaProcessor(config)
-          self.cct_decoder = CCTDecoder(config)
+  class FlexibleCellularPipeline:
+      def __init__(self, config: DynamicBiologicalConfig):
+          self.config = config
 
-      def forward(self, text: str) -> str:
-          # Full text-to-text processing
+          # Core components (always present)
+          self.cellular_lattice = BiologicalLattice3D(config)
+          self.mamba_processor = MambaProcessor(config)
+
+          # Optional components based on pipeline choice
+          if config.pipeline_mode == "direct_embedding":
+              self.teacher_model = AutoModel.from_pretrained(config.teacher_model)
+              self.embedding_projector = EmbeddingTo3DProjector(config)
+              self.phrase_bank_decoder = PhraseBankDecoder(config)
+
+          elif config.pipeline_mode == "text_to_text":
+              self.tokenizer = AutoTokenizer.from_pretrained(config.base_model)
+              self.cct_encoder = CCTEncoder(config)
+              self.cct_decoder = CCTDecoder(config)
+
+          elif config.pipeline_mode == "hybrid_embedding":
+              self.universal_adapter = UniversalEmbeddingAdapter(config)
+              self.phrase_bank_decoder = PhraseBankDecoder(config)
+
+      def forward(self, input_data) -> str:
+          if self.config.pipeline_mode == "direct_embedding":
+              return self._direct_embedding_forward(input_data)
+          elif self.config.pipeline_mode == "text_to_text":
+              return self._text_to_text_forward(input_data)
+          else:
+              return self._hybrid_embedding_forward(input_data)
+
+      def _direct_embedding_forward(self, text: str) -> str:
+          # OPTION 1: Direct embedding pipeline (most efficient)
+          embeddings = self.teacher_model(text).last_hidden_state.mean(dim=1)
+          cellular_input = self.embedding_projector(embeddings)
+          cellular_states = self.cellular_lattice(cellular_input)
+          processed = self.mamba_processor(cellular_states)
+          return self.phrase_bank_decoder.decode(processed)
+
+      def _text_to_text_forward(self, text: str) -> str:
+          # OPTION 2: Full CCT pipeline (highest accuracy)
           tokens = self.tokenizer(text)
           features = self.cct_encoder(tokens)
           cellular_states = self.cellular_lattice(features)
           processed = self.mamba_processor(cellular_states)
           output_features = self.cct_decoder(processed)
           return self.tokenizer.decode(output_features)
+
+      def _hybrid_embedding_forward(self, embeddings) -> str:
+          # OPTION 3: Hybrid research pipeline
+          adapted_emb = self.universal_adapter(embeddings)
+          cellular_states = self.cellular_lattice(adapted_emb)
+          processed = self.mamba_processor(cellular_states)
+          output_emb = self.universal_adapter(processed, reverse=True)
+          return self.phrase_bank_decoder.decode(output_emb)
   ```
 
 - [ ] **Configurable Architecture**
@@ -85,27 +135,43 @@ Input Text → Tokenization → CCT Encoder → 3D Lattice (333×333×166) → M
   ```python
   @dataclass
   class DynamicBiologicalConfig:
+      # Pipeline mode selection
+      pipeline_mode: str = "direct_embedding"   # direct_embedding, text_to_text, hybrid_embedding
+
       # Core biological parameters (configurable)
       brain_region: str = "broca"               # broca, wernicke, custom
 
       # Lattice configuration (dynamic)
       lattice_x: int = 333                      # Broca area width
       lattice_y: int = 333                      # Broca area height
-      lattice_z: int = 166                      # Broca area depth
+      lattice_z: int = 166(~ lattice_x*0.5)     # Broca area depth
       scale_factor: float = 0.1                 # 0.1→dev, 0.5→research, 1.0→prod
-      gmlp_params: int = 10000
+      gmlp_params: int = 10000 (gmlp_params ~ brain_region(18000000)/ (lattice_x*lattice_y*lattice_z))
 
-      embedding_dim: int = (lattice_x*scale_factor)*(lattice_y*scale_factor)
+      # Embedding configuration (pipeline-dependent)
+      embedding_dim: int = 768 (lattice_x*scale_factor)*(lattice_y*scale_factor)                  # From teacher model or configurable
+      teacher_model: str = "distilbert-base-uncased"  # For direct_embedding mode
+      base_model: str = "distilbert-base-uncased"     # For text_to_text mode
 
       # Adaptive architecture parameters
       adaptive_spatial: bool = True             # Enable adaptive reshaping
-      adaptive_conv: bool = True                # Enable adaptive convolution
+      adaptive_conv: bool = True                # Enable adaptive convolution (text_to_text only)
       adaptive_attention: bool = True           # Enable adaptive attention heads
-
       # Formulas for dynamic calculation
-      spatial_formula: (self.spatial_x = int(math.sqrt(config.lattice.x * config.lattice.scale_factor))); self.spatial_y = int(math.sqrt(config.lattice.y * config.lattice.scale_factor))
+      spatial_formula: (self.spatial_x = int(math.sqrt(config.lattice.x * config.
+      lattice.scale_factor))); self.spatial_y = int(math.sqrt(config.lattice.y *
+      config.lattice.scale_factor))
       attention_heads_formula: str = "embedding_dim // 64"
-      conv_channels_formula: str = "max(64, surface_size // 100)" (self.conv_channels = max(64, ((config.lattice.x * config.lattice.scale_factor) * (config.lattice.y * config.lattice.scale_factor)) // 100))
+      conv_channels_formula: str = "max(64, surface_size // 100)" (self.
+      conv_channels = max(64, ((config.lattice.x * config.lattice.scale_factor) *
+      (config.lattice.y * config.lattice.scale_factor)) // 100))
+
+      # Component enablement
+      use_tokenization: bool = False            # Only for text_to_text mode
+      use_cct_encoder: bool = False             # Only for text_to_text mode
+      use_cct_decoder: bool = False             # Only for text_to_text mode
+      use_phrase_bank: bool = True              # For direct_embedding and hybrid modes
+      use_universal_adapter: bool = True        # For hybrid_embedding mode
 
       # Integration settings
       use_mamba_vision: bool = True
@@ -137,16 +203,16 @@ Input Text → Tokenization → CCT Encoder → 3D Lattice (333×333×166) → M
 - [ ] `core/text_to_cellular/` - Complete pipeline
 - [ ] `models/registry/` - Versioning infrastructure
 - [ ] `config/biological_configs.yaml` - Broca's area specifications
-- [ ] Documentation: `docs/TEXT_TO_TEXT_ARCHITECTURE.md`
+- [ ] Documentation: `docs/TEXT_TO_TEXT_ARCHITECTURE.md`; `docs/DYNAMIC_ARCHITECTURE_EXPLANATION.md` `PIPELINE_CLARIFICATION_SUMMARY.md`
 
 ---
 
 ## 📋 PHASE 2: BIOLOGICALLY ACCURATE HYBRID ARCHITECTURE
 
-### **Stage 2.1: CCT Encoder with Text Input**
+### **Stage 2.1: Pipeline Implementation (Flexible Architecture)**
 
 **Время:** 3-4 дня  
-**Приоритет:** HIGH
+**Приоритет:** HIGH - Start with Direct Embedding (fastest implementation)
 
 #### **Enhanced Architectural Design:**
 
@@ -173,20 +239,32 @@ CCT Text Encoder:
 
 #### **Tasks:**
 
-- [ ] **Dynamic CCT Components**
+- [ ] **Priority 1: Direct Embedding Pipeline (Recommended)**
 
-  - [ ] `AdaptiveTextTokenizer` - configurable tokenizer integration
-  - [ ] `AdaptiveSpatialReshape` - formula-based spatial calculation
-  - [ ] `AdaptiveConvTokenizer` - configurable kernel/stride/channels
-  - [ ] `BiologicalPositionalEmbedding` - lattice-aware positioning
-  - [ ] `DynamicMambaVisionEncoder` - config-driven hybrid processing
-  - [ ] `BiologicalProjectionLayer` - adaptive CCT → 3D lattice mapping
+  - [ ] `TeacherModelEmbedder` - DistilBERT/LLaMA/GPT embedding extraction
+  - [ ] `EmbeddingTo3DProjector` - direct embedding → lattice projection
+  - [ ] `phrase_bank_decoder` integration - existing component usage
+  - [ ] Pipeline mode configuration and switching
 
-- [ ] **Fully Configurable Architecture**
-  - [ ] `DynamicConfigLoader` - load and validate configs
+- [ ] **Priority 2: Core 3D Components (All Pipelines)**
+
   - [ ] `BiologicalLattice3D` - formula-based size calculation
   - [ ] `AdaptiveCellularCA` - scale-aware CAX integration
+  - [ ] `MambaProcessor` - sequential + cellular processing
   - [ ] `ConfigurableConnectivity` - pattern-based biological connections
+
+- [ ] **Priority 3: CCT Components (Text-to-Text Pipeline)**
+
+  - [ ] `AdaptiveTextTokenizer` - configurable tokenizer integration (optional)
+  - [ ] `AdaptiveSpatialReshape` - formula-based spatial calculation (optional)
+  - [ ] `AdaptiveConvTokenizer` - configurable kernel/stride/channels (optional)
+  - [ ] `BiologicalPositionalEmbedding` - lattice-aware positioning (optional)
+  - [ ] `DynamicMambaVisionEncoder` - config-driven hybrid processing (optional)
+
+- [ ] **Priority 4: Universal Adapter Integration (Hybrid Pipeline)**
+  - [ ] `universal_adapter` integration - existing component usage
+  - [ ] Embedding adaptation strategies
+  - [ ] Research pipeline implementation
 
 #### **Parameters Target:** ≤ 2M (CCT component, reduced from original plan)
 
