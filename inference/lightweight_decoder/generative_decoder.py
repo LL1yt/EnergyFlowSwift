@@ -4,6 +4,11 @@
 Основной генеративный декодер, интегрирующий революционные архитектуры:
 - 🥇 Resource-Efficient Transformer v2.1 (ULTRA-COMPACT, 722K params)
 - 🥈 Hybrid CCT+Mamba architecture (планируется)
+( CCT+Mamba превосходит по:
+  1. Spatial Intelligence (🔥 КРИТИЧНО для 15×15×11 lattice)
+  2. Natural 3D Processing (поверхности → объем → поверхности)
+  3. Emergent Pattern Detection (CNN отлично для spatial patterns)
+  4. Biological Alignment (ближе к cortical column аналогии))
 - 🥉 Enhanced CCT baseline (fallback)
 
 CRITICAL SUCCESS METRICS:

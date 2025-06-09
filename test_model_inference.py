@@ -39,6 +39,10 @@ from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
     create_emergent_trainer
 )
 from data.embedding_loader import EmbeddingLoader
+from inference.lightweight_decoder.generative_decoder import (
+    GenerativeDecoder,
+    create_generative_decoder
+)
 
 # Настройка логирования
 logging.basicConfig(
@@ -46,7 +50,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('logs/inference_testing.log')
+        logging.FileHandler('logs/inference_testing.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
@@ -81,16 +85,17 @@ class ModelInferenceTester:
         self.baseline_model = None
         self.baseline_tokenizer = None
         self.embedding_loader = None
+        self.decoder = None
         
         # Результаты тестов
         self.test_results = []
         
-        logger.info(f"🔧 Initializing InferenceTester on {self.device}")
+        logger.info(f"[INIT] Initializing InferenceTester on {self.device}")
         
     def load_trained_model(self):
         """Загрузка обученной 3D модели"""
         try:
-            logger.info(f"📥 Loading trained model from {self.config.model_checkpoint}")
+            logger.info(f"[LOAD] Loading trained model from {self.config.model_checkpoint}")
             
             # Создаем trainer с конфигурацией, соответствующей обученной модели
             config = EmergentTrainingConfig(
@@ -105,48 +110,92 @@ class ModelInferenceTester:
             
             # Загружаем веса
             checkpoint = torch.load(self.config.model_checkpoint, map_location=self.device)
-            self.model.load_state_dict(checkpoint)
+            
+            # Проверяем структуру checkpoint'а
+            if 'model_state_dict' in checkpoint:
+                # Новый формат с отдельными ключами
+                model_state_dict = checkpoint['model_state_dict']
+                logger.info(f"[LOAD] Loading from new checkpoint format")
+            else:
+                # Старый формат - весь checkpoint это state_dict
+                model_state_dict = checkpoint
+                logger.info(f"[LOAD] Loading from legacy checkpoint format")
+            
+            # Загружаем веса с strict=False, чтобы игнорировать несовпадающие ключи
+            missing_keys, unexpected_keys =             self.model.load_state_dict(model_state_dict, strict=False)
+            
+            if missing_keys:
+                logger.warning(f"[LOAD] Missing keys in model: {len(missing_keys)} keys")
+                logger.debug(f"Missing: {missing_keys[:5]}...")  # Показываем первые 5
+            
+            if unexpected_keys:
+                logger.warning(f"[LOAD] Unexpected keys in checkpoint: {len(unexpected_keys)} keys")
+                logger.debug(f"Unexpected: {unexpected_keys[:5]}...")  # Показываем первые 5
+            
+            # Принудительно перемещаем все параметры на правильное устройство
+            self.model.to(self.device)
             self.model.eval()
             
-            logger.info("✅ Trained model loaded successfully")
+            logger.info("[SUCCESS] Trained model loaded successfully")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to load trained model: {e}")
+            logger.error(f"[ERROR] Failed to load trained model: {e}")
             return False
     
     def load_baseline_model(self):
         """Загрузка baseline DistilBERT модели"""
         try:
-            logger.info(f"📥 Loading baseline model: {self.config.baseline_model}")
+            logger.info(f"[LOAD] Loading baseline model: {self.config.baseline_model}")
             
             self.baseline_tokenizer = AutoTokenizer.from_pretrained(self.config.baseline_model)
             self.baseline_model = AutoModel.from_pretrained(self.config.baseline_model)
             self.baseline_model.to(self.device)
             self.baseline_model.eval()
             
-            logger.info("✅ Baseline model loaded successfully")
+            logger.info("[SUCCESS] Baseline model loaded successfully")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to load baseline model: {e}")
+            logger.error(f"[ERROR] Failed to load baseline model: {e}")
             return False
     
     def setup_embedding_loader(self):
         """Настройка embedding loader для преобразования текста в эмбединги"""
         try:
-            logger.info("🔧 Setting up embedding loader")
+            logger.info("[SETUP] Setting up embedding loader")
             
             self.embedding_loader = EmbeddingLoader(
-                model_type="distilbert",
                 cache_dir="cache/embeddings"
             )
             
-            logger.info("✅ Embedding loader setup complete")
+            logger.info("[SUCCESS] Embedding loader setup complete")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to setup embedding loader: {e}")
+            logger.error(f"[ERROR] Failed to setup embedding loader: {e}")
+            return False
+    
+    def setup_decoder(self):
+        """Настройка generative decoder для human-readable output"""
+        try:
+            logger.info("[SETUP] Setting up generative decoder")
+            
+            self.decoder = create_generative_decoder(
+                architecture="resource_efficient_v21",
+                embedding_dim=768,
+                verbose_logging=False,
+                fallback_enabled=True
+            )
+            
+            # Перемещаем decoder на правильное устройство
+            self.decoder.to(self.device)
+            
+            logger.info("[SUCCESS] Generative decoder setup complete")
+            return True
+            
+        except Exception as e:
+            logger.error(f"[ERROR] Failed to setup decoder: {e}")
             return False
     
     def prepare_test_questions(self) -> List[Dict[str, str]]:
@@ -217,14 +266,15 @@ class ModelInferenceTester:
             }
         ]
         
-        logger.info(f"📋 Prepared {len(test_questions)} test questions across {len(set(q['category'] for q in test_questions))} categories")
+        logger.info(f"[PREP] Prepared {len(test_questions)} test questions across {len(set(q['category'] for q in test_questions))} categories")
         return test_questions
     
     def get_model_response(self, question: str) -> torch.Tensor:
         """Получение ответа от обученной модели"""
         try:
-            # Преобразуем вопрос в эмбединг
-            question_embedding = self.embedding_loader.get_embedding(question)
+            # Преобразуем вопрос в эмбединг через LLM loader
+            question_embedding = self.embedding_loader.load_from_llm([question], model_key="distilbert")
+            question_embedding = question_embedding[0]  # Берем первый (и единственный) эмбединг
             
             if question_embedding is None:
                 logger.error(f"Failed to get embedding for question: {question}")
@@ -237,7 +287,11 @@ class ModelInferenceTester:
             with torch.no_grad():
                 outputs = self.model(question_tensor)
                 # Берем выходную поверхность как ответ
-                response_embedding = outputs['output_surface']
+                response_surface = outputs['output_surface']  # [batch, 225]
+                
+                # Проецируем обратно в размерность DistilBERT (768)
+                # Используем linear слой из loss function модели
+                response_embedding = self.model.loss_function.surface_to_embedding(response_surface)  # [batch, 768]
                 
             return response_embedding.squeeze(0)  # Убираем batch dimension
             
@@ -285,7 +339,7 @@ class ModelInferenceTester:
         category = question_data["category"]
         expected_topic = question_data["expected_topic"]
         
-        logger.info(f"🧪 Testing [{category}]: {question}")
+        logger.info(f"[TEST] Testing [{category}]: {question}")
         
         # Засекаем время
         start_time = time.time()
@@ -300,8 +354,28 @@ class ModelInferenceTester:
             logger.error(f"Failed to get responses for question: {question}")
             return None
         
+        # Логируем размерности для отладки
+        logger.debug(f"Model response shape: {model_response.shape}")
+        logger.debug(f"Baseline response shape: {baseline_response.shape}")
+        
         # Рассчитываем similarity
         similarity = self.calculate_similarity(model_response, baseline_response)
+        
+        # Декодируем ответ модели в читаемый текст
+        decoded_text = "N/A"
+        decode_time = 0
+        if self.decoder:
+            try:
+                decode_start = time.time()
+                # Убеждаемся что tensor на правильном device
+                model_response_device = model_response.to(self.device)
+                decode_result = self.decoder.generate(model_response_device)
+                decode_time = (time.time() - decode_start) * 1000
+                decoded_text = decode_result['text']
+                logger.info(f"   [DECODED]: '{decoded_text}'")
+            except Exception as e:
+                logger.warning(f"   [DECODE_ERROR]: {e}")
+                decoded_text = f"Decode error: {str(e)}"
         
         # Формируем результат
         result = {
@@ -310,20 +384,22 @@ class ModelInferenceTester:
             "expected_topic": expected_topic,
             "similarity_to_baseline": similarity,
             "inference_time_ms": inference_time * 1000,
+            "decode_time_ms": decode_time,
+            "decoded_answer": decoded_text,
             "model_embedding_shape": list(model_response.shape),
             "baseline_embedding_shape": list(baseline_response.shape),
             "is_good_response": similarity >= self.config.similarity_threshold
         }
         
         # Логируем результат
-        status = "✅ GOOD" if result["is_good_response"] else "❌ POOR"
-        logger.info(f"   {status} | Similarity: {similarity:.3f} | Time: {inference_time*1000:.1f}ms")
+        status = "GOOD" if result["is_good_response"] else "POOR"
+        logger.info(f"   [{status}] | Similarity: {similarity:.3f} | Time: {inference_time*1000:.1f}ms | Decode: {decode_time:.1f}ms")
         
         return result
     
     def run_comprehensive_test(self) -> Dict:
         """Запуск полного набора тестов"""
-        logger.info("🚀 Starting comprehensive inference testing")
+        logger.info("[START] Starting comprehensive inference testing")
         
         # Подготавливаем тестовые вопросы
         test_questions = self.prepare_test_questions()
@@ -345,6 +421,7 @@ class ModelInferenceTester:
         
         avg_similarity = np.mean([r["similarity_to_baseline"] for r in results]) if results else 0
         avg_inference_time = np.mean([r["inference_time_ms"] for r in results]) if results else 0
+        avg_decode_time = np.mean([r["decode_time_ms"] for r in results]) if results else 0
         
         # Статистика по категориям
         category_stats = {}
@@ -365,6 +442,7 @@ class ModelInferenceTester:
             "success_rate": success_rate,
             "average_similarity": avg_similarity,
             "average_inference_time_ms": avg_inference_time,
+            "average_decode_time_ms": avg_decode_time,
             "similarity_threshold": self.config.similarity_threshold,
             "category_statistics": {},
             "detailed_results": results,
@@ -384,15 +462,16 @@ class ModelInferenceTester:
         
         # Логируем итоги
         logger.info("=" * 60)
-        logger.info("🎯 INFERENCE TESTING COMPLETE")
+        logger.info("[COMPLETE] INFERENCE TESTING COMPLETE")
         logger.info("=" * 60)
-        logger.info(f"📊 Total Tests: {total_tests}")
-        logger.info(f"✅ Successful: {successful_tests} ({success_rate:.1f}%)")
-        logger.info(f"📈 Average Similarity: {avg_similarity:.3f}")
-        logger.info(f"⚡ Average Inference: {avg_inference_time:.1f}ms")
+        logger.info(f"[STATS] Total Tests: {total_tests}")
+        logger.info(f"[STATS] Successful: {successful_tests} ({success_rate:.1f}%)")
+        logger.info(f"[STATS] Average Similarity: {avg_similarity:.3f}")
+        logger.info(f"[STATS] Average Inference: {avg_inference_time:.1f}ms")
+        logger.info(f"[STATS] Average Decode: {avg_decode_time:.1f}ms")
         logger.info("")
         
-        logger.info("📋 Category Breakdown:")
+        logger.info("[BREAKDOWN] Category Breakdown:")
         for category, stats in summary["category_statistics"].items():
             logger.info(f"   {category}: {stats['good']}/{stats['total']} ({stats['success_rate']:.1f}%) | Avg: {stats['avg_similarity']:.3f}")
         
@@ -412,10 +491,10 @@ class ModelInferenceTester:
             with open(self.config.results_file, 'w', encoding='utf-8') as f:
                 json.dump(self.test_results, f, indent=2, ensure_ascii=False)
             
-            logger.info(f"💾 Results saved to {self.config.results_file}")
+            logger.info(f"[SAVE] Results saved to {self.config.results_file}")
             
         except Exception as e:
-            logger.error(f"❌ Failed to save results: {e}")
+            logger.error(f"[ERROR] Failed to save results: {e}")
     
     def run_full_test_suite(self) -> bool:
         """Запуск полного набора тестов"""
@@ -429,6 +508,9 @@ class ModelInferenceTester:
                 
             if not self.setup_embedding_loader():
                 return False
+                
+            if not self.setup_decoder():
+                return False
             
             # Запускаем тесты
             self.run_comprehensive_test()
@@ -439,20 +521,20 @@ class ModelInferenceTester:
             return True
             
         except Exception as e:
-            logger.error(f"❌ Test suite failed: {e}")
+            logger.error(f"[ERROR] Test suite failed: {e}")
             return False
 
 
 def main():
     """Основная функция запуска тестирования"""
-    logger.info("🎬 Starting Model Inference Testing")
+    logger.info("[MAIN] Starting Model Inference Testing")
     
     # Создаем конфигурацию
     config = InferenceTestConfig()
     
     # Проверяем существование модели
     if not Path(config.model_checkpoint).exists():
-        logger.error(f"❌ Model checkpoint not found: {config.model_checkpoint}")
+        logger.error(f"[ERROR] Model checkpoint not found: {config.model_checkpoint}")
         return False
     
     # Создаем директории для логов и результатов
@@ -464,26 +546,32 @@ def main():
     success = tester.run_full_test_suite()
     
     if success:
-        logger.info("🎉 Model inference testing completed successfully!")
+        logger.info("[SUCCESS] Model inference testing completed successfully!")
         
         # Показываем краткий summary
         if tester.test_results:
             results = tester.test_results
             print("\n" + "="*60)
-            print("🎯 FINAL RESULTS SUMMARY")
+            print("[FINAL] RESULTS SUMMARY")
             print("="*60)
             print(f"Success Rate: {results['success_rate']:.1f}% ({results['successful_tests']}/{results['total_tests']})")
             print(f"Average Similarity: {results['average_similarity']:.3f}")
             print(f"Average Inference Time: {results['average_inference_time_ms']:.1f}ms")
+            print(f"Average Decode Time: {results['average_decode_time_ms']:.1f}ms")
             print("")
             print("Category Performance:")
             for category, stats in results['category_statistics'].items():
                 print(f"  {category}: {stats['success_rate']:.1f}% (similarity: {stats['avg_similarity']:.3f})")
+            print("")
+            print("Sample Decoded Answers:")
+            for i, result in enumerate(results['detailed_results'][:3]):  # Показываем первые 3
+                print(f"  Q{i+1}: {result['question'][:50]}...")
+                print(f"      A: {result['decoded_answer']}")
             print("="*60)
         
         return True
     else:
-        logger.error("❌ Model inference testing failed!")
+        logger.error("[ERROR] Model inference testing failed!")
         return False
 
 
