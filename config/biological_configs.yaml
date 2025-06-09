@@ -1,0 +1,376 @@
+# 🧠 BIOLOGICALLY ACCURATE HYBRID CCT+MAMBA CONFIGURATION
+# Based on Broca's Area Neural Structure Research
+
+# =============================================================================
+# BIOLOGICAL FOUNDATION CONFIGS
+# =============================================================================
+
+broca_area_full:
+  # Full-scale Broca's area simulation
+  name: "Broca Area Full Scale"
+  description: "Biologically accurate 333×333×166 neural lattice"
+
+  # Core Architecture
+  architecture:
+    type: "hybrid_cct_mamba"
+    version: "v1.0"
+
+  # 3D Lattice Configuration (Broca's Area)
+  lattice:
+    dimensions:
+      x: 333 # Width (neurons)
+      y: 333 # Height (neurons)
+      z: 166 # Depth (≈0.5 * width, brain anatomy)
+    total_neurons: 18388278 # 333 * 333 * 166
+
+    # Local Processing
+    gmlp_params: 10000 # Per-region parameters
+    connectivity_pattern: "biological" # Follows brain connectivity
+
+  # CCT Configuration (Dynamic & Configurable)
+  cct:
+    encoder:
+      # Adaptive spatial dimensions based on lattice
+      adaptive_spatial_reshape: true
+      spatial_base_formula: "sqrt(lattice_x * scale_factor)" # Dynamic calculation
+      conv_tokenizer:
+        kernel_size: 3 # Configurable conv kernel
+        stride: 2 # Configurable stride
+        output_channels: 64 # Will be adapted to lattice surface
+        adaptive_channels: true # Auto-adapt to lattice dimensions
+      transformer_blocks: 4 # Configurable number of blocks
+      attention_heads: 8 # Will be adapted to embedding_dim
+      adaptive_heads: true # Auto-adapt heads to embedding_dim
+      mlp_hidden_dim: 2048 # Configurable MLP size
+
+    decoder:
+      transformer_blocks: 2 # Configurable decoder blocks
+      adaptive_upsampling: true # Adapt to target vocab size
+      reconstruction_strategy: "lattice_aware" # Biological reconstruction
+
+  # MambaVision Integration
+  mamba:
+    backbone_model: "nvidia/MambaVision-T"
+    sequence_processing:
+      hierarchical_blocks: 3
+      state_space_dim: 768
+      selective_scan: true
+      linear_attention: true
+
+  # Text Processing (Configurable)
+  text:
+    tokenizer: "distilbert-base-uncased" # Configurable base model
+    max_sequence_length: 512 # Adaptive to input
+    vocab_size: 30522 # From tokenizer config
+    embedding_dim: 768 # CONFIGURABLE - key parameter
+
+    # Adaptive sequence processing
+    adaptive_sequence_length: true # Auto-adapt to content
+    sequence_padding_strategy: "biological" # Biologically inspired padding
+
+    generation:
+      focus: "word_level" # word_level -> phrase_level
+      coherence_strategy: "biological" # Biological text generation
+      max_output_length: 256 # Configurable output length
+      generation_strategy: "phrase_aware" # Enhanced with phrase_bank
+
+# =============================================================================
+# HARDWARE OPTIMIZATION CONFIGS
+# =============================================================================
+
+rtx_5090_optimized:
+  # RTX 5090 32GB GDDR7 optimization
+  name: "RTX 5090 Production"
+  parent: "broca_area_full"
+
+  # Memory Management
+  memory:
+    total_available: "32GB"
+    training_allocation: "25GB" # 20-25GB target
+    inference_allocation: "8GB"
+    gradient_checkpointing: true
+
+  # Performance Settings
+  performance:
+    batch_size: 64 # Optimized for Tensor Cores
+    precision: "fp16" # FP4 coming Q2 2025
+    tensor_cores: true
+    jax_acceleration: true # CAX integration
+
+  # Dynamic Scaling
+  scaling:
+    training_scale: 0.3 # 100×100×50 for training
+    inference_scale: 1.0 # Full 333×333×166 for inference
+    adaptive_scaling: true
+
+# =============================================================================
+# DEVELOPMENT & TESTING CONFIGS
+# =============================================================================
+
+development_small:
+  # Reduced scale for development and testing
+  name: "Development Small Scale"
+  parent: "broca_area_full"
+
+  # Scaled-down lattice
+  lattice:
+    dimensions:
+      x: 33 # 10% of full scale
+      y: 33
+      z: 17
+    total_neurons: 18711 # 33 * 33 * 17
+    gmlp_params: 1000
+
+  performance:
+    batch_size: 32
+    precision: "fp16"
+
+  memory:
+    training_allocation: "4GB"
+    inference_allocation: "2GB"
+
+research_medium:
+  # Medium scale for research experiments
+  name: "Research Medium Scale"
+  parent: "broca_area_full"
+
+  # 50% scale
+  lattice:
+    dimensions:
+      x: 167 # ~50% of full
+      y: 167
+      z: 83
+    total_neurons: 2309278 # 167 * 167 * 83
+    gmlp_params: 5000
+
+  performance:
+    batch_size: 48
+    precision: "fp16"
+
+  memory:
+    training_allocation: "12GB"
+    inference_allocation: "6GB"
+
+# =============================================================================
+# RESEARCH INTEGRATION CONFIGS
+# =============================================================================
+
+mamba_vision_cax:
+  # MambaVision + CAX integration optimized
+  name: "MambaVision CAX Integration"
+  parent: "broca_area_full"
+
+  # Enhanced Mamba features
+  mamba:
+    use_mamba_vision: true
+    backbone_model: "nvidia/MambaVision-L2-1K" # 200M parameters
+    cax_acceleration: true
+    speedup_target: "2-8x" # vs pure transformers
+
+  # CAX Cellular Automata
+  cellular:
+    engine: "CAX"
+    acceleration: "JAX"
+    speedup_target: "2000x" # vs traditional CA
+    biological_models: ["Lenia", "NCA"]
+
+  # Installation requirements
+  dependencies:
+    - "transformers"
+    - "cax-lib"
+    - "jax[cuda]"
+    - "pytorch-lightning"
+
+bio_inspired_lightweight:
+  # Bio-inspired ultra-lightweight configuration
+  name: "Bio-Inspired Lightweight"
+
+  # Minimal architecture
+  lattice:
+    dimensions:
+      x: 50
+      y: 50
+      z: 25
+    total_neurons: 62500
+    gmlp_params: 13000 # Award-winning efficiency
+
+  # RTRL + STDP learning
+  learning:
+    algorithm: "RTRL"
+    plasticity: "STDP"
+    local_learning: true
+    global_backprop: false
+
+  # Ultra-efficient
+  performance:
+    model_size: "50kB"
+    accuracy: "90%+"
+    memory_usage: "<1GB"
+    inference_speed: "<50ms"
+
+# =============================================================================
+# PRODUCTION DEPLOYMENT CONFIGS
+# =============================================================================
+
+production_api:
+  # Production API deployment
+  name: "Production API Deployment"
+  parent: "rtx_5090_optimized"
+
+  # API Configuration
+  api:
+    endpoint_type: "RESTful"
+    input_format: "text"
+    output_format: "text"
+    max_concurrent_requests: 32
+    timeout: 30 # seconds
+
+  # Monitoring
+  monitoring:
+    performance_metrics: true
+    memory_tracking: true
+    latency_monitoring: true
+    error_logging: true
+
+  # Versioning
+  versioning:
+    model_registry: true
+    config_tracking: true
+    experiment_logging: true
+    rollback_capability: true
+
+enterprise_scalable:
+  # Enterprise-grade scalable deployment
+  name: "Enterprise Scalable"
+  parent: "production_api"
+
+  # Multi-GPU support
+  distributed:
+    multi_gpu: true
+    data_parallel: true
+    model_parallel: false # Single model fits in 32GB
+    gradient_sync: "allreduce"
+
+  # Scalability
+  scaling:
+    auto_scaling: true
+    load_balancing: true
+    queue_management: true
+    resource_monitoring: true
+
+# =============================================================================
+# EXPERIMENTAL CONFIGS
+# =============================================================================
+
+ablation_study:
+  # For ablation studies and component analysis
+  name: "Ablation Study Configuration"
+
+  # Component toggles
+  components:
+    cct_encoder: true
+    cellular_lattice: true
+    mamba_processor: true
+    cct_decoder: true
+
+  # Ablation variants
+  variants:
+    - name: "cct_only"
+      cellular_lattice: false
+      mamba_processor: false
+
+    - name: "mamba_only"
+      cct_encoder: false
+      cct_decoder: false
+
+    - name: "cellular_only"
+      cct_encoder: false
+      mamba_processor: false
+      cct_decoder: false
+
+custom_biology:
+  # Custom biological modeling
+  name: "Custom Biological Configuration"
+
+  # Configurable biology
+  biology:
+    brain_region: "custom" # broca, wernicke, custom
+    neuron_model: "leaky_integrate_fire"
+    connectivity: "small_world" # small_world, scale_free, random
+    plasticity: ["STDP", "homeostatic", "metaplasticity"]
+
+  # Custom dimensions
+  lattice:
+    dimensions:
+      x: "${custom.width}"
+      y: "${custom.height}"
+      z: "${custom.depth}"
+
+# =============================================================================
+# TRAINING PROTOCOLS
+# =============================================================================
+
+incremental_training:
+  # Incremental complexity training protocol
+  name: "Incremental Training Protocol"
+
+  stages:
+    stage_1:
+      name: "Word Level"
+      epochs: 10
+      lattice_scale: 0.1
+      task_complexity: "simple_words"
+
+    stage_2:
+      name: "Phrase Level"
+      epochs: 15
+      lattice_scale: 0.3
+      task_complexity: "short_phrases"
+
+    stage_3:
+      name: "Sentence Level"
+      epochs: 20
+      lattice_scale: 0.6
+      task_complexity: "full_sentences"
+
+    stage_4:
+      name: "Production Level"
+      epochs: 25
+      lattice_scale: 1.0
+      task_complexity: "complex_reasoning"
+
+# =============================================================================
+# VALIDATION & METRICS
+# =============================================================================
+
+validation_config:
+  # Comprehensive validation configuration
+  name: "Validation Configuration"
+
+  # Quality metrics
+  metrics:
+    semantic:
+      - "bleu_score"
+      - "rouge_score"
+      - "semantic_similarity"
+      - "coherence_rating"
+
+    biological:
+      - "neural_efficiency"
+      - "temporal_dynamics"
+      - "energy_consumption"
+      - "plasticity_analysis"
+
+    performance:
+      - "inference_latency"
+      - "memory_efficiency"
+      - "throughput"
+      - "scalability"
+
+  # Testing protocols
+  testing:
+    unit_tests: true
+    integration_tests: true
+    performance_benchmarks: true
+    biological_validation: true
+    human_evaluation: true

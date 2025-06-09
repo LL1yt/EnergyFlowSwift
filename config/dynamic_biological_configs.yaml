@@ -1,0 +1,342 @@
+# 🧠 DYNAMIC BIOLOGICAL CONFIGURATION SYSTEM
+# All dimensions and parameters are configurable and biologically derived
+
+# =============================================================================
+# DYNAMIC BROCA'S AREA CONFIGURATION
+# =============================================================================
+
+broca_area_dynamic:
+  name: "Broca Area Dynamic Configuration"
+  description: "Fully configurable biologically accurate architecture"
+
+  # === CORE BIOLOGICAL PARAMETERS ===
+  biological:
+    brain_region: "broca" # broca, wernicke, custom
+    neural_accuracy: "high" # low, medium, high, research
+    biological_constraints: true # Enable biological plausibility
+
+  # === LATTICE CONFIGURATION (DYNAMIC) ===
+  lattice:
+    # Primary dimensions (configurable)
+    x: 333 # Width (neurons)
+    y: 333 # Height (neurons)
+    z: 166 # Depth (≈0.5 * width, biologically accurate)
+
+    # Scaling system
+    scale_factor: 1.0 # 0.1 for dev, 0.3 for research, 1.0 for production
+    min_scale: 0.1 # Minimum allowed scale
+    max_scale: 1.0 # Maximum allowed scale
+
+    # Computed values (auto-calculated)
+    total_neurons: "{x * y * z}" # Auto-computed from dimensions
+    surface_size: "{x * y}" # Surface area calculation
+    volume: "{x * y * z}" # Total volume
+
+    # Local processing
+    gmlp_params: 10000 # Per-region parameters
+    connectivity_pattern: "small_world" # biological, small_world, scale_free
+    connectivity_radius: 3 # Connection radius for local interactions
+
+  # === EMBEDDING CONFIGURATION (DYNAMIC) ===
+  embeddings:
+    # Primary embedding dimension (configurable)
+    embedding_dim: 768 # Can be 512, 768, 1024, 1536, 2048, etc.
+
+    # Auto-adaptation settings
+    adaptive_embedding: true # Auto-adapt to teacher model
+    teacher_compatibility: true # Ensure teacher model compatibility
+
+    # Embedding strategies
+    compression_strategy: "learned_linear" # learned_linear, hierarchical, attention_based
+    reconstruction_loss_weight: 0.1 # Weight for reconstruction loss
+
+  # === CCT CONFIGURATION (FULLY DYNAMIC) ===
+  cct:
+    encoder:
+      # Spatial processing (adaptive)
+      spatial_processing:
+        adaptive_reshape: true # Enable adaptive spatial reshape
+        base_formula: "sqrt(surface_size * scale_factor)" # Dynamic calculation
+        channel_formula: "max(64, surface_size // 100)" # Adaptive channels
+
+      # Convolution parameters (configurable)
+      convolution:
+        kernel_size: 3 # Configurable kernel size
+        stride: 2 # Configurable stride
+        padding: "same" # Padding strategy
+        adaptive_kernel: true # Auto-adapt kernel to lattice size
+
+      # Transformer configuration (dynamic)
+      transformer:
+        blocks: 4 # Number of transformer blocks
+        attention_heads: 8 # Number of attention heads (will auto-adapt)
+        head_adaptation: "embedding_dim // 64" # Formula for head calculation
+        mlp_ratio: 4 # MLP expansion ratio
+        dropout: 0.1 # Dropout rate
+
+    decoder:
+      # Reconstruction parameters (adaptive)
+      reconstruction:
+        blocks: 2 # Number of decoder blocks
+        adaptive_upsampling: true # Enable adaptive upsampling
+        target_strategy: "vocab_size" # Target dimension strategy
+        spatial_awareness: true # Maintain spatial relationships
+
+  # === MAMBA CONFIGURATION (BIOLOGICALLY TUNED) ===
+  mamba:
+    # Core Mamba parameters
+    backbone_model: "nvidia/MambaVision-T" # Configurable backbone
+    use_mamba_vision: true # Enable MambaVision integration
+
+    # State space configuration
+    state_space:
+      dimension: "{embedding_dim}" # Auto-adapt to embedding dim
+      selective_scan: true # Enable selective scanning
+      linear_attention: true # Use linear attention
+
+    # Sequential processing
+    sequence_processing:
+      hierarchical_blocks: 3 # Number of Mamba blocks
+      chunk_size: 1024 # Processing chunk size
+      memory_efficient: true # Enable memory efficiency
+
+    # Biological integration
+    biological_integration:
+      temporal_dynamics: true # Model temporal neural dynamics
+      spike_like_processing: true # Spike-like information processing
+      adaptive_threshold: 0.5 # Adaptive firing threshold
+
+  # === TEXT PROCESSING (CONFIGURABLE) ===
+  text:
+    # Tokenizer configuration
+    tokenizer:
+      model: "distilbert-base-uncased" # Configurable tokenizer
+      adaptive_vocab: true # Adapt to different vocabularies
+      vocab_size: "{auto}" # Auto-detect from tokenizer
+
+    # Sequence processing
+    sequence:
+      max_input_length: 512 # Maximum input sequence length
+      max_output_length: 256 # Maximum output sequence length
+      adaptive_length: true # Auto-adapt to content
+      padding_strategy: "biological" # Biological padding strategy
+
+    # Generation configuration
+    generation:
+      strategy: "phrase_aware" # Integration with phrase_bank_decoder
+      coherence_focus: "word_to_phrase" # Word-level to phrase-level progression
+      biological_coherence: true # Biologically inspired generation
+      temperature: 0.7 # Generation temperature
+
+  # === HARDWARE OPTIMIZATION (DYNAMIC) ===
+  hardware:
+    # Memory management
+    memory:
+      training_allocation: "auto" # Auto-calculate based on scale
+      inference_allocation: "auto" # Auto-calculate for inference
+      gradient_checkpointing: true # Enable gradient checkpointing
+      memory_efficient_attention: true # Memory-efficient attention
+
+    # Performance optimization
+    performance:
+      batch_size: 64 # Configurable batch size
+      precision: "fp16" # fp16, fp32, bf16
+      tensor_cores: true # Enable Tensor Cores
+      jax_acceleration: true # Enable JAX acceleration
+
+    # Scaling configuration
+    scaling:
+      training_scale: 0.3 # Scale for training (memory optimization)
+      inference_scale: 1.0 # Scale for inference (full accuracy)
+      adaptive_scaling: true # Enable adaptive scaling
+      scale_strategy: "memory_aware" # Scaling strategy
+
+  # === TRAINING CONFIGURATION (BIOLOGICALLY INSPIRED) ===
+  training:
+    # Learning parameters
+    learning:
+      rate: 0.0001 # Learning rate
+      scheduler: "cosine_annealing" # Learning rate scheduler
+      warmup_steps: 1000 # Warmup steps
+
+    # Biological learning
+    biological_learning:
+      stdp_like: true # STDP-like plasticity
+      local_learning: true # Local learning rules
+      homeostatic: true # Homeostatic plasticity
+
+    # Training strategy
+    strategy:
+      incremental_complexity: true # Start simple, increase complexity
+      stage_progression: true # Word -> phrase -> sentence progression
+      biological_curriculum: true # Biologically inspired curriculum
+
+  # === INTEGRATION CONFIGURATION ===
+  integration:
+    # Component integration
+    components:
+      phrase_bank_decoder: true # Enable phrase_bank_decoder integration
+      universal_adapter: true # Enable universal_adapter compatibility
+      computational_graph_stability: true # Enable graph stability measures
+
+    # CAX acceleration
+    cax:
+      enabled: true # Enable CAX acceleration
+      speedup_target: "2000x" # Target speedup for CA processing
+      biological_models: ["Lenia", "NCA"] # Supported biological models
+
+    # Error handling
+    error_handling:
+      graph_stabilization: true # Mamba-based graph stabilization
+      memory_management: true # Advanced memory management
+      fallback_strategies: true # Enable fallback strategies
+
+# =============================================================================
+# DEVELOPMENT SCALE CONFIGURATIONS
+# =============================================================================
+
+dev_small_dynamic:
+  parent: "broca_area_dynamic"
+  name: "Development Small (Dynamic)"
+
+  # Override lattice dimensions
+  lattice:
+    scale_factor: 0.1 # 10% scale
+    x: 33 # 33×33×17 ≈ 18K neurons
+    y: 33
+    z: 17
+
+  # Reduced complexity
+  cct:
+    encoder:
+      transformer:
+        blocks: 2 # Fewer blocks for development
+        attention_heads: 4 # Fewer heads
+    decoder:
+      reconstruction:
+        blocks: 1 # Single decoder block
+
+  mamba:
+    sequence_processing:
+      hierarchical_blocks: 2 # Fewer Mamba blocks
+
+  hardware:
+    memory:
+      training_allocation: "4GB" # Small memory footprint
+
+research_medium_dynamic:
+  parent: "broca_area_dynamic"
+  name: "Research Medium (Dynamic)"
+
+  # Override lattice dimensions
+  lattice:
+    scale_factor: 0.5 # 50% scale
+    x: 167 # 167×167×83 ≈ 2.3M neurons
+    y: 167
+    z: 83
+
+  hardware:
+    memory:
+      training_allocation: "12GB" # Medium memory footprint
+
+production_full_dynamic:
+  parent: "broca_area_dynamic"
+  name: "Production Full (Dynamic)"
+
+  # Full scale (no overrides needed)
+  lattice:
+    scale_factor: 1.0 # Full 333×333×166 scale
+
+  hardware:
+    memory:
+      training_allocation: "25GB" # Full memory utilization
+
+  # Production optimizations
+  training:
+    strategy:
+      incremental_complexity: false # Full complexity from start
+
+# =============================================================================
+# ALTERNATIVE EMBEDDING CONFIGURATIONS
+# =============================================================================
+
+embedding_512_config:
+  parent: "broca_area_dynamic"
+  name: "512D Embedding Configuration"
+
+  embeddings:
+    embedding_dim: 512 # 512D embeddings
+
+  cct:
+    encoder:
+      transformer:
+        attention_heads: 8 # 512 // 64 = 8 heads
+
+embedding_1024_config:
+  parent: "broca_area_dynamic"
+  name: "1024D Embedding Configuration"
+
+  embeddings:
+    embedding_dim: 1024 # 1024D embeddings
+
+  cct:
+    encoder:
+      transformer:
+        attention_heads: 16 # 1024 // 64 = 16 heads
+
+# =============================================================================
+# TEACHER MODEL COMPATIBILITY CONFIGURATIONS
+# =============================================================================
+
+llama_compatible:
+  parent: "broca_area_dynamic"
+  name: "LLaMA Compatible Configuration"
+
+  embeddings:
+    embedding_dim: 4096 # LLaMA embedding dimension
+    teacher_compatibility: true
+
+  text:
+    tokenizer:
+      model: "meta-llama/Llama-2-7b-hf"
+
+gpt_compatible:
+  parent: "broca_area_dynamic"
+  name: "GPT Compatible Configuration"
+
+  embeddings:
+    embedding_dim: 1536 # GPT-3.5 embedding dimension
+    teacher_compatibility: true
+
+  text:
+    tokenizer:
+      model: "gpt-3.5-turbo"
+
+# =============================================================================
+# CUSTOM BIOLOGICAL REGION CONFIGURATIONS
+# =============================================================================
+
+wernicke_area_config:
+  parent: "broca_area_dynamic"
+  name: "Wernicke Area Configuration"
+
+  biological:
+    brain_region: "wernicke" # Different brain region
+
+  lattice:
+    x: 280 # Different dimensions for Wernicke's area
+    y: 280
+    z: 140
+    connectivity_pattern: "hierarchical" # Different connectivity
+
+custom_brain_region:
+  parent: "broca_area_dynamic"
+  name: "Custom Brain Region"
+
+  biological:
+    brain_region: "custom"
+
+  lattice:
+    x: "{config.custom_x}" # User-defined dimensions
+    y: "{config.custom_y}"
+    z: "{config.custom_z}"

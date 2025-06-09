@@ -103,6 +103,17 @@ A2: "model compact efficient decoder neural network" ✅
 
 Q3: "What are the advantages of transformer architecture?"
 A3: "optimized decoder" ✅
+
+
+
+
+Sample Decoded Answers:
+  Q1: What is the difference between supervised and unsu...
+      A: <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK>
+  Q2: How does gradient descent work in neural networks?...
+      A: <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> model <UNK> <UNK> <UNK> an <UNK> <UNK> compact a <UNK> <UNK> and <UNK> <UNK> <UNK> <UNK> do <UNK> <UNK> a <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> have <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> model <UNK> he <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> efficient <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> an <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> have <UNK> <UNK> <UNK> do <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> efficient <UNK> <UNK> <UNK> <UNK> <UNK>
+  Q3: What are the advantages of transformer architectur...
+      A: <UNK> <UNK> <UNK> <UNK> <UNK> <UNK> were <UNK> <UNK> <UNK> <UNK> optimized <UNK> <UNK> <UNK> <UNK> <UNK> he <UNK> <UNK> do <UNK> <UNK> <UNK> <UNK> decoder <UNK> <UNK> he <UNK> <UNK> <UNK> <UNK> <UNK> ("The attention mechanisms in transformer models were carefully designed and then optimized for better performance and scalability. He had to do extensive testing on the decoder for accuracy. He later published the research findings." ?)
 ```
 
 ---
