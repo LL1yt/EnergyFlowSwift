@@ -149,9 +149,11 @@ Input Embeddings → universal_adapter → 3D Lattice → Cellular Processing �
       gmlp_params: int = 10000 (gmlp_params ~ brain_region(18000000)/ (lattice_x*lattice_y*lattice_z))
 
       # Embedding configuration (pipeline-dependent)
-      embedding_dim: int = 768 (lattice_x*scale_factor)*(lattice_y*scale_factor)                  # From teacher model or configurable
+      embedding_dim: int = (768 or (lattice_x*scale_factor)*(lattice_y*scale_factor) or Surface_Embedding)                  # From teacher model or configurable
       teacher_model: str = "distilbert-base-uncased"  # For direct_embedding mode
       base_model: str = "distilbert-base-uncased"     # For text_to_text mode
+
+      Surface_Embedding = (lattice_x*scale_factor)*(lattice_y*scale_factor)
 
       # Adaptive architecture parameters
       adaptive_spatial: bool = True             # Enable adaptive reshaping
