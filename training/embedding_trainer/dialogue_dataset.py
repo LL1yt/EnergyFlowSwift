@@ -33,6 +33,7 @@ import re
 # Импорты готовых компонентов
 try:
     from data.embedding_loader import EmbeddingLoader
+    from data.embedding_loader.format_handlers import SUPPORTED_LLM_MODELS
     EMBEDDING_LOADER_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️  Warning: EmbeddingLoader not available: {e}")
@@ -141,6 +142,51 @@ class DialogueConfig:
             
         except Exception as e:
             print(f"⚠️ Could not load from central config ({e}), using defaults")
+
+
+def map_model_name_to_key(model_name: str) -> str:
+    """
+    Преобразование полного имени модели в ключ для SUPPORTED_LLM_MODELS
+    
+    Args:
+        model_name: Полное имя модели (например, "distilbert-base-uncased")
+        
+    Returns:
+        Ключ модели для SUPPORTED_LLM_MODELS (например, "distilbert")
+    """
+    # Создаем обратное отображение value -> key
+    name_to_key = {v: k for k, v in SUPPORTED_LLM_MODELS.items()}
+    
+    # Прямое совпадение
+    if model_name in name_to_key:
+        return name_to_key[model_name]
+    
+    # Если это уже ключ
+    if model_name in SUPPORTED_LLM_MODELS:
+        return model_name
+    
+    # Поиск по частичному совпадению
+    for model_value, model_key in name_to_key.items():
+        if model_name in model_value or model_value in model_name:
+            return model_key
+    
+    # Специальные mappings для часто используемых имен
+    common_mappings = {
+        "distilbert-base-uncased": "distilbert",
+        "distilbert": "distilbert",
+        "roberta-base": "roberta", 
+        "roberta": "roberta",
+        "gpt2": "gpt2",
+        "sentence-transformers/all-MiniLM-L6-v2": "distilbert",  # fallback
+        "sentence-transformers/all-mpnet-base-v2": "distilbert", # fallback
+    }
+    
+    if model_name in common_mappings:
+        return common_mappings[model_name]
+    
+    # Fallback - если ничего не найдено, возвращаем distilbert
+    print(f"⚠️ Model '{model_name}' not found in SUPPORTED_LLM_MODELS, using 'distilbert' as fallback")
+    return "distilbert"
 
 
 class DialogueDataset(Dataset):
@@ -266,17 +312,26 @@ class DialogueDataset(Dataset):
     def _validate_teacher_model(self):
         """Проверка доступности teacher модели"""
         try:
+            # Преобразуем имя модели в ключ
+            teacher_model_key = map_model_name_to_key(self.config.teacher_model)
+            
             # Тестируем основную модель
             test_embedding = self.embedding_loader.load_from_llm(
                 texts=["Test message"],
-                model_key=self.config.teacher_model
+                model_key=teacher_model_key
             )
-            self.logger.info(f"✅ Teacher model {self.config.teacher_model} is available")
+            self.logger.info(f"✅ Teacher model {self.config.teacher_model} (key: {teacher_model_key}) is available")
+            
+            # Обновляем config с правильным ключом
+            self.config.teacher_model = teacher_model_key
             
         except Exception as e:
             self.logger.warning(f"⚠️  Teacher model {self.config.teacher_model} not available: {e}")
-            self.logger.info(f"Switching to fallback model: {self.config.fallback_model}")
-            self.config.teacher_model = self.config.fallback_model
+            
+            # Пробуем fallback
+            fallback_key = map_model_name_to_key(self.config.fallback_model)
+            self.logger.info(f"Switching to fallback model: {self.config.fallback_model} (key: {fallback_key})")
+            self.config.teacher_model = fallback_key
     
     def _load_from_embeddings(self, question_embeddings: torch.Tensor, answer_embeddings: torch.Tensor):
         """Загрузка из готовых Q&A эмбедингов"""
