@@ -16,15 +16,33 @@ from . import embedding_adapter
 from . import tokenizer
 from . import data_visualization
 
+# Условный импорт embedding_reshaper
+try:
+    from . import embedding_reshaper
+
+    EMBEDDING_RESHAPER_AVAILABLE = True
+    __all__ = [
+        "embedding_loader",
+        "embedding_adapter",
+        "tokenizer",
+        "data_visualization",
+        "embedding_reshaper",
+    ]
+except ImportError:
+    EMBEDDING_RESHAPER_AVAILABLE = False
+    __all__ = [
+        "embedding_loader",
+        "embedding_adapter",
+        "tokenizer",
+        "data_visualization",
+    ]
+
 # Версия пакета
 __version__ = "2.3.0"  # Обновлено для Phase 2.3
 __phase__ = "Phase 2.3: Embedding Processing"
 
 # Статус пакета
 __status__ = "Active Development - Embedding Processing"
-
-# Список доступных модулей
-__all__ = ["embedding_loader", "embedding_adapter", "tokenizer", "data_visualization"]
 
 
 def get_data_package_info():
