@@ -99,7 +99,8 @@ class EmergentTrainingConfig:
 
     def __post_init__(self):
         if self.gmlp_config is None:
-            # OPTIMIZED configuration для точного 25K params target
+            # DEFAULT configuration для точного 25K params target
+            # Эти значения используются только если gmlp_config не был передан извне
             self.gmlp_config = {
                 "state_size": 32,  # OPTIMIZED from parameter analysis
                 "neighbor_count": 6,  # Standard 6-connectivity
@@ -111,6 +112,23 @@ class EmergentTrainingConfig:
                 "dropout": 0.1,
                 "spatial_connections": True,  # EMERGENT FEATURE - spatial connectivity
             }
+        else:
+            # Если gmlp_config был передан - заполняем отсутствующие поля defaults
+            defaults = {
+                "state_size": 32,
+                "neighbor_count": 6,
+                "hidden_dim": 32,
+                "external_input_size": 12,
+                "memory_dim": 16,
+                "use_memory": True,
+                "activation": "gelu",
+                "dropout": 0.1,
+                "spatial_connections": True,
+            }
+            # Обновляем только отсутствующие ключи
+            for key, default_value in defaults.items():
+                if key not in self.gmlp_config:
+                    self.gmlp_config[key] = default_value
 
         if self.loss_weights is None:
             self.loss_weights = {

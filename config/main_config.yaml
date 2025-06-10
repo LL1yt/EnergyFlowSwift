@@ -1,156 +1,101 @@
-# Главная конфигурация проекта: 3D Клеточная Нейронная Сеть
+# 🚀 3D Cellular Neural Network - Main Configuration
+# =================================================
+# Современная конфигурация для динамической архитектуры
 
-# === БАЗОВЫЕ НАСТРОЙКИ ПРОЕКТА ===
+# === PROJECT METADATA ===
 project:
   name: "3D Cellular Neural Network"
-  version: "0.1.0"
-  description: "Исследовательский проект по созданию 3D клеточной нейронной сети"
+  version: "4.0.0"
+  description: "3D клеточная нейронная сеть с биологической архитектурой"
+  architecture_type: "dynamic_cellular_network"
 
-# === НАСТРОЙКИ РЕШЕТКИ (3D СЕТКА) ===
+# === DYNAMIC CONFIGURATION SYSTEM ===
+# Эти значения используются как fallback, основная конфигурация создается динамически
+dynamic_config:
+  enable: true
+  mode: "auto" # auto, development, research, validation, production
+  auto_hardware_detection: true
+
+# === BASIC LATTICE CONFIGURATION (FALLBACK) ===
+# Динамическая система переопределит эти значения
 lattice:
-  # Размеры решетки (начинаем с маленьких для отладки)
-  dimensions:
-    depth: 5 # Глубина (ось X) - от входа к выходу
-    height: 5 # Высота (ось Y)
-    width: 5 # Ширина (ось Z)
+  xs: 10
+  ys: 10
+  zs: 8
+  total_neurons: 800
+  connectivity: "6-neighbors"
 
-  # Тип соседства (какие клетки считаются соседями)
-  connectivity:
-    type: "6-neighbors" # 6 соседей (верх, низ, лево, право, вперед, назад)
-    include_diagonals: false # Пока не включаем диагональные связи
+# === EMBEDDING CONFIGURATION ===
+embeddings:
+  embedding_dim: 768
+  teacher_model: "distilbert-base-uncased"
+  normalization: true
 
-# === НАСТРОЙКИ КЛЕТКИ-ПРОТОТИПА ===
-cell_prototype:
-  # Размеры входов и выходов
-  input_size: 12 # Размер входного вектора для одной клетки
-  state_size: 8 # Размер внутреннего состояния клетки
-  output_size: 8 # Размер выхода клетки (может равняться state_size)
-
-  # Архитектура нейросети внутри клетки
-  architecture:
-    layers: 2 # Количество слоев (начинаем с простого)
-    hidden_size: 16 # Размер скрытых слоев
-    activation: "tanh" # Функция активации (tanh для стабильности)
-    use_bias: true # Использовать смещения
-
-# === НАСТРОЙКИ ОБУЧЕНИЯ ===
+# === TRAINING CONFIGURATION ===
 training:
-  # Основные параметры
-  batch_size: 4 # Размер батча (маленький для начала)
-  learning_rate: 0.001 # Скорость обучения
-  num_epochs: 100 # Количество эпох
+  learning_rate: 0.001
+  batch_size: 32
+  epochs: 10
+  optimizer: "AdamW"
+  scheduler: "ReduceLROnPlateau"
 
-  # Временные шаги распространения сигнала
-  time_steps: 10 # Сколько шагов времени симулировать
+# === GMLP CONFIGURATION (FALLBACK) ===
+# Динамическая система создает правильные значения в зависимости от scale
+gmlp:
+  state_size: 32
+  neighbor_count: 6
+  hidden_dim: 32 # Динамически: 32-332 в зависимости от scale
+  external_input_size: 12 # Динамически: 12-62 в зависимости от scale
+  memory_dim: 16 # Динамически: 16-116 в зависимости от scale
+  use_memory: true
+  activation: "gelu"
+  dropout: 0.1
 
-  # Оптимизатор
-  optimizer:
-    type: "Adam" # Тип оптимизатора
-    weight_decay: 0.0001 # Регуляризация
-
-  # Функция потерь
-  loss:
-    type: "CrossEntropyLoss" # Для классификации токенов
-
-# === НАСТРОЙКИ ДАННЫХ ===
-data:
-  # Размеры входных и выходных данных
-  embedding_dim: 128 # Размерность входного эмбединга
-  vocab_size: 1000 # Размер словаря токенов
-  max_sequence_length: 50 # Максимальная длина выходной последовательности
-
-  # Пути к данным
-  paths:
-    train_data: "data/train/"
-    test_data: "data/test/"
-    embeddings: "data/embeddings/"
-
-# === НАСТРОЙКИ TEACHER МОДЕЛЕЙ ===
-teacher_models:
-  # Основная модель для Knowledge Distillation
-  primary_model: "llama3-8b-local"
-
-  # Конфигурации моделей
-  models:
-    # Локальная модель (приоритет)
-    llama3-8b-local:
-      path: "C:/Users/n0n4a/Meta-Llama-3-8B"
-      type: "local"
-      embedding_dim: 4096
-      pooling_strategy: "mean"
-
-    # Fallback модели
-    distilbert:
-      path: "distilbert-base-uncased"
-      type: "huggingface"
-      embedding_dim: 768
-      pooling_strategy: "mean"
-
-    roberta:
-      path: "roberta-base"
-      type: "huggingface"
-      embedding_dim: 768
-      pooling_strategy: "mean"
-
-    gpt2:
-      path: "gpt2"
-      type: "huggingface"
-      embedding_dim: 768
-      pooling_strategy: "mean"
-
-  # Multi-teacher конфигурация
-  multi_teacher:
-    enabled: true
-    models: ["llama3-8b-local", "distilbert", "roberta"]
-    adaptive_weighting: true
-    distillation_temperature: 3.0
-
-  # Настройки генерации эмбедингов
-  generation:
-    batch_size: 8
-    max_length: 512
-    use_cache: true
-    cache_dir: "cache/embeddings/"
-
-# === НАСТРОЙКИ ВИЗУАЛИЗАЦИИ ===
-visualization:
-  # Что показывать
-  show_lattice_state: true # Показывать состояние решетки
-  show_signal_propagation: true # Анимация распространения сигнала
-  save_animations: true # Сохранять анимации
-
-  # Параметры отображения
-  figure_size: [10, 8] # Размер графиков
-  colormap: "viridis" # Цветовая схема
-  animation_fps: 2 # Кадров в секунду для анимации
-
-# === НАСТРОЙКИ ЛОГИРОВАНИЯ ===
-logging:
-  level: "INFO" # Уровень логирования (DEBUG, INFO, WARNING, ERROR)
-  log_to_file: true # Записывать логи в файл
-  log_file: "logs/training.log"
-  log_to_console: true # Выводить логи в консоль
-
-# === НАСТРОЙКИ УСТРОЙСТВА ===
+# === DEVICE CONFIGURATION ===
 device:
-  use_gpu: true # Включаем GPU для RTX 5090 - теперь поддерживается PyTorch
-  gpu_device: "cuda:0" # Какой GPU использовать
-  fallback_to_cpu: true # Переключиться на CPU если GPU недоступен
+  use_gpu: true
+  gpu_device: "cuda:0"
+  fallback_to_cpu: true
+  mixed_precision: true
 
-# === НАСТРОЙКИ ЭКСПЕРИМЕНТОВ ===
-experiments:
-  save_checkpoints: true # Сохранять промежуточные результаты
-  checkpoint_frequency: 10 # Каждые N эпох
-  save_path: "checkpoints/"
+# === DATA PATHS ===
+data:
+  embeddings_dir: "data/embeddings"
+  checkpoints_dir: "checkpoints"
+  logs_dir: "logs"
 
-  # Метрики для отслеживания
-  metrics:
-    - "loss"
-    - "accuracy"
-    - "signal_propagation_time"
+# === LOGGING ===
+logging:
+  level: "INFO"
+  log_to_file: true
+  log_file: "logs/main.log"
+  log_to_console: true
 
-# === РЕЖИМЫ РАБОТЫ ===
-modes:
-  debug: true # Режим отладки (много дополнительной информации)
-  profile_memory: false # Профилирование памяти
-  profile_time: false # Профилирование времени выполнения
+# === TEACHER MODELS ===
+teacher_models:
+  primary_model: "distilbert-base-uncased"
+  fallback_models:
+    - "sentence-transformers/all-MiniLM-L6-v2"
+    - "roberta-base"
+
+# === BIOLOGICAL PRINCIPLES ===
+biological:
+  # Клетки как нейроны с общими весами
+  shared_weights: true
+
+  # Решетка как нервная ткань
+  tissue_simulation: true
+
+  # Рецепторная стратегия (8-12% покрытия)
+  receptor_coverage: 0.1
+
+  # Сигналы как нервные импульсы
+  signal_propagation: true
+  propagation_steps: 10
+
+# === EXPERIMENTAL FEATURES ===
+experimental:
+  enable_nca: true
+  enable_spatial_attention: false
+  enable_multi_teacher: false
+  debug_mode: false

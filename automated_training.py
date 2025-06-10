@@ -134,7 +134,7 @@ class AutomatedTrainer:
 
         # Строим команду
         cmd = [
-            "python",
+            sys.executable,  # Используем текущий Python интерпретатор
             "smart_resume_training.py",
             "--mode",
             self.mode,

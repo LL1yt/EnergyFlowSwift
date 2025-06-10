@@ -919,6 +919,20 @@ class ConfigManager:
                 mode = self._dynamic_config_manager.generator.detect_hardware_mode()
                 self.logger.info(f"🎯 Auto-detected mode: {mode}")
 
+            # Применяем custom scale factor если указан
+            if self.settings.custom_scale_factor is not None:
+                original_scale = getattr(
+                    self._dynamic_config_manager.generator.scale_settings, mode
+                )
+                setattr(
+                    self._dynamic_config_manager.generator.scale_settings,
+                    mode,
+                    self.settings.custom_scale_factor,
+                )
+                self.logger.info(
+                    f"🎯 Applied custom scale factor: {self.settings.custom_scale_factor}"
+                )
+
             # Генерируем динамическую конфигурацию
             dynamic_config = self._dynamic_config_manager.create_config_for_mode(mode)
 

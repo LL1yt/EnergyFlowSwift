@@ -228,10 +228,19 @@ class DynamicConfigGenerator:
                 "epochs": 100,
             },
             "gmlp": {
+                # Биологически правильное масштабирование
+                # При scale=1.0 → ~10,000 параметров, при scale=0.06 → ~600 параметров
+                "target_params": "{smart_round(10000 * scale_factor)}",  # Биологическое количество синапсов
                 "state_size": 32,
-                "hidden_dim": 32,
                 "neighbor_count": 6,
-                "external_input_size": 12,
+                # Формулы для достижения target_params:
+                # Примерная формула: params ≈ hidden_dim * (state_size + external_input_size + memory_dim)
+                "hidden_dim": "{smart_round(max(8, min(128, target_params ** 0.5 / 4)))}",
+                "external_input_size": "{smart_round(max(4, min(12, target_params ** 0.5 / 8)))}",
+                "memory_dim": "{smart_round(max(4, min(32, target_params ** 0.5 / 6)))}",
+                "use_memory": True,
+                "activation": "gelu",
+                "dropout": 0.1,
             },
         }
 

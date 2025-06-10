@@ -68,14 +68,17 @@ class DynamicTrainingManager:
                 dynamic_config_mode=self.forced_mode or "auto",
                 auto_hardware_detection=True,
                 enable_hot_reload=False,  # Отключаем во время обучения
+                # Отключаем автоматическое сканирование старых конфигов
+                config_search_paths=[],  # Пустой список = только main_config.yaml + динамическая система
+                # Передаем custom scale сразу при инициализации
+                custom_scale_factor=self.custom_scale_factor,
             )
 
             # Создание ConfigManager
             self.config_manager = ConfigManager(settings)
 
-            # Применяем custom scale если указан
-            if self.custom_scale:
-                self._apply_custom_scale()
+            # Custom scale уже передан в settings.custom_scale_factor
+            # Дублирующий вызов _apply_custom_scale() убран
 
             # Получение динамической конфигурации
             self.dynamic_config = {
@@ -107,35 +110,8 @@ class DynamicTrainingManager:
             logger.error(f"❌ Failed to load dynamic config: {e}")
             raise
 
-    def _apply_custom_scale(self):
-        """Применить custom scale factor"""
-        try:
-            from utils.config_manager.dynamic_config import DynamicConfigManager
-
-            # Создаем dynamic config manager
-            dynamic_manager = DynamicConfigManager()
-
-            # Определяем режим для применения custom scale
-            mode = self.forced_mode or "development"
-
-            # Временно изменяем scale в dynamic manager
-            original_scale = getattr(dynamic_manager.generator.scale_settings, mode)
-            setattr(dynamic_manager.generator.scale_settings, mode, self.custom_scale)
-
-            # Генерируем новую конфигурацию
-            new_config = dynamic_manager.create_config_for_mode(mode)
-
-            # Объединяем с текущей конфигурацией ConfigManager
-            self.config_manager.merge_dynamic_config(new_config)
-
-            # Восстанавливаем оригинальный scale
-            setattr(dynamic_manager.generator.scale_settings, mode, original_scale)
-
-            logger.info(f"🎯 Applied custom scale factor: {self.custom_scale}")
-
-        except Exception as e:
-            logger.error(f"❌ Failed to apply custom scale: {e}")
-            raise
+    # Метод _apply_custom_scale() удален - теперь custom scale
+    # передается через ConfigManagerSettings.custom_scale_factor
 
     def create_trainer(self):
         """Создание trainer с динамической конфигурацией"""

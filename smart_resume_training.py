@@ -56,6 +56,10 @@ class SmartResumeManager:
                 dynamic_config_mode=self.forced_mode or "auto",
                 auto_hardware_detection=True,
                 enable_hot_reload=False,
+                # Отключаем автоматическое сканирование старых конфигов
+                config_search_paths=[],  # Пустой список = только main_config.yaml + динамическая система
+                # Передаем custom scale сразу при инициализации
+                custom_scale_factor=self.custom_scale_factor,
             )
 
             # Создание ConfigManager
