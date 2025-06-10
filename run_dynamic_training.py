@@ -47,6 +47,7 @@ class DynamicTrainingManager:
         """
         self.forced_mode = forced_mode
         self.custom_scale = custom_scale
+        self.custom_scale_factor = custom_scale  # Алиас для совместимости
         self.config_manager = None
         self.dynamic_config = None
         self.trainer = None
@@ -129,6 +130,16 @@ class DynamicTrainingManager:
             gmlp_config = self.dynamic_config["gmlp"]
             training_config = self.dynamic_config["training"]
 
+            # Логируем динамическую конфигурацию для отладки
+            logger.info(f"🔍 Dynamic gMLP config from generator:")
+            logger.info(f"   target_params: {gmlp_config.get('target_params')}")
+            logger.info(f"   state_size: {gmlp_config.get('state_size')}")
+            logger.info(f"   hidden_dim: {gmlp_config.get('hidden_dim')}")
+            logger.info(
+                f"   external_input_size: {gmlp_config.get('external_input_size')}"
+            )
+            logger.info(f"   memory_dim: {gmlp_config.get('memory_dim')}")
+
             # Конфигурация EmergentTrainingConfig
             trainer_config = EmergentTrainingConfig(
                 teacher_model="distilbert-base-uncased",
@@ -143,6 +154,10 @@ class DynamicTrainingManager:
                     "neighbor_count": gmlp_config["neighbor_count"],
                     "hidden_dim": gmlp_config["hidden_dim"],
                     "external_input_size": gmlp_config["external_input_size"],
+                    "memory_dim": gmlp_config.get("memory_dim", 16),
+                    "target_params": gmlp_config[
+                        "target_params"
+                    ],  # НОВОЕ: Передаем биологически правильный target
                     "use_memory": True,
                     "activation": "gelu",
                     "dropout": 0.1,

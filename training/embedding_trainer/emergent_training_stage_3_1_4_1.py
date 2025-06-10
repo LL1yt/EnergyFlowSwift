@@ -99,36 +99,51 @@ class EmergentTrainingConfig:
 
     def __post_init__(self):
         if self.gmlp_config is None:
-            # DEFAULT configuration для точного 25K params target
-            # Эти значения используются только если gmlp_config не был передан извне
+            # DEFAULT configuration - используется только если gmlp_config не передан совсем
+            # ВАЖНО: Эти defaults НЕ должны перекрывать параметры из dynamic_config
             self.gmlp_config = {
-                "state_size": 32,  # OPTIMIZED from parameter analysis
+                "state_size": 32,  # OLD default - should be overridden by dynamic config
                 "neighbor_count": 6,  # Standard 6-connectivity
-                "hidden_dim": 32,  # OPTIMIZED from 128 → 32
-                "external_input_size": 12,  # OPTIMIZED input dimension
-                "memory_dim": 16,  # OPTIMIZED from 32 → 16
+                "hidden_dim": 32,  # OLD default - should be overridden by dynamic config
+                "external_input_size": 12,  # OLD default - should be overridden by dynamic config
+                "memory_dim": 16,  # OLD default - should be overridden by dynamic config
                 "use_memory": True,
                 "activation": "gelu",
                 "dropout": 0.1,
                 "spatial_connections": True,  # EMERGENT FEATURE - spatial connectivity
             }
         else:
-            # Если gmlp_config был передан - заполняем отсутствующие поля defaults
-            defaults = {
-                "state_size": 32,
-                "neighbor_count": 6,
-                "hidden_dim": 32,
-                "external_input_size": 12,
-                "memory_dim": 16,
+            # Если gmlp_config был передан - заполняем только безопасные defaults
+            # КРИТИЧНО: НЕ перекрываем биологически важные параметры!
+            safe_defaults = {
+                "neighbor_count": 6,  # Всегда 6 для 3D
                 "use_memory": True,
                 "activation": "gelu",
                 "dropout": 0.1,
                 "spatial_connections": True,
             }
-            # Обновляем только отсутствующие ключи
-            for key, default_value in defaults.items():
+            # Обновляем только отсутствующие ключи и только безопасные
+            for key, default_value in safe_defaults.items():
                 if key not in self.gmlp_config:
                     self.gmlp_config[key] = default_value
+
+            # Логируем что используем переданную конфигурацию
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.info(f"🔧 Using provided gmlp_config:")
+            logger.info(
+                f"   state_size: {self.gmlp_config.get('state_size', 'NOT SET')}"
+            )
+            logger.info(
+                f"   hidden_dim: {self.gmlp_config.get('hidden_dim', 'NOT SET')}"
+            )
+            logger.info(
+                f"   external_input_size: {self.gmlp_config.get('external_input_size', 'NOT SET')}"
+            )
+            logger.info(
+                f"   memory_dim: {self.gmlp_config.get('memory_dim', 'NOT SET')}"
+            )
 
         if self.loss_weights is None:
             self.loss_weights = {
@@ -448,6 +463,7 @@ class EmergentGMLPCell(nn.Module):
         activation: str = "gelu",
         dropout: float = 0.1,
         spatial_connections: bool = True,
+        target_params: int = 25000,  # НОВОЕ: Динамический target из config
     ):
 
         super().__init__()
@@ -462,6 +478,7 @@ class EmergentGMLPCell(nn.Module):
             use_memory=use_memory,
             activation=activation,
             dropout=dropout,
+            target_params=target_params,  # НОВОЕ: Передаем динамический target
         )
 
         # === SPATIAL CONNECTIVITY ENHANCEMENTS ===
@@ -470,7 +487,9 @@ class EmergentGMLPCell(nn.Module):
         # Логирование параметров только один раз для всех cells
         if spatial_connections and not hasattr(EmergentGMLPCell, "_param_count_logged"):
             total_params = sum(p.numel() for p in self.parameters())
-            logger.info(f"🧠 EmergentGMLPCell: {total_params:,} params (target: ~25K)")
+            logger.info(
+                f"🧠 EmergentGMLPCell: {total_params:,} params (target: ~{target_params:,})"
+            )
             EmergentGMLPCell._param_count_logged = True
 
         if spatial_connections:

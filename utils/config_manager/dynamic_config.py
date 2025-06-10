@@ -231,13 +231,13 @@ class DynamicConfigGenerator:
                 # Биологически правильное масштабирование
                 # При scale=1.0 → ~10,000 параметров, при scale=0.06 → ~600 параметров
                 "target_params": "{smart_round(10000 * scale_factor)}",  # Биологическое количество синапсов
-                "state_size": 32,
-                "neighbor_count": 6,
-                # Формулы для достижения target_params:
-                # Примерная формула: params ≈ hidden_dim * (state_size + external_input_size + memory_dim)
-                "hidden_dim": "{smart_round(max(8, min(128, target_params ** 0.5 / 4)))}",
-                "external_input_size": "{smart_round(max(4, min(12, target_params ** 0.5 / 8)))}",
-                "memory_dim": "{smart_round(max(4, min(32, target_params ** 0.5 / 6)))}",
+                "neighbor_count": 6,  # Всегда 6 для 3D решетки
+                # Биологически правильные размеры на основе scale_factor:
+                "state_size": "{smart_round(max(8, min(32, target_params ** 0.5 / 3)))}",  # Масштабируемый state
+                "hidden_dim": "{smart_round(max(8, min(128, target_params ** 0.5 / 4)))}",  # Масштабируемый hidden
+                "external_input_size": "{smart_round(max(4, min(12, target_params ** 0.5 / 8)))}",  # Масштабируемый input
+                "memory_dim": "{smart_round(max(4, min(32, target_params ** 0.5 / 6)))}",  # Масштабируемая память
+                # Фиксированные параметры
                 "use_memory": True,
                 "activation": "gelu",
                 "dropout": 0.1,
@@ -374,7 +374,45 @@ if __name__ == "__main__":
     for mode in ["development", "research", "validation"]:
         config = manager.create_config_for_mode(mode)
         lattice = config["lattice"]
+        gmlp = config["gmlp"]
         print(f"\n📊 {mode.upper()} mode:")
         print(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
         print(f"   Neurons: {lattice['total_neurons']:,}")
         print(f"   Batch: {config['training']['batch_size']}")
+        print(f"   🧠 gMLP target: {gmlp['target_params']} parameters")
+        print(f"   state_size={gmlp['state_size']}, hidden_dim={gmlp['hidden_dim']}")
+        print(
+            f"   external_input={gmlp['external_input_size']}, memory={gmlp['memory_dim']}"
+        )
+
+    # Специальный тест с scale=0.06 (как в команде пользователя)
+    print(f"\n🎯 SPECIAL TEST: Development mode with scale=0.06:")
+    setattr(manager.generator.scale_settings, "development", 0.06)
+    config_006 = manager.create_config_for_mode("development")
+    lattice_006 = config_006["lattice"]
+    gmlp_006 = config_006["gmlp"]
+    print(f"   Lattice: {lattice_006['xs']}x{lattice_006['ys']}x{lattice_006['zs']}")
+    print(f"   Neurons: {lattice_006['total_neurons']:,}")
+    print(f"   🧠 gMLP target: {gmlp_006['target_params']} parameters")
+    print(
+        f"   state_size={gmlp_006['state_size']}, hidden_dim={gmlp_006['hidden_dim']}"
+    )
+    print(
+        f"   external_input={gmlp_006['external_input_size']}, memory={gmlp_006['memory_dim']}"
+    )
+
+    # Приблизительный расчет параметров
+    state_size = gmlp_006["state_size"]
+    hidden_dim = gmlp_006["hidden_dim"]
+    ext_input = gmlp_006["external_input_size"]
+    memory_dim = gmlp_006["memory_dim"]
+    neighbor_count = 6
+
+    # Примерный расчет (упрощенный для gMLP)
+    input_size = neighbor_count * state_size + state_size + ext_input
+    approx_params = (
+        input_size * hidden_dim + hidden_dim * state_size + memory_dim * hidden_dim
+    )
+    print(
+        f"   📊 Estimated gMLP params: ~{approx_params} (target: {gmlp_006['target_params']})"
+    )

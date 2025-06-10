@@ -168,6 +168,13 @@ class AutomatedTrainer:
                 logger.info(f"✅ Stage {stage} completed successfully")
                 logger.info(f"   Actual time: {actual_time:.1f} minutes")
 
+                # Показываем последние строки вывода для контекста
+                stdout_lines = result.stdout.strip().split("\n")
+                logger.info(f"   Last few lines of output:")
+                for line in stdout_lines[-5:]:
+                    if line.strip():
+                        logger.info(f"      {line}")
+
                 # Извлекаем метрики из вывода
                 similarity = self._extract_similarity_from_output(result.stdout)
 
@@ -189,13 +196,17 @@ class AutomatedTrainer:
                 logger.error(
                     f"❌ Stage {stage} failed with return code {result.returncode}"
                 )
-                logger.error(f"   Error output: {result.stderr[:500]}...")
+                logger.error(f"   STDOUT output:")
+                logger.error(result.stdout)
+                logger.error(f"   STDERR output:")
+                logger.error(result.stderr)
 
                 stage_result = {
                     "stage": stage,
                     "config": config,
                     "success": False,
                     "error": result.stderr,
+                    "stdout": result.stdout,
                     "timestamp": datetime.now().isoformat(),
                 }
 

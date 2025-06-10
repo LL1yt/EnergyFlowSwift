@@ -36,6 +36,7 @@ class SmartResumeManager:
         """
         self.forced_mode = forced_mode
         self.custom_scale = custom_scale
+        self.custom_scale_factor = custom_scale  # Алиас для совместимости
         self.config_manager = None
         self.current_config = None
 
@@ -43,41 +44,52 @@ class SmartResumeManager:
         self._initialize_config()
 
     def _initialize_config(self):
-        """Инициализация текущей конфигурации"""
+        """Инициализация текущей конфигурации напрямую через динамическую систему"""
         try:
-            from utils.config_manager.config_manager import (
-                ConfigManager,
-                ConfigManagerSettings,
-            )
+            # Используем ТОЛЬКО динамическую систему, без старого ConfigManager
+            from utils.config_manager.dynamic_config import DynamicConfigManager
 
-            # Настройки с включенной динамической конфигурацией
-            settings = ConfigManagerSettings(
-                enable_dynamic_config=True,
-                dynamic_config_mode=self.forced_mode or "auto",
-                auto_hardware_detection=True,
-                enable_hot_reload=False,
-                # Отключаем автоматическое сканирование старых конфигов
-                config_search_paths=[],  # Пустой список = только main_config.yaml + динамическая система
-                # Передаем custom scale сразу при инициализации
-                custom_scale_factor=self.custom_scale_factor,
-            )
+            # Создаем динамический менеджер
+            dynamic_manager = DynamicConfigManager()
 
-            # Создание ConfigManager
-            self.config_manager = ConfigManager(settings)
+            # Определяем режим
+            mode = self.forced_mode or "auto"
+            if mode == "auto":
+                mode = dynamic_manager.generator.detect_hardware_mode()
 
-            # Получение текущей динамической конфигурации
+            # Применяем custom scale factor если указан
+            if self.custom_scale_factor is not None:
+                original_scale = getattr(dynamic_manager.generator.scale_settings, mode)
+                setattr(
+                    dynamic_manager.generator.scale_settings,
+                    mode,
+                    self.custom_scale_factor,
+                )
+                logger.info(
+                    f"🎯 Applied custom scale factor: {self.custom_scale_factor}"
+                )
+
+            # Генерируем конфигурацию
+            full_config = dynamic_manager.create_config_for_mode(mode)
+
+            # Извлекаем нужные секции
             self.current_config = {
-                "lattice": self.config_manager.get_config("lattice"),
-                "embeddings": self.config_manager.get_config("embeddings"),
-                "training": self.config_manager.get_config("training"),
-                "gmlp": self.config_manager.get_config("gmlp"),
+                "lattice": full_config["lattice"],
+                "embeddings": full_config["embeddings"],
+                "training": full_config["training"],
+                "gmlp": full_config["gmlp"],
             }
 
+            # Сохраняем метаданные
+            self.config_metadata = full_config.get("_metadata", {})
+
             # Информация о режиме
-            dynamic_info = self.config_manager.get_dynamic_config_info()
-            if dynamic_info:
-                logger.info(f"🎯 Current config: {dynamic_info['mode']} mode")
-                logger.info(f"   Scale factor: {dynamic_info['scale_factor']}")
+            logger.info(
+                f"🎯 Current config: {self.config_metadata.get('mode', mode)} mode"
+            )
+            logger.info(
+                f"   Scale factor: {self.config_metadata.get('scale_factor', 'unknown')}"
+            )
 
             lattice = self.current_config["lattice"]
             logger.info(f"📊 Target configuration:")
@@ -86,6 +98,17 @@ class SmartResumeManager:
             logger.info(
                 f"   Embedding dim: {self.current_config['embeddings']['embedding_dim']:,}"
             )
+
+            # Логируем gMLP параметры для проверки
+            gmlp = self.current_config["gmlp"]
+            logger.info(f"🧠 gMLP configuration:")
+            logger.info(f"   Target params: {gmlp.get('target_params', 'unknown')}")
+            logger.info(f"   State size: {gmlp.get('state_size', 'unknown')}")
+            logger.info(f"   Hidden dim: {gmlp.get('hidden_dim', 'unknown')}")
+            logger.info(
+                f"   External input: {gmlp.get('external_input_size', 'unknown')}"
+            )
+            logger.info(f"   Memory dim: {gmlp.get('memory_dim', 'unknown')}")
 
         except Exception as e:
             logger.error(f"❌ Failed to initialize config: {e}")
