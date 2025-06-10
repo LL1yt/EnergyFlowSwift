@@ -26,7 +26,7 @@ class ModelWeightsManager:
         for dir_path in [self.latest_dir, self.versioned_dir, self.backups_dir]:
             dir_path.mkdir(exist_ok=True)
         
-        print(f"📁 Model Weights Manager initialized: {self.base_dir}")
+        print(f"[FOLDER] Model Weights Manager initialized: {self.base_dir}")
     
     def save_latest_weights(self, trainer, config, metadata=None):
         """Сохранить последние веса (перезаписывает предыдущие)"""
@@ -36,7 +36,7 @@ class ModelWeightsManager:
         if latest_path.exists():
             backup_name = f"trainer_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pt"
             shutil.copy2(latest_path, self.backups_dir / backup_name)
-            print(f"   📦 Предыдущие веса сохранены в backup: {backup_name}")
+            print(f"   [PACKAGE] Предыдущие веса сохранены в backup: {backup_name}")
         
         # Создаем полные metadata
         full_metadata = {
@@ -62,7 +62,7 @@ class ModelWeightsManager:
         with open(metadata_path, 'w', encoding='utf-8') as f:
             json.dump(full_metadata, f, indent=2, ensure_ascii=False)
         
-        print(f"💾 Последние веса сохранены: {latest_path}")
+        print(f"[SAVE] Последние веса сохранены: {latest_path}")
         print(f"   Параметров: {full_metadata['trainable_params']:,}")
         print(f"   Размер: {full_metadata['model_size_mb']:.1f} MB")
         
@@ -109,7 +109,7 @@ class ModelWeightsManager:
         latest_path = self.latest_dir / "trainer_latest.pt"
         
         if not latest_path.exists():
-            print(f"⚠️ Последние веса не найдены: {latest_path}")
+            print(f"[WARNING] Последние веса не найдены: {latest_path}")
             return None
         
         return self._load_weights(trainer, latest_path)
@@ -119,7 +119,7 @@ class ModelWeightsManager:
         weights_path = self.versioned_dir / version_name / f"trainer_{version_name}.pt"
         
         if not weights_path.exists():
-            print(f"⚠️ Версионированные веса не найдены: {weights_path}")
+            print(f"[WARNING] Версионированные веса не найдены: {weights_path}")
             return None
         
         return self._load_weights(trainer, weights_path)
@@ -141,7 +141,7 @@ class ModelWeightsManager:
                 missing = current_keys - loaded_keys
                 extra = loaded_keys - current_keys
                 
-                print(f"⚠️ Несовместимость весов:")
+                print(f"[WARNING] Несовместимость весов:")
                 if missing:
                     print(f"   Отсутствующие ключи: {missing}")
                 if extra:
@@ -155,7 +155,7 @@ class ModelWeightsManager:
             metadata = checkpoint.get('metadata', {})
             config = checkpoint.get('config', {})
             
-            print(f"✅ Веса загружены: {weights_path}")
+            print(f"[OK] Веса загружены: {weights_path}")
             print(f"   Timestamp: {metadata.get('timestamp', 'unknown')}")
             print(f"   Параметров: {metadata.get('trainable_params', 'unknown'):,}")
             
@@ -166,12 +166,12 @@ class ModelWeightsManager:
             }
             
         except Exception as e:
-            print(f"❌ Ошибка загрузки весов: {e}")
+            print(f"[ERROR] Ошибка загрузки весов: {e}")
             return None
     
     def list_available_weights(self):
         """Список доступных весов"""
-        print(f"\n📋 ДОСТУПНЫЕ ВЕСА:")
+        print(f"\n[INFO] ДОСТУПНЫЕ ВЕСА:")
         
         # Latest weights
         latest_path = self.latest_dir / "trainer_latest.pt"
@@ -181,15 +181,15 @@ class ModelWeightsManager:
                 with open(metadata_path, 'r', encoding='utf-8') as f:
                     metadata = json.load(f)
                 
-                print(f"   🔄 LATEST:")
+                print(f"   [REFRESH] LATEST:")
                 print(f"      Path: {latest_path}")
                 print(f"      Timestamp: {metadata.get('timestamp', 'unknown')}")
                 print(f"      Parameters: {metadata.get('trainable_params', 'unknown'):,}")
                 print(f"      Size: {metadata.get('model_size_mb', 'unknown')} MB")
             else:
-                print(f"   🔄 LATEST: {latest_path} (no metadata)")
+                print(f"   [REFRESH] LATEST: {latest_path} (no metadata)")
         else:
-            print(f"   🔄 LATEST: не найден")
+            print(f"   [REFRESH] LATEST: не найден")
         
         # Versioned weights
         print(f"\n   🏷️ VERSIONED:")
@@ -216,7 +216,7 @@ class ModelWeightsManager:
             print(f"      Нет версионированных весов")
         
         # Backups
-        print(f"\n   📦 BACKUPS:")
+        print(f"\n   [PACKAGE] BACKUPS:")
         backup_files = list(self.backups_dir.glob("trainer_backup_*.pt"))
         if backup_files:
             for backup_file in sorted(backup_files, reverse=True)[:5]:  # Показываем последние 5
@@ -277,7 +277,7 @@ def main():
     manager = ModelWeightsManager()
     manager.list_available_weights()
     
-    print(f"\n💡 ИСПОЛЬЗОВАНИЕ:")
+    print(f"\n[IDEA] ИСПОЛЬЗОВАНИЕ:")
     print(f"1. manager.save_latest_weights(trainer, config) - сохранить текущие веса")
     print(f"2. manager.load_latest_weights(trainer) - загрузить последние веса")
     print(f"3. manager.create_training_checkpoint(trainer, config, epoch, loss, sim) - checkpoint")

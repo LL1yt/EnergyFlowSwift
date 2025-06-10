@@ -43,7 +43,7 @@ def test_development_mode():
         # Определяем рекомендованный режим через generator
         recommended_mode = config_manager.generator.detect_hardware_mode()
 
-        print(f"📊 Обнаруженная аппаратура:")
+        print(f"[DATA] Обнаруженная аппаратура:")
         print(f"   GPU: {gpu_name}")
         print(f"   VRAM: {gpu_memory_gb:.1f} GB")
         print(f"   Рекомендованный режим: {recommended_mode}")
@@ -76,7 +76,7 @@ def test_development_mode():
         embedding_dim = config["embeddings"]["embedding_dim"]
         estimated_memory_gb = (lattice_size * embedding_dim * 4) / (1024**3)  # float32
 
-        print(f"\n💾 ОЦЕНКА ПАМЯТИ:")
+        print(f"\n[SAVE] ОЦЕНКА ПАМЯТИ:")
         print(f"   Примерный размер решетки: {estimated_memory_gb:.2f} GB")
         print(f"   Доступная VRAM: {gpu_memory_gb:.1f} GB")
 
@@ -86,7 +86,7 @@ def test_development_mode():
         )  # MB
         print(f"   Память на батч: {batch_memory:.1f} MB")
 
-        print(f"\n✅ ТЕСТ ПРОШЕЛ УСПЕШНО!")
+        print(f"\n[OK] ТЕСТ ПРОШЕЛ УСПЕШНО!")
         print(f"   Development режим настроен корректно")
         print(f"   Scale factor: {scale_factor} (правильно для development)")
         print(f"   Размеры подходят для разработки")
@@ -99,21 +99,21 @@ def test_development_mode():
             datasets = loader.list_available_datasets()
 
             if datasets:
-                print(f"\n📁 ДОСТУПНЫЕ ДАТАСЕТЫ:")
+                print(f"\n[FOLDER] ДОСТУПНЫЕ ДАТАСЕТЫ:")
                 for i, dataset in enumerate(datasets[:3]):  # Показываем первые 3
                     print(f"   {i+1}. {dataset['filename']} ({dataset['size']} pairs)")
                 print(f"   Всего датасетов: {len(datasets)}")
             else:
-                print(f"\n⚠️ ДАТАСЕТЫ НЕ НАЙДЕНЫ!")
+                print(f"\n[WARNING] ДАТАСЕТЫ НЕ НАЙДЕНЫ!")
                 print(f"   Нужно сначала запустить generate_large_embedding_dataset.py")
 
         except ImportError as e:
-            print(f"\n❌ Ошибка импорта PrecomputedEmbeddingLoader: {e}")
+            print(f"\n[ERROR] Ошибка импорта PrecomputedEmbeddingLoader: {e}")
 
         return config
 
     except Exception as e:
-        print(f"\n❌ ОШИБКА ТЕСТА: {e}")
+        print(f"\n[ERROR] ОШИБКА ТЕСТА: {e}")
         raise
 
 
@@ -136,7 +136,7 @@ def test_checkpoint_naming():
         # Формируем название как в системе
         result_name = f"dynamic_{mode}_scale{scale_factor}_{dataset_size}pairs_{epochs}epochs_{best_similarity:.3f}sim_{timestamp}"
 
-        print(f"✅ Пример названия checkpoint'а:")
+        print(f"[OK] Пример названия checkpoint'а:")
         print(f"   {result_name}")
         print(f"   Содержит scale factor: ✓")
         print(f"   Содержит режим: ✓")
@@ -145,7 +145,7 @@ def test_checkpoint_naming():
         print(f"   Содержит лучший результат: ✓")
 
     except Exception as e:
-        print(f"❌ Ошибка теста именования: {e}")
+        print(f"[ERROR] Ошибка теста именования: {e}")
 
 
 def main():
@@ -161,7 +161,7 @@ def main():
         # Тест именования
         test_checkpoint_naming()
 
-        print(f"\n🎉 ВСЕ ТЕСТЫ ПРОШЛИ УСПЕШНО!")
+        print(f"\n[SUCCESS] ВСЕ ТЕСТЫ ПРОШЛИ УСПЕШНО!")
         print(f"   Development режим готов к использованию")
         print(f"   Можно запускать: python run_dynamic_training.py --mode development")
 

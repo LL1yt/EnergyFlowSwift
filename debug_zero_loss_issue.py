@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🔍 ДИАГНОСТИЧЕСКИЙ СКРИПТ: Проблема с нулевыми метриками
+[MAGNIFY] ДИАГНОСТИЧЕСКИЙ СКРИПТ: Проблема с нулевыми метриками
 
 Цель: Систематически выявить источник проблемы с Loss: 0.0000 и Similarity: 0.0000
 
@@ -39,13 +39,13 @@ class ZeroLossDiagnostics:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.results = {}
         
-        print(f"🔍 [ДИАГНОСТИКА] Инициализация на device: {self.device}")
+        print(f"[MAGNIFY] [ДИАГНОСТИКА] Инициализация на device: {self.device}")
         
     def run_full_diagnostics(self):
         """Запуск полного цикла диагностики"""
         
         print("\n" + "="*50)
-        print("🎯 НАЧАЛО СИСТЕМАТИЧЕСКОЙ ДИАГНОСТИКИ")
+        print("[TARGET] НАЧАЛО СИСТЕМАТИЧЕСКОЙ ДИАГНОСТИКИ")
         print("="*50)
         
         # 1. Проверка создания модели
@@ -76,7 +76,7 @@ class ZeroLossDiagnostics:
         
     def _test_model_creation(self) -> 'EmergentCubeTrainer':
         """Тест 1: Создание модели"""
-        print("\n🔧 [ТЕСТ 1] Проверка создания модели...")
+        print("\n[CONFIG] [ТЕСТ 1] Проверка создания модели...")
         
         try:
             config = EmergentTrainingConfig()
@@ -90,7 +90,7 @@ class ZeroLossDiagnostics:
             total_params = sum(p.numel() for p in trainer.parameters())
             trainable_params = sum(p.numel() for p in trainer.parameters() if p.requires_grad)
             
-            print(f"✅ [ТЕСТ 1] Модель создана успешно")
+            print(f"[OK] [ТЕСТ 1] Модель создана успешно")
             print(f"   - Всего параметров: {total_params:,}")
             print(f"   - Обучаемых параметров: {trainable_params:,}")
             print(f"   - Device: {trainer.device}")
@@ -104,13 +104,13 @@ class ZeroLossDiagnostics:
             return trainer
             
         except Exception as e:
-            print(f"❌ [ТЕСТ 1] Ошибка создания модели: {e}")
+            print(f"[ERROR] [ТЕСТ 1] Ошибка создания модели: {e}")
             self.results['model_creation'] = {'status': 'failed', 'error': str(e)}
             return None
 
     def _test_data_creation(self) -> List:
         """Тест 2: Создание данных"""
-        print("\n📊 [ТЕСТ 2] Проверка создания данных...")
+        print("\n[DATA] [ТЕСТ 2] Проверка создания данных...")
         
         try:
             # Простой тестовый dataset
@@ -127,7 +127,7 @@ class ZeroLossDiagnostics:
                 normalize_embeddings=True
             )
             
-            print(f"✅ [ТЕСТ 2] Dataset создан успешно")
+            print(f"[OK] [ТЕСТ 2] Dataset создан успешно")
             print(f"   - Количество примеров: {len(dataset)}")
             
             # Проверяем структуру данных
@@ -149,13 +149,13 @@ class ZeroLossDiagnostics:
             return dataset
             
         except Exception as e:
-            print(f"❌ [ТЕСТ 2] Ошибка создания данных: {e}")
+            print(f"[ERROR] [ТЕСТ 2] Ошибка создания данных: {e}")
             self.results['data_creation'] = {'status': 'failed', 'error': str(e)}
             return []
 
     def _test_forward_pass(self, trainer: 'EmergentCubeTrainer', dataset: List) -> Dict:
         """Тест 3: Forward pass"""
-        print("\n⚡ [ТЕСТ 3] Проверка forward pass...")
+        print("\n[FAST] [ТЕСТ 3] Проверка forward pass...")
         
         try:
             # Берем первый пример
@@ -171,7 +171,7 @@ class ZeroLossDiagnostics:
             with torch.no_grad():
                 outputs = trainer.forward(question_embedding)
             
-            print(f"✅ [ТЕСТ 3] Forward pass выполнен успешно")
+            print(f"[OK] [ТЕСТ 3] Forward pass выполнен успешно")
             print(f"   - Output keys: {list(outputs.keys())}")
             
             for key, tensor in outputs.items():
@@ -199,7 +199,7 @@ class ZeroLossDiagnostics:
             return outputs
             
         except Exception as e:
-            print(f"❌ [ТЕСТ 3] Ошибка forward pass: {e}")
+            print(f"[ERROR] [ТЕСТ 3] Ошибка forward pass: {e}")
             self.results['forward_pass'] = {'status': 'failed', 'error': str(e)}
             return None
 
@@ -224,7 +224,7 @@ class ZeroLossDiagnostics:
             # Compute loss
             losses = trainer.compute_loss(outputs, targets)
             
-            print(f"✅ [ТЕСТ 4] Loss computation выполнен успешно")
+            print(f"[OK] [ТЕСТ 4] Loss computation выполнен успешно")
             print(f"   - Loss components: {list(losses.keys())}")
             
             for key, loss_tensor in losses.items():
@@ -236,7 +236,7 @@ class ZeroLossDiagnostics:
                     
                     # Критическая проверка: почему loss = 0?
                     if loss_value == 0.0:
-                        print(f"     🚨 КРИТИЧНО: {key} = 0.0!")
+                        print(f"     [ALERT] КРИТИЧНО: {key} = 0.0!")
                         self._debug_zero_loss_component(key, outputs, targets, trainer)
                         
             self.results['loss_computation'] = {
@@ -248,13 +248,13 @@ class ZeroLossDiagnostics:
             return losses
             
         except Exception as e:
-            print(f"❌ [ТЕСТ 4] Ошибка loss computation: {e}")
+            print(f"[ERROR] [ТЕСТ 4] Ошибка loss computation: {e}")
             self.results['loss_computation'] = {'status': 'failed', 'error': str(e)}
             return None
 
     def _debug_zero_loss_component(self, component: str, outputs: Dict, targets: Dict, trainer):
         """Детальная диагностика нулевого loss компонента"""
-        print(f"\n🔍 [ДЕТАЛЬНАЯ ДИАГНОСТИКА] {component}")
+        print(f"\n[MAGNIFY] [ДЕТАЛЬНАЯ ДИАГНОСТИКА] {component}")
         
         if component == 'surface_reconstruction_loss':
             # Проверяем surface reconstruction
@@ -276,7 +276,7 @@ class ZeroLossDiagnostics:
                     
                     # Проверяем идентичность
                     if torch.allclose(output_surface, projected_input):
-                        print("   - 🚨 output_surface идентичен projected_input!")
+                        print("   - [ALERT] output_surface идентичен projected_input!")
                     else:
                         print(f"   - Различие найдено: max_diff={torch.max(torch.abs(output_surface - projected_input)).item():.6f}")
                         
@@ -336,18 +336,18 @@ class ZeroLossDiagnostics:
                     grad_norm = param.grad.norm().item()
                     grad_stats[name] = grad_norm
                     if grad_norm == 0:
-                        print(f"   - 🚨 Zero gradient: {name}")
+                        print(f"   - [ALERT] Zero gradient: {name}")
                     elif grad_norm > 0:
-                        print(f"   - ✅ Non-zero gradient: {name} = {grad_norm:.6f}")
+                        print(f"   - [OK] Non-zero gradient: {name} = {grad_norm:.6f}")
                 else:
-                    print(f"   - ❌ No gradient: {name}")
+                    print(f"   - [ERROR] No gradient: {name}")
             
             # Общая статистика градиентов
             non_zero_grads = sum(1 for g in grad_stats.values() if g > 0)
             zero_grads = sum(1 for g in grad_stats.values() if g == 0)
             no_grads = len([p for p in trainer.parameters() if p.grad is None])
             
-            print(f"✅ [ТЕСТ 5] Gradient analysis завершен")
+            print(f"[OK] [ТЕСТ 5] Gradient analysis завершен")
             print(f"   - Non-zero gradients: {non_zero_grads}")
             print(f"   - Zero gradients: {zero_grads}")
             print(f"   - No gradients: {no_grads}")
@@ -361,20 +361,20 @@ class ZeroLossDiagnostics:
             }
             
         except Exception as e:
-            print(f"❌ [ТЕСТ 5] Ошибка gradient flow: {e}")
+            print(f"[ERROR] [ТЕСТ 5] Ошибка gradient flow: {e}")
             self.results['gradient_flow'] = {'status': 'failed', 'error': str(e)}
 
     def _analyze_results(self):
         """Финальный анализ результатов диагностики"""
         print("\n" + "="*50)
-        print("📊 АНАЛИЗ РЕЗУЛЬТАТОВ ДИАГНОСТИКИ")
+        print("[DATA] АНАЛИЗ РЕЗУЛЬТАТОВ ДИАГНОСТИКИ")
         print("="*50)
         
         # Выводим статус каждого теста
         for test_name, result in self.results.items():
             status = result.get('status', 'unknown')
-            print(f"\n🔍 {test_name.upper()}:")
-            print(f"   Status: {'✅ УСПЕХ' if status == 'success' else '❌ ОШИБКА'}")
+            print(f"\n[MAGNIFY] {test_name.upper()}:")
+            print(f"   Status: {'[OK] УСПЕХ' if status == 'success' else '[ERROR] ОШИБКА'}")
             
             if status == 'failed':
                 print(f"   Error: {result.get('error', 'Unknown')}")
@@ -385,11 +385,11 @@ class ZeroLossDiagnostics:
                         print(f"   {key}: {value}")
         
         # Выявляем проблемы
-        print("\n🎯 ВЕРОЯТНЫЕ ПРИЧИНЫ ПРОБЛЕМЫ:")
+        print("\n[TARGET] ВЕРОЯТНЫЕ ПРИЧИНЫ ПРОБЛЕМЫ:")
         self._identify_root_causes()
         
         # Рекомендации по исправлению
-        print("\n💡 РЕКОМЕНДАЦИИ ПО ИСПРАВЛЕНИЮ:")
+        print("\n[IDEA] РЕКОМЕНДАЦИИ ПО ИСПРАВЛЕНИЮ:")
         self._provide_recommendations()
 
     def _identify_root_causes(self):
@@ -400,7 +400,7 @@ class ZeroLossDiagnostics:
             loss_values = self.results['loss_computation']['loss_values']
             
             if loss_values.get('total_loss', 0) == 0.0:
-                print("   🚨 КРИТИЧНО: total_loss = 0.0")
+                print("   [ALERT] КРИТИЧНО: total_loss = 0.0")
                 
                 if loss_values.get('surface_reconstruction_loss', 0) == 0.0:
                     print("     - Surface reconstruction loss = 0 (возможно идентичные input/output)")
@@ -415,18 +415,18 @@ class ZeroLossDiagnostics:
         if 'gradient_flow' in self.results and self.results['gradient_flow']['status'] == 'success':
             grad_info = self.results['gradient_flow']
             if grad_info['non_zero_grads'] == 0:
-                print("   🚨 КРИТИЧНО: Нет ненулевых градиентов")
+                print("   [ALERT] КРИТИЧНО: Нет ненулевых градиентов")
                 print("     - Backward pass не работает или loss не связан с параметрами")
 
     def _provide_recommendations(self):
         """Рекомендации по исправлению"""
         
-        print("   1. 🔧 Проверить loss function implementation:")
+        print("   1. [CONFIG] Проверить loss function implementation:")
         print("      - Убедиться что loss components не возвращают константы")
         print("      - Проверить dimension matching в cosine similarity")
         print("      - Добавить epsilon для numerical stability")
         
-        print("   2. 🔍 Проверить forward pass:")
+        print("   2. [MAGNIFY] Проверить forward pass:")
         print("      - Убедиться что model не возвращает идентичные outputs")
         print("      - Проверить что parameters обновляются")
         
@@ -440,7 +440,7 @@ def main():
     diagnostics = ZeroLossDiagnostics()
     diagnostics.run_full_diagnostics()
     
-    print("\n🎯 Диагностика завершена. Проверьте результаты выше.")
+    print("\n[TARGET] Диагностика завершена. Проверьте результаты выше.")
     print("Следующий шаг: исправить выявленные проблемы и повторно запустить обучение.")
 
 if __name__ == "__main__":

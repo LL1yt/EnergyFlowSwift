@@ -25,10 +25,10 @@ def test_imports():
             create_lattice_from_config, validate_lattice_config,
             Coordinates3D, Dimensions3D, Lattice3D
         )
-        print("  ✅ Все компоненты импортированы успешно")
+        print("  [OK] Все компоненты импортированы успешно")
         return True
     except Exception as e:
-        print(f"  ❌ Ошибка импорта: {e}")
+        print(f"  [ERROR] Ошибка импорта: {e}")
         return False
 
 
@@ -45,7 +45,7 @@ def test_lattice_config():
             boundary_conditions=BoundaryCondition.WALLS
         )
         
-        print(f"  ✅ Базовая конфигурация создана: {config.dimensions}")
+        print(f"  [OK] Базовая конфигурация создана: {config.dimensions}")
         print(f"    - Общее количество клеток: {config.total_cells}")
         print(f"    - Граничные условия: {config.boundary_conditions.value}")
         print(f"    - Устройство: {config.device}")
@@ -58,13 +58,13 @@ def test_lattice_config():
         for bc in BoundaryCondition:
             test_config = LatticeConfig(dimensions=(5, 5, 5), boundary_conditions=bc)
             assert test_config.boundary_conditions == bc
-            print(f"    - Граничные условия {bc.value}: ✅")
+            print(f"    - Граничные условия {bc.value}: [OK]")
             
-        print("  ✅ LatticeConfig все тесты пройдены")
+        print("  [OK] LatticeConfig все тесты пройдены")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка в LatticeConfig: {e}")
+        print(f"  [ERROR] Ошибка в LatticeConfig: {e}")
         traceback.print_exc()
         return False
 
@@ -78,7 +78,7 @@ def test_position_3d():
         
         # Создаем систему координат
         pos_system = Position3D((4, 4, 4))
-        print(f"  ✅ Position3D создан для решетки {pos_system.dimensions}")
+        print(f"  [OK] Position3D создан для решетки {pos_system.dimensions}")
         
         # Тест преобразования координат
         test_coords = [
@@ -94,7 +94,7 @@ def test_position_3d():
             back_coords = pos_system.to_3d_coordinates(linear_idx)
             
             assert coords == back_coords, f"Преобразование не сохранилось: {coords} -> {linear_idx} -> {back_coords}"
-            print(f"    - {coords} ↔ {linear_idx}: ✅")
+            print(f"    - {coords} ↔ {linear_idx}: [OK]")
             
         # Тест валидации координат
         valid_coords = (1, 1, 1)
@@ -114,11 +114,11 @@ def test_position_3d():
         print(f"    - Манхэттенское расстояние {coord1}-{coord2}: {manhattan_dist}")
         print(f"    - Евклидово расстояние {coord1}-{coord2}: {euclidean_dist:.3f}")
         
-        print("  ✅ Position3D все тесты пройдены")
+        print("  [OK] Position3D все тесты пройдены")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка в Position3D: {e}")
+        print(f"  [ERROR] Ошибка в Position3D: {e}")
         traceback.print_exc()
         return False
 
@@ -134,7 +134,7 @@ def test_neighbor_topology():
         config = LatticeConfig(dimensions=(3, 3, 3), boundary_conditions=BoundaryCondition.WALLS)
         topology = NeighborTopology(config)
         
-        print(f"  ✅ NeighborTopology создан для {config.dimensions} с {config.boundary_conditions.value}")
+        print(f"  [OK] NeighborTopology создан для {config.dimensions} с {config.boundary_conditions.value}")
         
         # Тест соседства для центральной клетки (должно быть 6 соседей)
         center_coords = (1, 1, 1)
@@ -174,11 +174,11 @@ def test_neighbor_topology():
         
         assert stats['symmetry_check'], "Топология должна быть симметричной"
         
-        print("  ✅ NeighborTopology все тесты пройдены")
+        print("  [OK] NeighborTopology все тесты пройдены")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка в NeighborTopology: {e}")
+        print(f"  [ERROR] Ошибка в NeighborTopology: {e}")
         traceback.print_exc()
         return False
 
@@ -192,7 +192,7 @@ def test_config_loading():
         
         # Тест загрузки конфигурации по умолчанию
         config = load_lattice_config()
-        print(f"  ✅ Конфигурация загружена из YAML: {config.dimensions}")
+        print(f"  [OK] Конфигурация загружена из YAML: {config.dimensions}")
         print(f"    - Граничные условия: {config.boundary_conditions.value}")
         print(f"    - GPU включен: {config.gpu_enabled}")
         print(f"    - Автосинхронизация cell_prototype: {config.auto_sync_cell_config}")
@@ -204,15 +204,15 @@ def test_config_loading():
         
         # Тест создания решетки из конфигурации
         lattice = create_lattice_from_config()
-        print(f"  ✅ Lattice3D создан из конфигурации")
+        print(f"  [OK] Lattice3D создан из конфигурации")
         print(f"    - Размеры решетки: {lattice.config.dimensions}")
         print(f"    - Общее количество клеток: {lattice.config.total_cells}")
         
-        print("  ✅ Загрузка конфигурации все тесты пройдены")
+        print("  [OK] Загрузка конфигурации все тесты пройдены")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка загрузки конфигурации: {e}")
+        print(f"  [ERROR] Ошибка загрузки конфигурации: {e}")
         traceback.print_exc()
         return False
 
@@ -237,11 +237,11 @@ def test_integration():
         
         # Валидация конфигурации
         validation_result = validate_lattice_config(config)
-        print(f"  ✅ Валидация конфигурации: {validation_result['valid']}")
+        print(f"  [OK] Валидация конфигурации: {validation_result['valid']}")
         
         if validation_result['warnings']:
             for warning in validation_result['warnings']:
-                print(f"    ⚠️  {warning}")
+                print(f"    [WARNING]  {warning}")
                 
         # Создаем все компоненты
         pos_system = Position3D(config.dimensions)
@@ -263,21 +263,21 @@ def test_integration():
         assert all(count == 6 for count in neighbor_counts), "В периодических условиях у всех клеток должно быть 6 соседей"
         
         print(f"    - Всего позиций: {total_positions}")
-        print(f"    - Проверено соседство для всех позиций: ✅")
+        print(f"    - Проверено соседство для всех позиций: [OK]")
         print(f"    - Все клетки имеют {neighbor_counts[0]} соседей")
         
-        print("  ✅ Интеграция компонентов успешна")
+        print("  [OK] Интеграция компонентов успешна")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка интеграции: {e}")
+        print(f"  [ERROR] Ошибка интеграции: {e}")
         traceback.print_exc()
         return False
 
 
 def main():
     """Основная функция запуска всех тестов"""
-    print("🚀 ТЕСТИРОВАНИЕ МОДУЛЯ LATTICE 3D")
+    print("[START] ТЕСТИРОВАНИЕ МОДУЛЯ LATTICE 3D")
     print("=" * 50)
     
     tests = [
@@ -297,19 +297,19 @@ def main():
             if test_func():
                 passed += 1
             else:
-                print(f"❌ Тест {test_func.__name__} провален")
+                print(f"[ERROR] Тест {test_func.__name__} провален")
         except Exception as e:
-            print(f"❌ Критическая ошибка в тесте {test_func.__name__}: {e}")
+            print(f"[ERROR] Критическая ошибка в тесте {test_func.__name__}: {e}")
             
     print("\n" + "=" * 50)
-    print(f"📊 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ: {passed}/{total} тестов пройдено")
+    print(f"[DATA] РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ: {passed}/{total} тестов пройдено")
     
     if passed == total:
-        print("🎉 ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
-        print("\n✅ Модуль lattice_3d готов к следующему этапу разработки")
+        print("[SUCCESS] ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
+        print("\n[OK] Модуль lattice_3d готов к следующему этапу разработки")
         return True
     else:
-        print(f"⚠️  {total - passed} тестов провалено. Требуется исправление.")
+        print(f"[WARNING]  {total - passed} тестов провалено. Требуется исправление.")
         return False
 
 

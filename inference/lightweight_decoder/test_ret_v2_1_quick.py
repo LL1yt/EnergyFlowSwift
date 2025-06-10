@@ -1,11 +1,11 @@
 """
-🚀 RET v2.1 ULTRA-COMPACT - QUICK Test Suite
+[START] RET v2.1 ULTRA-COMPACT - QUICK Test Suite
 
 QUICK VALIDATION:
-- ✅ Parameter target (CRITICAL)
-- ⚡ Basic functionality  
-- 🚀 RTX 5090 compatibility (minimal)
-- 📊 Basic performance check
+- [OK] Parameter target (CRITICAL)
+- [FAST] Basic functionality  
+- [START] RTX 5090 compatibility (minimal)
+- [DATA] Basic performance check
 
 OPTIMIZED FOR SPEED: <30 seconds execution time
 """
@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 
 def test_parameter_target():
-    """🎯 QUICK TEST 1: Parameter Target (CRITICAL)"""
-    print("🎯 Testing Parameter Target...")
+    """[TARGET] QUICK TEST 1: Parameter Target (CRITICAL)"""
+    print("[TARGET] Testing Parameter Target...")
     
     decoder = create_ultra_compact_decoder()
     param_count = decoder._count_parameters()
@@ -41,14 +41,14 @@ def test_parameter_target():
     
     print(f"   Parameters: {param_count:,} / {target:,}")
     print(f"   Efficiency: {efficiency:.1f}% under target")
-    print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+    print(f"   Result: {'[OK] SUCCESS' if success else '[ERROR] FAILED'}")
     
     return success
 
 
 def test_basic_functionality():
-    """⚡ QUICK TEST 2: Basic Functionality"""
-    print("⚡ Testing Basic Functionality...")
+    """[FAST] QUICK TEST 2: Basic Functionality"""
+    print("[FAST] Testing Basic Functionality...")
     
     try:
         decoder = create_ultra_compact_decoder()
@@ -59,19 +59,19 @@ def test_basic_functionality():
         
         success = isinstance(result, str) and len(result) > 0
         print(f"   Generation: {result}")
-        print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+        print(f"   Result: {'[OK] SUCCESS' if success else '[ERROR] FAILED'}")
         
         return success
         
     except Exception as e:
         print(f"   Error: {e}")
-        print("   Result: ❌ FAILED")
+        print("   Result: [ERROR] FAILED")
         return False
 
 
 def test_rtx_5090_quick():
-    """🚀 QUICK TEST 3: RTX 5090 Quick Check"""
-    print("🚀 Testing RTX 5090 Quick Check...")
+    """[START] QUICK TEST 3: RTX 5090 Quick Check"""
+    print("[START] Testing RTX 5090 Quick Check...")
     
     if not torch.cuda.is_available():
         print("   CUDA not available - SKIPPED")
@@ -93,19 +93,19 @@ def test_rtx_5090_quick():
         
         print(f"   GPU: {gpu_name}")
         print(f"   GPU Generation: {result}")
-        print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+        print(f"   Result: {'[OK] SUCCESS' if success else '[ERROR] FAILED'}")
         
         return success
         
     except Exception as e:
         print(f"   GPU Error: {e}")
-        print("   Result: ❌ FAILED")
+        print("   Result: [ERROR] FAILED")
         return False
 
 
 def test_speed_quick():
-    """📊 QUICK TEST 4: Speed Quick Check"""
-    print("📊 Testing Speed Quick Check...")
+    """[DATA] QUICK TEST 4: Speed Quick Check"""
+    print("[DATA] Testing Speed Quick Check...")
     
     try:
         decoder = create_ultra_compact_decoder()
@@ -127,19 +127,19 @@ def test_speed_quick():
         
         print(f"   Average time: {avg_time:.3f}s")
         print(f"   Target: <{target_time:.3f}s")
-        print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+        print(f"   Result: {'[OK] SUCCESS' if success else '[ERROR] FAILED'}")
         
         return success
         
     except Exception as e:
         print(f"   Speed Error: {e}")
-        print("   Result: ❌ FAILED")
+        print("   Result: [ERROR] FAILED")
         return False
 
 
 def test_model_info():
-    """📋 QUICK TEST 5: Model Info"""
-    print("📋 Testing Model Info...")
+    """[INFO] QUICK TEST 5: Model Info"""
+    print("[INFO] Testing Model Info...")
     
     try:
         decoder = create_ultra_compact_decoder()
@@ -151,21 +151,21 @@ def test_model_info():
         print(f"   Architecture: {model_info.get('architecture', 'N/A')}")
         print(f"   Version: {model_info.get('version', 'N/A')}")
         print(f"   Target achieved: {model_info.get('parameter_target_achieved', False)}")
-        print(f"   Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
+        print(f"   Result: {'[OK] SUCCESS' if success else '[ERROR] FAILED'}")
         
         return success
         
     except Exception as e:
         print(f"   Model Info Error: {e}")
-        print("   Result: ❌ FAILED")
+        print("   Result: [ERROR] FAILED")
         return False
 
 
 def run_quick_test_suite():
-    """🚀 Run Quick Test Suite"""
+    """[START] Run Quick Test Suite"""
     
     print("🧪" + "="*50)
-    print("🚀 RET v2.1 ULTRA-COMPACT - QUICK TEST SUITE")
+    print("[START] RET v2.1 ULTRA-COMPACT - QUICK TEST SUITE")
     print("⏱️ Expected time: <30 seconds")
     print("="*52)
     
@@ -183,26 +183,26 @@ def run_quick_test_suite():
     
     # Results summary
     print("="*52)
-    print("📊 QUICK TEST RESULTS:")
+    print("[DATA] QUICK TEST RESULTS:")
     print("="*52)
     
     passed = 0
     for test_name, result in tests:
-        status = "✅ PASS" if result else "❌ FAIL"
+        status = "[OK] PASS" if result else "[ERROR] FAIL"
         print(f"   {test_name:<20} {status}")
         if result:
             passed += 1
     
     print("-"*52)
-    print(f"📈 Summary: {passed}/{len(tests)} tests passed")
+    print(f"[CHART] Summary: {passed}/{len(tests)} tests passed")
     print(f"⏱️ Total time: {total_time:.2f}s")
     
     if passed == len(tests):
-        print("🎉 ALL QUICK TESTS PASSED!")
-        print("✅ RET v2.1 ULTRA-COMPACT is working correctly!")
+        print("[SUCCESS] ALL QUICK TESTS PASSED!")
+        print("[OK] RET v2.1 ULTRA-COMPACT is working correctly!")
         return True
     else:
-        print("⚠️ Some tests failed - check output above")
+        print("[WARNING] Some tests failed - check output above")
         return False
 
 
@@ -210,7 +210,7 @@ if __name__ == "__main__":
     success = run_quick_test_suite()
     
     if success:
-        print("\n🚀 RET v2.1 is ready for integration!")
-        print("💡 You can now proceed with GenerativeDecoder integration")
+        print("\n[START] RET v2.1 is ready for integration!")
+        print("[IDEA] You can now proceed with GenerativeDecoder integration")
     else:
-        print("\n⚠️ Fix issues before integration") 
+        print("\n[WARNING] Fix issues before integration") 

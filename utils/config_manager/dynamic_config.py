@@ -95,7 +95,7 @@ class ExpressionEvaluator:
             logger.debug(f"📐 Evaluated '{expr}' = {result}")
             return result
         except Exception as e:
-            logger.error(f"❌ Error evaluating expression '{expr}': {e}")
+            logger.error(f"[ERROR] Error evaluating expression '{expr}': {e}")
             return expr
 
     def process_config_dict(self, config: Dict[str, Any]) -> Dict[str, Any]:
@@ -185,7 +185,7 @@ class DynamicConfigGenerator:
                 gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (
                     1024**3
                 )
-                logger.info(f"🖥️ Detected GPU memory: {gpu_memory_gb:.1f}GB")
+                logger.info(f"[PC] Detected GPU memory: {gpu_memory_gb:.1f}GB")
 
                 if gpu_memory_gb >= 20:
                     return "validation"  # RTX 5090+
@@ -194,10 +194,10 @@ class DynamicConfigGenerator:
                 else:
                     return "development"  # Меньше 12GB
             else:
-                logger.warning("⚠️ CUDA not available, using development mode")
+                logger.warning("[WARNING] CUDA not available, using development mode")
                 return "development"
         except Exception as e:
-            logger.warning(f"⚠️ Hardware detection failed: {e}, using development mode")
+            logger.warning(f"[WARNING] Hardware detection failed: {e}, using development mode")
             return "development"
 
     def create_base_config_template(self) -> Dict[str, Any]:
@@ -263,7 +263,7 @@ class DynamicConfigGenerator:
         elif mode == "production":
             config["training"]["batch_size"] = 128
 
-        logger.info(f"🎯 Configured for {mode} mode (scale={scale_factor})")
+        logger.info(f"[TARGET] Configured for {mode} mode (scale={scale_factor})")
         return config
 
     def generate_config(self, mode: str = "auto") -> Dict[str, Any]:
@@ -290,7 +290,7 @@ class DynamicConfigGenerator:
             "bio_constants_version": "1.0",
         }
 
-        logger.info(f"✅ Generated config for {mode} mode:")
+        logger.info(f"[OK] Generated config for {mode} mode:")
         logger.info(
             f"   Lattice: {processed_config['lattice']['xs']}x{processed_config['lattice']['ys']}x{processed_config['lattice']['zs']}"
         )
@@ -331,7 +331,7 @@ class DynamicConfigManager:
         with open(filepath, "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
-        logger.info(f"💾 Saved config to {filepath}")
+        logger.info(f"[SAVE] Saved config to {filepath}")
         return filepath
 
     def create_and_save_all_modes(self) -> Dict[str, Path]:
@@ -362,38 +362,38 @@ def get_recommended_config() -> Dict[str, Any]:
 
 if __name__ == "__main__":
     # Демонстрация работы
-    print("🧠 Testing Dynamic Configuration System...")
+    print("[BRAIN] Testing Dynamic Configuration System...")
 
     manager = DynamicConfigManager()
 
     # Тест автоопределения
     auto_config = manager.create_config_for_mode("auto")
-    print(f"\n🎯 Auto-detected mode: {auto_config['_metadata']['mode']}")
+    print(f"\n[TARGET] Auto-detected mode: {auto_config['_metadata']['mode']}")
 
     # Тест всех режимов
     for mode in ["development", "research", "validation"]:
         config = manager.create_config_for_mode(mode)
         lattice = config["lattice"]
         gmlp = config["gmlp"]
-        print(f"\n📊 {mode.upper()} mode:")
+        print(f"\n[DATA] {mode.upper()} mode:")
         print(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
         print(f"   Neurons: {lattice['total_neurons']:,}")
         print(f"   Batch: {config['training']['batch_size']}")
-        print(f"   🧠 gMLP target: {gmlp['target_params']} parameters")
+        print(f"   [BRAIN] gMLP target: {gmlp['target_params']} parameters")
         print(f"   state_size={gmlp['state_size']}, hidden_dim={gmlp['hidden_dim']}")
         print(
             f"   external_input={gmlp['external_input_size']}, memory={gmlp['memory_dim']}"
         )
 
     # Специальный тест с scale=0.06 (как в команде пользователя)
-    print(f"\n🎯 SPECIAL TEST: Development mode with scale=0.06:")
+    print(f"\n[TARGET] SPECIAL TEST: Development mode with scale=0.06:")
     setattr(manager.generator.scale_settings, "development", 0.06)
     config_006 = manager.create_config_for_mode("development")
     lattice_006 = config_006["lattice"]
     gmlp_006 = config_006["gmlp"]
     print(f"   Lattice: {lattice_006['xs']}x{lattice_006['ys']}x{lattice_006['zs']}")
     print(f"   Neurons: {lattice_006['total_neurons']:,}")
-    print(f"   🧠 gMLP target: {gmlp_006['target_params']} parameters")
+    print(f"   [BRAIN] gMLP target: {gmlp_006['target_params']} parameters")
     print(
         f"   state_size={gmlp_006['state_size']}, hidden_dim={gmlp_006['hidden_dim']}"
     )
@@ -414,5 +414,5 @@ if __name__ == "__main__":
         input_size * hidden_dim + hidden_dim * state_size + memory_dim * hidden_dim
     )
     print(
-        f"   📊 Estimated gMLP params: ~{approx_params} (target: {gmlp_006['target_params']})"
+        f"   [DATA] Estimated gMLP params: ~{approx_params} (target: {gmlp_006['target_params']})"
     )

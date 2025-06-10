@@ -24,14 +24,14 @@ def test_cube_trainer_import():
     
     try:
         from training.embedding_trainer import CubeTrainer, TrainingConfig, EmbeddingMetrics
-        print("✅ CubeTrainer, TrainingConfig, EmbeddingMetrics успешно импортированы")
+        print("[OK] CubeTrainer, TrainingConfig, EmbeddingMetrics успешно импортированы")
         return True
         
     except ImportError as e:
-        print(f"❌ Ошибка импорта: {e}")
+        print(f"[ERROR] Ошибка импорта: {e}")
         return False
     except Exception as e:
-        print(f"❌ Неожиданная ошибка: {e}")
+        print(f"[ERROR] Неожиданная ошибка: {e}")
         return False
 
 def test_training_config():
@@ -44,7 +44,7 @@ def test_training_config():
         # Создание конфигурации по умолчанию
         config = TrainingConfig()
         
-        print(f"✅ Конфигурация по умолчанию создана")
+        print(f"[OK] Конфигурация по умолчанию создана")
         print(f"   Mode: {config.mode}")
         print(f"   Device: {config.device}")
         print(f"   Lattice size: {config.lattice_size}")
@@ -64,7 +64,7 @@ def test_training_config():
             learning_rate=0.002
         )
         
-        print(f"✅ Кастомная конфигурация создана")
+        print(f"[OK] Кастомная конфигурация создана")
         print(f"   Mode: {custom_config.mode}")
         print(f"   Lattice size: {custom_config.lattice_size}")
         print(f"   Learning rate: {custom_config.learning_rate}")
@@ -76,7 +76,7 @@ def test_training_config():
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка TrainingConfig: {e}")
+        print(f"[ERROR] Ошибка TrainingConfig: {e}")
         return False
 
 def test_embedding_metrics():
@@ -87,7 +87,7 @@ def test_embedding_metrics():
         from training.embedding_trainer import EmbeddingMetrics
         
         metrics = EmbeddingMetrics(device="cpu")
-        print("✅ EmbeddingMetrics инициализированы")
+        print("[OK] EmbeddingMetrics инициализированы")
         
         # Создание тестовых эмбедингов
         batch_size = 2
@@ -99,7 +99,7 @@ def test_embedding_metrics():
         similarity = metrics.calculate_cosine_similarity(identical_emb, identical_emb)
         mse_loss = metrics.calculate_mse_loss(identical_emb, identical_emb)
         
-        print(f"✅ Метрики для идентичных эмбедингов:")
+        print(f"[OK] Метрики для идентичных эмбедингов:")
         print(f"   Cosine similarity: {similarity:.4f} (ожидается ~1.0)")
         print(f"   MSE loss: {mse_loss:.6f} (ожидается ~0.0)")
         
@@ -113,7 +113,7 @@ def test_embedding_metrics():
         
         batch_metrics = metrics.compute_batch_metrics(emb1, emb2)
         
-        print(f"✅ Метрики для разных эмбедингов:")
+        print(f"[OK] Метрики для разных эмбедингов:")
         for metric_name, value in batch_metrics.items():
             print(f"   {metric_name}: {value:.4f}")
         
@@ -125,7 +125,7 @@ def test_embedding_metrics():
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка EmbeddingMetrics: {e}")
+        print(f"[ERROR] Ошибка EmbeddingMetrics: {e}")
         print(f"   Детали: {traceback.format_exc()}")
         return False
 
@@ -139,7 +139,7 @@ def test_cube_trainer_initialization():
         # Инициализация с конфигурацией по умолчанию
         trainer = CubeTrainer()
         
-        print("✅ CubeTrainer инициализирован с настройками по умолчанию")
+        print("[OK] CubeTrainer инициализирован с настройками по умолчанию")
         print(f"   Mode: {trainer.config.mode}")
         print(f"   Device: {trainer.config.device}")
         print(f"   Lattice size: {trainer.config.lattice_size}")
@@ -160,7 +160,7 @@ def test_cube_trainer_initialization():
         
         custom_trainer = CubeTrainer(config=custom_config)
         
-        print("✅ CubeTrainer инициализирован с кастомной конфигурацией")
+        print("[OK] CubeTrainer инициализирован с кастомной конфигурацией")
         print(f"   Mode: {custom_trainer.config.mode}")
         print(f"   Lattice size: {custom_trainer.config.lattice_size}")
         print(f"   Learning rate: {custom_trainer.config.learning_rate}")
@@ -172,7 +172,7 @@ def test_cube_trainer_initialization():
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка инициализации CubeTrainer: {e}")
+        print(f"[ERROR] Ошибка инициализации CubeTrainer: {e}")
         print(f"   Детали: {traceback.format_exc()}")
         return False
 
@@ -196,7 +196,7 @@ def test_cube_trainer_config_loading():
         
         trainer = CubeTrainer(config=config_dict)
         
-        print("✅ CubeTrainer инициализирован из словаря")
+        print("[OK] CubeTrainer инициализирован из словаря")
         print(f"   Mode: {trainer.config.mode}")
         print(f"   Lattice size: {trainer.config.lattice_size}")
         print(f"   Learning rate: {trainer.config.learning_rate}")
@@ -212,7 +212,7 @@ def test_cube_trainer_config_loading():
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка загрузки конфигурации: {e}")
+        print(f"[ERROR] Ошибка загрузки конфигурации: {e}")
         print(f"   Детали: {traceback.format_exc()}")
         return False
 
@@ -226,7 +226,7 @@ def test_cube_trainer_info():
         trainer = CubeTrainer(mode="dialogue", device="cpu")
         info = trainer.get_info()
         
-        print("✅ Информация о CubeTrainer получена:")
+        print("[OK] Информация о CubeTrainer получена:")
         for key, value in info.items():
             print(f"   {key}: {value}")
         
@@ -249,7 +249,7 @@ def test_cube_trainer_info():
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка получения информации: {e}")
+        print(f"[ERROR] Ошибка получения информации: {e}")
         print(f"   Детали: {traceback.format_exc()}")
         return False
 
@@ -262,31 +262,31 @@ def test_cube_trainer_mode_switching():
         
         trainer = CubeTrainer(mode="autoencoder")
         
-        print(f"✅ Начальный режим: {trainer.config.mode}")
+        print(f"[OK] Начальный режим: {trainer.config.mode}")
         assert trainer.config.mode == "autoencoder"
         
         # Переключение на dialogue
         trainer.set_mode("dialogue")
-        print(f"✅ Режим изменен на: {trainer.config.mode}")
+        print(f"[OK] Режим изменен на: {trainer.config.mode}")
         assert trainer.config.mode == "dialogue"
         
         # Переключение на mixed
         trainer.set_mode("mixed")
-        print(f"✅ Режим изменен на: {trainer.config.mode}")
+        print(f"[OK] Режим изменен на: {trainer.config.mode}")
         assert trainer.config.mode == "mixed"
         
         # Проверка неверного режима
         try:
             trainer.set_mode("invalid_mode")
-            print("❌ Должна была быть ошибка для неверного режима")
+            print("[ERROR] Должна была быть ошибка для неверного режима")
             return False
         except ValueError:
-            print("✅ Корректно обработан неверный режим")
+            print("[OK] Корректно обработан неверный режим")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка переключения режимов: {e}")
+        print(f"[ERROR] Ошибка переключения режимов: {e}")
         print(f"   Детали: {traceback.format_exc()}")
         return False
 
@@ -305,28 +305,28 @@ def test_cube_trainer_dependencies():
         assert trainer.embedding_reshaper is None
         assert trainer.embedding_loader is None
         
-        print("✅ Компоненты корректно не инициализированы")
+        print("[OK] Компоненты корректно не инициализированы")
         
         # Попытка forward pass без инициализации (должна дать ошибку)
         try:
             test_input = torch.randn(1, 768)
             output = trainer.forward(test_input)
-            print("❌ Forward pass должен был выдать ошибку")
+            print("[ERROR] Forward pass должен был выдать ошибку")
             return False
         except ValueError as e:
-            print("✅ Forward pass корректно выдал ошибку без инициализации")
+            print("[OK] Forward pass корректно выдал ошибку без инициализации")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка проверки зависимостей: {e}")
+        print(f"[ERROR] Ошибка проверки зависимостей: {e}")
         print(f"   Детали: {traceback.format_exc()}")
         return False
 
 def run_all_tests():
     """Запуск всех тестов"""
     print("=" * 60)
-    print("🚀 ТЕСТИРОВАНИЕ CUBETRAINER")
+    print("[START] ТЕСТИРОВАНИЕ CUBETRAINER")
     print("   Phase 3.1 - Stage 1.1 - Basic CubeTrainer Tests")
     print("=" * 60)
     
@@ -351,23 +351,23 @@ def run_all_tests():
             else:
                 failed += 1
         except Exception as e:
-            print(f"❌ Критическая ошибка в {test_func.__name__}: {e}")
+            print(f"[ERROR] Критическая ошибка в {test_func.__name__}: {e}")
             failed += 1
     
     print("\n" + "=" * 60)
-    print("📊 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ CUBETRAINER")
-    print(f"✅ Пройдено: {passed}")
-    print(f"❌ Провалено: {failed}")
-    print(f"📈 Успешность: {(passed/(passed+failed)*100):.1f}%")
+    print("[DATA] РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ CUBETRAINER")
+    print(f"[OK] Пройдено: {passed}")
+    print(f"[ERROR] Провалено: {failed}")
+    print(f"[CHART] Успешность: {(passed/(passed+failed)*100):.1f}%")
     
     if failed == 0:
-        print("🎉 Все тесты пройдены! CubeTrainer базовая функциональность работает!")
-        print("🚀 Готов к Stage 1.2 - AutoencoderDataset")
+        print("[SUCCESS] Все тесты пройдены! CubeTrainer базовая функциональность работает!")
+        print("[START] Готов к Stage 1.2 - AutoencoderDataset")
     elif passed >= 6:
-        print("🎯 Большинство тестов пройдено. Базовая функциональность работает")
-        print("⚠️  Нужно исправить отказавшие тесты")
+        print("[TARGET] Большинство тестов пройдено. Базовая функциональность работает")
+        print("[WARNING]  Нужно исправить отказавшие тесты")
     else:
-        print("⚠️  Критические проблемы. Требуется доработка")
+        print("[WARNING]  Критические проблемы. Требуется доработка")
     
     print("=" * 60)
     

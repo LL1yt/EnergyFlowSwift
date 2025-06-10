@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🎯 Production Real Training: LLaMA-3-8B + 3D Cellular Neural Network
+[TARGET] Production Real Training: LLaMA-3-8B + 3D Cellular Neural Network
 
 ЦЕЛЬ: Полноценное реальное обучение системы с:
 - Поэтапным прогрессом (validation → training → production)
@@ -60,19 +60,19 @@ if sys.platform == 'win32':
             formatted = super().format(record)
             # Replace Unicode emojis with safe alternatives for console
             emoji_replacements = {
-                '🚀': '[START]',
-                '🎯': '[TARGET]', 
-                '📊': '[METRICS]',
-                '✅': '[OK]',
-                '❌': '[ERROR]',
-                '⚠️': '[WARNING]',
-                '📈': '[PROGRESS]',
-                '💾': '[SAVE]',
-                '🔧': '[TOOL]',
-                '📋': '[INFO]',
-                '🔄': '[RETRY]',
-                '▶️': '[CONTINUE]',
-                '🎉': '[SUCCESS]'
+                '[START]': '[START]',
+                '[TARGET]': '[TARGET]', 
+                '[DATA]': '[METRICS]',
+                '[OK]': '[OK]',
+                '[ERROR]': '[ERROR]',
+                '[WARNING]': '[WARNING]',
+                '[CHART]': '[PROGRESS]',
+                '[SAVE]': '[SAVE]',
+                '[CONFIG]': '[TOOL]',
+                '[INFO]': '[INFO]',
+                '[REFRESH]': '[RETRY]',
+                '[PLAY]': '[CONTINUE]',
+                '[SUCCESS]': '[SUCCESS]'
             }
             for emoji, replacement in emoji_replacements.items():
                 formatted = formatted.replace(emoji, replacement)
@@ -205,7 +205,7 @@ class ProductionTrainingManager:
         2. Progressive training через все stages
         3. Results analysis и decision making
         """
-        logger.info("🎯 Starting Full Production Training Pipeline")
+        logger.info("[TARGET] Starting Full Production Training Pipeline")
         
         try:
             # 1. System Validation
@@ -215,7 +215,7 @@ class ProductionTrainingManager:
             
             validation_success = self._validate_system()
             if not validation_success:
-                logger.error("❌ System validation failed. Aborting training.")
+                logger.error("[ERROR] System validation failed. Aborting training.")
                 return {'status': 'failed', 'stage': 'validation'}
             
             # 2. Progressive Training
@@ -224,26 +224,26 @@ class ProductionTrainingManager:
             logger.info("=" * 60)
             
             for stage in self.stages:
-                logger.info(f"🚀 Starting stage: {stage.name}")
-                logger.info(f"📋 {stage.description}")
+                logger.info(f"[START] Starting stage: {stage.name}")
+                logger.info(f"[INFO] {stage.description}")
                 
                 stage_result = self._run_training_stage(stage)
                 
                 if not stage_result['success']:
-                    logger.warning(f"⚠️  Stage {stage.name} did not meet targets")
+                    logger.warning(f"[WARNING]  Stage {stage.name} did not meet targets")
                     decision = self._analyze_stage_failure(stage, stage_result)
                     
                     if decision == 'abort':
-                        logger.error(f"❌ Training aborted at stage {stage.name}")
+                        logger.error(f"[ERROR] Training aborted at stage {stage.name}")
                         return {'status': 'aborted', 'stage': stage.name, 'results': self.training_history}
                     elif decision == 'continue':
-                        logger.info(f"▶️  Continuing to next stage despite targets not met")
+                        logger.info(f"[PLAY]  Continuing to next stage despite targets not met")
                     elif decision == 'retry':
-                        logger.info(f"🔄 Retrying stage {stage.name} with adjusted parameters")
+                        logger.info(f"[REFRESH] Retrying stage {stage.name} with adjusted parameters")
                         # TODO: Implement retry logic
                         pass
                 
-                logger.info(f"✅ Stage {stage.name} completed")
+                logger.info(f"[OK] Stage {stage.name} completed")
             
             # 3. Results Analysis
             logger.info("=" * 60)
@@ -255,7 +255,7 @@ class ProductionTrainingManager:
             # 4. Save complete results
             self._save_complete_results(final_analysis)
             
-            logger.info("🎉 Full training pipeline completed successfully!")
+            logger.info("[SUCCESS] Full training pipeline completed successfully!")
             return {
                 'status': 'completed',
                 'training_id': self.training_id,
@@ -271,14 +271,14 @@ class ProductionTrainingManager:
     
     def _validate_system(self) -> bool:
         """Валидация всех компонентов системы"""
-        logger.info("🔍 Validating system components...")
+        logger.info("[MAGNIFY] Validating system components...")
         
         try:
             # 1. Check LLM model availability
             logger.info(f"1️⃣ Testing {self.model_name} model access...")
             llm_handler = create_llm_handler(self.model_name)
             test_embedding = llm_handler.generate_embeddings(["Test validation text"])
-            logger.info(f"✅ {self.model_name} working: {test_embedding.shape}")
+            logger.info(f"[OK] {self.model_name} working: {test_embedding.shape}")
             
             # 2. Check Universal Adapter
             logger.info("2️⃣ Testing Universal Adapter...")
@@ -291,7 +291,7 @@ class ProductionTrainingManager:
                 strategy='hierarchical'
             )
             test_surface = adapter.forward(test_embedding)
-            logger.info(f"✅ Universal Adapter working: {test_surface.shape}")
+            logger.info(f"[OK] Universal Adapter working: {test_surface.shape}")
             
             # 3. Check EmergentCubeTrainer
             logger.info("3️⃣ Testing EmergentCubeTrainer...")
@@ -302,7 +302,7 @@ class ProductionTrainingManager:
             config.epochs = 1
             
             trainer = EmergentCubeTrainer(config, device="cuda" if torch.cuda.is_available() else "cpu")
-            logger.info(f"✅ EmergentCubeTrainer initialized on {trainer.device}")
+            logger.info(f"[OK] EmergentCubeTrainer initialized on {trainer.device}")
             
             # 4. Check dataset creation
             logger.info("4️⃣ Testing dataset creation...")
@@ -316,7 +316,7 @@ class ProductionTrainingManager:
                 cache_embeddings=False,
                 validation_split=0.0
             )
-            logger.info(f"✅ Dataset created: {len(dataset)} pairs")
+            logger.info(f"[OK] Dataset created: {len(dataset)} pairs")
             
             # 5. Test mini training step
             logger.info("5️⃣ Testing mini training step...")
@@ -333,13 +333,13 @@ class ProductionTrainingManager:
                 
                 # Single training step with original embeddings
                 metrics = trainer.train_step(input_emb, target_emb)
-                logger.info(f"✅ Training step successful: loss = {metrics.get('loss', 'N/A')}")
+                logger.info(f"[OK] Training step successful: loss = {metrics.get('loss', 'N/A')}")
             
-            logger.info("🎉 System validation completed successfully!")
+            logger.info("[SUCCESS] System validation completed successfully!")
             return True
             
         except Exception as e:
-            logger.error(f"❌ System validation failed: {e}")
+            logger.error(f"[ERROR] System validation failed: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -385,7 +385,7 @@ class ProductionTrainingManager:
             epoch_losses = []
             epoch_similarities = []
             
-            logger.info(f"  📈 Epoch {epoch + 1}/{stage.epochs}")
+            logger.info(f"  [CHART] Epoch {epoch + 1}/{stage.epochs}")
             
             # Training batches
             num_batches = len(dataset) // stage.batch_size
@@ -406,7 +406,7 @@ class ProductionTrainingManager:
                     epoch_similarities.append(metrics.get('similarity', 0.0))
                     
                 except Exception as e:
-                    logger.warning(f"    ⚠️  Batch {batch_idx} failed: {e}")
+                    logger.warning(f"    [WARNING]  Batch {batch_idx} failed: {e}")
                     continue
             
             # Epoch metrics
@@ -432,17 +432,17 @@ class ProductionTrainingManager:
             if epoch_similarity > stage_metrics['best_similarity']:
                 stage_metrics['best_similarity'] = epoch_similarity
             
-            logger.info(f"    📊 Loss: {epoch_loss:.4f}, Similarity: {epoch_similarity:.4f}, Time: {epoch_time:.1f}s")
+            logger.info(f"    [DATA] Loss: {epoch_loss:.4f}, Similarity: {epoch_similarity:.4f}, Time: {epoch_time:.1f}s")
             
             # Early stopping check
             if patience_counter >= stage.early_stopping_patience:
-                logger.info(f"    ⏹️  Early stopping triggered at epoch {epoch + 1}")
+                logger.info(f"    [STOP]  Early stopping triggered at epoch {epoch + 1}")
                 stage_metrics['early_stopped'] = True
                 break
             
             # Convergence check
             if epoch_loss <= stage.target_loss and epoch_similarity >= stage.target_similarity:
-                logger.info(f"    🎯 Stage targets achieved at epoch {epoch + 1}!")
+                logger.info(f"    [TARGET] Stage targets achieved at epoch {epoch + 1}!")
                 stage_metrics['converged'] = True
                 break
         
@@ -474,9 +474,9 @@ class ProductionTrainingManager:
         
         self.training_history['total_time'] += stage_time
         
-        logger.info(f"✅ Stage {stage.name} completed in {stage_time:.1f}s")
-        logger.info(f"    🎯 Best Loss: {stage_metrics['best_loss']:.4f} (target: {stage.target_loss})")
-        logger.info(f"    🎯 Best Similarity: {stage_metrics['best_similarity']:.4f} (target: {stage.target_similarity})")
+        logger.info(f"[OK] Stage {stage.name} completed in {stage_time:.1f}s")
+        logger.info(f"    [TARGET] Best Loss: {stage_metrics['best_loss']:.4f} (target: {stage.target_loss})")
+        logger.info(f"    [TARGET] Best Similarity: {stage_metrics['best_similarity']:.4f} (target: {stage.target_similarity})")
         
         return stage_result
     
@@ -597,11 +597,11 @@ class ProductionTrainingManager:
         }
         
         torch.save(checkpoint, checkpoint_path)
-        logger.info(f"💾 Checkpoint saved: {checkpoint_path}")
+        logger.info(f"[SAVE] Checkpoint saved: {checkpoint_path}")
     
     def _analyze_stage_failure(self, stage: TrainingStage, result: Dict[str, Any]) -> str:
         """Анализ неудачного этапа и принятие решения"""
-        logger.info(f"🔍 Analyzing stage failure: {stage.name}")
+        logger.info(f"[MAGNIFY] Analyzing stage failure: {stage.name}")
         
         metrics = result['metrics']
         best_loss = metrics['best_loss']
@@ -611,10 +611,10 @@ class ProductionTrainingManager:
         if stage.name == "validation":
             # Validation failure is critical
             if best_loss > 2.0 or best_similarity < 0.05:
-                logger.error("❌ Critical validation failure - system not functional")
+                logger.error("[ERROR] Critical validation failure - system not functional")
                 return 'abort'
             else:
-                logger.warning("⚠️  Validation targets not met but system functional")
+                logger.warning("[WARNING]  Validation targets not met but system functional")
                 return 'continue'
         
         elif stage.name == "convergence":
@@ -625,10 +625,10 @@ class ProductionTrainingManager:
                 improvement = (initial_loss - final_loss) / initial_loss
                 
                 if improvement > 0.1:  # 10% improvement
-                    logger.info(f"📈 Learning detected ({improvement:.1%} loss improvement)")
+                    logger.info(f"[CHART] Learning detected ({improvement:.1%} loss improvement)")
                     return 'continue'
                 else:
-                    logger.warning("⚠️  No significant learning detected")
+                    logger.warning("[WARNING]  No significant learning detected")
                     return 'continue'  # Still continue но с warning
             else:
                 return 'continue'
@@ -639,7 +639,7 @@ class ProductionTrainingManager:
     
     def _analyze_final_results(self) -> Dict[str, Any]:
         """Финальный анализ результатов обучения"""
-        logger.info("📊 Analyzing final training results...")
+        logger.info("[DATA] Analyzing final training results...")
         
         final_metrics = self.training_history['best_metrics']
         total_time = self.training_history['total_time']
@@ -658,16 +658,16 @@ class ProductionTrainingManager:
         recommendations = []
         
         if performance_analysis['similarity_target_met']:
-            recommendations.append("🎉 Similarity target achieved! System ready for production.")
+            recommendations.append("[SUCCESS] Similarity target achieved! System ready for production.")
         elif final_metrics['similarity'] >= 0.35:
-            recommendations.append("📈 Good progress made. Consider extended training or hyperparameter tuning.")
+            recommendations.append("[CHART] Good progress made. Consider extended training or hyperparameter tuning.")
         else:
-            recommendations.append("🔧 Limited progress. Review architecture, dataset quality, or training approach.")
+            recommendations.append("[CONFIG] Limited progress. Review architecture, dataset quality, or training approach.")
         
         if performance_analysis['convergence_achieved']:
-            recommendations.append("✅ Loss convergence successful.")
+            recommendations.append("[OK] Loss convergence successful.")
         else:
-            recommendations.append("⚠️  Loss convergence incomplete. Consider longer training or learning rate adjustment.")
+            recommendations.append("[WARNING]  Loss convergence incomplete. Consider longer training or learning rate adjustment.")
         
         # Create visualizations
         self._create_training_visualizations()
@@ -744,7 +744,7 @@ class ProductionTrainingManager:
         # Save plot
         plot_path = self.results_dir / 'training_analysis.png'
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        logger.info(f"📈 Training visualization saved: {plot_path}")
+        logger.info(f"[CHART] Training visualization saved: {plot_path}")
         
         plt.close()
     
@@ -767,7 +767,7 @@ class ProductionTrainingManager:
         with open(results_file, 'w', encoding='utf-8') as f:
             json.dump(complete_results, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"💾 Complete results saved: {results_file}")
+        logger.info(f"[SAVE] Complete results saved: {results_file}")
 
 def main():
     """Main entry point для production training"""

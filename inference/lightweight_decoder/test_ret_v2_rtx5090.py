@@ -4,8 +4,8 @@
 RADICAL OPTIMIZATION TEST:
 - Target: <800K parameters vs 62M baseline
 - Target: 60% memory reduction vs 18.7% baseline  
-- Maintain: 50% speed improvement ✅
-- Maintain: Full RTX 5090 compatibility ✅
+- Maintain: 50% speed improvement [OK]
+- Maintain: Full RTX 5090 compatibility [OK]
 
 RADICAL SOLUTIONS:
 - Compact vocab: 1K vs 32K (97% reduction)
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 class RETv2PerformanceTester:
     """
-    🚀 RET v2.0 Performance Tester - RADICAL OPTIMIZATION VALIDATION
+    [START] RET v2.0 Performance Tester - RADICAL OPTIMIZATION VALIDATION
     
     Проверяет:
     - Parameter reduction: 62M -> <800K (98.7% reduction!)
@@ -64,7 +64,7 @@ class RETv2PerformanceTester:
         self.ret_v2_metrics = {}
         self.test_results = {}
         
-        logger.info(f"🎯 RET v2.0 Tester initialized on device: {self.device}")
+        logger.info(f"[TARGET] RET v2.0 Tester initialized on device: {self.device}")
         
     def _detect_device(self) -> str:
         """Определение доступного устройства"""
@@ -79,13 +79,13 @@ class RETv2PerformanceTester:
             
             # RTX 5090 detection
             if "5090" in device_name or device_props.major >= 12:
-                logger.info("🚀 RTX 5090 (or newer) detected - radical optimization режим")
+                logger.info("[START] RTX 5090 (or newer) detected - radical optimization режим")
                 return "cuda"
             else:
                 logger.info("🎮 Other CUDA device - standard режим")
                 return "cuda"
         else:
-            logger.info("💻 CPU mode - RET v2.0 fallback активен")
+            logger.info("[COMPUTER] CPU mode - RET v2.0 fallback активен")
             return "cpu"
     
     def measure_memory_usage(self, model: torch.nn.Module, input_tensor: torch.Tensor) -> float:
@@ -158,7 +158,7 @@ class RETv2PerformanceTester:
     def test_ret_v1_performance(self) -> Dict[str, Any]:
         """Тестирование RET v1.0 для сравнения"""
         
-        logger.info("📊 Testing RET v1.0 performance (baseline)...")
+        logger.info("[DATA] Testing RET v1.0 performance (baseline)...")
         
         # Create RET v1.0 model
         config_v1 = RETConfig(
@@ -189,7 +189,7 @@ class RETv2PerformanceTester:
             'model_type': 'resource_efficient_transformer_v1'
         }
         
-        logger.info(f"📈 RET v1.0 Results:")
+        logger.info(f"[CHART] RET v1.0 Results:")
         logger.info(f"   Memory: {memory_usage:.1f} MB")
         logger.info(f"   Speed: {inference_time:.1f} ms")
         logger.info(f"   Parameters: {parameters:,}")
@@ -199,7 +199,7 @@ class RETv2PerformanceTester:
     def test_ret_v2_performance(self) -> Dict[str, Any]:
         """Тестирование RET v2.0 с radical optimizations"""
         
-        logger.info("🚀 Testing RET v2.0 performance (RADICAL OPTIMIZATION)...")
+        logger.info("[START] Testing RET v2.0 performance (RADICAL OPTIMIZATION)...")
         
         # Create RET v2.0 model с radical settings
         config_v2 = RETConfigV2(
@@ -235,7 +235,7 @@ class RETv2PerformanceTester:
             'model_type': 'resource_efficient_transformer_v2_radical'
         }
         
-        logger.info(f"🎯 RET v2.0 Results:")
+        logger.info(f"[TARGET] RET v2.0 Results:")
         logger.info(f"   Memory: {memory_usage:.1f} MB")
         logger.info(f"   Speed: {inference_time:.1f} ms")
         logger.info(f"   Parameters: {parameters:,}")
@@ -246,7 +246,7 @@ class RETv2PerformanceTester:
         """Расчет улучшений RET v2.0 относительно v1.0"""
         
         if not self.ret_v1_metrics or not self.ret_v2_metrics:
-            logger.error("❌ RET v1.0 или v2.0 metrics не собраны")
+            logger.error("[ERROR] RET v1.0 или v2.0 metrics не собраны")
             return {}
         
         # Memory reduction calculation (v2.0 vs v1.0)
@@ -282,7 +282,7 @@ class RETv2PerformanceTester:
     def test_radical_optimizations(self) -> Dict[str, Any]:
         """Специальный тест radical optimizations"""
         
-        logger.info("🔥 Testing RADICAL optimizations...")
+        logger.info("[HOT] Testing RADICAL optimizations...")
         
         optimization_results = {
             'device_detected': self.device,
@@ -308,10 +308,10 @@ class RETv2PerformanceTester:
                 result = model.decode(test_input)
             
             optimization_results['parameter_sharing_works'] = True
-            logger.info("✅ Parameter sharing: PASSED")
+            logger.info("[OK] Parameter sharing: PASSED")
             
         except Exception as e:
-            logger.warning(f"⚠️ Parameter sharing: FAILED - {e}")
+            logger.warning(f"[WARNING] Parameter sharing: FAILED - {e}")
         
         try:
             # Test aggressive pruning
@@ -329,10 +329,10 @@ class RETv2PerformanceTester:
                 result = model.decode(test_input)
             
             optimization_results['aggressive_pruning_works'] = True
-            logger.info("✅ Aggressive pruning: PASSED")
+            logger.info("[OK] Aggressive pruning: PASSED")
             
         except Exception as e:
-            logger.warning(f"⚠️ Aggressive pruning: FAILED - {e}")
+            logger.warning(f"[WARNING] Aggressive pruning: FAILED - {e}")
         
         try:
             # Test dynamic quantization
@@ -349,10 +349,10 @@ class RETv2PerformanceTester:
                 result = model.decode(test_input)
             
             optimization_results['dynamic_quantization_works'] = True
-            logger.info("✅ Dynamic quantization: PASSED")
+            logger.info("[OK] Dynamic quantization: PASSED")
             
         except Exception as e:
-            logger.warning(f"⚠️ Dynamic quantization: FAILED - {e}")
+            logger.warning(f"[WARNING] Dynamic quantization: FAILED - {e}")
         
         try:
             # Test compact vocabulary
@@ -366,17 +366,17 @@ class RETv2PerformanceTester:
             
             optimization_results['compact_vocab_works'] = params < 2_000_000  # Should be <2M
             optimization_results['tied_weights_works'] = True  # Tied weights integrated
-            logger.info("✅ Compact vocab + tied weights: PASSED")
+            logger.info("[OK] Compact vocab + tied weights: PASSED")
             
         except Exception as e:
-            logger.warning(f"⚠️ Compact vocab: FAILED - {e}")
+            logger.warning(f"[WARNING] Compact vocab: FAILED - {e}")
         
         return optimization_results
     
     def run_comprehensive_test(self) -> Dict[str, Any]:
         """Запуск полного теста RET v2.0 radical optimizations"""
         
-        logger.info("🚀 Starting comprehensive RET v2.0 RADICAL test...")
+        logger.info("[START] Starting comprehensive RET v2.0 RADICAL test...")
         
         # Run all tests
         ret_v1_results = self.test_ret_v1_performance()
@@ -422,16 +422,16 @@ class RETv2PerformanceTester:
         """Печать детального отчета v2.0"""
         
         if not self.test_results:
-            logger.error("❌ No test results available")
+            logger.error("[ERROR] No test results available")
             return
         
         print("\n" + "="*70)
-        print("🚀 RTX 5090 RESOURCE-EFFICIENT TRANSFORMER v2.0 RADICAL TEST")
+        print("[START] RTX 5090 RESOURCE-EFFICIENT TRANSFORMER v2.0 RADICAL TEST")
         print("="*70)
         
         # Environment info
         env = self.test_results['test_environment']
-        print(f"\n📊 Test Environment:")
+        print(f"\n[DATA] Test Environment:")
         print(f"   Device: {env['device']}")
         print(f"   CUDA Available: {env['cuda_available']}")
         print(f"   GPU: {env.get('device_name', 'N/A')}")
@@ -441,47 +441,47 @@ class RETv2PerformanceTester:
         ret_v2 = self.test_results['ret_v2_performance']
         improvements = self.test_results['v2_improvements']
         
-        print(f"\n📈 RADICAL Performance Comparison (v2.0 vs v1.0):")
+        print(f"\n[CHART] RADICAL Performance Comparison (v2.0 vs v1.0):")
         print(f"   v1.0 Memory: {ret_v1['memory_mb']:.1f} MB")
         print(f"   v2.0 Memory: {ret_v2['memory_mb']:.1f} MB")
         print(f"   → Memory Improvement: {improvements['memory_improvement_percent']:.1f}% "
-              f"{'✅' if improvements['memory_target_achieved'] else '❌'}")
+              f"{'[OK]' if improvements['memory_target_achieved'] else '[ERROR]'}")
         
-        print(f"\n⚡ Speed Comparison:")
+        print(f"\n[FAST] Speed Comparison:")
         print(f"   v1.0 Speed: {ret_v1['inference_time_ms']:.1f} ms")
         print(f"   v2.0 Speed: {ret_v2['inference_time_ms']:.1f} ms")
         print(f"   → Speed Change: {improvements['speed_change_percent']:+.1f}% "
-              f"{'✅' if improvements['speed_maintained'] else '❌'}")
+              f"{'[OK]' if improvements['speed_maintained'] else '[ERROR]'}")
         
-        print(f"\n💾 RADICAL Parameter Reduction:")
+        print(f"\n[SAVE] RADICAL Parameter Reduction:")
         print(f"   v1.0 Parameters: {ret_v1['parameters']:,}")
         print(f"   v2.0 Parameters: {ret_v2['parameters']:,}")
         print(f"   → Parameter Reduction: {improvements['parameter_reduction_percent']:.1f}% "
-              f"{'✅' if improvements['parameter_target_achieved'] else '❌'}")
-        print(f"   → Radical Success (95%+): {'✅' if improvements['radical_success'] else '❌'}")
+              f"{'[OK]' if improvements['parameter_target_achieved'] else '[ERROR]'}")
+        print(f"   → Radical Success (95%+): {'[OK]' if improvements['radical_success'] else '[ERROR]'}")
         
         # Radical optimizations
         radical = self.test_results['radical_optimizations']
-        print(f"\n🔥 RADICAL Optimizations:")
-        print(f"   Parameter Sharing: {'✅' if radical['parameter_sharing_works'] else '❌'}")
-        print(f"   Aggressive Pruning (70%): {'✅' if radical['aggressive_pruning_works'] else '❌'}")
-        print(f"   Dynamic Quantization: {'✅' if radical['dynamic_quantization_works'] else '❌'}")
-        print(f"   Compact Vocab (1K): {'✅' if radical['compact_vocab_works'] else '❌'}")
-        print(f"   Tied Weights: {'✅' if radical['tied_weights_works'] else '❌'}")
+        print(f"\n[HOT] RADICAL Optimizations:")
+        print(f"   Parameter Sharing: {'[OK]' if radical['parameter_sharing_works'] else '[ERROR]'}")
+        print(f"   Aggressive Pruning (70%): {'[OK]' if radical['aggressive_pruning_works'] else '[ERROR]'}")
+        print(f"   Dynamic Quantization: {'[OK]' if radical['dynamic_quantization_works'] else '[ERROR]'}")
+        print(f"   Compact Vocab (1K): {'[OK]' if radical['compact_vocab_works'] else '[ERROR]'}")
+        print(f"   Tied Weights: {'[OK]' if radical['tied_weights_works'] else '[ERROR]'}")
         
         # Overall result
         success = self.test_results['test_passed']
-        print(f"\n🎯 RADICAL Test Result: {'✅ REVOLUTIONARY SUCCESS' if success else '❌ NEEDS OPTIMIZATION'}")
+        print(f"\n[TARGET] RADICAL Test Result: {'[OK] REVOLUTIONARY SUCCESS' if success else '[ERROR] NEEDS OPTIMIZATION'}")
         
         if success:
-            print("\n🎉 RET v2.0 RADICAL optimization SUCCESS!")
-            print("   ✅ Parameter reduction >95% достигнута")
-            print("   ✅ Memory target <3MB достигнута") 
-            print("   ✅ Speed maintained относительно v1.0")
-            print("   ✅ All radical optimizations работают")
-            print("   ✅ RTX 5090 полная совместимость")
+            print("\n[SUCCESS] RET v2.0 RADICAL optimization SUCCESS!")
+            print("   [OK] Parameter reduction >95% достигнута")
+            print("   [OK] Memory target <3MB достигнута") 
+            print("   [OK] Speed maintained относительно v1.0")
+            print("   [OK] All radical optimizations работают")
+            print("   [OK] RTX 5090 полная совместимость")
         else:
-            print("\n⚠️ Radical optimizations требуют дополнительной настройки")
+            print("\n[WARNING] Radical optimizations требуют дополнительной настройки")
         
         print("="*70)
 
@@ -489,7 +489,7 @@ class RETv2PerformanceTester:
 def main():
     """Main test функция для RET v2.0"""
     
-    print("🚀 Starting RET v2.0 RADICAL Optimization Test")
+    print("[START] Starting RET v2.0 RADICAL Optimization Test")
     print("="*70)
     
     # Create tester
@@ -515,13 +515,13 @@ def main():
         with open(results_path, 'w') as f:
             json.dump(serializable_results, f, indent=2)
         
-        logger.info(f"📁 Results saved to: {results_path}")
+        logger.info(f"[FOLDER] Results saved to: {results_path}")
         
         return results['test_passed']
         
     except Exception as e:
         import traceback
-        logger.error(f"❌ RET v2.0 test failed with error: {e}")
+        logger.error(f"[ERROR] RET v2.0 test failed with error: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return False
 

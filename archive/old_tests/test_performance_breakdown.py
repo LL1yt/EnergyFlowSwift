@@ -42,7 +42,7 @@ def detailed_performance_breakdown():
     question_embeddings = torch.randn(batch_size, surface_dim, device=device)
     answer_embeddings = torch.randn(batch_size, 4096, device=device)
     
-    print(f"📊 Testing with batch_size={batch_size}")
+    print(f"[DATA] Testing with batch_size={batch_size}")
     
     # === 1. FORWARD PASS ONLY (like manual test) ===
     print(f"\n🔬 1. FORWARD PASS ONLY (Manual test style):")
@@ -56,9 +56,9 @@ def detailed_performance_breakdown():
     forward_time = time.time() - forward_start
     forward_throughput = batch_size / forward_time
     
-    print(f"   ⚡ Forward time: {forward_time:.3f}s")
-    print(f"   🚀 Forward throughput: {forward_throughput:.1f} samples/sec")
-    print(f"   📊 Memory: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+    print(f"   [FAST] Forward time: {forward_time:.3f}s")
+    print(f"   [START] Forward throughput: {forward_throughput:.1f} samples/sec")
+    print(f"   [DATA] Memory: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
     
     # === 2. LOSS COMPUTATION ===
     print(f"\n🔬 2. LOSS COMPUTATION:")
@@ -76,8 +76,8 @@ def detailed_performance_breakdown():
     torch.cuda.synchronize()
     loss_time = time.time() - loss_start
     
-    print(f"   ⚡ Loss time: {loss_time:.3f}s")
-    print(f"   📊 Loss value: {losses['total_loss']:.4f}")
+    print(f"   [FAST] Loss time: {loss_time:.3f}s")
+    print(f"   [DATA] Loss value: {losses['total_loss']:.4f}")
     
     # === 3. BACKWARD PASS ===
     print(f"\n🔬 3. BACKWARD PASS:")
@@ -90,8 +90,8 @@ def detailed_performance_breakdown():
     torch.cuda.synchronize()
     backward_time = time.time() - backward_start
     
-    print(f"   ⚡ Backward time: {backward_time:.3f}s")
-    print(f"   📊 Peak memory: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+    print(f"   [FAST] Backward time: {backward_time:.3f}s")
+    print(f"   [DATA] Peak memory: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
     
     # === 4. OPTIMIZER STEP ===
     print(f"\n🔬 4. OPTIMIZER STEP:")
@@ -105,13 +105,13 @@ def detailed_performance_breakdown():
     torch.cuda.synchronize()
     opt_time = time.time() - opt_start
     
-    print(f"   ⚡ Optimizer time: {opt_time:.3f}s")
+    print(f"   [FAST] Optimizer time: {opt_time:.3f}s")
     
     # === TOTAL ANALYSIS ===
     total_time = forward_time + loss_time + backward_time + opt_time
     total_throughput = batch_size / total_time
     
-    print(f"\n📊 COMPLETE BREAKDOWN:")
+    print(f"\n[DATA] COMPLETE BREAKDOWN:")
     print(f"   Forward:   {forward_time:.3f}s ({forward_time/total_time*100:.1f}%)")
     print(f"   Loss:      {loss_time:.3f}s ({loss_time/total_time*100:.1f}%)")
     print(f"   Backward:  {backward_time:.3f}s ({backward_time/total_time*100:.1f}%)")
@@ -137,7 +137,7 @@ def detailed_performance_breakdown():
 
 def test_multiple_iterations():
     """Test performance consistency across multiple iterations"""
-    print(f"\n🔄 CONSISTENCY TEST - Multiple Iterations")
+    print(f"\n[REFRESH] CONSISTENCY TEST - Multiple Iterations")
     print("="*80)
     
     config = EmergentTrainingConfig()
@@ -192,7 +192,7 @@ def test_multiple_iterations():
     forward_std = (sum((x - avg_forward)**2 for x in forward_times) / len(forward_times))**0.5
     full_std = (sum((x - avg_full)**2 for x in full_times) / len(full_times))**0.5
     
-    print(f"\n📊 STATISTICS:")
+    print(f"\n[DATA] STATISTICS:")
     print(f"   Forward-only: {avg_forward:.1f} ± {forward_std:.1f} samples/sec")
     print(f"   Full training: {avg_full:.1f} ± {full_std:.1f} samples/sec")
     print(f"   Consistency: {1 - (full_std/avg_full):.2f} (closer to 1.0 = more consistent)")
@@ -202,7 +202,7 @@ def test_multiple_iterations():
 
 def optimize_further():
     """Try additional optimizations"""
-    print(f"\n🚀 ADDITIONAL OPTIMIZATION ATTEMPTS")
+    print(f"\n[START] ADDITIONAL OPTIMIZATION ATTEMPTS")
     print("="*80)
     
     optimizations = [
@@ -225,7 +225,7 @@ def optimize_further():
             
             # Skip if we know this will OOM
             if batch_size > 1024:
-                print(f"   ⚠️  Skipping {batch_size} - known to OOM")
+                print(f"   [WARNING]  Skipping {batch_size} - known to OOM")
                 continue
             
             trainer = EmergentCubeTrainer(config)
@@ -235,9 +235,9 @@ def optimize_further():
             if opts.get("compile_model", False):
                 try:
                     trainer = torch.compile(trainer)
-                    print(f"   ✅ Model compiled")
+                    print(f"   [OK] Model compiled")
                 except:
-                    print(f"   ⚠️  Compilation failed, using uncompiled")
+                    print(f"   [WARNING]  Compilation failed, using uncompiled")
             
             torch.cuda.empty_cache()
             
@@ -261,21 +261,21 @@ def optimize_further():
             throughput = batch_size / total_time
             results[name] = throughput
             
-            print(f"   ✅ Throughput: {throughput:.1f} samples/sec")
+            print(f"   [OK] Throughput: {throughput:.1f} samples/sec")
             
         except Exception as e:
-            print(f"   ❌ Failed: {e}")
+            print(f"   [ERROR] Failed: {e}")
             results[name] = None
     
     # Find best
     valid_results = {k: v for k, v in results.items() if v is not None}
     if valid_results:
         best = max(valid_results, key=valid_results.get)
-        print(f"\n🏆 BEST OPTIMIZATION: {best}")
+        print(f"\n[TROPHY] BEST OPTIMIZATION: {best}")
         print(f"   Throughput: {valid_results[best]:.1f} samples/sec")
         
         if valid_results[best] > 100:
-            print(f"   🎉 Achieved 100+ samples/sec target!")
+            print(f"   [SUCCESS] Achieved 100+ samples/sec target!")
     
     return valid_results
 
@@ -297,10 +297,10 @@ def main():
     
     # Final analysis
     print(f"\n" + "="*80)
-    print("🎯 PERFORMANCE ANALYSIS SUMMARY")
+    print("[TARGET] PERFORMANCE ANALYSIS SUMMARY")
     print("="*80)
     
-    print(f"📊 KEY FINDINGS:")
+    print(f"[DATA] KEY FINDINGS:")
     print(f"   🔬 Forward-only performance: {breakdown['forward_only']:.1f} samples/sec")
     print(f"   🏃 Full training performance: {breakdown['full_training']:.1f} samples/sec")
     print(f"   📉 Training overhead: {breakdown['forward_only']/breakdown['full_training']:.1f}x")
@@ -310,28 +310,28 @@ def main():
     actual_forward = breakdown['forward_only']
     
     if actual_forward >= expected_forward * 0.8:  # Within 20%
-        print(f"   ✅ Forward performance matches expectation ({actual_forward:.1f} vs {expected_forward:.1f})")
+        print(f"   [OK] Forward performance matches expectation ({actual_forward:.1f} vs {expected_forward:.1f})")
     else:
-        print(f"   ⚠️  Forward performance below expectation ({actual_forward:.1f} vs {expected_forward:.1f})")
+        print(f"   [WARNING]  Forward performance below expectation ({actual_forward:.1f} vs {expected_forward:.1f})")
     
     # Recommendations
-    print(f"\n💡 RECOMMENDATIONS:")
+    print(f"\n[IDEA] RECOMMENDATIONS:")
     
     if breakdown['full_training'] >= 100:
-        print(f"   ✅ Current performance ({breakdown['full_training']:.1f} samples/sec) is excellent")
-        print(f"   🎯 Phase 2 can be considered SUCCESS with current metrics")
+        print(f"   [OK] Current performance ({breakdown['full_training']:.1f} samples/sec) is excellent")
+        print(f"   [TARGET] Phase 2 can be considered SUCCESS with current metrics")
     elif breakdown['full_training'] >= 75:
         print(f"   👍 Current performance ({breakdown['full_training']:.1f} samples/sec) is good")
-        print(f"   🔧 Minor optimizations could push to 100+ samples/sec")
+        print(f"   [CONFIG] Minor optimizations could push to 100+ samples/sec")
     else:
-        print(f"   ⚠️  Performance needs improvement")
+        print(f"   [WARNING]  Performance needs improvement")
         print(f"   🛠️  Consider aggressive optimizations")
     
     # Best optimization recommendation
     if optimization_results:
         best_opt = max(optimization_results, key=lambda x: optimization_results[x] or 0)
         if optimization_results[best_opt] and optimization_results[best_opt] > breakdown['full_training']:
-            print(f"   🚀 Best optimization: {best_opt} ({optimization_results[best_opt]:.1f} samples/sec)")
+            print(f"   [START] Best optimization: {best_opt} ({optimization_results[best_opt]:.1f} samples/sec)")
     
     return breakdown['full_training'] >= 75  # 75+ samples/sec = success
 

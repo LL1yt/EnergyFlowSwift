@@ -29,11 +29,11 @@ def test_module_imports():
             quick_visualize_lattice,
             quick_visualize_io_strategy
         )
-        print("  ✅ Импорт модуля успешен")
+        print("  [OK] Импорт модуля успешен")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка импорта: {e}")
+        print(f"  [ERROR] Ошибка импорта: {e}")
         traceback.print_exc()
         return False
 
@@ -53,12 +53,12 @@ def test_configuration():
         assert hasattr(config, 'height'), "Отсутствует поле height"
         assert hasattr(config, 'background_color'), "Отсутствует поле background_color"
         
-        print(f"  ✅ Конфигурация загружена: {config.title}")
+        print(f"  [OK] Конфигурация загружена: {config.title}")
         print(f"  📐 Размеры: {config.width}x{config.height}")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка тестирования конфигурации: {e}")
+        print(f"  [ERROR] Ошибка тестирования конфигурации: {e}")
         traceback.print_exc()
         return False
 
@@ -112,13 +112,13 @@ def test_core_integration():
         io_info = lattice.get_io_point_info()
         
         print(f"  🧊 Mock решетка создана: {lattice.config.dimensions}")
-        print(f"  📊 Состояния: {states.shape}")
-        print(f"  📍 I/O точки: {len(io_info['input_points'])} входных, {len(io_info['output_points'])} выходных")
-        print("  ✅ Интеграция с mock core работает")
+        print(f"  [DATA] Состояния: {states.shape}")
+        print(f"  [PIN] I/O точки: {len(io_info['input_points'])} входных, {len(io_info['output_points'])} выходных")
+        print("  [OK] Интеграция с mock core работает")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка интеграции с core: {e}")
+        print(f"  [ERROR] Ошибка интеграции с core: {e}")
         traceback.print_exc()
         return False
 
@@ -136,13 +136,13 @@ def test_visualization_creation():
         visualizer = create_visualizer(config)
         io_visualizer = create_io_visualizer(config)
         
-        print(f"  🎨 Основной визуализатор: {type(visualizer).__name__}")
-        print(f"  📍 I/O визуализатор: {type(io_visualizer).__name__}")
-        print("  ✅ Визуализаторы созданы успешно")
+        print(f"  [ART] Основной визуализатор: {type(visualizer).__name__}")
+        print(f"  [PIN] I/O визуализатор: {type(io_visualizer).__name__}")
+        print("  [OK] Визуализаторы созданы успешно")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка создания визуализации: {e}")
+        print(f"  [ERROR] Ошибка создания визуализации: {e}")
         traceback.print_exc()
         return False
 
@@ -160,13 +160,13 @@ def test_quick_functions():
         # Тестируем быструю визуализацию решетки
         fig = quick_visualize_lattice(lattice, config)
         
-        print(f"  ⚡ quick_visualize_lattice: {type(fig).__name__}")
-        print(f"  📊 Количество traces: {len(fig.data)}")
-        print("  ✅ Быстрые функции работают")
+        print(f"  [FAST] quick_visualize_lattice: {type(fig).__name__}")
+        print(f"  [DATA] Количество traces: {len(fig.data)}")
+        print("  [OK] Быстрые функции работают")
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка быстрых функций: {e}")
+        print(f"  [ERROR] Ошибка быстрых функций: {e}")
         traceback.print_exc()
         return False
 
@@ -185,33 +185,33 @@ def test_dependencies():
     try:
         import plotly.graph_objects as go
         dependencies['plotly'] = True
-        print("  ✅ plotly доступен")
+        print("  [OK] plotly доступен")
     except ImportError:
-        print("  ❌ plotly НЕ доступен")
+        print("  [ERROR] plotly НЕ доступен")
     
     # Проверка numpy
     try:
         import numpy as np
         dependencies['numpy'] = True
-        print("  ✅ numpy доступен")
+        print("  [OK] numpy доступен")
     except ImportError:
-        print("  ❌ numpy НЕ доступен")
+        print("  [ERROR] numpy НЕ доступен")
     
     # Проверка torch
     try:
         import torch
         dependencies['torch'] = True
-        print("  ✅ torch доступен")
+        print("  [OK] torch доступен")
     except ImportError:
-        print("  ❌ torch НЕ доступен")
+        print("  [ERROR] torch НЕ доступен")
     
     # Проверка yaml
     try:
         import yaml
         dependencies['yaml'] = True
-        print("  ✅ yaml доступен")
+        print("  [OK] yaml доступен")
     except ImportError:
-        print("  ❌ yaml НЕ доступен")
+        print("  [ERROR] yaml НЕ доступен")
     
     # Все ли зависимости доступны?
     all_available = all(dependencies.values())
@@ -219,7 +219,7 @@ def test_dependencies():
 
 def main():
     """Основная функция тестирования"""
-    print("🚀 Запуск исправленных тестов модуля data_visualization")
+    print("[START] Запуск исправленных тестов модуля data_visualization")
     print("=" * 60)
     
     # Список тестов
@@ -247,26 +247,26 @@ def main():
     
     # Результаты
     print("=" * 60)
-    print("📊 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ:")
+    print("[DATA] РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ:")
     
     passed = 0
     for test_name, result in results.items():
         if result == "PASS":
-            print(f"  ✅ {result} {test_name}")
+            print(f"  [OK] {result} {test_name}")
             passed += 1
         elif result == "FAIL":
-            print(f"  ❌ {result} {test_name}")
+            print(f"  [ERROR] {result} {test_name}")
         else:
             print(f"  💥 {result} {test_name}")
     
     total = len(tests)
-    print(f"\n🎯 Пройдено: {passed}/{total} тестов")
+    print(f"\n[TARGET] Пройдено: {passed}/{total} тестов")
     
     if passed == total:
-        print("🎉 ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
-        print("🚀 Модуль data_visualization готов к использованию!")
+        print("[SUCCESS] ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
+        print("[START] Модуль data_visualization готов к использованию!")
     else:
-        print(f"⚠️ Некоторые тесты не прошли. Успешность: {passed/total*100:.1f}%")
+        print(f"[WARNING] Некоторые тесты не прошли. Успешность: {passed/total*100:.1f}%")
 
 if __name__ == "__main__":
     main() 

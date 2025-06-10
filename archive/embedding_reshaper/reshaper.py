@@ -121,7 +121,7 @@ class EmbeddingReshaper:
             if similarity >= self.semantic_threshold:
                 self.stats['successful_preservations'] += 1
                 if similarity >= 0.98:
-                    self.logger.info(f"🎯 Высокое качество 1D→3D достигнуто: {similarity:.6f}")
+                    self.logger.info(f"[TARGET] Высокое качество 1D→3D достигнуто: {similarity:.6f}")
             else:
                 self.stats['failed_preservations'] += 1
                 self.logger.warning(
@@ -183,7 +183,7 @@ class EmbeddingReshaper:
             if similarity >= self.semantic_threshold:
                 self.stats['successful_preservations'] += 1
                 if similarity >= 0.98:
-                    self.logger.info(f"🎯 Высокое качество 3D→1D достигнуто: {similarity:.6f}")
+                    self.logger.info(f"[TARGET] Высокое качество 3D→1D достигнуто: {similarity:.6f}")
             else:
                 self.stats['failed_preservations'] += 1
                 self.logger.warning(

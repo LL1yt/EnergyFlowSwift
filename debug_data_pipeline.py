@@ -17,12 +17,12 @@ class DataPipelineDiagnostics:
     """Диагностика проблем с data pipeline"""
     
     def __init__(self):
-        print(f"🔍 Data Pipeline Diagnostics")
+        print(f"[MAGNIFY] Data Pipeline Diagnostics")
     
     def run_diagnostics(self):
         """Запуск полной диагностики data pipeline"""
         print("\n" + "="*60)
-        print("🔍 ДИАГНОСТИКА DATA PIPELINE")
+        print("[MAGNIFY] ДИАГНОСТИКА DATA PIPELINE")
         print("="*60)
         
         # 1. Тестируем разные teacher models
@@ -35,12 +35,12 @@ class DataPipelineDiagnostics:
         self._test_manual_embeddings()
         
         print("\n" + "="*60)
-        print("✅ ДИАГНОСТИКА ЗАВЕРШЕНА")
+        print("[OK] ДИАГНОСТИКА ЗАВЕРШЕНА")
         print("="*60)
     
     def _test_teacher_models(self):
         """Тестирование разных teacher models"""
-        print("\n🤖 ТЕСТИРОВАНИЕ TEACHER MODELS:")
+        print("\n[BOT] ТЕСТИРОВАНИЕ TEACHER MODELS:")
         
         test_data = [
             {"question": "What is AI?", "answer": "AI is artificial intelligence."}
@@ -53,7 +53,7 @@ class DataPipelineDiagnostics:
         ]
         
         for model_name in models_to_test:
-            print(f"\n   📚 Testing {model_name}:")
+            print(f"\n   [BOOKS] Testing {model_name}:")
             
             try:
                 dataset = create_dialogue_dataset(
@@ -71,33 +71,33 @@ class DataPipelineDiagnostics:
                     question_emb = sample['question_embedding']
                     answer_emb = sample['answer_embedding']
                 
-                print(f"      ✅ Успешно создан dataset")
+                print(f"      [OK] Успешно создан dataset")
                 print(f"      Question embedding: shape={question_emb.shape}, norm={question_emb.norm().item():.6f}")
                 print(f"      Answer embedding: shape={answer_emb.shape}, norm={answer_emb.norm().item():.6f}")
                 
                 # Проверяем содержимое
                 if question_emb.norm().item() == 0.0:
-                    print(f"      🚨 ПРОБЛЕМА: Question embedding = нулевой вектор!")
+                    print(f"      [ALERT] ПРОБЛЕМА: Question embedding = нулевой вектор!")
                     print(f"         Первые 10 элементов: {question_emb[:10]}")
                     print(f"         Все ли элементы нули? {torch.all(question_emb == 0).item()}")
                 else:
-                    print(f"      ✅ Question embedding выглядит нормально")
+                    print(f"      [OK] Question embedding выглядит нормально")
                     print(f"         Первые 5 элементов: {question_emb[:5]}")
                 
                 if answer_emb.norm().item() == 0.0:
-                    print(f"      🚨 ПРОБЛЕМА: Answer embedding = нулевой вектор!")
+                    print(f"      [ALERT] ПРОБЛЕМА: Answer embedding = нулевой вектор!")
                     print(f"         Первые 10 элементов: {answer_emb[:10]}")
                     print(f"         Все ли элементы нули? {torch.all(answer_emb == 0).item()}")
                 else:
-                    print(f"      ✅ Answer embedding выглядит нормально")
+                    print(f"      [OK] Answer embedding выглядит нормально")
                     print(f"         Первые 5 элементов: {answer_emb[:5]}")
                 
             except Exception as e:
-                print(f"      ❌ Ошибка с {model_name}: {e}")
+                print(f"      [ERROR] Ошибка с {model_name}: {e}")
     
     def _test_dataset_settings(self):
         """Тестирование разных настроек dataset"""
-        print("\n⚙️ ТЕСТИРОВАНИЕ НАСТРОЕК DATASET:")
+        print("\n[GEAR] ТЕСТИРОВАНИЕ НАСТРОЕК DATASET:")
         
         test_data = [
             {"question": "What is machine learning?", "answer": "ML is a subset of AI."},
@@ -112,7 +112,7 @@ class DataPipelineDiagnostics:
         ]
         
         for i, settings in enumerate(settings_to_test):
-            print(f"\n   ⚙️ Settings {i+1}: {settings}")
+            print(f"\n   [GEAR] Settings {i+1}: {settings}")
             
             try:
                 dataset = create_dialogue_dataset(
@@ -139,18 +139,18 @@ class DataPipelineDiagnostics:
                     print(f"      Sample {j}: Q_norm={q_norm:.6f}, A_norm={a_norm:.6f}")
                     
                     if q_norm == 0.0 or a_norm == 0.0:
-                        print(f"         🚨 Нулевые embeddings в sample {j}!")
+                        print(f"         [ALERT] Нулевые embeddings в sample {j}!")
                         if q_norm == 0.0:
                             print(f"            Question text: '{test_data[j]['question']}'")
                         if a_norm == 0.0:
                             print(f"            Answer text: '{test_data[j]['answer']}'")
                 
             except Exception as e:
-                print(f"      ❌ Ошибка с settings {settings}: {e}")
+                print(f"      [ERROR] Ошибка с settings {settings}: {e}")
     
     def _test_manual_embeddings(self):
         """Тестирование manual создания embeddings"""
-        print("\n🔧 ТЕСТИРОВАНИЕ MANUAL EMBEDDINGS:")
+        print("\n[CONFIG] ТЕСТИРОВАНИЕ MANUAL EMBEDDINGS:")
         
         try:
             from transformers import AutoTokenizer, AutoModel
@@ -161,7 +161,7 @@ class DataPipelineDiagnostics:
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model = AutoModel.from_pretrained(model_name)
             
-            print(f"   📚 Manual loading {model_name}:")
+            print(f"   [BOOKS] Manual loading {model_name}:")
             print(f"      Model loaded: {type(model)}")
             print(f"      Tokenizer loaded: {type(tokenizer)}")
             
@@ -177,7 +177,7 @@ class DataPipelineDiagnostics:
                 print(f"\n      Testing text: '{text}'")
                 
                 if not text.strip():
-                    print(f"         ⚠️ Пустой текст - может вызвать проблемы")
+                    print(f"         [WARNING] Пустой текст - может вызвать проблемы")
                     continue
                 
                 # Токенизация
@@ -197,11 +197,11 @@ class DataPipelineDiagnostics:
                 print(f"         Pooled embedding norm: {pooled_embedding.norm().item():.6f}")
                 
                 if pooled_embedding.norm().item() == 0.0:
-                    print(f"         🚨 ПРОБЛЕМА: Manual embedding тоже нулевой!")
+                    print(f"         [ALERT] ПРОБЛЕМА: Manual embedding тоже нулевой!")
                     print(f"            Первые 10 значений: {pooled_embedding[:10]}")
                     print(f"            Все нули? {torch.all(pooled_embedding == 0).item()}")
                 else:
-                    print(f"         ✅ Manual embedding выглядит нормально")
+                    print(f"         [OK] Manual embedding выглядит нормально")
                     print(f"            Первые 5 значений: {pooled_embedding[:5]}")
                     print(f"            Min: {pooled_embedding.min().item():.6f}")
                     print(f"            Max: {pooled_embedding.max().item():.6f}")
@@ -209,7 +209,7 @@ class DataPipelineDiagnostics:
                     print(f"            Std: {pooled_embedding.std().item():.6f}")
                 
         except Exception as e:
-            print(f"      ❌ Ошибка manual embedding: {e}")
+            print(f"      [ERROR] Ошибка manual embedding: {e}")
     
     def _test_dialogue_dataset_internals(self):
         """Глубокое тестирование внутренностей dialogue_dataset"""
@@ -223,7 +223,7 @@ class DataPipelineDiagnostics:
             # Создаем embedding loader напрямую
             loader = EmbeddingLoader("distilbert-base-uncased")
             
-            print(f"   📚 EmbeddingLoader создан:")
+            print(f"   [BOOKS] EmbeddingLoader создан:")
             print(f"      Model: {type(loader.model)}")
             print(f"      Tokenizer: {type(loader.tokenizer)}")
             print(f"      Device: {loader.device}")
@@ -238,19 +238,19 @@ class DataPipelineDiagnostics:
                 print(f"         Embedding norm: {embedding.norm().item():.6f}")
                 
                 if embedding.norm().item() == 0.0:
-                    print(f"         🚨 Loader возвращает нулевой embedding!")
+                    print(f"         [ALERT] Loader возвращает нулевой embedding!")
                 else:
-                    print(f"         ✅ Loader работает правильно")
+                    print(f"         [OK] Loader работает правильно")
             
         except Exception as e:
-            print(f"   ❌ Ошибка тестирования internals: {e}")
+            print(f"   [ERROR] Ошибка тестирования internals: {e}")
 
 def main():
     """Запуск диагностики data pipeline"""
     diagnostics = DataPipelineDiagnostics()
     diagnostics.run_diagnostics()
     
-    print("\n🎯 СЛЕДУЮЩИЕ ШАГИ:")
+    print("\n[TARGET] СЛЕДУЮЩИЕ ШАГИ:")
     print("1. Если все teacher models дают нулевые embeddings - проблема в окружении")
     print("2. Если только некоторые - проблема в конкретной модели")
     print("3. Если manual embeddings работают - проблема в dialogue_dataset коде")

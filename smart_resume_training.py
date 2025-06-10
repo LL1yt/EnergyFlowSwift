@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🧠 Smart Resume Training - автоматический поиск и продолжение обучения
+[BRAIN] Smart Resume Training - автоматический поиск и продолжение обучения
 Ищет совместимые чекпоинты на основе динамической конфигурации
 """
 
@@ -66,7 +66,7 @@ class SmartResumeManager:
                     self.custom_scale_factor,
                 )
                 logger.info(
-                    f"🎯 Applied custom scale factor: {self.custom_scale_factor}"
+                    f"[TARGET] Applied custom scale factor: {self.custom_scale_factor}"
                 )
 
             # Генерируем конфигурацию
@@ -85,14 +85,14 @@ class SmartResumeManager:
 
             # Информация о режиме
             logger.info(
-                f"🎯 Current config: {self.config_metadata.get('mode', mode)} mode"
+                f"[TARGET] Current config: {self.config_metadata.get('mode', mode)} mode"
             )
             logger.info(
                 f"   Scale factor: {self.config_metadata.get('scale_factor', 'unknown')}"
             )
 
             lattice = self.current_config["lattice"]
-            logger.info(f"📊 Target configuration:")
+            logger.info(f"[DATA] Target configuration:")
             logger.info(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
             logger.info(f"   Total neurons: {lattice['total_neurons']:,}")
             logger.info(
@@ -101,7 +101,7 @@ class SmartResumeManager:
 
             # Логируем gMLP параметры для проверки
             gmlp = self.current_config["gmlp"]
-            logger.info(f"🧠 gMLP configuration:")
+            logger.info(f"[BRAIN] gMLP configuration:")
             logger.info(f"   Target params: {gmlp.get('target_params', 'unknown')}")
             logger.info(f"   State size: {gmlp.get('state_size', 'unknown')}")
             logger.info(f"   Hidden dim: {gmlp.get('hidden_dim', 'unknown')}")
@@ -111,7 +111,7 @@ class SmartResumeManager:
             logger.info(f"   Memory dim: {gmlp.get('memory_dim', 'unknown')}")
 
         except Exception as e:
-            logger.error(f"❌ Failed to initialize config: {e}")
+            logger.error(f"[ERROR] Failed to initialize config: {e}")
             raise
 
     def find_compatible_checkpoints(
@@ -123,7 +123,7 @@ class SmartResumeManager:
         Returns:
             Список совместимых чекпоинтов, отсортированных по приоритету
         """
-        logger.info(f"🔍 Searching for compatible checkpoints in {checkpoints_dir}")
+        logger.info(f"[MAGNIFY] Searching for compatible checkpoints in {checkpoints_dir}")
 
         checkpoints_path = Path(checkpoints_dir)
         if not checkpoints_path.exists():
@@ -156,7 +156,7 @@ class SmartResumeManager:
             )
         )
 
-        logger.info(f"🎯 Found {len(compatible_checkpoints)} compatible checkpoints")
+        logger.info(f"[TARGET] Found {len(compatible_checkpoints)} compatible checkpoints")
 
         # Показываем топ 5
         for i, cp in enumerate(compatible_checkpoints[:5]):
@@ -356,14 +356,14 @@ class SmartResumeManager:
         Returns:
             Результаты обучения или None если не удалось
         """
-        logger.info(f"🚀 Starting smart resume training")
+        logger.info(f"[START] Starting smart resume training")
 
         # Ищем совместимые чекпоинты
         compatible_checkpoints = self.find_compatible_checkpoints()
 
         if not compatible_checkpoints:
             logger.warning(
-                f"⚠️ No compatible checkpoints found, starting fresh training"
+                f"[WARNING] No compatible checkpoints found, starting fresh training"
             )
             return self._start_fresh_training(
                 dataset_limit, additional_epochs, **training_kwargs
@@ -371,7 +371,7 @@ class SmartResumeManager:
 
         # Выбираем лучший чекпоинт
         best_checkpoint = compatible_checkpoints[0]
-        logger.info(f"🎯 Selected checkpoint: {best_checkpoint['name']}")
+        logger.info(f"[TARGET] Selected checkpoint: {best_checkpoint['name']}")
         logger.info(f"   Compatibility: {best_checkpoint['compatibility_score']:.2f}")
         logger.info(f"   Description: {best_checkpoint['description']}")
 
@@ -404,7 +404,7 @@ class SmartResumeManager:
         **kwargs,
     ) -> Dict[str, Any]:
         """Продолжает обучение с чекпоинта"""
-        logger.info(f"▶️ Resuming training from checkpoint: {checkpoint_info['name']}")
+        logger.info(f"[PLAY] Resuming training from checkpoint: {checkpoint_info['name']}")
         logger.info(
             f"   Checkpoint similarity: {checkpoint_info['metadata'].get('best_similarity', 'unknown')}"
         )
@@ -423,14 +423,14 @@ class SmartResumeManager:
             checkpoint_data = torch.load(checkpoint_info["path"], map_location="cpu")
             trainer.load_state_dict(checkpoint_data["model_state_dict"], strict=False)
 
-            logger.info(f"✅ Checkpoint weights loaded successfully")
+            logger.info(f"[OK] Checkpoint weights loaded successfully")
 
             # Извлекаем количество пройденных эпох из метаданных
             checkpoint_metadata = checkpoint_info.get("metadata", {})
             completed_epochs = checkpoint_metadata.get("epochs", 0)
 
             logger.info(
-                f"🎓 Resuming from epoch {completed_epochs + 1}, will train {additional_epochs} more epochs"
+                f"[GRADUATE] Resuming from epoch {completed_epochs + 1}, will train {additional_epochs} more epochs"
             )
 
             # Запускаем обучение с resume
@@ -443,7 +443,7 @@ class SmartResumeManager:
             )
 
         except Exception as e:
-            logger.error(f"❌ Failed to resume from checkpoint: {e}")
+            logger.error(f"[ERROR] Failed to resume from checkpoint: {e}")
             logger.info(f"🆕 Falling back to fresh training")
             return self._start_fresh_training(
                 dataset_limit, additional_epochs, **kwargs
@@ -500,7 +500,7 @@ def main():
             compatible_checkpoints = resume_manager.find_compatible_checkpoints()
 
             if compatible_checkpoints:
-                logger.info(f"\n📋 Compatible checkpoints found:")
+                logger.info(f"\n[INFO] Compatible checkpoints found:")
                 for i, cp in enumerate(compatible_checkpoints):
                     logger.info(f"   {i+1}. {cp['name']}")
                     logger.info(f"      Score: {cp['compatibility_score']:.2f}")
@@ -508,7 +508,7 @@ def main():
                     logger.info(f"      Path: {cp['path']}")
                     logger.info("")
             else:
-                logger.info(f"❌ No compatible checkpoints found")
+                logger.info(f"[ERROR] No compatible checkpoints found")
 
             return
 
@@ -520,17 +520,17 @@ def main():
         )
 
         if results:
-            logger.info("📈 Training Results:")
+            logger.info("[CHART] Training Results:")
             for key, value in results.items():
                 if key != "training_log":  # Пропускаем детальный лог
                     logger.info(f"   {key}: {value}")
 
-        logger.info("✅ Smart resume training completed!")
+        logger.info("[OK] Smart resume training completed!")
 
     except KeyboardInterrupt:
-        logger.info("⏹️ Training interrupted by user")
+        logger.info("[STOP] Training interrupted by user")
     except Exception as e:
-        logger.error(f"❌ Smart resume failed: {e}")
+        logger.error(f"[ERROR] Smart resume failed: {e}")
         import traceback
 
         traceback.print_exc()

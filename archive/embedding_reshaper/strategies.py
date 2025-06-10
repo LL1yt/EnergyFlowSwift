@@ -358,7 +358,7 @@ class AdaptiveReshaper(BaseReshaper):
         return embedding_3d.reshape(self.input_dim)
     
     # ==========================================
-    # 🚀 НОВЫЕ УЛУЧШЕННЫЕ МЕТОДЫ ДЛЯ СЕМАНТИЧЕСКОГО СОХРАНЕНИЯ >98%
+    # [START] НОВЫЕ УЛУЧШЕННЫЕ МЕТОДЫ ДЛЯ СЕМАНТИЧЕСКОГО СОХРАНЕНИЯ >98%
     # ==========================================
     
     def _enhanced_variance_transform(self, embedding_1d: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -603,7 +603,7 @@ class AdaptiveReshaper(BaseReshaper):
         return all_coords[-count:] if count > 0 else []
     
     # ==========================================
-    # 🔄 ОБРАТНЫЕ ПРЕОБРАЗОВАНИЯ ДЛЯ ENHANCED МЕТОДОВ
+    # [REFRESH] ОБРАТНЫЕ ПРЕОБРАЗОВАНИЯ ДЛЯ ENHANCED МЕТОДОВ
     # ==========================================
     
     def _enhanced_variance_inverse_transform(self, embedding_3d: np.ndarray) -> np.ndarray:

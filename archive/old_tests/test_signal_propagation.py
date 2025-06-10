@@ -71,7 +71,7 @@ def test_time_manager():
     time_manager.stop_simulation()
     assert not time_manager.is_running
     
-    print("✅ TimeManager тест пройден")
+    print("[OK] TimeManager тест пройден")
 
 def test_convergence_detector():
     """Тест ConvergenceDetector"""
@@ -117,7 +117,7 @@ def test_convergence_detector():
     final_info = detector.get_convergence_info()
     print(f"Финальная информация: {final_info}")
     
-    print("✅ ConvergenceDetector тест пройден")
+    print("[OK] ConvergenceDetector тест пройден")
 
 def test_pattern_analyzer():
     """Тест PatternAnalyzer"""
@@ -151,7 +151,7 @@ def test_pattern_analyzer():
     summary = patterns.get_pattern_summary()
     print(f"Сводка по паттернам: {summary}")
     
-    print("✅ PatternAnalyzer тест пройден")
+    print("[OK] PatternAnalyzer тест пройден")
 
 def test_signal_propagator_basic():
     """Базовый тест SignalPropagator"""
@@ -209,7 +209,7 @@ def test_signal_propagator_basic():
     final_stats = propagator.get_stats()
     print(f"Финальная статистика: {final_stats}")
     
-    print("✅ SignalPropagator базовый тест пройден")
+    print("[OK] SignalPropagator базовый тест пройден")
 
 def test_full_integration():
     """Полный интеграционный тест"""
@@ -299,15 +299,15 @@ def test_full_integration():
         print(f"Средняя сила сигнала: {final_stats['average_signal_strength']:.6f}")
         print(f"Обнаруженные паттерны: {pattern_summary.get('pattern_distribution', {})}")
         
-        print("✅ Полный интеграционный тест пройден")
+        print("[OK] Полный интеграционный тест пройден")
         
     except Exception as e:
-        print(f"❌ Ошибка в интеграционном тесте: {e}")
+        print(f"[ERROR] Ошибка в интеграционном тесте: {e}")
         raise
 
 def main():
     """Основная функция тестирования"""
-    print("🚀 Запуск тестов Signal Propagation модуля")
+    print("[START] Запуск тестов Signal Propagation модуля")
     setup_logging()
     
     try:
@@ -320,10 +320,10 @@ def main():
         # Интеграционный тест
         test_full_integration()
         
-        print("\n🎉 Все тесты Signal Propagation модуля пройдены успешно!")
+        print("\n[SUCCESS] Все тесты Signal Propagation модуля пройдены успешно!")
         
     except Exception as e:
-        print(f"\n❌ Тесты завершились с ошибкой: {e}")
+        print(f"\n[ERROR] Тесты завершились с ошибкой: {e}")
         import traceback
         traceback.print_exc()
         return False

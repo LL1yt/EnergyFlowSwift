@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🔧 ДИАГНОСТИКА И ИСПРАВЛЕНИЕ ИНИЦИАЛИЗАЦИИ ВЕСОВ
+[CONFIG] ДИАГНОСТИКА И ИСПРАВЛЕНИЕ ИНИЦИАЛИЗАЦИИ ВЕСОВ
 
 Проблема: Loss = 0.0000 сразу (должен быть 5-10 изначально)
 Цель: Проверить и исправить инициализацию весов в gMLP системе
@@ -32,7 +32,7 @@ class WeightInitializationDiagnostics:
     def run_diagnostics(self):
         """Полная диагностика проблемы с инициализацией"""
         
-        print("🔧 ДИАГНОСТИКА ИНИЦИАЛИЗАЦИИ ВЕСОВ")
+        print("[CONFIG] ДИАГНОСТИКА ИНИЦИАЛИЗАЦИИ ВЕСОВ")
         print("="*50)
         
         # 1. Создаем trainer
@@ -66,17 +66,17 @@ class WeightInitializationDiagnostics:
             trainer = EmergentCubeTrainer(config, device=str(self.device))
             
             total_params = sum(p.numel() for p in trainer.parameters())
-            print(f"✅ Trainer создан: {total_params:,} параметров")
+            print(f"[OK] Trainer создан: {total_params:,} параметров")
             
             return trainer
             
         except Exception as e:
-            print(f"❌ Ошибка создания trainer: {e}")
+            print(f"[ERROR] Ошибка создания trainer: {e}")
             return None
     
     def _check_initial_weights(self, trainer):
         """Проверка начальных весов"""
-        print("\n🔍 ПРОВЕРКА НАЧАЛЬНЫХ ВЕСОВ:")
+        print("\n[MAGNIFY] ПРОВЕРКА НАЧАЛЬНЫХ ВЕСОВ:")
         
         weight_stats = {}
         zero_params = 0
@@ -108,17 +108,17 @@ class WeightInitializationDiagnostics:
                 
                 # Выводим проблемные слои
                 if abs(mean_val) < 1e-6 and std_val < 1e-6:
-                    print(f"🚨 ПРОБЛЕМА: {name}")
+                    print(f"[ALERT] ПРОБЛЕМА: {name}")
                     print(f"   Mean: {mean_val:.8f}, Std: {std_val:.8f}")
                     print(f"   Все веса практически нули!")
                 elif zero_count > param.numel() * 0.9:
-                    print(f"⚠️ ПОДОЗРИТЕЛЬНО: {name}")
+                    print(f"[WARNING] ПОДОЗРИТЕЛЬНО: {name}")
                     print(f"   {zero_count}/{param.numel()} ({weight_stats[name]['zero_percentage']:.1f}%) нулевых весов")
                 else:
-                    print(f"✅ НОРМАЛЬНО: {name}")
+                    print(f"[OK] НОРМАЛЬНО: {name}")
                     print(f"   Mean: {mean_val:.6f}, Std: {std_val:.6f}, Range: [{min_val:.6f}, {max_val:.6f}]")
         
-        print(f"\n📊 ОБЩАЯ СТАТИСТИКА:")
+        print(f"\n[DATA] ОБЩАЯ СТАТИСТИКА:")
         print(f"   Всего параметров: {total_params:,}")
         print(f"   Нулевых параметров: {zero_params:,} ({(zero_params/total_params)*100:.1f}%)")
         
@@ -126,7 +126,7 @@ class WeightInitializationDiagnostics:
     
     def _check_forward_pass(self, trainer):
         """Проверка forward pass"""
-        print("\n⚡ ПРОВЕРКА FORWARD PASS:")
+        print("\n[FAST] ПРОВЕРКА FORWARD PASS:")
         
         # Создаем тестовый input
         batch_size = 2
@@ -150,11 +150,11 @@ class WeightInitializationDiagnostics:
                 print(f"      Zeros: {zero_count}/{total_elements} ({(zero_count/total_elements)*100:.1f}%)")
                 
                 if abs(mean_val) < 1e-6 and std_val < 1e-6:
-                    print(f"      🚨 ПРОБЛЕМА: Выход практически нулевой!")
+                    print(f"      [ALERT] ПРОБЛЕМА: Выход практически нулевой!")
                 elif zero_count > total_elements * 0.9:
-                    print(f"      ⚠️ ПОДОЗРИТЕЛЬНО: Слишком много нулей")
+                    print(f"      [WARNING] ПОДОЗРИТЕЛЬНО: Слишком много нулей")
                 else:
-                    print(f"      ✅ НОРМАЛЬНО: Разумные значения")
+                    print(f"      [OK] НОРМАЛЬНО: Разумные значения")
         
         return outputs
     
@@ -214,16 +214,16 @@ class WeightInitializationDiagnostics:
                 print(f"      {key}: {loss_val:.6f}")
                 
                 if loss_val == 0.0:
-                    print(f"         🚨 ПРОБЛЕМА: {key} = 0.0!")
+                    print(f"         [ALERT] ПРОБЛЕМА: {key} = 0.0!")
                     self._debug_zero_loss_component(key, outputs, targets, trainer)
                 else:
-                    print(f"         ✅ НОРМАЛЬНО: {key} > 0")
+                    print(f"         [OK] НОРМАЛЬНО: {key} > 0")
         
         return losses
     
     def _debug_zero_loss_component(self, component: str, outputs, targets, trainer):
         """Детальная диагностика нулевого loss компонента"""
-        print(f"         🔍 Диагностика {component}:")
+        print(f"         [MAGNIFY] Диагностика {component}:")
         
         if component == 'dialogue_similarity_loss':
             final_output = outputs['final_output']
@@ -245,13 +245,13 @@ class WeightInitializationDiagnostics:
                 print(f"            manual_dialogue_loss: {dialogue_loss.item():.6f}")
                 
                 if torch.mean(cos_sim).item() == 1.0:
-                    print(f"            🚨 ПРОБЛЕМА: Perfect similarity - возможно идентичные тензоры!")
+                    print(f"            [ALERT] ПРОБЛЕМА: Perfect similarity - возможно идентичные тензоры!")
                     print(f"            final_output[0][:5]: {final_output[0][:5]}")
                     print(f"            projected_target[0][:5]: {projected_target[0][:5]}")
     
     def _apply_proper_initialization(self, trainer):
         """Применение правильной инициализации весов"""
-        print("\n🔧 ПРИМЕНЕНИЕ ПРАВИЛЬНОЙ ИНИЦИАЛИЗАЦИИ:")
+        print("\n[CONFIG] ПРИМЕНЕНИЕ ПРАВИЛЬНОЙ ИНИЦИАЛИЗАЦИИ:")
         
         def init_weights(module):
             if isinstance(module, nn.Linear):
@@ -281,11 +281,11 @@ class WeightInitializationDiagnostics:
         # Применяем инициализацию ко всем модулям
         trainer.apply(init_weights)
         
-        print("✅ Инициализация применена ко всем слоям")
+        print("[OK] Инициализация применена ко всем слоям")
     
     def _verify_after_fix(self, trainer):
         """Проверка после исправления инициализации"""
-        print("\n✅ ПРОВЕРКА ПОСЛЕ ИСПРАВЛЕНИЯ:")
+        print("\n[OK] ПРОВЕРКА ПОСЛЕ ИСПРАВЛЕНИЯ:")
         
         # Проверяем веса после инициализации
         print("   Проверка весов после инициализации:")
@@ -338,11 +338,11 @@ class WeightInitializationDiagnostics:
             if torch.is_tensor(loss_tensor):
                 loss_val = loss_tensor.item()
                 if loss_val > 0.01:
-                    print(f"      ✅ {key}: {loss_val:.6f} (ХОРОШО - больше 0!)")
+                    print(f"      [OK] {key}: {loss_val:.6f} (ХОРОШО - больше 0!)")
                 elif loss_val > 0.0:
-                    print(f"      ⚠️ {key}: {loss_val:.6f} (маленький но не 0)")
+                    print(f"      [WARNING] {key}: {loss_val:.6f} (маленький но не 0)")
                 else:
-                    print(f"      ❌ {key}: {loss_val:.6f} (все еще 0)")
+                    print(f"      [ERROR] {key}: {loss_val:.6f} (все еще 0)")
         
         # Сохраняем исправленную модель
         self._save_fixed_trainer(trainer)
@@ -358,7 +358,7 @@ class WeightInitializationDiagnostics:
             'note': 'Fixed weight initialization - should have non-zero loss'
         }, save_path)
         
-        print(f"\n💾 Исправленная модель сохранена: {save_path}")
+        print(f"\n[SAVE] Исправленная модель сохранена: {save_path}")
         print("   Эта модель имеет правильную инициализацию весов")
         print("   Используйте её для overnight training")
 
@@ -367,7 +367,7 @@ def main():
     diagnostics = WeightInitializationDiagnostics()
     diagnostics.run_diagnostics()
     
-    print("\n🎯 РЕКОМЕНДАЦИИ:")
+    print("\n[TARGET] РЕКОМЕНДАЦИИ:")
     print("1. Запустите этот скрипт для диагностики")
     print("2. Если найдены проблемы - они будут исправлены")
     print("3. Используйте исправленную модель для overnight training")

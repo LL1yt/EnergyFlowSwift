@@ -99,7 +99,7 @@ def calculate_similarity_metrics(
 
 
 # ==========================================
-# 🚀 НОВЫЕ ФУНКЦИИ ДЛЯ СЕМАНТИЧЕСКОГО СОХРАНЕНИЯ >98%
+# [START] НОВЫЕ ФУНКЦИИ ДЛЯ СЕМАНТИЧЕСКОГО СОХРАНЕНИЯ >98%
 # ==========================================
 
 def calculate_enhanced_similarity_metrics(

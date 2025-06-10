@@ -19,7 +19,7 @@ from core.lattice_3d import (
 
 def test_lattice_3d_full():
     """Полный тест реализации Lattice3D"""
-    print("🚀 РАСШИРЕННОЕ ТЕСТИРОВАНИЕ LATTICE 3D - ПОЛНАЯ ФУНКЦИОНАЛЬНОСТЬ")
+    print("[START] РАСШИРЕННОЕ ТЕСТИРОВАНИЕ LATTICE 3D - ПОЛНАЯ ФУНКЦИОНАЛЬНОСТЬ")
     print("=" * 80)
     
     try:
@@ -37,7 +37,7 @@ def test_lattice_3d_full():
         )
         
         lattice = Lattice3D(config)
-        print(f"  ✅ Lattice3D создан: {config.dimensions}")
+        print(f"  [OK] Lattice3D создан: {config.dimensions}")
         print(f"    - Общее количество клеток: {config.total_cells}")
         print(f"    - Устройство: {config.device}")
         print(f"    - Размер состояния клетки: {lattice.cell_prototype.state_size}")
@@ -48,13 +48,13 @@ def test_lattice_3d_full():
         print("\n🧪 Тест 2: Forward pass без внешних входов")
         
         initial_states = lattice.get_states()
-        print(f"  📊 Начальные состояния: {initial_states.shape}")
+        print(f"  [DATA] Начальные состояния: {initial_states.shape}")
         print(f"    - Среднее значение: {initial_states.mean().item():.4f}")
         print(f"    - Стандартное отклонение: {initial_states.std().item():.4f}")
         
         # Выполняем один шаг
         new_states = lattice.forward()
-        print(f"  📊 Новые состояния после forward: {new_states.shape}")
+        print(f"  [DATA] Новые состояния после forward: {new_states.shape}")
         print(f"    - Среднее значение: {new_states.mean().item():.4f}")
         print(f"    - Стандартное отклонение: {new_states.std().item():.4f}")
         print(f"    - Изменились ли состояния: {not torch.equal(initial_states, new_states)}")
@@ -68,7 +68,7 @@ def test_lattice_3d_full():
         external_input_size = min(4, lattice.cell_prototype.input_size)  # Берем разумный размер
         external_inputs = torch.randn(input_face_size, external_input_size)
         
-        print(f"  📊 Внешние входы: {external_inputs.shape}")
+        print(f"  [DATA] Внешние входы: {external_inputs.shape}")
         print(f"    - Размер входной грани: {input_face_size}")
         print(f"    - Размер каждого входа: {external_input_size}")
         
@@ -76,7 +76,7 @@ def test_lattice_3d_full():
         states_before = lattice.get_states()
         new_states_with_input = lattice.forward(external_inputs)
         
-        print(f"  📊 Результат с внешними входами:")
+        print(f"  [DATA] Результат с внешними входами:")
         print(f"    - Форма выходных состояний: {new_states_with_input.shape}")
         print(f"    - Изменились ли состояния: {not torch.equal(states_before, new_states_with_input)}")
         print(f"    - Счетчик шагов: {lattice.step_count}")
@@ -87,7 +87,7 @@ def test_lattice_3d_full():
         for face in Face:
             face_states = lattice.get_face_states(face)
             face_indices = lattice._face_indices[face]
-            print(f"  📊 Грань {face.name}:")
+            print(f"  [DATA] Грань {face.name}:")
             print(f"    - Количество клеток: {len(face_indices)}")
             print(f"    - Форма состояний: {face_states.shape}")
             print(f"    - Среднее значение: {face_states.mean().item():.4f}")
@@ -103,13 +103,13 @@ def test_lattice_3d_full():
         lattice.set_states(random_states)
         retrieved_states = lattice.get_states()
         
-        print(f"  📊 Установка новых состояний:")
+        print(f"  [DATA] Установка новых состояний:")
         print(f"    - Состояния установлены корректно: {torch.allclose(random_states, retrieved_states)}")
         
         # Сброс состояний
         lattice.reset_states()
         reset_states = lattice.get_states()
-        print(f"  📊 Сброс состояний:")
+        print(f"  [DATA] Сброс состояний:")
         print(f"    - Счетчик шагов сброшен: {lattice.step_count == 0}")
         print(f"    - Форма состояний после сброса: {reset_states.shape}")
         
@@ -121,7 +121,7 @@ def test_lattice_3d_full():
             lattice.forward()
             
         perf_stats = lattice.get_performance_stats()
-        print(f"  📊 Статистика производительности:")
+        print(f"  [DATA] Статистика производительности:")
         print(f"    - Количество вызовов forward: {perf_stats['forward_calls']}")
         print(f"    - Общее время: {perf_stats['total_time']:.4f} сек")
         print(f"    - Среднее время на шаг: {perf_stats['avg_time_per_step']:.4f} сек")
@@ -143,7 +143,7 @@ def test_lattice_3d_full():
                 new_states = lattice.forward()
             states_history.append(new_states.mean().item())
             
-        print(f"  📊 История распространения сигнала (среднее):")
+        print(f"  [DATA] История распространения сигнала (среднее):")
         for i, avg_state in enumerate(states_history):
             print(f"    Шаг {i}: {avg_state:.4f}")
             
@@ -151,7 +151,7 @@ def test_lattice_3d_full():
         input_face_final = lattice.get_face_states(config.input_face)
         output_face_final = lattice.get_face_states(config.output_face)
         
-        print(f"  📊 Финальные состояния граней:")
+        print(f"  [DATA] Финальные состояния граней:")
         print(f"    - Входная грань (среднее): {input_face_final.mean().item():.4f}")
         print(f"    - Выходная грань (среднее): {output_face_final.mean().item():.4f}")
         
@@ -168,17 +168,17 @@ def test_lattice_3d_full():
         lattice.reset_states()
         sequential_result = lattice.forward()
         
-        print(f"  📊 Сравнение режимов обработки:")
+        print(f"  [DATA] Сравнение режимов обработки:")
         print(f"    - Параллельный результат (среднее): {parallel_result.mean().item():.4f}")
         print(f"    - Последовательный результат (среднее): {sequential_result.mean().item():.4f}")
         print(f"    - Результаты идентичны: {torch.allclose(parallel_result, sequential_result, atol=1e-5)}")
         
-        print(f"\n  ✅ Все функции Lattice3D работают корректно")
+        print(f"\n  [OK] Все функции Lattice3D работают корректно")
         
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка в тестировании Lattice3D: {e}")
+        print(f"  [ERROR] Ошибка в тестировании Lattice3D: {e}")
         import traceback
         print(traceback.format_exc())
         return False
@@ -190,19 +190,19 @@ def test_lattice_integration():
     try:
         # Создаем решетку из конфигурационного файла
         lattice = create_lattice_from_config()
-        print(f"  ✅ Решетка создана из конфигурации: {lattice.config.dimensions}")
+        print(f"  [OK] Решетка создана из конфигурации: {lattice.config.dimensions}")
         
         # Тестируем базовую функциональность
         initial_states = lattice.get_states()
         new_states = lattice.forward()
         
-        print(f"  ✅ Базовая функциональность работает")
+        print(f"  [OK] Базовая функциональность работает")
         print(f"    - Изменение состояний: {not torch.equal(initial_states, new_states)}")
         
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка интеграции: {e}")
+        print(f"  [ERROR] Ошибка интеграции: {e}")
         return False
 
 def main():
@@ -221,14 +221,14 @@ def main():
     total_tests = len(tests_results)
     
     print("\n" + "=" * 80)
-    print(f"📊 РЕЗУЛЬТАТЫ РАСШИРЕННОГО ТЕСТИРОВАНИЯ: {passed_tests}/{total_tests} тестов пройдено")
+    print(f"[DATA] РЕЗУЛЬТАТЫ РАСШИРЕННОГО ТЕСТИРОВАНИЯ: {passed_tests}/{total_tests} тестов пройдено")
     
     if passed_tests == total_tests:
-        print("🎉 ВСЕ РАСШИРЕННЫЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
-        print("\n✅ Модуль Lattice3D полностью функционален и готов к следующему этапу")
+        print("[SUCCESS] ВСЕ РАСШИРЕННЫЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
+        print("\n[OK] Модуль Lattice3D полностью функционален и готов к следующему этапу")
         return True
     else:
-        print(f"❌ {total_tests - passed_tests} тестов провалилось")
+        print(f"[ERROR] {total_tests - passed_tests} тестов провалилось")
         return False
 
 if __name__ == "__main__":

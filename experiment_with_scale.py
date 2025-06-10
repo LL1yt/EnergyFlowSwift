@@ -32,9 +32,9 @@ def experiment_with_scale(custom_scale: float = None):
     print("=" * 60)
 
     if custom_scale:
-        print(f"🎯 Используем custom scale: {custom_scale}")
+        print(f"[TARGET] Используем custom scale: {custom_scale}")
     else:
-        print(f"📊 Сравниваем стандартные режимы")
+        print(f"[DATA] Сравниваем стандартные режимы")
 
     try:
         config_manager = DynamicConfigManager()
@@ -69,7 +69,7 @@ def experiment_with_scale(custom_scale: float = None):
                     "lattice", {}
                 ).get("scale_factor")
 
-                print(f"\n📊 РЕЖИМ: {mode.upper()} (scale={scale})")
+                print(f"\n[DATA] РЕЖИМ: {mode.upper()} (scale={scale})")
                 _print_config_info(config, scale)
 
                 # Показываем название checkpoint'а
@@ -78,7 +78,7 @@ def experiment_with_scale(custom_scale: float = None):
                 )
 
     except Exception as e:
-        print(f"❌ Ошибка эксперимента: {e}")
+        print(f"[ERROR] Ошибка эксперимента: {e}")
 
 
 def _print_config_info(config, scale_factor):
@@ -88,9 +88,9 @@ def _print_config_info(config, scale_factor):
     training = config["training"]
 
     print(f"   📏 Размер решетки: {lattice['xs']} × {lattice['ys']} × {lattice['zs']}")
-    print(f"   🧠 Всего нейронов: {lattice['total_neurons']:,}")
-    print(f"   📊 Embedding dim: {embeddings['embedding_dim']:,}")
-    print(f"   🎯 Batch size: {training['batch_size']}")
+    print(f"   [BRAIN] Всего нейронов: {lattice['total_neurons']:,}")
+    print(f"   [DATA] Embedding dim: {embeddings['embedding_dim']:,}")
+    print(f"   [TARGET] Batch size: {training['batch_size']}")
 
     # Оценка памяти
     lattice_memory_gb = (lattice["total_neurons"] * embeddings["embedding_dim"] * 4) / (
@@ -100,8 +100,8 @@ def _print_config_info(config, scale_factor):
         1024**2
     )
 
-    print(f"   💾 Память решетки: ~{lattice_memory_gb:.3f} GB")
-    print(f"   💾 Память батча: ~{batch_memory_mb:.1f} MB")
+    print(f"   [SAVE] Память решетки: ~{lattice_memory_gb:.3f} GB")
+    print(f"   [SAVE] Память батча: ~{batch_memory_mb:.1f} MB")
 
     # Время вычислений (примерная оценка)
     operations_per_epoch = (
@@ -125,7 +125,7 @@ def _show_checkpoint_naming(
 
 def suggest_optimal_scales():
     """Предложить оптимальные scale factor'ы для разных целей"""
-    print(f"\n💡 РЕКОМЕНДАЦИИ ПО SCALE FACTOR:")
+    print(f"\n[IDEA] РЕКОМЕНДАЦИИ ПО SCALE FACTOR:")
     print("=" * 60)
 
     suggestions = [
@@ -141,7 +141,7 @@ def suggest_optimal_scales():
     for scale, purpose, description in suggestions:
         print(f"   {scale:5.3f} - {purpose:25s} ({description})")
 
-    print(f"\n⚠️ ВАЖНО:")
+    print(f"\n[WARNING] ВАЖНО:")
     print(f"   • Для RTX 5090 (32GB): можно до 0.3-0.5")
     print(f"   • Для RTX 4070 Ti (12GB): рекомендуется до 0.1-0.2")
     print(f"   • Для меньших GPU: не больше 0.05-0.1")
@@ -149,7 +149,7 @@ def suggest_optimal_scales():
 
 def create_custom_scale_test(scale_factor: float):
     """Создать тест с custom scale factor"""
-    print(f"\n🔧 СОЗДАНИЕ ТЕСТА С SCALE {scale_factor}")
+    print(f"\n[CONFIG] СОЗДАНИЕ ТЕСТА С SCALE {scale_factor}")
     print("=" * 60)
 
     try:
@@ -182,9 +182,9 @@ def main():
     manager.dynamic_config = manager.config_manager.create_config_for_mode("development")
     manager.config_manager.merge_dynamic_config(manager.dynamic_config)
     
-    print(f"✅ Конфигурация обновлена для scale {scale_factor}")
+    print(f"[OK] Конфигурация обновлена для scale {scale_factor}")
     print(f"📏 Размер решетки: {{manager.dynamic_config['lattice']['xs']}}×{{manager.dynamic_config['lattice']['ys']}}×{{manager.dynamic_config['lattice']['zs']}}")
-    print(f"🧠 Нейронов: {{manager.dynamic_config['lattice']['total_neurons']:,}}")
+    print(f"[BRAIN] Нейронов: {{manager.dynamic_config['lattice']['total_neurons']:,}}")
     
     # Запуск обучения
     try:
@@ -194,12 +194,12 @@ def main():
             batch_size=None  # Используем из конфигурации
         )
         
-        print(f"🎉 Тест завершен успешно!")
+        print(f"[SUCCESS] Тест завершен успешно!")
         print(f"   Лучшая similarity: {{results['best_similarity']:.4f}}")
         print(f"   Время: {{results['total_time']/60:.1f}} минут")
         
     except Exception as e:
-        print(f"❌ Ошибка тестирования: {{e}}")
+        print(f"[ERROR] Ошибка тестирования: {{e}}")
         return 1
     
     return 0
@@ -213,13 +213,13 @@ if __name__ == "__main__":
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(script_content)
 
-        print(f"✅ Создан тестовый скрипт: {script_path}")
+        print(f"[OK] Создан тестовый скрипт: {script_path}")
         print(f"   Запуск: python {script_path}")
 
         return script_path
 
     except Exception as e:
-        print(f"❌ Ошибка создания теста: {e}")
+        print(f"[ERROR] Ошибка создания теста: {e}")
         return None
 
 
@@ -230,7 +230,7 @@ def main():
     print()
 
     while True:
-        print("\n🎯 ВЫБЕРИТЕ ДЕЙСТВИЕ:")
+        print("\n[TARGET] ВЫБЕРИТЕ ДЕЙСТВИЕ:")
         print("1. Показать стандартные режимы")
         print("2. Эксперимент с custom scale")
         print("3. Рекомендации по scale factor")
@@ -248,9 +248,9 @@ def main():
                 if 0.001 <= scale <= 1.0:
                     experiment_with_scale(scale)
                 else:
-                    print("⚠️ Scale должен быть от 0.001 до 1.0")
+                    print("[WARNING] Scale должен быть от 0.001 до 1.0")
             except ValueError:
-                print("❌ Неверный формат числа")
+                print("[ERROR] Неверный формат числа")
 
         elif choice == "3":
             suggest_optimal_scales()
@@ -263,18 +263,18 @@ def main():
                 if 0.001 <= scale <= 1.0:
                     script_path = create_custom_scale_test(scale)
                     if script_path:
-                        print(f"\n💡 Можете теперь запустить: python {script_path}")
+                        print(f"\n[IDEA] Можете теперь запустить: python {script_path}")
                 else:
-                    print("⚠️ Scale должен быть от 0.001 до 1.0")
+                    print("[WARNING] Scale должен быть от 0.001 до 1.0")
             except ValueError:
-                print("❌ Неверный формат числа")
+                print("[ERROR] Неверный формат числа")
 
         elif choice == "5":
             print("👋 До свидания!")
             break
 
         else:
-            print("❌ Неверный выбор, попробуйте снова")
+            print("[ERROR] Неверный выбор, попробуйте снова")
 
 
 if __name__ == "__main__":

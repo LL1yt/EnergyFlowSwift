@@ -29,7 +29,7 @@ try:
     from .cube_trainer import CubeTrainer, TrainingConfig, EmbeddingMetrics
     CUBE_TRAINER_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  CubeTrainer not available: {e}")
+    print(f"[WARNING]  CubeTrainer not available: {e}")
     CUBE_TRAINER_AVAILABLE = False
     
     # Заглушка если недоступен
@@ -38,7 +38,7 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("CubeTrainer dependencies not available")
 
-# 🚀 STAGE 1.2: AutoencoderDataset - ГОТОВ!
+# [START] STAGE 1.2: AutoencoderDataset - ГОТОВ!
 try:
     from .autoencoder_dataset import (
         AutoencoderDataset, 
@@ -48,7 +48,7 @@ try:
     )
     AUTOENCODER_DATASET_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  AutoencoderDataset not available: {e}")
+    print(f"[WARNING]  AutoencoderDataset not available: {e}")
     AUTOENCODER_DATASET_AVAILABLE = False
     
     # Заглушка если недоступен
@@ -57,7 +57,7 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("AutoencoderDataset dependencies not available")
 
-# 🚀 STAGE 1.3: DialogueDataset - ГОТОВ!
+# [START] STAGE 1.3: DialogueDataset - ГОТОВ!
 try:
     from .dialogue_dataset import (
         DialogueDataset, 
@@ -68,7 +68,7 @@ try:
     )
     DIALOGUE_DATASET_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  DialogueDataset not available: {e}")
+    print(f"[WARNING]  DialogueDataset not available: {e}")
     DIALOGUE_DATASET_AVAILABLE = False
     
     # Заглушка если недоступен
@@ -110,13 +110,13 @@ def _check_dependencies():
                 missing_modules.append(module_name)
         
         if missing_modules:
-            print(f"⚠️  Warning: Missing required modules: {missing_modules}")
+            print(f"[WARNING]  Warning: Missing required modules: {missing_modules}")
             print("   Make sure all dependencies are implemented before using EmbeddingTrainer")
         else:
-            print("✅ All dependencies are available")
+            print("[OK] All dependencies are available")
             
     except ImportError as e:
-        print(f"❌ Critical dependency missing: {e}")
+        print(f"[ERROR] Critical dependency missing: {e}")
         print("   Install required packages: torch, numpy")
 
 # Автоматическая проверка при импорте модуля
@@ -155,7 +155,7 @@ try:
     )
     ADAPTER_INTEGRATION_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  Adapter Integration not available: {e}")
+    print(f"[WARNING]  Adapter Integration not available: {e}")
     ADAPTER_INTEGRATION_AVAILABLE = False
 
 # Экспорт функции информации

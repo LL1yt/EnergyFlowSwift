@@ -2,14 +2,14 @@
 🧪 RET v2.1 ULTRA-COMPACT - Integration Test Suite
 
 TESTING SCOPE:
-- ✅ Parameter target achievement (722K / 800K)
+- [OK] Parameter target achievement (722K / 800K)
 - 🧪 RTX 5090 optimization effectiveness  
 - 🧪 Memory reduction validation (60% target)
 - 🧪 Speed performance maintenance
 - 🧪 Integration with GenerativeDecoder
 
 CRITICAL SUCCESS CRITERIA:
-- Parameters ≤ 800K (ACHIEVED: 722K ✅)
+- Parameters ≤ 800K (ACHIEVED: 722K [OK])
 - Memory reduction ≥ 60%
 - Speed maintenance or improvement
 - RTX 5090 compatibility
@@ -83,8 +83,8 @@ class RETv21IntegrationTest(unittest.TestCase):
         return (param_size + buffer_size) / 1024 / 1024
     
     def test_parameter_target_achievement(self):
-        """🎯 TEST 1: Parameter target achievement (CRITICAL)"""
-        logger.info("🎯 TEST 1: Parameter Target Achievement")
+        """[TARGET] TEST 1: Parameter target achievement (CRITICAL)"""
+        logger.info("[TARGET] TEST 1: Parameter Target Achievement")
         
         param_count = self.decoder._count_parameters()
         target = self.decoder.config.target_parameters
@@ -98,14 +98,14 @@ class RETv21IntegrationTest(unittest.TestCase):
         
         logger.info(f"   Parameters: {param_count:,} / {target:,}")
         logger.info(f"   Efficiency: {efficiency:.1f}% under target")
-        logger.info(f"   ✅ Parameter target ACHIEVED!")
+        logger.info(f"   [OK] Parameter target ACHIEVED!")
         
         # Verify this is the success we reported
         self.assertEqual(param_count, 722944, "Parameter count should match reported success")
     
     def test_rtx_5090_compatibility(self):
-        """🚀 TEST 2: RTX 5090 Compatibility"""
-        logger.info("🚀 TEST 2: RTX 5090 Compatibility")
+        """[START] TEST 2: RTX 5090 Compatibility"""
+        logger.info("[START] TEST 2: RTX 5090 Compatibility")
         
         if not torch.cuda.is_available():
             self.skipTest("CUDA not available - skipping RTX 5090 test")
@@ -132,20 +132,20 @@ class RETv21IntegrationTest(unittest.TestCase):
                 with torch.amp.autocast('cuda'):
                     result = self.decoder.decode(test_embedding, max_length=5)
                     self.assertIsInstance(result, str)
-                    logger.info(f"   Mixed precision: ✅ Working")
+                    logger.info(f"   Mixed precision: [OK] Working")
             
             # Test memory efficiency
             memory_used = self._get_memory_usage()
             logger.info(f"   GPU memory used: {memory_used:.2f} MB")
             
-            logger.info("   ✅ RTX 5090 compatibility VERIFIED!")
+            logger.info("   [OK] RTX 5090 compatibility VERIFIED!")
             
         except Exception as e:
             self.fail(f"RTX 5090 compatibility test failed: {e}")
     
     def test_memory_reduction_target(self):
-        """💾 TEST 3: Memory Reduction Target (60%)"""
-        logger.info("💾 TEST 3: Memory Reduction Target")
+        """[SAVE] TEST 3: Memory Reduction Target (60%)"""
+        logger.info("[SAVE] TEST 3: Memory Reduction Target")
         
         # Calculate model size
         model_size_mb = self._get_model_size_mb(self.decoder)
@@ -167,11 +167,11 @@ class RETv21IntegrationTest(unittest.TestCase):
         self.assertGreater(reduction_ratio, 0.60, 
                           f"Memory reduction {reduction_ratio:.1%} below 60% target")
         
-        logger.info("   ✅ Memory reduction target ACHIEVED!")
+        logger.info("   [OK] Memory reduction target ACHIEVED!")
     
     def test_speed_performance(self):
-        """⚡ TEST 4: Speed Performance"""
-        logger.info("⚡ TEST 4: Speed Performance")
+        """[FAST] TEST 4: Speed Performance"""
+        logger.info("[FAST] TEST 4: Speed Performance")
         
         # Warmup
         for _ in range(3):
@@ -200,11 +200,11 @@ class RETv21IntegrationTest(unittest.TestCase):
         self.assertLess(avg_time, target_time, 
                        f"Average time {avg_time:.3f}s exceeds target {target_time:.3f}s")
         
-        logger.info("   ✅ Speed performance ACHIEVED!")
+        logger.info("   [OK] Speed performance ACHIEVED!")
     
     def test_generation_quality(self):
-        """📝 TEST 5: Generation Quality"""
-        logger.info("📝 TEST 5: Generation Quality")
+        """[WRITE] TEST 5: Generation Quality"""
+        logger.info("[WRITE] TEST 5: Generation Quality")
         
         # Test multiple generations
         results = []
@@ -225,11 +225,11 @@ class RETv21IntegrationTest(unittest.TestCase):
         diversity_ratio = len(unique_results) / len(results)
         
         logger.info(f"   Diversity ratio: {diversity_ratio:.2f}")
-        logger.info("   ✅ Generation quality VERIFIED!")
+        logger.info("   [OK] Generation quality VERIFIED!")
     
     def test_ultra_compact_optimizations(self):
-        """🔧 TEST 6: Ultra-Compact Optimizations"""
-        logger.info("🔧 TEST 6: Ultra-Compact Optimizations")
+        """[CONFIG] TEST 6: Ultra-Compact Optimizations"""
+        logger.info("[CONFIG] TEST 6: Ultra-Compact Optimizations")
         
         config = self.decoder.config
         
@@ -248,11 +248,11 @@ class RETv21IntegrationTest(unittest.TestCase):
         self.assertGreaterEqual(config.aggressive_pruning_ratio, 0.8, 
                                "Aggressive pruning should be ≥80%")
         
-        logger.info("   ✅ Ultra-compact optimizations VERIFIED!")
+        logger.info("   [OK] Ultra-compact optimizations VERIFIED!")
     
     def test_forward_pass_stability(self):
-        """🔄 TEST 7: Forward Pass Stability"""
-        logger.info("🔄 TEST 7: Forward Pass Stability")
+        """[REFRESH] TEST 7: Forward Pass Stability"""
+        logger.info("[REFRESH] TEST 7: Forward Pass Stability")
         
         # Test multiple forward passes
         for i in range(20):
@@ -268,11 +268,11 @@ class RETv21IntegrationTest(unittest.TestCase):
             except Exception as e:
                 self.fail(f"Forward pass {i} failed: {e}")
         
-        logger.info("   ✅ Forward pass stability VERIFIED!")
+        logger.info("   [OK] Forward pass stability VERIFIED!")
     
     def test_integration_readiness(self):
-        """🔗 TEST 8: Integration Readiness"""
-        logger.info("🔗 TEST 8: Integration Readiness")
+        """[LINK] TEST 8: Integration Readiness"""
+        logger.info("[LINK] TEST 8: Integration Readiness")
         
         # Test decoder interface
         self.assertTrue(hasattr(self.decoder, 'decode'), "decode method should exist")
@@ -290,7 +290,7 @@ class RETv21IntegrationTest(unittest.TestCase):
         self.assertEqual(model_info['version'], '2.1.0-ultra')
         self.assertTrue(model_info['parameter_target_achieved'])
         
-        logger.info("   ✅ Integration readiness VERIFIED!")
+        logger.info("   [OK] Integration readiness VERIFIED!")
 
 
 def run_comprehensive_test():
@@ -309,16 +309,16 @@ def run_comprehensive_test():
     print("="*60)
     
     if result.wasSuccessful():
-        print("🎉 ALL TESTS PASSED! RET v2.1 INTEGRATION READY!")
-        print(f"✅ Tests run: {result.testsRun}")
-        print(f"✅ Failures: {len(result.failures)}")
-        print(f"✅ Errors: {len(result.errors)}")
+        print("[SUCCESS] ALL TESTS PASSED! RET v2.1 INTEGRATION READY!")
+        print(f"[OK] Tests run: {result.testsRun}")
+        print(f"[OK] Failures: {len(result.failures)}")
+        print(f"[OK] Errors: {len(result.errors)}")
         return True
     else:
-        print("❌ SOME TESTS FAILED!")
-        print(f"❌ Tests run: {result.testsRun}")
-        print(f"❌ Failures: {len(result.failures)}")
-        print(f"❌ Errors: {len(result.errors)}")
+        print("[ERROR] SOME TESTS FAILED!")
+        print(f"[ERROR] Tests run: {result.testsRun}")
+        print(f"[ERROR] Failures: {len(result.failures)}")
+        print(f"[ERROR] Errors: {len(result.errors)}")
         return False
 
 
@@ -327,7 +327,7 @@ if __name__ == "__main__":
     success = run_comprehensive_test()
     
     if success:
-        print("\n🚀 RET v2.1 ULTRA-COMPACT is ready for production integration!")
-        print("💡 Next step: Integrate into GenerativeDecoder class")
+        print("\n[START] RET v2.1 ULTRA-COMPACT is ready for production integration!")
+        print("[IDEA] Next step: Integrate into GenerativeDecoder class")
     else:
-        print("\n⚠️ Issues detected - review test output before integration") 
+        print("\n[WARNING] Issues detected - review test output before integration") 

@@ -47,10 +47,10 @@ class MultiTeacherConfig:
             try:
                 config = get_multi_teacher_config()
                 self.teacher_models = config.get('models', ['distilbert'])
-                print(f"📋 Loaded teacher models from config: {self.teacher_models}")
+                print(f"[INFO] Loaded teacher models from config: {self.teacher_models}")
             except Exception:
                 self.teacher_models = ["llama3-8b-local", "distilbert", "roberta"]  # Fallback
-                print(f"⚠️ Using fallback teacher models: {self.teacher_models}")
+                print(f"[WARNING] Using fallback teacher models: {self.teacher_models}")
         
         if self.teacher_weights is None:
             # Равные веса по умолчанию
@@ -88,7 +88,7 @@ class MultiTeacherDistillation:
         # Adaptive weights
         self.current_teacher_weights = self.config.teacher_weights.copy()
         
-        print(f"🚀 MultiTeacherDistillation initialized")
+        print(f"[START] MultiTeacherDistillation initialized")
         print(f"   Teachers: {len(self.config.teacher_models)}")
         print(f"   Models: {self.config.teacher_models}")
         print(f"   Adaptive weighting: {self.config.adaptive_weighting}")
@@ -106,7 +106,7 @@ class MultiTeacherDistillation:
         Returns:
             Dict с ensemble эмбедингами и метаданными
         """
-        print("🎯 Creating multi-teacher ensemble dataset...")
+        print("[TARGET] Creating multi-teacher ensemble dataset...")
         
         # Получение эмбедингов от каждого teacher
         teacher_embeddings = {}
@@ -167,7 +167,7 @@ class MultiTeacherDistillation:
             "confidence_scores": ensemble_data["confidence_scores"][split_idx:]
         }
         
-        print(f"🎉 Ensemble dataset created!")
+        print(f"[SUCCESS] Ensemble dataset created!")
         print(f"   Train samples: {len(train_data['question_embeddings'])}")
         print(f"   Validation samples: {len(val_data['question_embeddings'])}")
         print(f"   Average confidence: {np.mean(ensemble_data['confidence_scores']):.3f}")
@@ -381,7 +381,7 @@ def create_multi_teacher_system(
 
 if __name__ == "__main__":
     # Демонстрация системы
-    print("🚀 Testing Multi-Teacher Knowledge Distillation...")
+    print("[START] Testing Multi-Teacher Knowledge Distillation...")
     
     # Создание multi-teacher system
     multi_teacher = create_multi_teacher_system()
@@ -396,11 +396,11 @@ if __name__ == "__main__":
          "answer": "Supervised learning uses labeled training data to learn a mapping from inputs to outputs."}
     ]
     
-    print(f"📊 Multi-Teacher Statistics:")
+    print(f"[DATA] Multi-Teacher Statistics:")
     teacher_stats = multi_teacher.get_teacher_statistics()
     for teacher, stats in teacher_stats.items():
         print(f"   {teacher}:")
         print(f"     Weight: {stats['current_weight']:.3f}")
         print(f"     Avg confidence: {stats['average_confidence']:.3f}")
     
-    print("\n✅ Multi-Teacher Knowledge Distillation system ready!") 
+    print("\n[OK] Multi-Teacher Knowledge Distillation system ready!") 

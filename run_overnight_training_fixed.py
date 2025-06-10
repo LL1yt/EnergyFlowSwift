@@ -48,19 +48,19 @@ class EmojiFilter(logging.Filter):
             
             # Заменяем эмодзи на текстовые эквиваленты
             emoji_replacements = {
-                '🚀': '[START]',
-                '⚙️': '[SETUP]',
-                '📚': '[DATA]',
-                '✅': '[OK]',
-                '🎯': '[TARGET]',
-                '🏆': '[BEST]',
+                '[START]': '[START]',
+                '[GEAR]': '[SETUP]',
+                '[BOOKS]': '[DATA]',
+                '[OK]': '[OK]',
+                '[TARGET]': '[TARGET]',
+                '[TROPHY]': '[BEST]',
                 '🏁': '[DONE]',
-                '❌': '[ERROR]',
-                '📊': '[STATS]',
-                '💾': '[SAVE]',
-                '🔧': '[DEBUG]',
-                '📈': '[PROGRESS]',
-                '⏰': '[TIME]',
+                '[ERROR]': '[ERROR]',
+                '[DATA]': '[STATS]',
+                '[SAVE]': '[SAVE]',
+                '[CONFIG]': '[DEBUG]',
+                '[CHART]': '[PROGRESS]',
+                '[TIME]': '[TIME]',
                 '🧪': '[TEST]'
             }
             
@@ -114,7 +114,7 @@ class FixedOvernightTrainer:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         
-        logger.info("🚀 FixedOvernightTrainer initialized")
+        logger.info("[START] FixedOvernightTrainer initialized")
         
         # Применяем эмодзи фильтр к всем логгерам включая trainer логгеры
         if sys.platform == 'win32':
@@ -140,7 +140,7 @@ class FixedOvernightTrainer:
     
     def setup_training(self):
         """Настройка обучения"""
-        logger.info("⚙️ Setting up training components...")
+        logger.info("[GEAR] Setting up training components...")
         
         # 1. Загружаем конфигурацию
         config_manager = ConfigManager()
@@ -156,7 +156,7 @@ class FixedOvernightTrainer:
             self._apply_emoji_filter_to_all_loggers()
         
         # 3. Создаем данные с ПРОСТЫМ fallback loader
-        logger.info("📚 Creating dataset with SimpleFallbackEmbeddingLoader...")
+        logger.info("[BOOKS] Creating dataset with SimpleFallbackEmbeddingLoader...")
         dialogue_pairs = [
             {"question": "What is artificial intelligence?", "answer": "AI is the simulation of human intelligence."},
             {"question": "How do neural networks work?", "answer": "Neural networks process data through interconnected layers."},
@@ -180,7 +180,7 @@ class FixedOvernightTrainer:
         # 4. Проверяем что данные нормальные
         sample = self.dataset[0]
         q_emb, a_emb = sample
-        logger.info(f"✅ Dataset created successfully:")
+        logger.info(f"[OK] Dataset created successfully:")
         logger.info(f"   Question embedding norm: {q_emb.norm().item():.6f}")
         logger.info(f"   Answer embedding norm: {a_emb.norm().item():.6f}")
         logger.info(f"   Dataset size: {len(self.dataset)}")
@@ -188,11 +188,11 @@ class FixedOvernightTrainer:
         if q_emb.norm().item() < 0.1 or a_emb.norm().item() < 0.1:
             raise ValueError("Dataset still contains zero embeddings!")
         
-        logger.info("✅ Training setup completed successfully")
+        logger.info("[OK] Training setup completed successfully")
     
     def run_training(self, max_epochs: int = 999999, batch_size: int = 1024):
         """Запуск обучения"""
-        logger.info(f"🎯 Starting overnight training:")
+        logger.info(f"[TARGET] Starting overnight training:")
         logger.info(f"   Max epochs: {max_epochs}")
         logger.info(f"   Batch size: {batch_size}")
         logger.info(f"   Device: {next(self.trainer.parameters()).device}")
@@ -295,7 +295,7 @@ class FixedOvernightTrainer:
                 # Best model tracking
                 if avg_similarity > self.best_similarity:
                     self.best_similarity = avg_similarity
-                    logger.info(f"🏆 New best similarity: {avg_similarity:.4f}")
+                    logger.info(f"[TROPHY] New best similarity: {avg_similarity:.4f}")
                     
                     # Сохраняем лучшую модель
                     self.weights_manager.save_latest_weights(
@@ -318,9 +318,9 @@ class FixedOvernightTrainer:
                 
                 # Проверка на потрясающие результаты
                 if avg_similarity > 0.6:
-                    logger.info(f"🎉 EXCELLENT RESULTS! Similarity > 60%")
+                    logger.info(f"[SUCCESS] EXCELLENT RESULTS! Similarity > 60%")
                 elif avg_similarity > 0.45:
-                    logger.info(f"🎯 GREAT PROGRESS! Similarity > 45%")
+                    logger.info(f"[TARGET] GREAT PROGRESS! Similarity > 45%")
                 
                 # Сохранение лога каждые 100 эпох
                 if epoch % 100 == 0:
@@ -362,7 +362,7 @@ class FixedOvernightTrainer:
             }
         )
         
-        logger.info("✅ Training finalization completed")
+        logger.info("[OK] Training finalization completed")
 
 
 def main():

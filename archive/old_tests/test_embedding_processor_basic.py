@@ -53,14 +53,14 @@ def test_embedding_processor_initialization():
         # Инициализируем процессор
         processor = EmbeddingProcessor(config)
         
-        logger.info(f"✅ Процессор создан: {processor}")
-        logger.info(f"📊 Режим: {processor.config.processing_mode.value}")
-        logger.info(f"🎯 Целевая схожесть: {processor.config.target_similarity}")
+        logger.info(f"[OK] Процессор создан: {processor}")
+        logger.info(f"[DATA] Режим: {processor.config.processing_mode.value}")
+        logger.info(f"[TARGET] Целевая схожесть: {processor.config.target_similarity}")
         
         return True, processor
         
     except Exception as e:
-        logger.error(f"❌ Ошибка инициализации: {e}")
+        logger.error(f"[ERROR] Ошибка инициализации: {e}")
         return False, None
 
 
@@ -87,16 +87,16 @@ def test_single_embedding_processing(processor):
             input_embedding, output_embedding, dim=0
         ).item()
         
-        logger.info(f"📊 Cosine similarity: {similarity:.3f}")
+        logger.info(f"[DATA] Cosine similarity: {similarity:.3f}")
         
         # Проверка достижения цели Phase 2.5
         target_achieved = similarity >= processor.config.target_similarity
-        logger.info(f"🎯 Phase 2.5 цель достигнута: {target_achieved} (>{processor.config.target_similarity:.2f})")
+        logger.info(f"[TARGET] Phase 2.5 цель достигнута: {target_achieved} (>{processor.config.target_similarity:.2f})")
         
         return True, similarity
         
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки эмбединга: {e}")
+        logger.error(f"[ERROR] Ошибка обработки эмбединга: {e}")
         return False, 0.0
 
 
@@ -119,24 +119,24 @@ def test_batch_processing(processor):
         
         logger.info(f"📤 Выходной батч: {output_batch.shape}")
         logger.info(f"⏱️ Время обработки: {processing_time:.3f}s")
-        logger.info(f"⚡ Пропускная способность: {batch_size/processing_time:.1f} эмб/сек")
+        logger.info(f"[FAST] Пропускная способность: {batch_size/processing_time:.1f} эмб/сек")
         
         # Валидация
         validation = validate_processor_output(input_batch, output_batch, processor.config)
         
         if validation["all_valid"]:
-            logger.info("✅ Валидация батча пройдена")
+            logger.info("[OK] Валидация батча пройдена")
             similarity = validation["quality_metrics"]["mean_cosine_similarity"]
-            logger.info(f"📊 Средняя схожесть батча: {similarity:.3f}")
+            logger.info(f"[DATA] Средняя схожесть батча: {similarity:.3f}")
             return True, similarity
         else:
-            logger.warning("⚠️ Валидация батча не пройдена:")
+            logger.warning("[WARNING] Валидация батча не пройдена:")
             for error in validation["errors"]:
                 logger.warning(f"  - {error}")
             return False, 0.0
             
     except Exception as e:
-        logger.error(f"❌ Ошибка батчевой обработки: {e}")
+        logger.error(f"[ERROR] Ошибка батчевой обработки: {e}")
         return False, 0.0
 
 
@@ -152,7 +152,7 @@ def test_multiple_modes(processor):
     
     for mode in [ProcessingMode.AUTOENCODER, ProcessingMode.GENERATOR, ProcessingMode.DIALOGUE]:
         try:
-            logger.info(f"🔄 Тестирование режима: {mode.value}")
+            logger.info(f"[REFRESH] Тестирование режима: {mode.value}")
             
             # Устанавливаем режим
             processor.set_mode(mode)
@@ -166,16 +166,16 @@ def test_multiple_modes(processor):
             ).item()
             
             modes_results[mode.value] = similarity
-            logger.info(f"📊 {mode.value}: similarity = {similarity:.3f}")
+            logger.info(f"[DATA] {mode.value}: similarity = {similarity:.3f}")
             
         except Exception as e:
-            logger.error(f"❌ Ошибка в режиме {mode.value}: {e}")
+            logger.error(f"[ERROR] Ошибка в режиме {mode.value}: {e}")
             modes_results[mode.value] = 0.0
     
     # Сводка по режимам
     logger.info("=== СВОДКА ПО РЕЖИМАМ ===")
     for mode, similarity in modes_results.items():
-        status = "✅" if similarity >= 0.80 else "⚠️"
+        status = "[OK]" if similarity >= 0.80 else "[WARNING]"
         logger.info(f"{status} {mode}: {similarity:.3f}")
     
     return len(modes_results) == 3, modes_results
@@ -199,10 +199,10 @@ def test_metrics_collection(processor):
         metrics = processor.get_metrics()
         
         logger.info("=== СОБРАННЫЕ МЕТРИКИ ===")
-        logger.info(f"📊 Средняя схожесть: {metrics['similarity']['mean']:.3f}")
-        logger.info(f"🎯 Достижение цели: {metrics['quality']['target_achievement_rate']:.1%}")
-        logger.info(f"⭐ Уровень качества: {metrics['quality']['quality_level']}")
-        logger.info(f"⚡ Пропускная способность: {metrics['performance']['throughput_embeddings_per_sec']:.1f} эмб/сек")
+        logger.info(f"[DATA] Средняя схожесть: {metrics['similarity']['mean']:.3f}")
+        logger.info(f"[TARGET] Достижение цели: {metrics['quality']['target_achievement_rate']:.1%}")
+        logger.info(f"[STAR] Уровень качества: {metrics['quality']['quality_level']}")
+        logger.info(f"[FAST] Пропускная способность: {metrics['performance']['throughput_embeddings_per_sec']:.1f} эмб/сек")
         logger.info(f"🔢 Обработано: {metrics['total_processed']} эмбедингов")
         
         # Детальное логирование
@@ -211,14 +211,14 @@ def test_metrics_collection(processor):
         return True, metrics
         
     except Exception as e:
-        logger.error(f"❌ Ошибка сбора метрик: {e}")
+        logger.error(f"[ERROR] Ошибка сбора метрик: {e}")
         return False, {}
 
 
 def main():
     """Главная функция - запуск всех тестов"""
     
-    logger.info("🚀 ЗАПУСК БАЗОВОГО ТЕСТИРОВАНИЯ EMBEDDINGPROCESSOR (Phase 2.5)")
+    logger.info("[START] ЗАПУСК БАЗОВОГО ТЕСТИРОВАНИЯ EMBEDDINGPROCESSOR (Phase 2.5)")
     logger.info("=" * 70)
     
     test_results = {
@@ -264,33 +264,33 @@ def main():
     
     # === ФИНАЛЬНАЯ СВОДКА ===
     logger.info("=" * 70)
-    logger.info("📋 ФИНАЛЬНАЯ СВОДКА ТЕСТОВ")
+    logger.info("[INFO] ФИНАЛЬНАЯ СВОДКА ТЕСТОВ")
     logger.info("=" * 70)
     
     passed_tests = sum(test_results.values())
     total_tests = len(test_results)
     
     for test_name, result in test_results.items():
-        status = "✅ ПРОЙДЕН" if result else "❌ ПРОВАЛЕН"
+        status = "[OK] ПРОЙДЕН" if result else "[ERROR] ПРОВАЛЕН"
         logger.info(f"{status} {test_name}")
     
-    logger.info(f"\n📊 ОБЩИЙ РЕЗУЛЬТАТ: {passed_tests}/{total_tests} тестов пройдено")
+    logger.info(f"\n[DATA] ОБЩИЙ РЕЗУЛЬТАТ: {passed_tests}/{total_tests} тестов пройдено")
     
     if similarities:
         avg_similarity = sum(similarities) / len(similarities)
-        logger.info(f"📈 Средняя схожесть по всем тестам: {avg_similarity:.3f}")
+        logger.info(f"[CHART] Средняя схожесть по всем тестам: {avg_similarity:.3f}")
         
         # Оценка готовности Phase 2.5
         phase_2_5_ready = avg_similarity >= 0.90
-        logger.info(f"🎯 Phase 2.5 готовность: {'✅ ДА' if phase_2_5_ready else '❌ НЕТ'} (цель: >0.90)")
+        logger.info(f"[TARGET] Phase 2.5 готовность: {'[OK] ДА' if phase_2_5_ready else '[ERROR] НЕТ'} (цель: >0.90)")
         
         if phase_2_5_ready:
-            logger.info("🎉 ПОЗДРАВЛЯЕМ! EmbeddingProcessor готов к Phase 3!")
+            logger.info("[SUCCESS] ПОЗДРАВЛЯЕМ! EmbeddingProcessor готов к Phase 3!")
         else:
-            logger.info("🔧 Требуется доработка для достижения целей Phase 2.5")
+            logger.info("[CONFIG] Требуется доработка для достижения целей Phase 2.5")
     
     all_passed = all(test_results.values())
-    logger.info(f"\n🏆 ИТОГОВЫЙ СТАТУС: {'🎉 ВСЕ ТЕСТЫ ПРОЙДЕНЫ' if all_passed else '⚠️ ЕСТЬ ПРОБЛЕМЫ'}")
+    logger.info(f"\n[TROPHY] ИТОГОВЫЙ СТАТУС: {'[SUCCESS] ВСЕ ТЕСТЫ ПРОЙДЕНЫ' if all_passed else '[WARNING] ЕСТЬ ПРОБЛЕМЫ'}")
     
     return all_passed
 

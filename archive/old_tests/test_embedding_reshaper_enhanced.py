@@ -60,7 +60,7 @@ def test_enhanced_similarity_metrics():
     identical_embedding = original_embedding.copy()
     metrics_identical = calculate_enhanced_similarity_metrics(original_embedding, identical_embedding)
     
-    print(f"📊 Метрики для идентичных векторов:")
+    print(f"[DATA] Метрики для идентичных векторов:")
     for metric, value in metrics_identical.items():
         print(f"   {metric}: {value:.6f}")
     
@@ -71,7 +71,7 @@ def test_enhanced_similarity_metrics():
     noisy_embedding = original_embedding + np.random.normal(0, noise_std, original_embedding.shape)
     metrics_noisy = calculate_enhanced_similarity_metrics(original_embedding, noisy_embedding)
     
-    print(f"\n📊 Метрики для зашумленных векторов (1% noise):")
+    print(f"\n[DATA] Метрики для зашумленных векторов (1% noise):")
     for metric, value in metrics_noisy.items():
         print(f"   {metric}: {value:.6f}")
     
@@ -81,13 +81,13 @@ def test_enhanced_similarity_metrics():
     reshaped_embedding = original_embedding.reshape(8, 8, 12).reshape(768)
     metrics_reshaped = calculate_enhanced_similarity_metrics(original_embedding, reshaped_embedding)
     
-    print(f"\n📊 Метрики для простого reshape:")
+    print(f"\n[DATA] Метрики для простого reshape:")
     for metric, value in metrics_reshaped.items():
         print(f"   {metric}: {value:.6f}")
     
     assert metrics_reshaped['weighted_similarity'] > 0.999, "Простой reshape должен сохранять практически 100% семантики"
     
-    print("✅ ТЕСТ 1 ПРОШЕЛ: Enhanced similarity metrics работают корректно!")
+    print("[OK] ТЕСТ 1 ПРОШЕЛ: Enhanced similarity metrics работают корректно!")
     return metrics_reshaped['weighted_similarity']
 
 
@@ -113,7 +113,7 @@ def test_importance_analysis():
     embedding[100:300] = np.random.randn(200) * 0.5  # Низкие значения
     embedding[400:] = np.random.randn(368) * 0.3  # Очень низкие значения
     
-    print(f"📊 Тестовый эмбединг создан: {embedding.shape}")
+    print(f"[DATA] Тестовый эмбединг создан: {embedding.shape}")
     print(f"   Статистика: mean={np.mean(embedding):.3f}, std={np.std(embedding):.3f}")
     
     # Тестируем все три метода анализа важности
@@ -121,7 +121,7 @@ def test_importance_analysis():
     importance_results = {}
     
     for method in methods:
-        print(f"\n🔍 Анализ важности методом: {method}")
+        print(f"\n[MAGNIFY] Анализ важности методом: {method}")
         
         importance_weights = analyze_embedding_importance(embedding, method=method)
         
@@ -157,7 +157,7 @@ def test_importance_analysis():
         assert discrimination_ratio > 1.2, \
                f"Метод {method} должен различать важные и менее важные элементы (ratio > 1.2, получено {discrimination_ratio:.2f})"
     
-    print("✅ ТЕСТ 2 ПРОШЕЛ: Анализ важности элементов работает корректно!")
+    print("[OK] ТЕСТ 2 ПРОШЕЛ: Анализ важности элементов работает корректно!")
     return importance_results
 
 
@@ -174,7 +174,7 @@ def test_adaptive_placement_strategy():
     embedding = np.random.randn(768).astype(np.float32)
     target_shape = (8, 8, 12)
     
-    print(f"📊 Создание адаптивной стратегии размещения")
+    print(f"[DATA] Создание адаптивной стратегии размещения")
     print(f"   Входной эмбединг: {embedding.shape}")
     print(f"   Целевая 3D форма: {target_shape}")
     
@@ -182,7 +182,7 @@ def test_adaptive_placement_strategy():
     importance_methods = ["variance_pca", "clustering", "magnitude"]
     
     for method in importance_methods:
-        print(f"\n🔍 Тестирование метода: {method}")
+        print(f"\n[MAGNIFY] Тестирование метода: {method}")
         
         strategy = create_adaptive_transformation_strategy(
             embedding=embedding,
@@ -190,7 +190,7 @@ def test_adaptive_placement_strategy():
             importance_method=method
         )
         
-        print(f"   ✅ Стратегия создана успешно")
+        print(f"   [OK] Стратегия создана успешно")
         
         # Проверяем структуру стратегии
         required_keys = ['importance_weights', 'placement_map', 'target_shape', 'optimization_params', 'quality_threshold']
@@ -215,11 +215,11 @@ def test_adaptive_placement_strategy():
         quality_threshold = strategy['quality_threshold']
         assert quality_threshold == 0.98, f"Качественный порог должен быть 0.98, получено {quality_threshold}"
         
-        print(f"   📊 Статистика важности: min={np.min(importance_weights):.3f}, "
+        print(f"   [DATA] Статистика важности: min={np.min(importance_weights):.3f}, "
               f"max={np.max(importance_weights):.3f}")
-        print(f"   🎯 Качественный порог: {quality_threshold}")
+        print(f"   [TARGET] Качественный порог: {quality_threshold}")
         
-    print("✅ ТЕСТ 3 ПРОШЕЛ: Адаптивные стратегии размещения работают корректно!")
+    print("[OK] ТЕСТ 3 ПРОШЕЛ: Адаптивные стратегии размещения работают корректно!")
     return True
 
 
@@ -242,7 +242,7 @@ def test_enhanced_adaptive_reshaper():
     results = {}
     
     for method in enhanced_methods:
-        print(f"\n🔍 Тестирование метода: {method}")
+        print(f"\n[MAGNIFY] Тестирование метода: {method}")
         
         # Создаем reshaper с улучшенным методом
         reshaper = AdaptiveReshaper(
@@ -272,11 +272,11 @@ def test_enhanced_adaptive_reshaper():
             
             # Проверяем достижение высокого качества
             if similarity >= 0.98:
-                print(f"   🎯 ОТЛИЧНЫЙ РЕЗУЛЬТАТ: достигнуто >98% сохранение!")
+                print(f"   [TARGET] ОТЛИЧНЫЙ РЕЗУЛЬТАТ: достигнуто >98% сохранение!")
             elif similarity >= 0.95:
-                print(f"   ✅ Хороший результат: достигнуто >95% сохранение")
+                print(f"   [OK] Хороший результат: достигнуто >95% сохранение")
             else:
-                print(f"   ⚠️  Результат ниже ожидаемого: {similarity:.6f}")
+                print(f"   [WARNING]  Результат ниже ожидаемого: {similarity:.6f}")
         
         # Статистика по методу
         avg_similarity = np.mean(method_similarities)
@@ -292,7 +292,7 @@ def test_enhanced_adaptive_reshaper():
             'above_95_count': sum(1 for s in method_similarities if s >= 0.95)
         }
         
-        print(f"\n📊 Статистика метода {method}:")
+        print(f"\n[DATA] Статистика метода {method}:")
         print(f"   Средняя схожесть: {avg_similarity:.6f}")
         print(f"   Максимальная схожесть: {max_similarity:.6f}")
         print(f"   Минимальная схожесть: {min_similarity:.6f}")
@@ -306,14 +306,14 @@ def test_enhanced_adaptive_reshaper():
     best_method = max(results.keys(), key=lambda k: results[k]['avg_similarity'])
     best_avg = results[best_method]['avg_similarity']
     
-    print(f"\n🏆 ЛУЧШИЙ МЕТОД: {best_method} с средней схожестью {best_avg:.6f}")
+    print(f"\n[TROPHY] ЛУЧШИЙ МЕТОД: {best_method} с средней схожестью {best_avg:.6f}")
     
     # Проверяем достижение цели >98%
     best_above_98 = results[best_method]['above_98_count']
     if best_above_98 > 0:
-        print(f"🎯 ЦЕЛЬ ДОСТИГНУТА: {best_above_98} результатов >98% семантического сохранения!")
+        print(f"[TARGET] ЦЕЛЬ ДОСТИГНУТА: {best_above_98} результатов >98% семантического сохранения!")
     
-    print("✅ ТЕСТ 4 ПРОШЕЛ: Enhanced AdaptiveReshaper работает корректно!")
+    print("[OK] ТЕСТ 4 ПРОШЕЛ: Enhanced AdaptiveReshaper работает корректно!")
     return results
 
 
@@ -336,7 +336,7 @@ def test_caching_and_performance():
     # Создаем тестовый эмбединг
     test_embedding = np.random.randn(768).astype(np.float32)
     
-    print(f"📊 Тестирование кэширования...")
+    print(f"[DATA] Тестирование кэширования...")
     
     # Первая трансформация (должна вычисляться)
     import time
@@ -366,12 +366,12 @@ def test_caching_and_performance():
     if second_transform_time > 0:
         speedup = first_transform_time / second_transform_time
         if speedup > 2.0:
-            print(f"   ✅ Кэширование эффективно: ускорение {speedup:.1f}x")
+            print(f"   [OK] Кэширование эффективно: ускорение {speedup:.1f}x")
         else:
-            print(f"   ⚠️  Кэширование менее эффективно чем ожидалось: ускорение {speedup:.1f}x")
+            print(f"   [WARNING]  Кэширование менее эффективно чем ожидалось: ускорение {speedup:.1f}x")
     
     # Тестируем производительность на множественных эмбедингах
-    print(f"\n📊 Тестирование производительности на batch...")
+    print(f"\n[DATA] Тестирование производительности на batch...")
     
     batch_embeddings = [np.random.randn(768).astype(np.float32) for _ in range(10)]
     
@@ -388,7 +388,7 @@ def test_caching_and_performance():
     # Проверяем производительность (должно быть разумно быстро)
     assert avg_time_per_embedding < 0.1, f"Среднее время на эмбединг должно быть <100ms, получено {avg_time_per_embedding*1000:.2f}ms"
     
-    print("✅ ТЕСТ 5 ПРОШЕЛ: Кэширование и производительность работают корректно!")
+    print("[OK] ТЕСТ 5 ПРОШЕЛ: Кэширование и производительность работают корректно!")
     return avg_time_per_embedding
 
 
@@ -412,8 +412,8 @@ def test_semantic_preservation_target_98():
         semantic_threshold=0.98  # Повышаем порог до 98%
     )
     
-    print(f"📊 Тестирование на {len(test_embeddings)} разнообразных эмбедингах...")
-    print(f"🎯 Цель: семантическое сохранение >98%")
+    print(f"[DATA] Тестирование на {len(test_embeddings)} разнообразных эмбедингах...")
+    print(f"[TARGET] Цель: семантическое сохранение >98%")
     
     high_quality_results = []
     all_similarities = []
@@ -431,11 +431,11 @@ def test_semantic_preservation_target_98():
         
         if similarity >= 0.98:
             high_quality_results.append(i)
-            print(f"   ✅ Эмбединг {i+1}: {similarity:.6f} - ОТЛИЧНЫЙ РЕЗУЛЬТАТ!")
+            print(f"   [OK] Эмбединг {i+1}: {similarity:.6f} - ОТЛИЧНЫЙ РЕЗУЛЬТАТ!")
         elif similarity >= 0.95:
-            print(f"   ✅ Эмбединг {i+1}: {similarity:.6f} - хороший результат")
+            print(f"   [OK] Эмбединг {i+1}: {similarity:.6f} - хороший результат")
         else:
-            print(f"   ⚠️  Эмбединг {i+1}: {similarity:.6f} - требует улучшения")
+            print(f"   [WARNING]  Эмбединг {i+1}: {similarity:.6f} - требует улучшения")
     
     # Статистика результатов
     avg_similarity = np.mean(all_similarities)
@@ -444,18 +444,18 @@ def test_semantic_preservation_target_98():
     above_98_count = len(high_quality_results)
     above_95_count = sum(1 for s in all_similarities if s >= 0.95)
     
-    print(f"\n📊 === ИТОГОВАЯ СТАТИСТИКА ===")
+    print(f"\n[DATA] === ИТОГОВАЯ СТАТИСТИКА ===")
     print(f"Всего эмбедингов протестировано: {len(test_embeddings)}")
     print(f"Средняя схожесть: {avg_similarity:.6f}")
     print(f"Максимальная схожесть: {max_similarity:.6f}")
     print(f"Минимальная схожесть: {min_similarity:.6f}")
     print(f"")
-    print(f"🎯 Результатов >98%: {above_98_count}/{len(test_embeddings)} ({above_98_count/len(test_embeddings)*100:.1f}%)")
-    print(f"✅ Результатов >95%: {above_95_count}/{len(test_embeddings)} ({above_95_count/len(test_embeddings)*100:.1f}%)")
+    print(f"[TARGET] Результатов >98%: {above_98_count}/{len(test_embeddings)} ({above_98_count/len(test_embeddings)*100:.1f}%)")
+    print(f"[OK] Результатов >95%: {above_95_count}/{len(test_embeddings)} ({above_95_count/len(test_embeddings)*100:.1f}%)")
     
     # Получаем статистику из reshaper
     reshaper_stats = reshaper.get_statistics()
-    print(f"\n📊 Статистика EmbeddingReshaper:")
+    print(f"\n[DATA] Статистика EmbeddingReshaper:")
     for key, value in reshaper_stats.items():
         if isinstance(value, float):
             print(f"   {key}: {value:.6f}")
@@ -470,24 +470,24 @@ def test_semantic_preservation_target_98():
         "Все результаты >95%": above_95_count == len(test_embeddings)
     }
     
-    print(f"\n🎯 === ПРОВЕРКА КРИТЕРИЕВ УСПЕХА ===")
+    print(f"\n[TARGET] === ПРОВЕРКА КРИТЕРИЕВ УСПЕХА ===")
     all_criteria_met = True
     for criterion, met in success_criteria.items():
-        status = "✅" if met else "❌"
+        status = "[OK]" if met else "[ERROR]"
         print(f"{status} {criterion}: {'ВЫПОЛНЕН' if met else 'НЕ ВЫПОЛНЕН'}")
         if not met:
             all_criteria_met = False
     
     if all_criteria_met:
-        print(f"\n🎉 ВСЕ КРИТЕРИИ ВЫПОЛНЕНЫ! ЦЕЛЬ >98% СЕМАНТИЧЕСКОГО СОХРАНЕНИЯ ДОСТИГНУТА!")
+        print(f"\n[SUCCESS] ВСЕ КРИТЕРИИ ВЫПОЛНЕНЫ! ЦЕЛЬ >98% СЕМАНТИЧЕСКОГО СОХРАНЕНИЯ ДОСТИГНУТА!")
     else:
-        print(f"\n⚠️  Некоторые критерии не выполнены. Требуется дополнительная оптимизация.")
+        print(f"\n[WARNING]  Некоторые критерии не выполнены. Требуется дополнительная оптимизация.")
     
     # Проверяем базовые требования
     assert avg_similarity > 0.95, f"Средняя схожесть должна быть >95%, получено {avg_similarity:.6f}"
     assert min_similarity > 0.90, f"Минимальная схожесть должна быть >90%, получено {min_similarity:.6f}"
     
-    print("✅ ТЕСТ 6 ПРОШЕЛ: Основные требования к семантическому сохранению выполнены!")
+    print("[OK] ТЕСТ 6 ПРОШЕЛ: Основные требования к семантическому сохранению выполнены!")
     
     return {
         'avg_similarity': avg_similarity,
@@ -506,7 +506,7 @@ def main():
     
     PHASE 2.3 День 3-4: Улучшение семантического сохранения до >98%
     """
-    print("🚀 === УЛУЧШЕННОЕ ТЕСТИРОВАНИЕ EMBEDDINGRESHAPER ===")
+    print("[START] === УЛУЧШЕННОЕ ТЕСТИРОВАНИЕ EMBEDDINGRESHAPER ===")
     print("Phase 2.3 День 3-4: Улучшение семантического сохранения до >98%")
     print("=" * 70)
     
@@ -532,25 +532,25 @@ def main():
         all_results['semantic_preservation_98'] = test_semantic_preservation_target_98()
         
         # Итоговый отчет
-        print(f"\n🎉 === ИТОГОВЫЙ ОТЧЕТ ===")
+        print(f"\n[SUCCESS] === ИТОГОВЫЙ ОТЧЕТ ===")
         print(f"Всех тестов выполнено: {len(all_results)}/6")
         
         # Ключевые метрики
         final_results = all_results['semantic_preservation_98']
-        print(f"\n📊 КЛЮЧЕВЫЕ ДОСТИЖЕНИЯ:")
-        print(f"   🎯 Средняя схожесть: {final_results['avg_similarity']:.6f}")
-        print(f"   🏆 Максимальная схожесть: {final_results['max_similarity']:.6f}")
-        print(f"   📈 Результатов >98%: {final_results['above_98_count']}/{final_results['total_count']}")
-        print(f"   ✅ Результатов >95%: {final_results['above_95_count']}/{final_results['total_count']}")
+        print(f"\n[DATA] КЛЮЧЕВЫЕ ДОСТИЖЕНИЯ:")
+        print(f"   [TARGET] Средняя схожесть: {final_results['avg_similarity']:.6f}")
+        print(f"   [TROPHY] Максимальная схожесть: {final_results['max_similarity']:.6f}")
+        print(f"   [CHART] Результатов >98%: {final_results['above_98_count']}/{final_results['total_count']}")
+        print(f"   [OK] Результатов >95%: {final_results['above_95_count']}/{final_results['total_count']}")
         
         if final_results['criteria_met']:
-            print(f"\n🎉 МИССИЯ ВЫПОЛНЕНА! Phase 2.3 День 3-4 ЗАВЕРШЕН УСПЕШНО!")
-            print(f"🚀 EmbeddingReshaper готов к Phase 2.5 (Core Embedding Processor)!")
+            print(f"\n[SUCCESS] МИССИЯ ВЫПОЛНЕНА! Phase 2.3 День 3-4 ЗАВЕРШЕН УСПЕШНО!")
+            print(f"[START] EmbeddingReshaper готов к Phase 2.5 (Core Embedding Processor)!")
         else:
-            print(f"\n⚠️  Цель частично достигнута. Семантическое сохранение улучшено, но требуется доработка.")
+            print(f"\n[WARNING]  Цель частично достигнута. Семантическое сохранение улучшено, но требуется доработка.")
             
     except Exception as e:
-        print(f"\n❌ КРИТИЧЕСКАЯ ОШИБКА: {e}")
+        print(f"\n[ERROR] КРИТИЧЕСКАЯ ОШИБКА: {e}")
         import traceback
         traceback.print_exc()
         return False

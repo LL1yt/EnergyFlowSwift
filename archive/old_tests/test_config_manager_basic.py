@@ -22,7 +22,7 @@ sys.path.insert(0, str(project_root))
 
 def test_basic_config_loading():
     """Тест базовой загрузки конфигурации"""
-    print("\n📝 Testing basic config loading...")
+    print("\n[WRITE] Testing basic config loading...")
     
     try:
         from utils.config_manager import ConfigManager, ConfigManagerSettings
@@ -69,7 +69,7 @@ def test_basic_config_loading():
             config = ConfigManager(settings)
             
             # Тестируем получение конфигурации
-            print("   📝 Testing config retrieval...")
+            print("   [WRITE] Testing config retrieval...")
             
             # Получение всей конфигурации
             full_config = config.get_config()
@@ -97,7 +97,7 @@ def test_basic_config_loading():
             non_existent = config.get_config('non_existent', 'key', 'default_value')
             assert non_existent == 'default_value', "Default value not returned"
             
-            print("   ✅ Config retrieval works correctly")
+            print("   [OK] Config retrieval works correctly")
             
             return True
             
@@ -106,7 +106,7 @@ def test_basic_config_loading():
             os.unlink(temp_config_path)
             
     except Exception as e:
-        print(f"   ❌ Basic config loading failed: {e}")
+        print(f"   [ERROR] Basic config loading failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -114,7 +114,7 @@ def test_basic_config_loading():
 
 def test_config_modification():
     """Тест изменения конфигурации в runtime"""
-    print("\n⚙️ Testing config modification...")
+    print("\n[GEAR] Testing config modification...")
     
     try:
         from utils.config_manager import ConfigManager, ConfigManagerSettings
@@ -141,7 +141,7 @@ def test_config_modification():
             config = ConfigManager(settings)
             
             # Тестируем установку значений
-            print("   📝 Testing config setting...")
+            print("   [WRITE] Testing config setting...")
             
             # Установка простого значения
             config.set_config('training', 'batch_size', 64)
@@ -165,14 +165,14 @@ def test_config_modification():
             new_value = config.get_config('new_section', 'new_key')
             assert new_value == 'new_value', f"Expected new_value, got {new_value}"
             
-            print("   ✅ Config modification works correctly")
+            print("   [OK] Config modification works correctly")
             return True
             
         finally:
             os.unlink(temp_config_path)
             
     except Exception as e:
-        print(f"   ❌ Config modification failed: {e}")
+        print(f"   [ERROR] Config modification failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -212,7 +212,7 @@ def test_config_sections():
             # Получаем секцию
             db_section = config.get_section('database')
             
-            print("   📝 Testing section operations...")
+            print("   [WRITE] Testing section operations...")
             
             # Проверяем, что получили ConfigSection объект или словарь
             # ConfigSection должен быть доступен, если импорт прошел успешно
@@ -244,21 +244,21 @@ def test_config_sections():
                     new_port = config.get_config('database', 'port')
                     assert new_port == 3306, f"Expected port 3306, got {new_port}"
                     
-                    print("   ✅ ConfigSection methods work")
+                    print("   [OK] ConfigSection methods work")
                 else:
                     print("   ℹ️ ConfigSection not available, using dict fallback")
                     
             except Exception as e:
-                print(f"   ⚠️ ConfigSection methods failed: {e}")
+                print(f"   [WARNING] ConfigSection methods failed: {e}")
             
-            print("   ✅ Config sections work correctly")
+            print("   [OK] Config sections work correctly")
             return True
             
         finally:
             os.unlink(temp_config_path)
             
     except Exception as e:
-        print(f"   ❌ Config sections test failed: {e}")
+        print(f"   [ERROR] Config sections test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -266,7 +266,7 @@ def test_config_sections():
 
 def test_config_export():
     """Тест экспорта конфигурации"""
-    print("\n💾 Testing config export...")
+    print("\n[SAVE] Testing config export...")
     
     try:
         from utils.config_manager import ConfigManager, ConfigManagerSettings
@@ -323,7 +323,7 @@ def test_config_export():
             
             assert json_data['app']['name'] == 'Test App', "JSON export should match YAML"
             
-            print("   ✅ Config export works correctly")
+            print("   [OK] Config export works correctly")
             
             # Очищаем
             os.unlink(export_yaml_path)
@@ -335,7 +335,7 @@ def test_config_export():
             os.unlink(temp_config_path)
             
     except Exception as e:
-        print(f"   ❌ Config export failed: {e}")
+        print(f"   [ERROR] Config export failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -343,7 +343,7 @@ def test_config_export():
 
 def test_config_stats():
     """Тест статистики ConfigManager"""
-    print("\n📊 Testing config statistics...")
+    print("\n[DATA] Testing config statistics...")
     
     try:
         from utils.config_manager import ConfigManager, ConfigManagerSettings
@@ -383,18 +383,18 @@ def test_config_stats():
             assert stats['cache_misses'] >= 1, f"Expected at least 1 cache miss, got {stats['cache_misses']}"
             assert stats['cached_sections'] >= 1, "Should have at least 1 cached section"
             
-            print(f"   📈 Cache hit rate: {stats['cache_hit_rate']:.2%}")
-            print(f"   📊 Cached sections: {stats['cached_sections']}")
-            print(f"   🎯 Cache hits/misses: {stats['cache_hits']}/{stats['cache_misses']}")
+            print(f"   [CHART] Cache hit rate: {stats['cache_hit_rate']:.2%}")
+            print(f"   [DATA] Cached sections: {stats['cached_sections']}")
+            print(f"   [TARGET] Cache hits/misses: {stats['cache_hits']}/{stats['cache_misses']}")
             
-            print("   ✅ Config statistics work correctly")
+            print("   [OK] Config statistics work correctly")
             return True
             
         finally:
             os.unlink(temp_config_path)
             
     except Exception as e:
-        print(f"   ❌ Config statistics failed: {e}")
+        print(f"   [ERROR] Config statistics failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -402,7 +402,7 @@ def test_config_stats():
 
 def test_integration_with_main_config():
     """Тест интеграции с основной конфигурацией проекта"""
-    print("\n🔗 Testing integration with main project config...")
+    print("\n[LINK] Testing integration with main project config...")
     
     try:
         from utils.config_manager import create_config_manager
@@ -411,7 +411,7 @@ def test_integration_with_main_config():
         main_config_path = Path("config/main_config.yaml")
         
         if not main_config_path.exists():
-            print(f"   ⚠️ Main config file not found: {main_config_path}")
+            print(f"   [WARNING] Main config file not found: {main_config_path}")
             print("   ℹ️ Creating test with real project structure later")
             return True
         
@@ -421,7 +421,7 @@ def test_integration_with_main_config():
             enable_hot_reload=False
         )
         
-        print("   📝 Testing real project config...")
+        print("   [WRITE] Testing real project config...")
         
         # Проверяем ожидаемые секции из PROJECT_PLAN.md
         expected_sections = ['project', 'lattice', 'cell_prototype', 'training', 'data', 'device']
@@ -429,14 +429,14 @@ def test_integration_with_main_config():
         for section in expected_sections:
             section_data = config.get_config(section)
             if section_data:
-                print(f"   ✅ Found section: {section}")
+                print(f"   [OK] Found section: {section}")
             else:
-                print(f"   ⚠️ Missing section: {section}")
+                print(f"   [WARNING] Missing section: {section}")
         
         # Тестируем специфичные настройки проекта
         project_name = config.get_config('project', 'name')
         if project_name:
-            print(f"   📋 Project name: {project_name}")
+            print(f"   [INFO] Project name: {project_name}")
         
         lattice_dimensions = config.get_config('lattice', 'dimensions')
         if lattice_dimensions:
@@ -444,13 +444,13 @@ def test_integration_with_main_config():
         
         device_gpu = config.get_config('device', 'use_gpu')
         if device_gpu is not None:
-            print(f"   🖥️ GPU enabled: {device_gpu}")
+            print(f"   [PC] GPU enabled: {device_gpu}")
         
-        print("   ✅ Real project config integration works")
+        print("   [OK] Real project config integration works")
         return True
         
     except Exception as e:
-        print(f"   ❌ Main config integration failed: {e}")
+        print(f"   [ERROR] Main config integration failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -481,13 +481,13 @@ def run_all_tests():
             print(f"Test {test.__name__} failed with exception: {e}")
     
     print("\n" + "=" * 50)
-    print(f"📊 Results: {passed}/{total} tests passed")
+    print(f"[DATA] Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("🎉 All tests passed! ConfigManager is working correctly.")
+        print("[SUCCESS] All tests passed! ConfigManager is working correctly.")
         return True
     else:
-        print(f"⚠️ {total - passed} tests failed. Check the output above.")
+        print(f"[WARNING] {total - passed} tests failed. Check the output above.")
         return False
 
 

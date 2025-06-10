@@ -1,5 +1,5 @@
 """
-🤖 Model Comparison Suite - Stage 3.1.3
+[BOT] Model Comparison Suite - Stage 3.1.3
 Инфраструктура для тестирования и сравнения различных Teacher models
 Автоматический выбор оптимальных конфигураций для каждой модели
 """
@@ -114,7 +114,7 @@ class ModelDetectionSystem:
         # Fuzzy matching для вариантов имен
         for known_model in self.model_database:
             if known_model.lower() in model_name.lower() or model_name.lower() in known_model.lower():
-                self.logger.info(f"🔍 Model '{model_name}' matched to '{known_model}'")
+                self.logger.info(f"[MAGNIFY] Model '{model_name}' matched to '{known_model}'")
                 return self.model_database[known_model]
         
         return None
@@ -139,7 +139,7 @@ class ModelDetectionSystem:
         
         config_template = self.strategy_recommendations[category]
         
-        self.logger.info(f"🎯 Model {model_name}: {embedding_dim}D → {target_surface_size}D")
+        self.logger.info(f"[TARGET] Model {model_name}: {embedding_dim}D → {target_surface_size}D")
         self.logger.info(f"   Compression: {compression_ratio:.1f}x ({category})")
         self.logger.info(f"   Recommended strategies: {config_template['recommended_strategies']}")
         
@@ -182,7 +182,7 @@ class ModelComparisonSuite:
             device: Устройство для вычислений
         """
         self.logger = logging.getLogger(__name__)
-        self.logger.info("🤖 Initializing ModelComparisonSuite...")
+        self.logger.info("[BOT] Initializing ModelComparisonSuite...")
         
         self.cube_dimensions = cube_dimensions
         self.surface_strategy = surface_strategy
@@ -201,7 +201,7 @@ class ModelComparisonSuite:
         # Загрузка тестовых данных (будем использовать простые embeddings)
         self.test_embeddings = self._prepare_test_data()
         
-        self.logger.info(f"✅ ModelComparisonSuite готов:")
+        self.logger.info(f"[OK] ModelComparisonSuite готов:")
         self.logger.info(f"   Cube: {cube_dimensions} → Surface: {self.surface_size}D")
         self.logger.info(f"   Supported models: {len(self.model_detector.list_supported_models())}")
         self.logger.info(f"   Output: {self.output_dir}")
@@ -220,7 +220,7 @@ class ModelComparisonSuite:
                 "answers": torch.randn(20, embedding_dim)     # 20 ответов
             }
         
-        self.logger.info(f"📊 Test data prepared for {len(test_data)} models")
+        self.logger.info(f"[DATA] Test data prepared for {len(test_data)} models")
         return test_data
     
     def test_single_model(self, 
@@ -269,7 +269,7 @@ class ModelComparisonSuite:
                         results.append(result)
                         
                     except Exception as e:
-                        self.logger.error(f"❌ Test failed: {e}")
+                        self.logger.error(f"[ERROR] Test failed: {e}")
                         # Создаем failed result
                         failed_result = ModelTestResult(
                             model_name=model_name,
@@ -298,7 +298,7 @@ class ModelComparisonSuite:
         
         if best_result:
             best_result.recommended = True
-            self.logger.info(f"🏆 Best config for {model_name}: {best_result.adapter_strategy}, lr={best_result.learning_rate}")
+            self.logger.info(f"[TROPHY] Best config for {model_name}: {best_result.adapter_strategy}, lr={best_result.learning_rate}")
         
         return results
     
@@ -395,7 +395,7 @@ class ModelComparisonSuite:
         all_results = []
         for model_name in model_names:
             if model_name not in self.test_embeddings:
-                self.logger.warning(f"⚠️ Skipping {model_name} - no test data")
+                self.logger.warning(f"[WARNING] Skipping {model_name} - no test data")
                 continue
             
             model_results = self.test_single_model(model_name)
@@ -537,7 +537,7 @@ class ModelComparisonSuite:
         with open(results_path, 'w', encoding='utf-8') as f:
             json.dump(results_data, f, indent=2, ensure_ascii=False)
         
-        self.logger.info(f"📊 Comparison report saved:")
+        self.logger.info(f"[DATA] Comparison report saved:")
         self.logger.info(f"   Summary: {json_path}")
         self.logger.info(f"   Details: {results_path}")
     

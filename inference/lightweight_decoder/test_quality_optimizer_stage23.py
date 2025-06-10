@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 class QualityOptimizerStage23Test(unittest.TestCase):
     """
-    🎯 STAGE 2.3 QUALITY OPTIMIZATION TESTS
+    [TARGET] STAGE 2.3 QUALITY OPTIMIZATION TESTS
     
     Проверяем полную функциональность системы оптимизации качества:
     - Продвинутые метрики качества (BLEU, ROUGE, coherence, fluency)
@@ -44,7 +44,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Инициализация для всех тестов"""
-        logger.info("🚀 Настройка тестов Quality Optimizer Stage 2.3...")
+        logger.info("[START] Настройка тестов Quality Optimizer Stage 2.3...")
         
         # Конфигурация для тестирования
         cls.config = OptimizationConfig(
@@ -82,7 +82,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         cls.test_embeddings = [torch.randn(768) for _ in range(len(cls.test_cases))]
         cls.reference_texts = [case['reference'] for case in cls.test_cases]
         
-        logger.info("✅ Настройка завершена")
+        logger.info("[OK] Настройка завершена")
     
     def test_01_quality_metrics_basic(self):
         """Test 1: Базовая функциональность QualityMetrics"""
@@ -110,7 +110,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         self.assertIn('bleu_score', metrics_dict)
         self.assertIn('overall_quality', metrics_dict)
         
-        logger.info("✅ QualityMetrics basic functionality - PASSED")
+        logger.info("[OK] QualityMetrics basic functionality - PASSED")
     
     def test_02_advanced_quality_assessment(self):
         """Test 2: AdvancedQualityAssessment comprehensive evaluation"""
@@ -149,7 +149,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
                           f"Fluency={metrics.fluency_score:.3f}, "
                           f"Overall={metrics.overall_quality:.3f}")
         
-        logger.info("✅ AdvancedQualityAssessment comprehensive evaluation - PASSED")
+        logger.info("[OK] AdvancedQualityAssessment comprehensive evaluation - PASSED")
     
     def test_03_quality_assessment_edge_cases(self):
         """Test 3: Quality assessment edge cases"""
@@ -177,7 +177,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         )
         self.assertGreaterEqual(metrics_long.overall_quality, 0.0)
         
-        logger.info("✅ Quality assessment edge cases - PASSED")
+        logger.info("[OK] Quality assessment edge cases - PASSED")
     
     def test_04_optimization_config_validation(self):
         """Test 4: OptimizationConfig validation"""
@@ -205,7 +205,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         self.assertLess(config.top_k_range[0], config.top_k_range[1])
         self.assertLess(config.top_p_range[0], config.top_p_range[1])
         
-        logger.info("✅ OptimizationConfig validation - PASSED")
+        logger.info("[OK] OptimizationConfig validation - PASSED")
     
     def test_05_parameter_optimizer_initialization(self):
         """Test 5: GenerationParameterOptimizer initialization"""
@@ -228,7 +228,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         self.assertIn('top_p', initial_params)
         self.assertIn('repetition_penalty', initial_params)
         
-        logger.info("✅ GenerationParameterOptimizer initialization - PASSED")
+        logger.info("[OK] GenerationParameterOptimizer initialization - PASSED")
     
     def test_06_parameter_generation(self):
         """Test 6: Parameter generation и mutation"""
@@ -260,7 +260,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
             logger.info(f"   Iteration {iteration}: temp={candidate_params['temperature']:.2f}, "
                       f"top_k={candidate_params['top_k']}, top_p={candidate_params['top_p']:.2f}")
         
-        logger.info("✅ Parameter generation и mutation - PASSED")
+        logger.info("[OK] Parameter generation и mutation - PASSED")
     
     def test_07_generative_decoder_integration(self):
         """Test 7: Интеграция с GenerativeDecoder"""
@@ -305,7 +305,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         except Exception as e:
             self.fail(f"GenerativeDecoder integration failed: {e}")
         
-        logger.info("✅ Интеграция с GenerativeDecoder - PASSED")
+        logger.info("[OK] Интеграция с GenerativeDecoder - PASSED")
     
     def test_08_mock_parameter_optimization(self):
         """Test 8: Mock parameter optimization (abbreviated)"""
@@ -368,7 +368,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         except Exception as e:
             self.fail(f"Parameter optimization failed: {e}")
         
-        logger.info("✅ Mock parameter optimization - PASSED")
+        logger.info("[OK] Mock parameter optimization - PASSED")
     
     def test_09_production_readiness_evaluation(self):
         """Test 9: Production readiness evaluation"""
@@ -422,7 +422,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
                 logger.info(f"   Case {i} ({test_case['expected_readiness']}): "
                           f"Production readiness = {readiness:.3f}")
         
-        logger.info("✅ Production readiness evaluation - PASSED")
+        logger.info("[OK] Production readiness evaluation - PASSED")
     
     def test_10_factory_function(self):
         """Test 10: Factory function create_quality_optimizer"""
@@ -441,7 +441,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         self.assertEqual(optimizer.config.target_rouge_l, 0.4)
         self.assertEqual(optimizer.config.max_optimization_iterations, 20)
         
-        logger.info("✅ Factory function create_quality_optimizer - PASSED")
+        logger.info("[OK] Factory function create_quality_optimizer - PASSED")
     
     def test_11_optimization_results_serialization(self):
         """Test 11: Сохранение и загрузка результатов оптимизации"""
@@ -483,7 +483,7 @@ class QualityOptimizerStage23Test(unittest.TestCase):
             if os.path.exists(temp_file):
                 os.unlink(temp_file)
         
-        logger.info("✅ Optimization results serialization - PASSED")
+        logger.info("[OK] Optimization results serialization - PASSED")
     
     def test_12_stage23_integration_readiness(self):
         """Test 12: Полная готовность Stage 2.3"""
@@ -548,22 +548,22 @@ class QualityOptimizerStage23Test(unittest.TestCase):
         total_components = len(components_ready)
         readiness_percentage = (ready_components / total_components) * 100
         
-        logger.info(f"📊 Stage 2.3 Component Readiness:")
+        logger.info(f"[DATA] Stage 2.3 Component Readiness:")
         for component, ready in components_ready.items():
-            status = "✅ READY" if ready else "❌ NOT READY"
+            status = "[OK] READY" if ready else "[ERROR] NOT READY"
             logger.info(f"   {component}: {status}")
         
-        logger.info(f"🎯 Overall Readiness: {readiness_percentage:.1f}% ({ready_components}/{total_components})")
+        logger.info(f"[TARGET] Overall Readiness: {readiness_percentage:.1f}% ({ready_components}/{total_components})")
         
         # Требуем минимум 80% готовности для Stage 2.3
         self.assertGreaterEqual(readiness_percentage, 80.0)
         
-        logger.info("✅ Stage 2.3 integration readiness - PASSED")
+        logger.info("[OK] Stage 2.3 integration readiness - PASSED")
 
 
 def run_stage23_quality_tests():
     """Запуск всех тестов Stage 2.3"""
-    print("🚀 Запуск тестов Quality Optimizer Stage 2.3...")
+    print("[START] Запуск тестов Quality Optimizer Stage 2.3...")
     
     # Создание test suite
     loader = unittest.TestLoader()
@@ -575,16 +575,16 @@ def run_stage23_quality_tests():
     
     # Результаты
     if result.wasSuccessful():
-        print("🎉 ВСЕ ТЕСТЫ STAGE 2.3 ПРОШЛИ УСПЕШНО!")
-        print(f"✅ Тестов выполнено: {result.testsRun}")
-        print(f"✅ Ошибок: {len(result.errors)}")
-        print(f"✅ Неудач: {len(result.failures)}")
+        print("[SUCCESS] ВСЕ ТЕСТЫ STAGE 2.3 ПРОШЛИ УСПЕШНО!")
+        print(f"[OK] Тестов выполнено: {result.testsRun}")
+        print(f"[OK] Ошибок: {len(result.errors)}")
+        print(f"[OK] Неудач: {len(result.failures)}")
         return True
     else:
-        print("❌ НЕКОТОРЫЕ ТЕСТЫ STAGE 2.3 НЕ ПРОШЛИ")
-        print(f"📊 Тестов выполнено: {result.testsRun}")
-        print(f"❌ Ошибок: {len(result.errors)}")
-        print(f"❌ Неудач: {len(result.failures)}")
+        print("[ERROR] НЕКОТОРЫЕ ТЕСТЫ STAGE 2.3 НЕ ПРОШЛИ")
+        print(f"[DATA] Тестов выполнено: {result.testsRun}")
+        print(f"[ERROR] Ошибок: {len(result.errors)}")
+        print(f"[ERROR] Неудач: {len(result.failures)}")
         return False
 
 

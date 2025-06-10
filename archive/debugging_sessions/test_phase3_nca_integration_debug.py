@@ -73,12 +73,12 @@ def debug_dimensions():
             )
             
             print(f"NCA output shape: {nca_results['updated_states'].shape}")
-            print("✅ NCA call successful!")
+            print("[OK] NCA call successful!")
         
         return True
         
     except Exception as e:
-        print(f"❌ Debug failed with error: {e}")
+        print(f"[ERROR] Debug failed with error: {e}")
         print(f"Error type: {type(e).__name__}")
         
         # Print traceback for detailed analysis
@@ -90,7 +90,7 @@ def debug_dimensions():
 
 def debug_nca_initialization():
     """Debug NCA initialization specifically"""
-    print("\n🔍 Debug: NCA Initialization...")
+    print("\n[MAGNIFY] Debug: NCA Initialization...")
     
     try:
         # Test NCA creation directly
@@ -134,12 +134,12 @@ def debug_nca_initialization():
         results = nca(current_states, raw_updates)
         
         print(f"NCA results shape: {results['updated_states'].shape}")
-        print("✅ Direct NCA test successful!")
+        print("[OK] Direct NCA test successful!")
         
         return True
         
     except Exception as e:
-        print(f"❌ NCA initialization debug failed: {e}")
+        print(f"[ERROR] NCA initialization debug failed: {e}")
         import traceback
         traceback.print_exc()
         return False

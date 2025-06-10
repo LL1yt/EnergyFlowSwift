@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🤖 Automated Long Training Script
+[BOT] Automated Long Training Script
 Автоматизированное долгое обучение с прогрессивным увеличением сложности
 """
 
@@ -29,16 +29,19 @@ class AutomatedTrainer:
         mode: str = "development",
         scale: Optional[float] = None,
         max_total_time_hours: float = 8.0,
+        dataset_limit_override: Optional[int] = None,
     ):
         """
         Args:
             mode: Режим конфигурации (development, research, etc.)
             scale: Custom scale factor
             max_total_time_hours: Максимальное время обучения в часах
+            dataset_limit_override: Переопределить dataset_limit для всех стадий (для тестирования)
         """
         self.mode = mode
         self.scale = scale
         self.max_total_time_hours = max_total_time_hours
+        self.dataset_limit_override = dataset_limit_override
         self.start_time = datetime.now()
 
         # История обучения
@@ -52,10 +55,12 @@ class AutomatedTrainer:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.session_log = self.log_dir / f"automated_session_{timestamp}.json"
 
-        logger.info(f"🤖 Automated Trainer initialized")
+        logger.info(f"[BOT] Automated Trainer initialized")
         logger.info(f"   Mode: {mode}")
         logger.info(f"   Scale: {scale}")
         logger.info(f"   Max time: {max_total_time_hours} hours")
+        if dataset_limit_override:
+            logger.info(f"   Dataset limit override: {dataset_limit_override}")
         logger.info(f"   Session log: {self.session_log}")
 
     def get_progressive_config(self, stage: int) -> Dict[str, Any]:
@@ -101,7 +106,17 @@ class AutomatedTrainer:
         }
 
         # Возвращаем конфигурацию или последнюю если stage слишком большой
-        return configs.get(stage, configs[5])
+        config = configs.get(stage, configs[5])
+
+        # Переопределяем dataset_limit если задан override
+        if self.dataset_limit_override:
+            config = config.copy()  # Не изменяем оригинальную конфигурацию
+            config["dataset_limit"] = self.dataset_limit_override
+            config[
+                "description"
+            ] += f" (dataset override: {self.dataset_limit_override})"
+
+        return config
 
     def estimate_stage_time(self, config: Dict[str, Any]) -> float:
         """Оценивает время выполнения стадии в минутах"""
@@ -124,7 +139,7 @@ class AutomatedTrainer:
         self, stage: int, config: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Запускает одну стадию обучения"""
-        logger.info(f"🚀 Starting Stage {stage}: {config['description']}")
+        logger.info(f"[START] Starting Stage {stage}: {config['description']}")
         logger.info(f"   Dataset: {config['dataset_limit']:,} examples")
         logger.info(f"   Epochs: {config['epochs']}")
         logger.info(f"   Batch size: {config['batch_size']}")
@@ -165,7 +180,7 @@ class AutomatedTrainer:
             actual_time = (end_time - start_time) / 60  # в минутах
 
             if result.returncode == 0:
-                logger.info(f"✅ Stage {stage} completed successfully")
+                logger.info(f"[OK] Stage {stage} completed successfully")
                 logger.info(f"   Actual time: {actual_time:.1f} minutes")
 
                 # Показываем последние строки вывода для контекста
@@ -194,7 +209,7 @@ class AutomatedTrainer:
                 return stage_result
             else:
                 logger.error(
-                    f"❌ Stage {stage} failed with return code {result.returncode}"
+                    f"[ERROR] Stage {stage} failed with return code {result.returncode}"
                 )
                 logger.error(f"   STDOUT output:")
                 logger.error(result.stdout)
@@ -217,11 +232,11 @@ class AutomatedTrainer:
 
         except subprocess.TimeoutExpired:
             logger.error(
-                f"❌ Stage {stage} timed out after {estimated_time * 2:.1f} minutes"
+                f"[ERROR] Stage {stage} timed out after {estimated_time * 2:.1f} minutes"
             )
             return None
         except Exception as e:
-            logger.error(f"❌ Stage {stage} failed with exception: {e}")
+            logger.error(f"[ERROR] Stage {stage} failed with exception: {e}")
             return None
 
     def _extract_similarity_from_output(self, output: str) -> Optional[float]:
@@ -289,7 +304,7 @@ class AutomatedTrainer:
 
         if elapsed_hours >= self.max_total_time_hours:
             logger.info(
-                f"⏰ Time limit reached: {elapsed_hours:.1f}/{self.max_total_time_hours} hours"
+                f"[TIME] Time limit reached: {elapsed_hours:.1f}/{self.max_total_time_hours} hours"
             )
             return False
 
@@ -297,7 +312,7 @@ class AutomatedTrainer:
 
     def run_automated_training(self):
         """Запускает автоматизированное обучение"""
-        logger.info(f"🎯 Starting automated training session")
+        logger.info(f"[TARGET] Starting automated training session")
         logger.info(f"   Max duration: {self.max_total_time_hours} hours")
         logger.info(
             f"   Target end time: {self.start_time + timedelta(hours=self.max_total_time_hours)}"
@@ -314,7 +329,7 @@ class AutomatedTrainer:
             remaining_hours = self.max_total_time_hours - elapsed_hours
 
             if estimated_time_hours > remaining_hours:
-                logger.info(f"⏰ Not enough time for stage {stage}")
+                logger.info(f"[TIME] Not enough time for stage {stage}")
                 logger.info(
                     f"   Estimated: {estimated_time_hours:.1f}h, Remaining: {remaining_hours:.1f}h"
                 )
@@ -324,12 +339,14 @@ class AutomatedTrainer:
             result = self.run_training_stage(stage, config)
 
             if result is None:
-                logger.error(f"❌ Stage {stage} failed, stopping automated training")
+                logger.error(
+                    f"[ERROR] Stage {stage} failed, stopping automated training"
+                )
                 break
 
             # Показываем прогресс
             summary = self._generate_summary()
-            logger.info(f"📊 Progress after stage {stage}:")
+            logger.info(f"[DATA] Progress after stage {stage}:")
             logger.info(f"   Total stages completed: {summary['total_stages']}")
             logger.info(
                 f"   Best similarity: {summary['best_similarity']:.4f}"
@@ -353,8 +370,8 @@ class AutomatedTrainer:
         summary = self._generate_summary()
         elapsed_hours = (datetime.now() - self.start_time).total_seconds() / 3600
 
-        logger.info(f"\n🎉 Automated training session completed!")
-        logger.info(f"📊 Final Summary:")
+        logger.info(f"\n[SUCCESS] Automated training session completed!")
+        logger.info(f"[DATA] Final Summary:")
         logger.info(f"   Total duration: {elapsed_hours:.1f} hours")
         logger.info(f"   Stages completed: {summary['total_stages']}")
         logger.info(
@@ -401,17 +418,26 @@ def main():
         action="store_true",
         help="Show training stages configuration and exit",
     )
+    parser.add_argument(
+        "--dataset-limit",
+        type=int,
+        default=None,
+        help="Override dataset_limit for all stages (useful for quick testing)",
+    )
 
     args = parser.parse_args()
 
     try:
         trainer = AutomatedTrainer(
-            mode=args.mode, scale=args.scale, max_total_time_hours=args.max_hours
+            mode=args.mode,
+            scale=args.scale,
+            max_total_time_hours=args.max_hours,
+            dataset_limit_override=args.dataset_limit,
         )
 
         if args.test_config:
             # Показываем конфигурацию стадий
-            logger.info(f"\n📋 Training stages configuration:")
+            logger.info(f"\n[INFO] Training stages configuration:")
             for stage in range(1, 6):
                 config = trainer.get_progressive_config(stage)
                 estimated_time = trainer.estimate_stage_time(config)
@@ -427,9 +453,9 @@ def main():
         trainer.run_automated_training()
 
     except KeyboardInterrupt:
-        logger.info("⏹️ Automated training interrupted by user")
+        logger.info("[STOP] Automated training interrupted by user")
     except Exception as e:
-        logger.error(f"❌ Automated training failed: {e}")
+        logger.error(f"[ERROR] Automated training failed: {e}")
         import traceback
 
         traceback.print_exc()

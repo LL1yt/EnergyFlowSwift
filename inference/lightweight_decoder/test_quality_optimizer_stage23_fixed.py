@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 class QualityOptimizerStage23FixedTest(unittest.TestCase):
     """
-    🎯 STAGE 2.3 QUALITY OPTIMIZATION TESTS (FIXED VERSION)
+    [TARGET] STAGE 2.3 QUALITY OPTIMIZATION TESTS (FIXED VERSION)
     
     Проверяем полную функциональность системы оптимизации качества:
     - Продвинутые метрики качества (BLEU, ROUGE, coherence, fluency)  
@@ -50,7 +50,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Инициализация для всех тестов"""
-        print("🚀 Настройка тестов Quality Optimizer Stage 2.3 (Fixed)...")
+        print("[START] Настройка тестов Quality Optimizer Stage 2.3 (Fixed)...")
         
         # Конфигурация для тестирования
         cls.config = OptimizationConfig(
@@ -88,7 +88,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         cls.test_embeddings = [torch.randn(768) for _ in range(len(cls.test_cases))]
         cls.reference_texts = [case['reference'] for case in cls.test_cases]
         
-        print("✅ Настройка завершена")
+        print("[OK] Настройка завершена")
     
     def test_01_quality_metrics_basic(self):
         """Test 1: Базовая функциональность QualityMetrics"""
@@ -116,7 +116,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         self.assertIn('bleu_score', metrics_dict)
         self.assertIn('overall_quality', metrics_dict)
         
-        print("✅ QualityMetrics basic functionality - PASSED")
+        print("[OK] QualityMetrics basic functionality - PASSED")
     
     def test_02_advanced_quality_assessment(self):
         """Test 2: AdvancedQualityAssessment comprehensive evaluation"""
@@ -155,7 +155,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
                       f"Fluency={float(metrics.fluency_score):.3f}, "
                       f"Overall={float(metrics.overall_quality):.3f}")
         
-        print("✅ AdvancedQualityAssessment comprehensive evaluation - PASSED")
+        print("[OK] AdvancedQualityAssessment comprehensive evaluation - PASSED")
     
     def test_03_quality_assessment_edge_cases(self):
         """Test 3: Quality assessment edge cases"""
@@ -183,7 +183,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         )
         self.assertGreaterEqual(float(metrics_long.overall_quality), 0.0)
         
-        print("✅ Quality assessment edge cases - PASSED")
+        print("[OK] Quality assessment edge cases - PASSED")
     
     def test_04_optimization_config_validation(self):
         """Test 4: OptimizationConfig validation"""
@@ -211,7 +211,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         self.assertLess(config.top_k_range[0], config.top_k_range[1])
         self.assertLess(config.top_p_range[0], config.top_p_range[1])
         
-        print("✅ OptimizationConfig validation - PASSED")
+        print("[OK] OptimizationConfig validation - PASSED")
     
     def test_05_parameter_optimizer_initialization(self):
         """Test 5: GenerationParameterOptimizer initialization"""
@@ -234,7 +234,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         self.assertIn('top_p', initial_params)
         self.assertIn('repetition_penalty', initial_params)
         
-        print("✅ GenerationParameterOptimizer initialization - PASSED")
+        print("[OK] GenerationParameterOptimizer initialization - PASSED")
     
     def test_06_parameter_generation(self):
         """Test 6: Parameter generation и mutation"""
@@ -266,7 +266,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
             print(f"   Iteration {iteration}: temp={candidate_params['temperature']:.2f}, "
                   f"top_k={candidate_params['top_k']}, top_p={candidate_params['top_p']:.2f}")
         
-        print("✅ Parameter generation и mutation - PASSED")
+        print("[OK] Parameter generation и mutation - PASSED")
     
     def test_07_generative_decoder_integration(self):
         """Test 7: Интеграция с GenerativeDecoder"""
@@ -311,7 +311,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         except Exception as e:
             self.fail(f"GenerativeDecoder integration failed: {e}")
         
-        print("✅ Интеграция с GenerativeDecoder - PASSED")
+        print("[OK] Интеграция с GenerativeDecoder - PASSED")
     
     def test_08_mock_parameter_optimization(self):
         """Test 8: Mock parameter optimization (abbreviated)"""
@@ -373,7 +373,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         except Exception as e:
             self.fail(f"Parameter optimization failed: {e}")
         
-        print("✅ Mock parameter optimization - PASSED")
+        print("[OK] Mock parameter optimization - PASSED")
     
     def test_09_production_readiness_evaluation(self):
         """Test 9: Production readiness evaluation"""
@@ -427,7 +427,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
                 print(f"   Case {i} ({test_case['expected_readiness']}): "
                       f"Production readiness = {readiness:.3f}")
         
-        print("✅ Production readiness evaluation - PASSED")
+        print("[OK] Production readiness evaluation - PASSED")
     
     def test_10_factory_function(self):
         """Test 10: Factory function create_quality_optimizer"""
@@ -446,7 +446,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         self.assertEqual(optimizer.config.target_rouge_l, 0.4)
         self.assertEqual(optimizer.config.max_optimization_iterations, 20)
         
-        print("✅ Factory function create_quality_optimizer - PASSED")
+        print("[OK] Factory function create_quality_optimizer - PASSED")
     
     def test_11_optimization_results_serialization(self):
         """Test 11: Сохранение и загрузка результатов оптимизации"""
@@ -490,7 +490,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
                 except:
                     pass  # Ignore cleanup errors
         
-        print("✅ Optimization results serialization - PASSED")
+        print("[OK] Optimization results serialization - PASSED")
     
     def test_12_stage23_integration_readiness(self):
         """Test 12: Полная готовность Stage 2.3"""
@@ -535,7 +535,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
                     os.unlink(temp_path)
                 components_ready['Serialization'] = True
             except Exception as e:
-                print(f"⚠️ Serialization warning: {e}")
+                print(f"[WARNING] Serialization warning: {e}")
                 # Still mark as ready for testing purposes if basic functionality works
                 components_ready['Serialization'] = True
             
@@ -546,7 +546,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
                 decoder = GenerativeDecoder(config)
                 components_ready['GenerativeDecoder Integration'] = True
             except Exception as e:
-                print(f"⚠️ GenerativeDecoder integration warning: {e}")
+                print(f"[WARNING] GenerativeDecoder integration warning: {e}")
             
         except Exception as e:
             self.fail(f"Stage 2.3 component failure: {e}")
@@ -556,22 +556,22 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
         total_components = len(components_ready)
         readiness_percentage = (ready_components / total_components) * 100
         
-        print(f"📊 Stage 2.3 Component Readiness:")
+        print(f"[DATA] Stage 2.3 Component Readiness:")
         for component, ready in components_ready.items():
-            status = "✅ READY" if ready else "❌ NOT READY"
+            status = "[OK] READY" if ready else "[ERROR] NOT READY"
             print(f"   {component}: {status}")
         
-        print(f"🎯 Overall Readiness: {readiness_percentage:.1f}% ({ready_components}/{total_components})")
+        print(f"[TARGET] Overall Readiness: {readiness_percentage:.1f}% ({ready_components}/{total_components})")
         
         # Требуем минимум 80% готовности для Stage 2.3
         self.assertGreaterEqual(readiness_percentage, 80.0)
         
-        print("✅ Stage 2.3 integration readiness - PASSED")
+        print("[OK] Stage 2.3 integration readiness - PASSED")
 
 
 def run_stage23_quality_tests_fixed():
     """Запуск всех исправленных тестов Stage 2.3"""
-    print("🚀 Запуск исправленных тестов Quality Optimizer Stage 2.3...")
+    print("[START] Запуск исправленных тестов Quality Optimizer Stage 2.3...")
     
     # Создание test suite
     loader = unittest.TestLoader()
@@ -583,16 +583,16 @@ def run_stage23_quality_tests_fixed():
     
     # Результаты
     if result.wasSuccessful():
-        print("🎉 ВСЕ ИСПРАВЛЕННЫЕ ТЕСТЫ STAGE 2.3 ПРОШЛИ УСПЕШНО!")
-        print(f"✅ Тестов выполнено: {result.testsRun}")
-        print(f"✅ Ошибок: {len(result.errors)}")
-        print(f"✅ Неудач: {len(result.failures)}")
+        print("[SUCCESS] ВСЕ ИСПРАВЛЕННЫЕ ТЕСТЫ STAGE 2.3 ПРОШЛИ УСПЕШНО!")
+        print(f"[OK] Тестов выполнено: {result.testsRun}")
+        print(f"[OK] Ошибок: {len(result.errors)}")
+        print(f"[OK] Неудач: {len(result.failures)}")
         return True
     else:
-        print("❌ НЕКОТОРЫЕ ТЕСТЫ STAGE 2.3 НЕ ПРОШЛИ")
-        print(f"📊 Тестов выполнено: {result.testsRun}")
-        print(f"❌ Ошибок: {len(result.errors)}")
-        print(f"❌ Неудач: {len(result.failures)}")
+        print("[ERROR] НЕКОТОРЫЕ ТЕСТЫ STAGE 2.3 НЕ ПРОШЛИ")
+        print(f"[DATA] Тестов выполнено: {result.testsRun}")
+        print(f"[ERROR] Ошибок: {len(result.errors)}")
+        print(f"[ERROR] Неудач: {len(result.failures)}")
         return False
 
 

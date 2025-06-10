@@ -37,7 +37,7 @@ def test_basic_tokenizer():
         # Тестовый текст
         test_text = "Hello world! This is a test of the basic tokenizer."
         
-        print(f"📝 Input text: {test_text}")
+        print(f"[WRITE] Input text: {test_text}")
         
         # Тест токенизации
         tokens = tokenizer.tokenize(test_text)
@@ -49,21 +49,21 @@ def test_basic_tokenizer():
         
         # Тест декодирования
         decoded_text = tokenizer.decode(token_ids)
-        print(f"📄 Decoded: {decoded_text}")
+        print(f"[FILE] Decoded: {decoded_text}")
         
         # Проверка метрик
         metrics = tokenizer.get_metrics()
-        print(f"📊 Metrics: {metrics}")
+        print(f"[DATA] Metrics: {metrics}")
         
         # Проверка специальных токенов
         special_tokens = tokenizer.get_special_tokens()
-        print(f"🎯 Special tokens: {special_tokens}")
+        print(f"[TARGET] Special tokens: {special_tokens}")
         
-        print("✅ Basic tokenizer test PASSED!")
+        print("[OK] Basic tokenizer test PASSED!")
         return True
         
     except Exception as e:
-        print(f"❌ Basic tokenizer test FAILED: {str(e)}")
+        print(f"[ERROR] Basic tokenizer test FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
@@ -81,25 +81,25 @@ def test_text_processor():
         # Тестовый текст с различными проблемами
         test_text = "  Hello   WORLD!!! This is a TEST with   extra spaces.  "
         
-        print(f"📝 Input text: '{test_text}'")
+        print(f"[WRITE] Input text: '{test_text}'")
         
         # Предобработка
         processed_text = processor.preprocess(test_text)
-        print(f"🔧 Processed: '{processed_text}'")
+        print(f"[CONFIG] Processed: '{processed_text}'")
         
         # Статистика обработки
         stats = processor.get_processing_stats(test_text, processed_text)
-        print(f"📊 Processing stats: {stats}")
+        print(f"[DATA] Processing stats: {stats}")
         
         # Валидация
         is_valid = processor.validate_text(processed_text)
-        print(f"✅ Text valid: {is_valid}")
+        print(f"[OK] Text valid: {is_valid}")
         
-        print("✅ Text processor test PASSED!")
+        print("[OK] Text processor test PASSED!")
         return True
         
     except Exception as e:
-        print(f"❌ Text processor test FAILED: {str(e)}")
+        print(f"[ERROR] Text processor test FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
@@ -121,7 +121,7 @@ def test_batch_processing():
             "Third sentence is here."
         ]
         
-        print(f"📝 Input texts: {test_texts}")
+        print(f"[WRITE] Input texts: {test_texts}")
         
         # Batch кодирование
         batch_encoded = tokenizer.batch_encode(test_texts)
@@ -129,13 +129,13 @@ def test_batch_processing():
         
         # Batch декодирование
         batch_decoded = tokenizer.batch_decode(batch_encoded)
-        print(f"📄 Batch decoded: {batch_decoded}")
+        print(f"[FILE] Batch decoded: {batch_decoded}")
         
-        print("✅ Batch processing test PASSED!")
+        print("[OK] Batch processing test PASSED!")
         return True
         
     except Exception as e:
-        print(f"❌ Batch processing test FAILED: {str(e)}")
+        print(f"[ERROR] Batch processing test FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
@@ -156,27 +156,27 @@ def test_lattice_integration():
         # Размер решетки
         lattice_size = (5, 5, 5)
         
-        print(f"📝 Input text: {test_text}")
+        print(f"[WRITE] Input text: {test_text}")
         print(f"🔲 Lattice size: {lattice_size}")
         
         # Подготовка для решетки
         lattice_input = tokenizer.prepare_for_lattice(test_text, lattice_size)
-        print(f"🎯 Lattice input shape: {lattice_input.shape}")
+        print(f"[TARGET] Lattice input shape: {lattice_input.shape}")
         print(f"🔢 Lattice input: {lattice_input}")
         
         # Проверка размера
         expected_shape = (lattice_size[0], lattice_size[1])
         if lattice_input.shape == expected_shape:
-            print("✅ Lattice shape is correct!")
+            print("[OK] Lattice shape is correct!")
         else:
-            print(f"❌ Expected shape {expected_shape}, got {lattice_input.shape}")
+            print(f"[ERROR] Expected shape {expected_shape}, got {lattice_input.shape}")
             return False
         
-        print("✅ Lattice integration test PASSED!")
+        print("[OK] Lattice integration test PASSED!")
         return True
         
     except Exception as e:
-        print(f"❌ Lattice integration test FAILED: {str(e)}")
+        print(f"[ERROR] Lattice integration test FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
@@ -207,26 +207,26 @@ def test_configuration():
         # Создание токенайзера с конфигурацией
         tokenizer = TokenizerManager(tokenizer_type='basic', config=test_config)
         
-        print(f"⚙️ Config loaded: {tokenizer.config['tokenizer']['max_length']}")
-        print(f"💾 Cache enabled: {tokenizer._cache_enabled}")
+        print(f"[GEAR] Config loaded: {tokenizer.config['tokenizer']['max_length']}")
+        print(f"[SAVE] Cache enabled: {tokenizer._cache_enabled}")
         
         # Тест с конфигурацией
         test_text = "Test with CUSTOM config!"
         tokens = tokenizer.encode(test_text, max_length=10)
         print(f"🔢 Tokens (max_length=10): {tokens}")
         
-        print("✅ Configuration test PASSED!")
+        print("[OK] Configuration test PASSED!")
         return True
         
     except Exception as e:
-        print(f"❌ Configuration test FAILED: {str(e)}")
+        print(f"[ERROR] Configuration test FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
 
 def main():
     """Основная функция тестирования."""
-    print("🚀 Starting Tokenizer Module Tests")
+    print("[START] Starting Tokenizer Module Tests")
     print("=" * 50)
     
     tests = [
@@ -245,13 +245,13 @@ def main():
             passed += 1
     
     print("\n" + "=" * 50)
-    print(f"🎯 Test Results: {passed}/{total} tests passed")
+    print(f"[TARGET] Test Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("🎉 ALL TESTS PASSED! Tokenizer module is working correctly.")
+        print("[SUCCESS] ALL TESTS PASSED! Tokenizer module is working correctly.")
         return True
     else:
-        print("❌ Some tests failed. Please check the errors above.")
+        print("[ERROR] Some tests failed. Please check the errors above.")
         return False
 
 if __name__ == "__main__":

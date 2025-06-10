@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🔍 GPU Performance Analysis - Phase 2 Optimization
+[MAGNIFY] GPU Performance Analysis - Phase 2 Optimization
 Detailed analysis of GPU performance issues and optimization strategies
 """
 
@@ -28,21 +28,21 @@ logger = logging.getLogger(__name__)
 def analyze_gpu_utilization():
     """Analyze GPU utilization and identify bottlenecks"""
     print("\n" + "="*80)
-    print("🔍 GPU UTILIZATION ANALYSIS")
+    print("[MAGNIFY] GPU UTILIZATION ANALYSIS")
     print("="*80)
     
     if not torch.cuda.is_available():
-        print("❌ CUDA not available - skipping GPU analysis")
+        print("[ERROR] CUDA not available - skipping GPU analysis")
         return False
     
     device = torch.device("cuda")
-    print(f"🔥 GPU: {torch.cuda.get_device_name(0)}")
-    print(f"📊 Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    print(f"[HOT] GPU: {torch.cuda.get_device_name(0)}")
+    print(f"[DATA] Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
     
     # Memory baseline
     torch.cuda.empty_cache()
     baseline_memory = torch.cuda.memory_allocated()
-    print(f"📈 Baseline GPU memory: {baseline_memory / 1024**2:.1f} MB")
+    print(f"[CHART] Baseline GPU memory: {baseline_memory / 1024**2:.1f} MB")
     
     return True
 
@@ -59,7 +59,7 @@ def test_batch_size_impact():
     
     for batch_size in batch_sizes:
         try:
-            print(f"\n🔄 Testing batch size: {batch_size}")
+            print(f"\n[REFRESH] Testing batch size: {batch_size}")
             
             # Create optimized config for each batch size
             config = EmergentTrainingConfig()
@@ -113,14 +113,14 @@ def test_batch_size_impact():
             torch.cuda.empty_cache()
             
         except Exception as e:
-            print(f"   ❌ Failed: {e}")
+            print(f"   [ERROR] Failed: {e}")
             results[batch_size] = None
     
     # Find optimal batch size
     valid_results = {k: v for k, v in results.items() if v is not None}
     if valid_results:
         best_batch = max(valid_results, key=lambda x: valid_results[x]['throughput'])
-        print(f"\n🎯 OPTIMAL BATCH SIZE: {best_batch}")
+        print(f"\n[TARGET] OPTIMAL BATCH SIZE: {best_batch}")
         print(f"   Best throughput: {valid_results[best_batch]['throughput']:.1f} samples/sec")
     
     return valid_results
@@ -141,7 +141,7 @@ def test_gpu_vs_cpu_optimized():
     results = {}
     
     # === CPU OPTIMIZED ===
-    print("\n🖥️ CPU Optimized Testing:")
+    print("\n[PC] CPU Optimized Testing:")
     try:
         config_cpu = EmergentTrainingConfig()
         config_cpu.mixed_precision = False  # CPU doesn't benefit from mixed precision
@@ -173,11 +173,11 @@ def test_gpu_vs_cpu_optimized():
         del trainer_cpu
         
     except Exception as e:
-        print(f"   ❌ CPU test failed: {e}")
+        print(f"   [ERROR] CPU test failed: {e}")
         results['cpu'] = None
     
     # === GPU OPTIMIZED ===
-    print("\n🚀 GPU Optimized Testing:")
+    print("\n[START] GPU Optimized Testing:")
     try:
         config_gpu = EmergentTrainingConfig()
         config_gpu.mixed_precision = True
@@ -225,7 +225,7 @@ def test_gpu_vs_cpu_optimized():
         torch.cuda.empty_cache()
         
     except Exception as e:
-        print(f"   ❌ GPU test failed: {e}")
+        print(f"   [ERROR] GPU test failed: {e}")
         results['gpu'] = None
     
     # === COMPARISON ===
@@ -234,17 +234,17 @@ def test_gpu_vs_cpu_optimized():
         gpu_throughput = results['gpu']['throughput']
         speedup = gpu_throughput / cpu_throughput
         
-        print(f"\n📊 PERFORMANCE COMPARISON:")
+        print(f"\n[DATA] PERFORMANCE COMPARISON:")
         print(f"   CPU: {cpu_throughput:.1f} samples/sec (batch {cpu_batch_size})")
         print(f"   GPU: {gpu_throughput:.1f} samples/sec (batch {gpu_batch_size})")
         print(f"   Speedup: {speedup:.2f}x")
         
         if speedup > 1.2:
-            print("✅ GPU shows meaningful speedup!")
+            print("[OK] GPU shows meaningful speedup!")
         elif speedup > 0.8:
             print("⚖️ GPU performance comparable to CPU")
         else:
-            print("❌ GPU underperforming - needs optimization")
+            print("[ERROR] GPU underperforming - needs optimization")
             
         return speedup > 1.0
     
@@ -254,7 +254,7 @@ def test_gpu_vs_cpu_optimized():
 def analyze_memory_patterns():
     """Analyze GPU memory usage patterns"""
     print("\n" + "="*80)
-    print("💾 MEMORY USAGE ANALYSIS")
+    print("[SAVE] MEMORY USAGE ANALYSIS")
     print("="*80)
     
     if not torch.cuda.is_available():
@@ -271,7 +271,7 @@ def analyze_memory_patterns():
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
     
-    print(f"📊 Memory analysis with batch size {batch_size}:")
+    print(f"[DATA] Memory analysis with batch size {batch_size}:")
     
     # Initial state
     init_memory = torch.cuda.memory_allocated()
@@ -315,24 +315,24 @@ def analyze_memory_patterns():
 def recommend_optimizations():
     """Provide specific optimization recommendations"""
     print("\n" + "="*80)
-    print("💡 OPTIMIZATION RECOMMENDATIONS")
+    print("[IDEA] OPTIMIZATION RECOMMENDATIONS")
     print("="*80)
     
     recommendations = [
-        "🔧 Increase batch size to 32-64 for GPU (current: 8)",
-        "⚡ Disable gradient accumulation for fair GPU comparison", 
-        "📊 Use DataLoader with pin_memory=True for faster CPU→GPU transfer",
-        "🔥 Enable Tensor Core optimization with proper tensor dimensions",
-        "💾 Consider model parallelism for very large models",
+        "[CONFIG] Increase batch size to 32-64 for GPU (current: 8)",
+        "[FAST] Disable gradient accumulation for fair GPU comparison", 
+        "[DATA] Use DataLoader with pin_memory=True for faster CPU→GPU transfer",
+        "[HOT] Enable Tensor Core optimization with proper tensor dimensions",
+        "[SAVE] Consider model parallelism for very large models",
         "⚖️ Profile actual operations to find specific bottlenecks",
-        "🎯 Use torch.jit.script for frequently called functions",
-        "🚀 Consider using torch.compile for PyTorch 2.x speedups"
+        "[TARGET] Use torch.jit.script for frequently called functions",
+        "[START] Consider using torch.compile for PyTorch 2.x speedups"
     ]
     
     for i, rec in enumerate(recommendations, 1):
         print(f"{i}. {rec}")
     
-    print(f"\n🎯 IMMEDIATE ACTIONS:")
+    print(f"\n[TARGET] IMMEDIATE ACTIONS:")
     print(f"   1. Increase GPU batch size to 32+")
     print(f"   2. Disable gradient accumulation for baseline")
     print(f"   3. Profile with torch.profiler for detailed bottlenecks")
@@ -340,7 +340,7 @@ def recommend_optimizations():
 
 def main():
     """Run comprehensive GPU performance analysis"""
-    print("🔍 GPU PERFORMANCE ANALYSIS")
+    print("[MAGNIFY] GPU PERFORMANCE ANALYSIS")
     print("="*80)
     print("Analyzing Phase 2 GPU optimization performance issues")
     
@@ -364,20 +364,20 @@ def main():
     
     # Summary
     print("\n" + "="*80)
-    print("📋 ANALYSIS SUMMARY")
+    print("[INFO] ANALYSIS SUMMARY")
     print("="*80)
     
     if gpu_is_faster:
-        print("✅ GPU optimization successful with proper settings")
+        print("[OK] GPU optimization successful with proper settings")
     else:
-        print("⚠️ GPU needs further optimization")
+        print("[WARNING] GPU needs further optimization")
         print("   - Try larger batch sizes (32-64)")
         print("   - Disable gradient accumulation")
         print("   - Profile for specific bottlenecks")
     
     if batch_results:
         optimal_batch = max(batch_results, key=lambda x: batch_results[x]['throughput'] if batch_results[x] else 0)
-        print(f"🎯 Recommended GPU batch size: {optimal_batch}")
+        print(f"[TARGET] Recommended GPU batch size: {optimal_batch}")
     
     return gpu_is_faster
 

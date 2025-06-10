@@ -19,7 +19,7 @@ import torch
 import sys
 import os
 
-# 🔧 CUDA COMPATIBILITY FIX для RTX 5090
+# [CONFIG] CUDA COMPATIBILITY FIX для RTX 5090
 # Принудительно используем CPU для совместимости
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
@@ -27,7 +27,7 @@ torch.backends.cudnn.enabled = False
 
 # Устанавливаем CPU как default device
 if torch.cuda.is_available():
-    print("⚠️  CUDA detected but forcing CPU mode for RTX 5090 compatibility")
+    print("[WARNING]  CUDA detected but forcing CPU mode for RTX 5090 compatibility")
 torch.set_default_device('cpu')
 
 # Добавляем корневую директорию в PATH
@@ -48,7 +48,7 @@ def test_phrase_bank_loading():
         phrase_bank = PhraseBank(embedding_dim=768, index_type="linear")
         
         # Создание тестовых фраз через LLM
-        print("   📝 Creating sample phrases using LLM...")
+        print("   [WRITE] Creating sample phrases using LLM...")
         test_texts = [
             "Hello, how are you?",
             "Thank you very much", 
@@ -84,22 +84,22 @@ def test_phrase_bank_loading():
         
         # Проверяем загрузку
         stats = phrase_bank.get_statistics()
-        print(f"   ✅ Loaded {stats['total_phrases']} phrases")
-        print(f"   📊 Index type: {stats['index_type']}")
-        print(f"   ⚡ Average search time: {stats['avg_search_time_ms']} ms")
-        print(f"   🔧 FAISS available: {stats['faiss_available']}")
+        print(f"   [OK] Loaded {stats['total_phrases']} phrases")
+        print(f"   [DATA] Index type: {stats['index_type']}")
+        print(f"   [FAST] Average search time: {stats['avg_search_time_ms']} ms")
+        print(f"   [CONFIG] FAISS available: {stats['faiss_available']}")
         
         return True
         
     except Exception as e:
-        print(f"   ❌ Phrase bank loading failed: {e}")
+        print(f"   [ERROR] Phrase bank loading failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def test_similarity_search():
     """Тест функциональности поиска по сходству"""
-    print("\n🔍 Testing similarity search...")
+    print("\n[MAGNIFY] Testing similarity search...")
     
     try:
         from inference.lightweight_decoder.phrase_bank import PhraseBank, PhraseEntry
@@ -140,7 +140,7 @@ def test_similarity_search():
         phrase_bank.add_phrases(sample_phrases)
         
         # Тест поиска с известной фразой
-        print("   🎯 Testing search with known phrase...")
+        print("   [TARGET] Testing search with known phrase...")
         test_query = "Hello, how are you?"
         query_embedding = embedding_loader.load_from_llm(
             texts=[test_query],
@@ -152,33 +152,33 @@ def test_similarity_search():
         results = phrase_bank.search_phrases(query_embedding, k=3)
         
         if len(results) == 0:
-            print("   ❌ No search results returned")
+            print("   [ERROR] No search results returned")
             return False
         
-        print(f"   ✅ Found {len(results)} similar phrases")
+        print(f"   [OK] Found {len(results)} similar phrases")
         
         # Проверка качества результатов
         top_phrase, top_similarity = results[0]
-        print(f"   📊 Top result: '{top_phrase.text}' (similarity: {top_similarity:.3f})")
+        print(f"   [DATA] Top result: '{top_phrase.text}' (similarity: {top_similarity:.3f})")
         
         # Тест с произвольным эмбедингом
-        print("   🎲 Testing search with random embedding...")
+        print("   [DICE] Testing search with random embedding...")
         random_embedding = torch.randn(768)
         random_results = phrase_bank.search_phrases(random_embedding, k=3)
         
-        print(f"   ✅ Random search returned {len(random_results)} results")
+        print(f"   [OK] Random search returned {len(random_results)} results")
         
         return True
         
     except Exception as e:
-        print(f"   ❌ Similarity search failed: {e}")
+        print(f"   [ERROR] Similarity search failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def test_performance():
     """Тест производительности: <10ms на поиск фразы"""
-    print("\n⚡ Testing search performance...")
+    print("\n[FAST] Testing search performance...")
     
     try:
         from inference.lightweight_decoder.phrase_bank import PhraseBank, PhraseEntry
@@ -235,25 +235,25 @@ def test_performance():
             total_time += search_time
         
         avg_time = total_time / num_searches
-        print(f"   📊 Average search time: {avg_time:.2f}ms")
+        print(f"   [DATA] Average search time: {avg_time:.2f}ms")
         
         # Проверка критерия <10ms
         if avg_time < 10.0:
-            print("   ✅ Performance target met (<10ms)")
+            print("   [OK] Performance target met (<10ms)")
             performance_ok = True
         else:
-            print(f"   ⚠️  Performance target missed (target: <10ms, actual: {avg_time:.2f}ms)")
+            print(f"   [WARNING]  Performance target missed (target: <10ms, actual: {avg_time:.2f}ms)")
             performance_ok = False
         
         # Статистика phrase bank
         stats = phrase_bank.get_statistics()
-        print(f"   📈 Cache hit rate: {stats.get('cache_hit_rate', 'N/A')}")
-        print(f"   🔍 Total searches: {stats.get('total_searches', 0)}")
+        print(f"   [CHART] Cache hit rate: {stats.get('cache_hit_rate', 'N/A')}")
+        print(f"   [MAGNIFY] Total searches: {stats.get('total_searches', 0)}")
         
         return performance_ok
         
     except Exception as e:
-        print(f"   ❌ Performance test failed: {e}")
+        print(f"   [ERROR] Performance test failed: {e}")
         return False
 
 def test_phrase_bank_decoder():
@@ -273,7 +273,7 @@ def test_phrase_bank_decoder():
         # Загрузка phrase bank (правильный API)
         embedding_loader = EmbeddingLoader(cache_dir="./cache")
         
-        print("   📚 Loading phrase bank...")
+        print("   [BOOKS] Loading phrase bank...")
         # Создаем простую phrase bank для тестирования
         test_texts = [
             "Thank you very much.",
@@ -302,10 +302,10 @@ def test_phrase_bank_decoder():
         )[0]
         
         decoded_text = decoder.decode(test_embedding)
-        print(f"   📝 Decoded: '{decoded_text}'")
+        print(f"   [WRITE] Decoded: '{decoded_text}'")
         
         # Тест batch декодирования
-        print("   📦 Testing batch decoding...")
+        print("   [PACKAGE] Testing batch decoding...")
         batch_queries = ["Hello there", "Good day"]
         batch_embeddings = embedding_loader.load_from_llm(
             texts=batch_queries,
@@ -314,25 +314,25 @@ def test_phrase_bank_decoder():
         )
         
         batch_results = decoder.batch_decode(batch_embeddings)
-        print(f"   📝 Batch decoded {len(batch_results)} texts")
+        print(f"   [WRITE] Batch decoded {len(batch_results)} texts")
         
         # Статистика декодера
         decoder_stats = decoder.get_statistics()
-        print(f"   📊 Decoder stats:")
+        print(f"   [DATA] Decoder stats:")
         print(f"      - Decode attempts: {decoder_stats.get('decode_attempts', 0)}")
         print(f"      - Success count: {decoder_stats.get('success_count', 0)}")
         
         return True
         
     except Exception as e:
-        print(f"   ❌ PhraseBankDecoder test failed: {e}")
+        print(f"   [ERROR] PhraseBankDecoder test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def test_integration_with_modules():
     """Тест интеграции с Modules 1 & 2"""
-    print("\n🔗 Testing integration with existing modules...")
+    print("\n[LINK] Testing integration with existing modules...")
     
     try:
         from data.embedding_loader import EmbeddingLoader
@@ -379,25 +379,25 @@ def test_integration_with_modules():
         
         # Эмбединг → Текст (Module 3)
         decoded_text = decoder.decode(embedding)
-        print(f"   📝 Decoded text: '{decoded_text}'")
+        print(f"   [WRITE] Decoded text: '{decoded_text}'")
         
         # Проверка результата
         if decoded_text and len(decoded_text) > 0:
-            print("   ✅ Integration successful")
+            print("   [OK] Integration successful")
             return True
         else:
-            print("   ❌ Integration failed - empty result")
+            print("   [ERROR] Integration failed - empty result")
             return False
         
     except Exception as e:
-        print(f"   ❌ Integration test failed: {e}")
+        print(f"   [ERROR] Integration test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def main():
     """Основная функция тестирования"""
-    print("🚀 PHASE 2.7.1 - PhraseBankDecoder Infrastructure Test")
+    print("[START] PHASE 2.7.1 - PhraseBankDecoder Infrastructure Test")
     print("=" * 70)
     print("Checkpoint 1.1 Verification\n")
     
@@ -419,28 +419,28 @@ def main():
     
     # Итоговые результаты
     print("\n" + "=" * 70)
-    print("📊 CHECKPOINT 1.1 RESULTS")
+    print("[DATA] CHECKPOINT 1.1 RESULTS")
     print("=" * 70)
     
     passed = 0
     total = len(results)
     
     for test_name, result in results:
-        status = "✅ PASS" if result else "❌ FAIL"
+        status = "[OK] PASS" if result else "[ERROR] FAIL"
         print(f"{status} {test_name}")
         if result:
             passed += 1
     
     success_rate = (passed / total) * 100
-    print(f"\n🎯 Checkpoint 1.1: {passed}/{total} tests passed ({success_rate:.1f}%)")
+    print(f"\n[TARGET] Checkpoint 1.1: {passed}/{total} tests passed ({success_rate:.1f}%)")
     
     if success_rate == 100:
-        print("\n🎉 ALL TESTS PASSED! Ready for ETAP 1.2")
-        print("📋 Next: PhraseBankDecoder refinement and optimization")
+        print("\n[SUCCESS] ALL TESTS PASSED! Ready for ETAP 1.2")
+        print("[INFO] Next: PhraseBankDecoder refinement and optimization")
     elif success_rate >= 80:
-        print("\n⚠️  MOSTLY SUCCESSFUL - Minor issues to fix")
+        print("\n[WARNING]  MOSTLY SUCCESSFUL - Minor issues to fix")
     else:
-        print("\n❌ MULTIPLE FAILURES - Need debugging before proceeding")
+        print("\n[ERROR] MULTIPLE FAILURES - Need debugging before proceeding")
     
     return success_rate == 100
 

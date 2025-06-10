@@ -55,10 +55,10 @@ class Stage23Config:
                 from utils.config_loader import get_multi_teacher_config
                 config = get_multi_teacher_config()
                 self.teacher_models = config.get('models', ['distilbert'])
-                print(f"📋 Loaded teacher models from config: {self.teacher_models}")
+                print(f"[INFO] Loaded teacher models from config: {self.teacher_models}")
             except Exception:
                 self.teacher_models = ["llama3-8b-local", "distilbert", "roberta"]  # Fallback
-                print(f"⚠️ Using fallback teacher models: {self.teacher_models}")
+                print(f"[WARNING] Using fallback teacher models: {self.teacher_models}")
 
 
 class AdvancedTrainingStage23:
@@ -88,14 +88,14 @@ class AdvancedTrainingStage23:
         self.best_qa_similarity = 0.0
         self.patience_counter = 0
         
-        print(f"🚀 AdvancedTrainingStage23 initialized")
+        print(f"[START] AdvancedTrainingStage23 initialized")
         print(f"   Target Q→A similarity: {self.config.target_qa_similarity:.1%}")
         print(f"   Target dataset size: {self.config.target_pairs} pairs")
         print(f"   Multi-teacher models: {len(self.config.teacher_models)}")
     
     def setup_training_components(self):
         """Настройка всех компонентов обучения"""
-        print("🔧 Setting up advanced training components...")
+        print("[CONFIG] Setting up advanced training components...")
         
         # 1. Advanced Loss Functions
         self.advanced_loss_fn = create_advanced_loss_function(
@@ -130,7 +130,7 @@ class AdvancedTrainingStage23:
         self.cube_trainer = CubeTrainer(config=training_config)
         self.cube_trainer.initialize_components()
         
-        print("✅ All training components setup complete!")
+        print("[OK] All training components setup complete!")
     
     def _normalize_embedding_dimensions(self, embeddings: torch.Tensor, target_dim: int = 768) -> torch.Tensor:
         """
@@ -174,7 +174,7 @@ class AdvancedTrainingStage23:
     
     def create_enhanced_dataset(self) -> DialogueDataset:
         """Создание enhanced dataset с expanded data и multi-teacher embeddings"""
-        print("🎯 Creating enhanced dataset for Stage 2.3...")
+        print("[TARGET] Creating enhanced dataset for Stage 2.3...")
         
         # 1. Dataset Expansion до 100+ pairs
         expanded_dataset = create_expanded_dataset(
@@ -182,7 +182,7 @@ class AdvancedTrainingStage23:
             quality_threshold=0.6  # Используем стандартное значение
         )
         
-        print(f"   ✅ Dataset expanded to {len(expanded_dataset)} pairs")
+        print(f"   [OK] Dataset expanded to {len(expanded_dataset)} pairs")
         
         # 2. Multi-Teacher Enhancement (если включен)
         if self.config.use_multi_teacher and self.multi_teacher:
@@ -202,7 +202,7 @@ class AdvancedTrainingStage23:
                 dialogue_pairs, validation_split=0.2
             )
             
-            print(f"   ✅ Multi-teacher ensemble created")
+            print(f"   [OK] Multi-teacher ensemble created")
             print(f"      Train samples: {len(ensemble_data['train']['question_embeddings'])}")
             print(f"      Validation samples: {len(ensemble_data['validation']['question_embeddings'])}")
         
@@ -210,7 +210,7 @@ class AdvancedTrainingStage23:
     
     def run_advanced_training(self, dataset: DialogueDataset) -> Dict[str, float]:
         """Запуск продвинутого обучения Stage 2.3"""
-        print("🚀 Starting Stage 2.3 Advanced Training...")
+        print("[START] Starting Stage 2.3 Advanced Training...")
         
         # Получение dataloader
         train_dataloader = dataset.get_dataloader(
@@ -257,9 +257,9 @@ class AdvancedTrainingStage23:
         # Финальные результаты
         final_results = self._compute_final_results()
         
-        print(f"🎉 Stage 2.3 Training Complete!")
+        print(f"[SUCCESS] Stage 2.3 Training Complete!")
         print(f"   Best Q→A similarity: {self.best_qa_similarity:.1%}")
-        print(f"   Target achieved: {'✅' if self.best_qa_similarity >= self.config.target_qa_similarity else '❌'}")
+        print(f"   Target achieved: {'[OK]' if self.best_qa_similarity >= self.config.target_qa_similarity else '[ERROR]'}")
         
         return final_results
     
@@ -487,7 +487,7 @@ def analyze_stage_2_3_progress(training_history: List[Dict]) -> Dict:
 
 if __name__ == "__main__":
     # Демонстрация Stage 2.3
-    print("🚀 Testing Stage 2.3 Advanced Training Enhancement...")
+    print("[START] Testing Stage 2.3 Advanced Training Enhancement...")
     
     # Запуск обучения
     results = run_stage_2_3_training(
@@ -497,7 +497,7 @@ if __name__ == "__main__":
         use_multi_teacher=True
     )
     
-    print(f"📊 Stage 2.3 Results:")
+    print(f"[DATA] Stage 2.3 Results:")
     for key, value in results.items():
         if isinstance(value, float):
             if "similarity" in key:
@@ -507,4 +507,4 @@ if __name__ == "__main__":
         else:
             print(f"   {key}: {value}")
     
-    print("\n✅ Stage 2.3 Advanced Training Enhancement system ready!") 
+    print("\n[OK] Stage 2.3 Advanced Training Enhancement system ready!") 

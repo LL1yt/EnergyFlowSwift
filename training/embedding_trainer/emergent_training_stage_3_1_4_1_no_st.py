@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🧠 Stage 3.1.4.1: Emergent Training Infrastructure для 3D Cellular Neural Network
+[BRAIN] Stage 3.1.4.1: Emergent Training Infrastructure для 3D Cellular Neural Network
 
 Реализация emergent processing концепции:
 TRAINING MODE: 4096D LLaMA → 225D Surface → FULL CUBE INFLUENCE → 225D Surface → Learning
@@ -255,8 +255,8 @@ class EmergentSpatialPropagation(nn.Module):
         
         self.propagation_count += 1
         
-        logger.debug(f"🔍 [SpatialPropagation] Propagation #{self.propagation_count}")
-        logger.debug(f"🔍 [SpatialPropagation] Input cube state: shape={cube_states.shape}, requires_grad={cube_states.requires_grad}")
+        logger.debug(f"[MAGNIFY] [SpatialPropagation] Propagation #{self.propagation_count}")
+        logger.debug(f"[MAGNIFY] [SpatialPropagation] Input cube state: shape={cube_states.shape}, requires_grad={cube_states.requires_grad}")
         
         # Check for layer state reuse
         if self.last_layer_states:
@@ -264,7 +264,7 @@ class EmergentSpatialPropagation(nn.Module):
                 current_id = id(cube_states)
                 last_id = id(last_state)
                 if current_id == last_id:
-                    logger.warning(f"⚠️ [SpatialPropagation] Tensor reuse detected! Layer {layer_idx}: current_id={current_id}")
+                    logger.warning(f"[WARNING] [SpatialPropagation] Tensor reuse detected! Layer {layer_idx}: current_id={current_id}")
         
         # Cross-layer propagation
         enhanced_states = cube_states.clone()
@@ -297,7 +297,7 @@ class EmergentSpatialPropagation(nn.Module):
             # Store state для debugging
             self.last_layer_states[layer_idx] = enhanced_next.detach().clone()
         
-        logger.debug(f"🔍 [SpatialPropagation] Final propagated state: shape={enhanced_states.shape}, requires_grad={enhanced_states.requires_grad}")
+        logger.debug(f"[MAGNIFY] [SpatialPropagation] Final propagated state: shape={enhanced_states.shape}, requires_grad={enhanced_states.requires_grad}")
         
         return enhanced_states
 
@@ -344,7 +344,7 @@ class EmergentGMLPCell(nn.Module):
         # Логирование параметров только один раз для всех cells
         if spatial_connections and not hasattr(EmergentGMLPCell, '_param_count_logged'):
             total_params = sum(p.numel() for p in self.parameters())
-            logger.info(f"🧠 EmergentGMLPCell: {total_params:,} params (target: ~25K)")
+            logger.info(f"[BRAIN] EmergentGMLPCell: {total_params:,} params (target: ~25K)")
             EmergentGMLPCell._param_count_logged = True
         
         if spatial_connections:
@@ -370,7 +370,7 @@ class EmergentGMLPCell(nn.Module):
         self.forward_count = 0
         self.last_output_id = None
         
-        logger.debug(f"🔧 [EmergentGMLPCell] Created with {self.count_parameters()} parameters")
+        logger.debug(f"[CONFIG] [EmergentGMLPCell] Created with {self.count_parameters()} parameters")
     
     def count_parameters(self) -> int:
         """Count total parameters в cell"""
@@ -490,7 +490,7 @@ class EmergentCubeTrainer(nn.Module):
         self.current_epoch = 0
         self.training_history = []
         
-        self.logger.info("🧠 EmergentCubeTrainer initialized for Stage 3.1.4.1")
+        self.logger.info("[BRAIN] EmergentCubeTrainer initialized for Stage 3.1.4.1")
         self.logger.info(f"   Cube: {self.config.cube_dimensions}")
         self.logger.info(f"   Full gradient flow: {self.config.enable_full_cube_gradient}")
         self.logger.info(f"   Spatial propagation depth: {self.config.spatial_propagation_depth}")
@@ -543,7 +543,7 @@ class EmergentCubeTrainer(nn.Module):
             EmergentGMLPCell(**self.config.gmlp_config) for _ in range(total_cells)
         ])
         
-        self.logger.info(f"✅ Enhanced lattice created: {total_cells} gMLP cells")
+        self.logger.info(f"[OK] Enhanced lattice created: {total_cells} gMLP cells")
         
         # Log parameter count
         total_params = sum(sum(p.numel() for p in cell.parameters()) for cell in self.gmlp_cells)
@@ -587,7 +587,7 @@ class EmergentCubeTrainer(nn.Module):
         )
         
         total_params = sum(p.numel() for p in params)
-        self.logger.info(f"✅ Optimizer setup: {total_params:,} total parameters")
+        self.logger.info(f"[OK] Optimizer setup: {total_params:,} total parameters")
         
         # RESEARCH INTEGRATION: Initialize training step counter for tensor lifecycle management
         self.training_step = 0
@@ -750,7 +750,7 @@ class EmergentCubeTrainer(nn.Module):
     def _extract_output_surface(self, cube_states: torch.Tensor) -> torch.Tensor:
         """Extract 225D surface output from processed cube"""
         
-        logger.debug("🔍 [EXTRACT_OUTPUT] Starting output extraction...")
+        logger.debug("[MAGNIFY] [EXTRACT_OUTPUT] Starting output extraction...")
         
         batch_size, depth, height, width, state_size = cube_states.shape
         
@@ -763,14 +763,14 @@ class EmergentCubeTrainer(nn.Module):
         # Flatten to 225D
         output_surface = surface_values.view(batch_size, -1)  # [batch, 225]
         
-        logger.debug(f"🔍 [EXTRACT_OUTPUT] Output extraction complete: {output_surface.shape}")
+        logger.debug(f"[MAGNIFY] [EXTRACT_OUTPUT] Output extraction complete: {output_surface.shape}")
         
         return output_surface
     
     def _analyze_internal_state(self, cube_states: torch.Tensor) -> torch.Tensor:
         """Analyze internal cube state for consistency loss"""
         
-        logger.debug("🔍 [ANALYZE_INTERNAL] Starting internal analysis...")
+        logger.debug("[MAGNIFY] [ANALYZE_INTERNAL] Starting internal analysis...")
         
         batch_size, depth, height, width, state_size = cube_states.shape
         
@@ -788,7 +788,7 @@ class EmergentCubeTrainer(nn.Module):
             middle_layer = cube_states[:, depth//2]
             internal_flattened = middle_layer.view(batch_size, -1)
         
-        logger.debug(f"🔍 [ANALYZE_INTERNAL] Internal analysis complete: {internal_flattened.shape}")
+        logger.debug(f"[MAGNIFY] [ANALYZE_INTERNAL] Internal analysis complete: {internal_flattened.shape}")
         
         return internal_flattened
     
@@ -847,34 +847,34 @@ class EmergentCubeTrainer(nn.Module):
     
     def _debug_tensor_versions(self, step_name: str):
         """Диагностика версий тензоров для понимания root cause"""
-        logger.debug(f"🔍 [TENSOR_VERSIONS] === {step_name} ===")
+        logger.debug(f"[MAGNIFY] [TENSOR_VERSIONS] === {step_name} ===")
         
         # Проверяем specialization_tracker версиями в каждой cell
         for i, cell in enumerate(self.gmlp_cells[:3]):  # Первые 3 для краткости
             if hasattr(cell, 'specialization_tracker'):
                 version = cell.specialization_tracker._version if hasattr(cell.specialization_tracker, '_version') else 'N/A'
-                logger.debug(f"🔍 [TENSOR_VERSIONS] Cell {i} specialization_tracker version: {version}")
-                logger.debug(f"🔍 [TENSOR_VERSIONS] Cell {i} specialization_tracker id: {id(cell.specialization_tracker)}")
+                logger.debug(f"[MAGNIFY] [TENSOR_VERSIONS] Cell {i} specialization_tracker version: {version}")
+                logger.debug(f"[MAGNIFY] [TENSOR_VERSIONS] Cell {i} specialization_tracker id: {id(cell.specialization_tracker)}")
         
         # Проверяем все parameters с версиями
         param_count = 0
         for name, param in self.named_parameters():
             if param_count < 5:  # Первые 5 для краткости
                 version = param._version if hasattr(param, '_version') else 'N/A'
-                logger.debug(f"🔍 [TENSOR_VERSIONS] Param {name} version: {version}, grad: {param.grad is not None}")
+                logger.debug(f"[MAGNIFY] [TENSOR_VERSIONS] Param {name} version: {version}, grad: {param.grad is not None}")
                 param_count += 1
     
     def _full_state_reset(self):
         """УЛУЧШЕННОЕ РЕШЕНИЕ: Полная очистка с версионным контролем"""
         
-        logger.debug("🔧 [STATE_RESET] Starting full state reset...")
+        logger.debug("[CONFIG] [STATE_RESET] Starting full state reset...")
         
         # 1. КРИТИЧЕСКОЕ: Полная реинициализация specialization_tracker buffers
         for i, cell in enumerate(self.gmlp_cells):
             # ГЛАВНАЯ ПРОБЛЕМА: specialization_tracker версии
             if hasattr(cell, 'specialization_tracker'):
                 old_version = cell.specialization_tracker._version if hasattr(cell.specialization_tracker, '_version') else 'N/A'
-                logger.debug(f"🔧 [STATE_RESET] Cell {i} old tracker version: {old_version}")
+                logger.debug(f"[CONFIG] [STATE_RESET] Cell {i} old tracker version: {old_version}")
                 
                 # Полная реинициализация buffer вместо inplace операций
                 cell.register_buffer(
@@ -883,7 +883,7 @@ class EmergentCubeTrainer(nn.Module):
                 )
                 
                 new_version = cell.specialization_tracker._version if hasattr(cell.specialization_tracker, '_version') else 'N/A'
-                logger.debug(f"🔧 [STATE_RESET] Cell {i} new tracker version: {new_version}")
+                logger.debug(f"[CONFIG] [STATE_RESET] Cell {i} new tracker version: {new_version}")
             
             # Очистка memory states
             if hasattr(cell.base_gmlp, 'memory_state'):
@@ -908,7 +908,7 @@ class EmergentCubeTrainer(nn.Module):
         # 4. Принудительная сборка мусора
         gc.collect()
         
-        logger.debug("🔧 [STATE_RESET] Full state reset completed")
+        logger.debug("[CONFIG] [STATE_RESET] Full state reset completed")
     
     def _process_single_cell(self, cell_state: torch.Tensor, neighbor_states: torch.Tensor, 
                            external_input: torch.Tensor, cell_idx: int) -> torch.Tensor:
@@ -961,85 +961,85 @@ class EmergentCubeTrainer(nn.Module):
         }
         
         # Compute loss с mixed precision support
-        logger.debug("🔍 [TRAIN_STEP] Computing loss...")
+        logger.debug("[MAGNIFY] [TRAIN_STEP] Computing loss...")
         try:
             if self.config.mixed_precision and self.scaler is not None:
                 with autocast('cpu'):  # Specify device type
                     losses = self.compute_loss(question_outputs, targets)
-                logger.debug("🔍 [TRAIN_STEP] Loss computed with mixed precision")
+                logger.debug("[MAGNIFY] [TRAIN_STEP] Loss computed with mixed precision")
             else:
                 losses = self.compute_loss(question_outputs, targets)
-                logger.debug("🔍 [TRAIN_STEP] Loss computed without mixed precision")
+                logger.debug("[MAGNIFY] [TRAIN_STEP] Loss computed without mixed precision")
             
-            logger.debug(f"🔍 [TRAIN_STEP] Loss components: {list(losses.keys())}")
+            logger.debug(f"[MAGNIFY] [TRAIN_STEP] Loss components: {list(losses.keys())}")
             
             # Check loss computational graph
             for key, loss_tensor in losses.items():
                 if torch.is_tensor(loss_tensor) and loss_tensor.requires_grad:
-                    logger.debug(f"🔍 [TRAIN_STEP] Loss {key}: value={loss_tensor.item():.6f}, grad_fn={loss_tensor.grad_fn}")
+                    logger.debug(f"[MAGNIFY] [TRAIN_STEP] Loss {key}: value={loss_tensor.item():.6f}, grad_fn={loss_tensor.grad_fn}")
             
         except Exception as e:
-            logger.error(f"❌ [TRAIN_STEP] Loss computation failed: {e}")
+            logger.error(f"[ERROR] [TRAIN_STEP] Loss computation failed: {e}")
             raise
         
         # RESEARCH INTEGRATION: Backward pass с strategic tensor management
-        logger.debug("🔍 [TRAIN_STEP] Starting backward pass...")
+        logger.debug("[MAGNIFY] [TRAIN_STEP] Starting backward pass...")
         try:
             total_loss = losses['total_loss']
-            logger.debug(f"🔍 [TRAIN_STEP] Total loss: {total_loss.item():.6f}, grad_fn: {total_loss.grad_fn}")
+            logger.debug(f"[MAGNIFY] [TRAIN_STEP] Total loss: {total_loss.item():.6f}, grad_fn: {total_loss.grad_fn}")
             
             # Critical: Check if this tensor has already been backwarded through
             if hasattr(total_loss, '_backward_hooks') and total_loss._backward_hooks:
-                logger.warning(f"⚠️ [TRAIN_STEP] Total loss already has backward hooks: {total_loss._backward_hooks}")
+                logger.warning(f"[WARNING] [TRAIN_STEP] Total loss already has backward hooks: {total_loss._backward_hooks}")
             
             # RESEARCH INTEGRATION: Strategic retain_graph usage
             # Only retain graph for multi-objective loss components if needed
             retain_graph = self.config.adaptive_loss_weighting and len(losses) > 1
             
             if retain_graph:
-                logger.debug("🔍 [TRAIN_STEP] Using retain_graph=True for multi-objective loss")
+                logger.debug("[MAGNIFY] [TRAIN_STEP] Using retain_graph=True for multi-objective loss")
             
             # RESEARCH INTEGRATION: Mixed precision backward pass
             if self.config.mixed_precision and self.scaler is not None:
                 self.scaler.scale(total_loss).backward(retain_graph=retain_graph)
-                logger.debug("🔍 [TRAIN_STEP] Backward completed with mixed precision")
+                logger.debug("[MAGNIFY] [TRAIN_STEP] Backward completed with mixed precision")
             else:
                 total_loss.backward(retain_graph=retain_graph)
-                logger.debug("🔍 [TRAIN_STEP] Backward completed without mixed precision")
+                logger.debug("[MAGNIFY] [TRAIN_STEP] Backward completed without mixed precision")
             
         except RuntimeError as e:
             if "backward through the graph a second time" in str(e):
-                logger.error("❌ [TRAIN_STEP] COMPUTATIONAL GRAPH REUSE DETECTED!")
-                logger.error("🔍 [DEBUG] Analyzing computational graph...")
+                logger.error("[ERROR] [TRAIN_STEP] COMPUTATIONAL GRAPH REUSE DETECTED!")
+                logger.error("[MAGNIFY] [DEBUG] Analyzing computational graph...")
                 
                 # Detailed graph analysis
                 self._debug_computational_graph(question_outputs, losses, targets)
-                logger.error(f"❌ [TRAIN_STEP] Full error: {e}")
+                logger.error(f"[ERROR] [TRAIN_STEP] Full error: {e}")
                 raise
             else:
-                logger.error(f"❌ [TRAIN_STEP] Other backward error: {e}")
+                logger.error(f"[ERROR] [TRAIN_STEP] Other backward error: {e}")
                 raise
         
         # Gradient clipping
         if self.config.gradient_balancing:
-            logger.debug("🔍 [TRAIN_STEP] Applying gradient clipping...")
+            logger.debug("[MAGNIFY] [TRAIN_STEP] Applying gradient clipping...")
             torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
         
         # RESEARCH INTEGRATION: Optimizer step с mixed precision support
-        logger.debug("🔍 [TRAIN_STEP] Taking optimizer step...")
+        logger.debug("[MAGNIFY] [TRAIN_STEP] Taking optimizer step...")
         if self.config.mixed_precision and self.scaler is not None:
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            logger.debug("🔍 [TRAIN_STEP] Optimizer step completed with mixed precision")
+            logger.debug("[MAGNIFY] [TRAIN_STEP] Optimizer step completed with mixed precision")
         else:
             self.optimizer.step()
-            logger.debug("🔍 [TRAIN_STEP] Optimizer step completed without mixed precision")
+            logger.debug("[MAGNIFY] [TRAIN_STEP] Optimizer step completed without mixed precision")
         
         # RESEARCH INTEGRATION: Tensor lifecycle management after step
         self._manage_tensor_lifecycle()
         
         # Clear gradients after step to free graph
-        logger.debug("🔍 [TRAIN_STEP] Final gradient clearing...")
+        logger.debug("[MAGNIFY] [TRAIN_STEP] Final gradient clearing...")
         self.optimizer.zero_grad()
         
         # Increment training step counter
@@ -1066,7 +1066,7 @@ class EmergentCubeTrainer(nn.Module):
             # Detach all loss values for return
             losses_detached = {k: v.detach() if torch.is_tensor(v) else v for k, v in losses.items()}
         
-        logger.debug("🔍 [TRAIN_STEP] Train step completed successfully")
+        logger.debug("[MAGNIFY] [TRAIN_STEP] Train step completed successfully")
         
         return {
             'total_loss': losses_detached['total_loss'].item(),
@@ -1082,10 +1082,10 @@ class EmergentCubeTrainer(nn.Module):
                                   targets: Dict[str, torch.Tensor]):
         """Debug computational graph для finding reuse issues"""
         
-        logger.error("🔍 [DEBUG_GRAPH] === COMPUTATIONAL GRAPH ANALYSIS ===")
+        logger.error("[MAGNIFY] [DEBUG_GRAPH] === COMPUTATIONAL GRAPH ANALYSIS ===")
         
         # 1. Check parameter states
-        logger.error("🔍 [DEBUG_GRAPH] Parameter analysis:")
+        logger.error("[MAGNIFY] [DEBUG_GRAPH] Parameter analysis:")
         
         # gMLP cells memory states
         for i, cell in enumerate(self.gmlp_cells[:3]):  # First 3 cells
@@ -1105,7 +1105,7 @@ class EmergentCubeTrainer(nn.Module):
                 logger.error(f"   Loss projection {name}: requires_grad={param.requires_grad}, grad_fn={param.grad_fn}")
         
         # 2. Check dynamic layer creation
-        logger.error("🔍 [DEBUG_GRAPH] Dynamic layer analysis:")
+        logger.error("[MAGNIFY] [DEBUG_GRAPH] Dynamic layer analysis:")
         
         if hasattr(self, 'surface_projection'):
             logger.error(f"   Surface projection exists: {self.surface_projection}")
@@ -1113,7 +1113,7 @@ class EmergentCubeTrainer(nn.Module):
                 logger.error(f"   Surface proj {name}: requires_grad={param.requires_grad}")
         
         # 3. Check outputs computational graph
-        logger.error("🔍 [DEBUG_GRAPH] Output tensor analysis:")
+        logger.error("[MAGNIFY] [DEBUG_GRAPH] Output tensor analysis:")
         
         for key, tensor in outputs.items():
             if torch.is_tensor(tensor) and tensor.requires_grad:
@@ -1121,10 +1121,10 @@ class EmergentCubeTrainer(nn.Module):
                 
                 # Check if tensor has backward hooks (indication of previous backward)
                 if hasattr(tensor, '_backward_hooks') and tensor._backward_hooks:
-                    logger.error(f"   ⚠️ Output {key} has backward hooks: {tensor._backward_hooks}")
+                    logger.error(f"   [WARNING] Output {key} has backward hooks: {tensor._backward_hooks}")
         
         # 4. Check base trainer state
-        logger.error("🔍 [DEBUG_GRAPH] Base trainer analysis:")
+        logger.error("[MAGNIFY] [DEBUG_GRAPH] Base trainer analysis:")
         
         if hasattr(self, 'base_trainer'):
             logger.error(f"   Base trainer mode: {self.base_trainer.training}")
@@ -1174,7 +1174,7 @@ def create_emergent_trainer(cube_dimensions: Tuple[int, int, int] = (15, 15, 11)
     
     trainer = EmergentCubeTrainer(config, device)
     
-    logger.info("🚀 Emergent trainer created for Stage 3.1.4.1")
+    logger.info("[START] Emergent trainer created for Stage 3.1.4.1")
     info = trainer.get_system_info()
     logger.info(f"   System: {info['total_system_params']:,} parameters")
     logger.info(f"   Lattice: {info['total_cells']} cells × {info['avg_params_per_cell']:.0f} params")
@@ -1210,11 +1210,11 @@ def test_emergent_training_basic() -> bool:
         assert 'total_loss' in metrics
         assert 'cosine_similarity' in metrics
         
-        logger.info("✅ EmergentCubeTrainer basic test passed")
+        logger.info("[OK] EmergentCubeTrainer basic test passed")
         return True
         
     except Exception as e:
-        logger.error(f"❌ EmergentCubeTrainer test failed: {e}")
+        logger.error(f"[ERROR] EmergentCubeTrainer test failed: {e}")
         return False
 
 
@@ -1222,6 +1222,6 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     success = test_emergent_training_basic()
     if success:
-        print("🎯 Stage 3.1.4.1 Emergent Training Infrastructure ready!")
+        print("[TARGET] Stage 3.1.4.1 Emergent Training Infrastructure ready!")
     else:
-        print("❌ Issues detected in emergent training system")
+        print("[ERROR] Issues detected in emergent training system")

@@ -56,14 +56,14 @@ class EmbeddingProcessor(nn.Module):
             self.reshaper = self._init_embedding_reshaper()
         else:
             self.reshaper = None  # Не нужен для surface-only режима
-            logger.info("📄 EmbeddingReshaper пропущен для SURFACE_ONLY режима")
+            logger.info("[FILE] EmbeddingReshaper пропущен для SURFACE_ONLY режима")
         
         # 2. Lattice3D для 3D обработки (только для non-surface режимов)
         if config.processing_mode != ProcessingMode.SURFACE_ONLY:
             self.lattice = self._init_lattice_3d()
         else:
             self.lattice = None  # Не используется в surface-only режиме
-            logger.info("🎲 Lattice3D пропущен для SURFACE_ONLY режима")
+            logger.info("[DICE] Lattice3D пропущен для SURFACE_ONLY режима")
         
         # 3. Learnable параметры для SURFACE_ONLY режима
         if config.processing_mode == ProcessingMode.SURFACE_ONLY:
@@ -88,10 +88,10 @@ class EmbeddingProcessor(nn.Module):
         self.to(self.device)
         
         # Инфо о готовности
-        logger.info(f"✅ EmbeddingProcessor инициализирован")
-        logger.info(f"📊 Режим: {config.processing_mode.value}")
-        logger.info(f"🎯 Целевая схожесть: {config.target_similarity:.1%}")
-        logger.info(f"🔄 Шаги распространения: {config.propagation_steps}")
+        logger.info(f"[OK] EmbeddingProcessor инициализирован")
+        logger.info(f"[DATA] Режим: {config.processing_mode.value}")
+        logger.info(f"[TARGET] Целевая схожесть: {config.target_similarity:.1%}")
+        logger.info(f"[REFRESH] Шаги распространения: {config.propagation_steps}")
     
     def _init_surface_learnable_params(self):
         """Инициализация learnable параметров для SURFACE_ONLY режима"""
@@ -116,7 +116,7 @@ class EmbeddingProcessor(nn.Module):
             )
         })
         
-        logger.info(f"✅ Surface learnable parameters initialized:")
+        logger.info(f"[OK] Surface learnable parameters initialized:")
         total_params = (
             sum(p.numel() for p in [
                 self.diffusion_alpha, self.diffusion_beta, 
@@ -125,7 +125,7 @@ class EmbeddingProcessor(nn.Module):
             ]) +
             sum(p.numel() for p in self.surface_modules.parameters())
         )
-        logger.info(f"   📊 Total learnable parameters: {total_params:,}")
+        logger.info(f"   [DATA] Total learnable parameters: {total_params:,}")
     
     def _init_embedding_reshaper(self) -> EmbeddingReshaper:
         """Инициализировать EmbeddingReshaper"""
@@ -139,7 +139,7 @@ class EmbeddingProcessor(nn.Module):
             semantic_threshold=self.config.semantic_threshold
         )
         
-        logger.info(f"✅ EmbeddingReshaper готов: {self.config.cube_shape}")
+        logger.info(f"[OK] EmbeddingReshaper готов: {self.config.cube_shape}")
         return reshaper
     
     def _init_lattice_3d(self) -> Lattice3D:
@@ -163,10 +163,10 @@ class EmbeddingProcessor(nn.Module):
         try:
             # Создаем Lattice3D напрямую с объектом конфигурации
             lattice = Lattice3D(lattice_config)
-            logger.info(f"✅ Lattice3D готов: {self.config.lattice_size}")
+            logger.info(f"[OK] Lattice3D готов: {self.config.lattice_size}")
             return lattice
         except Exception as e:
-            logger.error(f"❌ Ошибка инициализации Lattice3D: {e}")
+            logger.error(f"[ERROR] Ошибка инициализации Lattice3D: {e}")
             raise
     
     def forward(self, input_embedding: torch.Tensor) -> torch.Tensor:
@@ -214,7 +214,7 @@ class EmbeddingProcessor(nn.Module):
             return output_batch
             
         except Exception as e:
-            logger.error(f"❌ Ошибка обработки эмбединга: {e}")
+            logger.error(f"[ERROR] Ошибка обработки эмбединга: {e}")
             raise
     
     def _process_through_lattice(self, matrix_3d: torch.Tensor) -> torch.Tensor:
@@ -240,13 +240,13 @@ class EmbeddingProcessor(nn.Module):
                 return self._dialogue_processing(matrix_3d)
             elif self.config.processing_mode == ProcessingMode.SURFACE_ONLY:
                 # Surface-only: должен использоваться другой pipeline
-                logger.warning("⚠️  _process_through_lattice вызван для SURFACE_ONLY режима. Используйте _surface_only_processing.")
+                logger.warning("[WARNING]  _process_through_lattice вызван для SURFACE_ONLY режима. Используйте _surface_only_processing.")
                 return matrix_3d  # Возвращаем без изменений
             else:
                 raise ValueError(f"Неизвестный режим: {self.config.processing_mode}")
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка в Lattice3D обработке: {e}")
+            logger.error(f"[ERROR] Ошибка в Lattice3D обработке: {e}")
             # Fallback: возвращаем исходную матрицу
             return matrix_3d
     
@@ -307,7 +307,7 @@ class EmbeddingProcessor(nn.Module):
         
         # Логирование
         if self.config.verbose_logging:
-            logger.info(f"📊 Cosine similarity: {avg_similarity:.3f} (цель: {self.config.target_similarity:.3f})")
+            logger.info(f"[DATA] Cosine similarity: {avg_similarity:.3f} (цель: {self.config.target_similarity:.3f})")
             logger.info(f"⏱️ Время обработки: {processing_time:.3f}s")
     
     def get_metrics(self) -> Dict[str, Any]:
@@ -321,7 +321,7 @@ class EmbeddingProcessor(nn.Module):
     def set_mode(self, mode: ProcessingMode):
         """Изменить режим обработки"""
         self.config.processing_mode = mode
-        logger.info(f"🔄 Режим изменен на: {mode.value}")
+        logger.info(f"[REFRESH] Режим изменен на: {mode.value}")
     
     def validate_quality(self, input_embedding: torch.Tensor, output_embedding: torch.Tensor) -> bool:
         """
@@ -353,7 +353,7 @@ class EmbeddingProcessor(nn.Module):
             torch.Tensor: Обработанные surface embeddings той же размерности
         """
         if self.config.debug_mode:
-            logger.debug(f"🔄 Surface-only processing: {input_embedding.shape}")
+            logger.debug(f"[REFRESH] Surface-only processing: {input_embedding.shape}")
         
         batch_size = input_embedding.shape[0]
         surface_size = input_embedding.shape[1]
@@ -386,7 +386,7 @@ class EmbeddingProcessor(nn.Module):
         output_batch = torch.stack(processed_surfaces).to(self.device)
         
         if self.config.debug_mode:
-            logger.debug(f"🎯 Surface-only результат: {output_batch.shape}")
+            logger.debug(f"[TARGET] Surface-only результат: {output_batch.shape}")
         
         return output_batch
     
@@ -404,7 +404,7 @@ class EmbeddingProcessor(nn.Module):
         
         # === ЭТАП 1: 1D → 3D ПРЕОБРАЗОВАНИЕ ===
         if self.config.debug_mode:
-            logger.debug(f"🔄 Этап 1: Преобразование {input_embedding.shape} → 3D")
+            logger.debug(f"[REFRESH] Этап 1: Преобразование {input_embedding.shape} → 3D")
         
         # Список для хранения 3D матриц
         matrices_3d = []
@@ -419,7 +419,7 @@ class EmbeddingProcessor(nn.Module):
         
         # === ЭТАП 2: 3D ОБРАБОТКА ЧЕРЕЗ LATTICE ===
         if self.config.debug_mode:
-            logger.debug(f"🧠 Этап 2: Обработка через Lattice3D {batch_3d.shape}")
+            logger.debug(f"[BRAIN] Этап 2: Обработка через Lattice3D {batch_3d.shape}")
         
         # Обрабатываем каждый пример в batch отдельно (пока нет batch support в Lattice3D)
         processed_matrices = []
@@ -435,7 +435,7 @@ class EmbeddingProcessor(nn.Module):
         
         # === ЭТАП 3: 3D → 1D ПРЕОБРАЗОВАНИЕ ===
         if self.config.debug_mode:
-            logger.debug(f"🔄 Этап 3: Преобразование 3D → {self.config.output_dim}D")
+            logger.debug(f"[REFRESH] Этап 3: Преобразование 3D → {self.config.output_dim}D")
         
         output_embeddings = []
         
@@ -468,7 +468,7 @@ class EmbeddingProcessor(nn.Module):
         depth = self.config.surface_processing_depth  # 11 layers по умолчанию
         
         if self.config.debug_mode:
-            logger.debug(f"🧠 Emergent processing: surface {h}×{w}, depth {depth}")
+            logger.debug(f"[BRAIN] Emergent processing: surface {h}×{w}, depth {depth}")
         
         # Создаем 3D representation для emergent processing
         # surface → volume → surface (emergent internal behavior)

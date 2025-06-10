@@ -48,7 +48,7 @@ def test_components():
             enable_quality_filter=False,  # Отключаем фильтрацию для простоты
             use_cache=True
         )
-        logger.info(f"✅ Dataset created: {len(dataset)} pairs")
+        logger.info(f"[OK] Dataset created: {len(dataset)} pairs")
         
         # Тест DataLoader
         dataloader = dataset.get_dataloader(batch_size=2, shuffle=False)
@@ -58,7 +58,7 @@ def test_components():
                 break
                 
     except Exception as e:
-        logger.error(f"❌ Dataset creation failed: {e}")
+        logger.error(f"[ERROR] Dataset creation failed: {e}")
         return False
     
     # 2. Тест создания CubeTrainer
@@ -78,10 +78,10 @@ def test_components():
         
         trainer = CubeTrainer(config=config)
         trainer.initialize_components()
-        logger.info("✅ CubeTrainer created and initialized")
+        logger.info("[OK] CubeTrainer created and initialized")
         
     except Exception as e:
-        logger.error(f"❌ CubeTrainer creation failed: {e}")
+        logger.error(f"[ERROR] CubeTrainer creation failed: {e}")
         return False
     
     # 3. Тест forward pass
@@ -105,10 +105,10 @@ def test_components():
             ).item()
             logger.info(f"   Identity similarity: {similarity:.4f}")
             
-        logger.info("✅ Forward pass successful")
+        logger.info("[OK] Forward pass successful")
         
     except Exception as e:
-        logger.error(f"❌ Forward pass failed: {e}")
+        logger.error(f"[ERROR] Forward pass failed: {e}")
         return False
     
     return True
@@ -165,7 +165,7 @@ def test_simple_training():
                 
                 # Проверяем что эмбединги не NaN
                 if torch.isnan(q_emb).any() or torch.isnan(a_emb).any():
-                    logger.error("❌ NaN detected in embeddings")
+                    logger.error("[ERROR] NaN detected in embeddings")
                     return False
                 
                 # Простой forward без градиентов
@@ -176,11 +176,11 @@ def test_simple_training():
                     ).item()
                     logger.info(f"      Similarity: {similarity:.4f}")
         
-        logger.info("✅ Simplified training completed")
+        logger.info("[OK] Simplified training completed")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Simplified training failed: {e}")
+        logger.error(f"[ERROR] Simplified training failed: {e}")
         return False
 
 
@@ -191,16 +191,16 @@ def main():
     
     # Тест компонентов
     if not test_components():
-        logger.error("❌ Component tests failed")
+        logger.error("[ERROR] Component tests failed")
         return 1
     
     # Тест простого обучения
     if not test_simple_training():
-        logger.error("❌ Simple training test failed")
+        logger.error("[ERROR] Simple training test failed")
         return 1
     
-    logger.info("✅ ALL TESTS PASSED!")
-    logger.info("🚀 Components are ready for full dialogue training")
+    logger.info("[OK] ALL TESTS PASSED!")
+    logger.info("[START] Components are ready for full dialogue training")
     return 0
 
 

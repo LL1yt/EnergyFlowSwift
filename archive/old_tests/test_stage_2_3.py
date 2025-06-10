@@ -47,11 +47,11 @@ def test_dataset_expansion():
         )
         
         expander = AdvancedDatasetExpander(config)
-        print(f"   ✅ DatasetExpander created with {len(expander.domain_templates)} domains")
+        print(f"   [OK] DatasetExpander created with {len(expander.domain_templates)} domains")
         
         # Тест 2: Генерация domain templates
         ai_ml_pairs = expander.generate_domain_pairs("ai_ml", num_pairs=3)
-        print(f"   ✅ Generated {len(ai_ml_pairs)} AI/ML pairs")
+        print(f"   [OK] Generated {len(ai_ml_pairs)} AI/ML pairs")
         
         # Тест 3: Quality scoring
         test_pair = ai_ml_pairs[0]
@@ -59,14 +59,14 @@ def test_dataset_expansion():
             test_pair["question"], 
             test_pair["answer"]
         )
-        print(f"   ✅ Quality score computed: {quality_score:.3f}")
+        print(f"   [OK] Quality score computed: {quality_score:.3f}")
         
         # Тест 4: Создание expanded dataset
         expanded_dataset = create_expanded_dataset(
             target_pairs=20,  # Небольшое количество для теста
             quality_threshold=0.5
         )
-        print(f"   ✅ Expanded dataset created: {len(expanded_dataset)} pairs")
+        print(f"   [OK] Expanded dataset created: {len(expanded_dataset)} pairs")
         
         return True, f"Dataset expansion: {len(expanded_dataset)} pairs generated"
         
@@ -86,11 +86,11 @@ def test_advanced_loss_functions():
             use_contrastive=True,
             curriculum_warmup_epochs=3
         )
-        print(f"   ✅ Advanced loss function created")
+        print(f"   [OK] Advanced loss function created")
         
         # Тест 2: Negative sampler
         negative_sampler = NegativeSampler(embedding_dim=768)
-        print(f"   ✅ Negative sampler created")
+        print(f"   [OK] Negative sampler created")
         
         # Тест 3: Создание тестовых данных
         batch_size = 4
@@ -105,7 +105,7 @@ def test_advanced_loss_functions():
         negative_embeddings = negative_sampler.sample_random_negatives(
             target_embeddings, num_negatives=3
         )
-        print(f"   ✅ Negative samples generated: {negative_embeddings.shape}")
+        print(f"   [OK] Negative samples generated: {negative_embeddings.shape}")
         
         # Убеждаемся что negative_embeddings имеет правильную размерность для contrastive loss
         if negative_embeddings.shape[0] != batch_size:
@@ -123,14 +123,14 @@ def test_advanced_loss_functions():
             negative_embeddings=negative_embeddings
         )
         
-        print(f"   ✅ Loss components computed:")
+        print(f"   [OK] Loss components computed:")
         for loss_name, loss_value in losses.items():
             if isinstance(loss_value, torch.Tensor):
                 print(f"      {loss_name}: {loss_value.item():.4f}")
         
         # Тест 5: Curriculum progress
         curriculum_progress = advanced_loss_fn.get_curriculum_progress()
-        print(f"   ✅ Curriculum progress: {curriculum_progress:.1%}")
+        print(f"   [OK] Curriculum progress: {curriculum_progress:.1%}")
         
         return True, f"Advanced loss functions: {len(losses)} components working"
         
@@ -149,7 +149,7 @@ def test_multi_teacher_distillation():
         from .multi_teacher_distillation import MultiTeacherConfig, MultiTeacherDistillation
         config = MultiTeacherConfig(teacher_models=["distilbert"])
         multi_teacher = MultiTeacherDistillation(config)
-        print(f"   ✅ Multi-teacher system created with {len(multi_teacher.teachers)} teachers")
+        print(f"   [OK] Multi-teacher system created with {len(multi_teacher.teachers)} teachers")
         
         # Тест 2: Тестовые dialogue pairs
         test_dialogue_pairs = [
@@ -165,7 +165,7 @@ def test_multi_teacher_distillation():
         
         # Тест 3: Teacher statistics
         teacher_stats = multi_teacher.get_teacher_statistics()
-        print(f"   ✅ Teacher statistics retrieved for {len(teacher_stats)} teachers")
+        print(f"   [OK] Teacher statistics retrieved for {len(teacher_stats)} teachers")
         
         for teacher_name, stats in teacher_stats.items():
             print(f"      {teacher_name}: weight={stats['current_weight']:.3f}")
@@ -181,7 +181,7 @@ def test_multi_teacher_distillation():
             target_embeddings=target_embeddings
         )
         
-        print(f"   ✅ Distillation loss computed:")
+        print(f"   [OK] Distillation loss computed:")
         for loss_name, loss_value in distillation_losses.items():
             if isinstance(loss_value, torch.Tensor):
                 print(f"      {loss_name}: {loss_value.item():.4f}")
@@ -209,19 +209,19 @@ def test_integrated_training_system():
             learning_rate=0.001,
             batch_size=2
         )
-        print(f"   ✅ Stage23Config created")
+        print(f"   [OK] Stage23Config created")
         
         # Тест 2: Создание AdvancedTrainingStage23
         training_system = AdvancedTrainingStage23(config)
-        print(f"   ✅ AdvancedTrainingStage23 created")
+        print(f"   [OK] AdvancedTrainingStage23 created")
         print(f"      Target Q→A similarity: {config.target_qa_similarity:.1%}")
         print(f"      Target dataset size: {config.target_pairs} pairs")
         
         # Тест 3: Setup training components (без multi-teacher для скорости)
-        print("   🔧 Setting up training components...")
+        print("   [CONFIG] Setting up training components...")
         # Для тестирования пропускаем setup_training_components (требует инициализации CubeTrainer)
         # training_system.setup_training_components()
-        print(f"   ✅ Training components setup skipped for testing")
+        print(f"   [OK] Training components setup skipped for testing")
         
         # Тест 4: Training summary (вручную создаем advanced_loss_fn для тестирования)
         from .advanced_loss_functions import create_advanced_loss_function
@@ -232,7 +232,7 @@ def test_integrated_training_system():
         )
         
         summary = training_system.get_training_summary()
-        print(f"   ✅ Training summary generated:")
+        print(f"   [OK] Training summary generated:")
         print(f"      Config target pairs: {summary['config']['target_pairs']}")
         print(f"      Use curriculum learning: {summary['config']['use_curriculum_learning']}")
         print(f"      Use multi-teacher: {summary['config']['use_multi_teacher']}")
@@ -259,7 +259,7 @@ def test_integration_compatibility():
         negative_sampler = NegativeSampler(embedding_dim=embedding_dim)
         negatives = negative_sampler.sample_random_negatives(test_embeddings, num_negatives=3)
         
-        print(f"   ✅ Dimension compatibility: {test_embeddings.shape} → {negatives.shape}")
+        print(f"   [OK] Dimension compatibility: {test_embeddings.shape} → {negatives.shape}")
         
         # Тест 2: Config compatibility
         dataset_config = DatasetExpansionConfig()
@@ -267,7 +267,7 @@ def test_integration_compatibility():
         teacher_config = MultiTeacherConfig()
         stage_config = Stage23Config()
         
-        print(f"   ✅ All configs created successfully:")
+        print(f"   [OK] All configs created successfully:")
         print(f"      Dataset: {dataset_config.quality_score_threshold}")
         print(f"      Loss: {loss_config.curriculum_warmup_epochs} warmup epochs")
         print(f"      Teacher: {len(teacher_config.teacher_models)} models")
@@ -277,7 +277,7 @@ def test_integration_compatibility():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         test_tensor = torch.randn(2, 768).to(device)
         
-        print(f"   ✅ PyTorch compatibility: device={device}, tensor shape={test_tensor.shape}")
+        print(f"   [OK] PyTorch compatibility: device={device}, tensor shape={test_tensor.shape}")
         
         return True, f"Integration compatibility: all components compatible"
         
@@ -287,7 +287,7 @@ def test_integration_compatibility():
 
 def run_stage_2_3_comprehensive_test():
     """Запуск comprehensive test всех Stage 2.3 компонентов"""
-    print("🚀 STAGE 2.3 ADVANCED TRAINING ENHANCEMENT - COMPREHENSIVE TEST")
+    print("[START] STAGE 2.3 ADVANCED TRAINING ENHANCEMENT - COMPREHENSIVE TEST")
     print("=" * 70)
     
     test_results = []
@@ -315,10 +315,10 @@ def run_stage_2_3_comprehensive_test():
             })
             
             if success:
-                print(f"✅ {test_name}: PASSED")
+                print(f"[OK] {test_name}: PASSED")
                 print(f"   {message}")
             else:
-                print(f"❌ {test_name}: FAILED")
+                print(f"[ERROR] {test_name}: FAILED")
                 print(f"   {message}")
                 
         except Exception as e:
@@ -336,25 +336,25 @@ def run_stage_2_3_comprehensive_test():
     total_tests = len(test_results)
     
     print("\n" + "=" * 70)
-    print("🎯 STAGE 2.3 TEST RESULTS SUMMARY")
+    print("[TARGET] STAGE 2.3 TEST RESULTS SUMMARY")
     print("=" * 70)
     
-    print(f"📊 Tests passed: {passed_tests}/{total_tests} ({passed_tests/total_tests*100:.1f}%)")
+    print(f"[DATA] Tests passed: {passed_tests}/{total_tests} ({passed_tests/total_tests*100:.1f}%)")
     print(f"⏱️ Total test time: {total_time:.2f} seconds")
-    print(f"🎯 Stage 2.3 readiness: {'✅ READY' if passed_tests == total_tests else '❌ NEEDS FIXES'}")
+    print(f"[TARGET] Stage 2.3 readiness: {'[OK] READY' if passed_tests == total_tests else '[ERROR] NEEDS FIXES'}")
     
     # Детальные результаты
-    print(f"\n📋 Detailed Results:")
+    print(f"\n[INFO] Detailed Results:")
     for result in test_results:
-        status = "✅ PASS" if result["success"] else "❌ FAIL"
+        status = "[OK] PASS" if result["success"] else "[ERROR] FAIL"
         print(f"   {status} - {result['test']}: {result['message']}")
     
     # Рекомендации
     if passed_tests == total_tests:
-        print(f"\n🚀 RECOMMENDATION: Stage 2.3 infrastructure is READY for production testing!")
+        print(f"\n[START] RECOMMENDATION: Stage 2.3 infrastructure is READY for production testing!")
         print(f"   Next step: Run full training with run_stage_2_3_training() to achieve 50%+ Q→A similarity")
     else:
-        print(f"\n🔧 RECOMMENDATION: Fix failing components before proceeding:")
+        print(f"\n[CONFIG] RECOMMENDATION: Fix failing components before proceeding:")
         failed_tests = [r["test"] for r in test_results if not r["success"]]
         for failed_test in failed_tests:
             print(f"   - {failed_test}")
@@ -372,7 +372,7 @@ def run_stage_2_3_comprehensive_test():
             "detailed_results": test_results
         }, f, indent=2)
     
-    print(f"\n💾 Test results saved to: {results_file}")
+    print(f"\n[SAVE] Test results saved to: {results_file}")
     
     return passed_tests == total_tests
 
@@ -382,7 +382,7 @@ if __name__ == "__main__":
     success = run_stage_2_3_comprehensive_test()
     
     if success:
-        print(f"\n🎉 ALL TESTS PASSED! Stage 2.3 Advanced Training Enhancement is ready!")
-        print(f"🚀 Ready to test achieving 50%+ Q→A similarity target!")
+        print(f"\n[SUCCESS] ALL TESTS PASSED! Stage 2.3 Advanced Training Enhancement is ready!")
+        print(f"[START] Ready to test achieving 50%+ Q→A similarity target!")
     else:
-        print(f"\n⚠️ Some tests failed. Please review and fix before proceeding.") 
+        print(f"\n[WARNING] Some tests failed. Please review and fix before proceeding.") 

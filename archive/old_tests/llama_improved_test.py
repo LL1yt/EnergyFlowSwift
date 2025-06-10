@@ -106,7 +106,7 @@ class ImprovedLlamaValidator:
         qa_similarities = F.cosine_similarity(questions_tensor, answers_tensor, dim=1)
         avg_qa_similarity = qa_similarities.mean().item()
         
-        logger.info(f"📊 Generated Q→A data:")
+        logger.info(f"[DATA] Generated Q→A data:")
         logger.info(f"   Batch size: {batch_size}")
         logger.info(f"   Concepts: {num_concepts}")
         logger.info(f"   Avg Q→A similarity: {avg_qa_similarity:.3f}")
@@ -279,7 +279,7 @@ class ImprovedLlamaValidator:
         success_count = sum(result["success_metrics"].values())
         result["overall_success"] = success_count >= 3  # Минимум 3 из 4 критериев
         
-        logger.info(f"✅ Test completed:")
+        logger.info(f"[OK] Test completed:")
         logger.info(f"   Final loss: {final_loss:.4f}")
         logger.info(f"   Q→A similarity: {baseline_similarity:.3f} → {final_qa_similarity:.3f} (Δ{similarity_improvement:+.3f})")
         logger.info(f"   Overall success: {result['overall_success']} ({success_count}/4 criteria)")
@@ -289,7 +289,7 @@ class ImprovedLlamaValidator:
     def _run_diagnostics(self, trainer: AdapterCubeTrainer, test_data: Dict, stage: str) -> Dict[str, Any]:
         """Запуск диагностики системы"""
         
-        logger.info(f"🔍 Running {stage} diagnostics...")
+        logger.info(f"[MAGNIFY] Running {stage} diagnostics...")
         
         with torch.no_grad():
             # 1. Forward pass через adapter
@@ -397,7 +397,7 @@ class ImprovedLlamaValidator:
         with open(results_file, 'w', encoding='utf-8') as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"📁 Results saved: {results_file}")
+        logger.info(f"[FOLDER] Results saved: {results_file}")
     
     def print_detailed_summary(self, result: Dict[str, Any]):
         """Печать детального отчета"""
@@ -410,19 +410,19 @@ class ImprovedLlamaValidator:
         metrics = result["training_metrics"]
         success = result["success_metrics"]
         
-        print(f"\n📊 CONFIGURATION:")
+        print(f"\n[DATA] CONFIGURATION:")
         print(f"   Strategy: {result['strategy']}")
         print(f"   Learning rate: {config['learning_rate']}")
         print(f"   Batch size: {config['batch_size']}")
         print(f"   Epochs: {config['epochs']}")
         
-        print(f"\n🎯 TRAINING RESULTS:")
+        print(f"\n[TARGET] TRAINING RESULTS:")
         print(f"   Final loss: {metrics['final_loss']:.4f}")
         print(f"   Q→A similarity: {metrics['baseline_qa_similarity']:.3f} → {metrics['final_qa_similarity']:.3f}")
         print(f"   Improvement: {metrics['similarity_improvement']:+.3f}")
         print(f"   Training time: {metrics['training_time']:.1f}s")
         
-        print(f"\n✅ SUCCESS CRITERIA:")
+        print(f"\n[OK] SUCCESS CRITERIA:")
         print(f"   Converged: {success['converged']}")
         print(f"   Q→A learning: {success['positive_qa_learning']}")
         print(f"   Stable gradients: {success['stable_gradients']}")
@@ -433,7 +433,7 @@ class ImprovedLlamaValidator:
         pre = result["diagnostics"]["pre_training"]
         post = result["diagnostics"]["post_training"]
         
-        print(f"\n📈 PRE→POST ANALYSIS:")
+        print(f"\n[CHART] PRE→POST ANALYSIS:")
         print(f"   Q→A correlation: {pre['qa_correlations']['input_qa']:.3f} → {post['qa_correlations']['processor_qa']:.3f}")
         print(f"   Processing improvement: {post['qa_correlations']['improvement']:+.3f}")
 
@@ -461,14 +461,14 @@ if __name__ == "__main__":
     
     # Определяем устройство
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"🔧 Using device: {device}")
+    print(f"[CONFIG] Using device: {device}")
     
     # Тестируем лучшую стратегию с улучшенными метриками
     result = run_improved_llama_test("hierarchical", device)
     
-    print(f"\n🎉 Improved test completed!")
+    print(f"\n[SUCCESS] Improved test completed!")
     if result["overall_success"]:
         improvement = result["training_metrics"]["similarity_improvement"]
-        print(f"✅ SUCCESS: Q→A similarity improved by {improvement:+.3f}")
+        print(f"[OK] SUCCESS: Q→A similarity improved by {improvement:+.3f}")
     else:
-        print("❌ Issues detected - check diagnostics for details") 
+        print("[ERROR] Issues detected - check diagnostics for details") 

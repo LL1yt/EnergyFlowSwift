@@ -21,7 +21,7 @@ def test_embedding_trainer_import():
     
     try:
         from training.embedding_trainer import get_module_info
-        print("✅ Модуль embedding_trainer успешно импортирован")
+        print("[OK] Модуль embedding_trainer успешно импортирован")
         
         # Получение информации о модуле
         info = get_module_info()
@@ -33,10 +33,10 @@ def test_embedding_trainer_import():
         return True
         
     except ImportError as e:
-        print(f"❌ Ошибка импорта: {e}")
+        print(f"[ERROR] Ошибка импорта: {e}")
         return False
     except Exception as e:
-        print(f"❌ Неожиданная ошибка: {e}")
+        print(f"[ERROR] Неожиданная ошибка: {e}")
         return False
 
 def test_placeholder_classes():
@@ -56,18 +56,18 @@ def test_placeholder_classes():
         for class_name, class_obj in test_cases:
             try:
                 instance = class_obj()
-                print(f"❌ {class_name}: должен выбрасывать NotImplementedError")
+                print(f"[ERROR] {class_name}: должен выбрасывать NotImplementedError")
                 return False
             except NotImplementedError:
-                print(f"✅ {class_name}: корректно выбрасывает NotImplementedError")
+                print(f"[OK] {class_name}: корректно выбрасывает NotImplementedError")
             except Exception as e:
-                print(f"❌ {class_name}: неожиданная ошибка: {e}")
+                print(f"[ERROR] {class_name}: неожиданная ошибка: {e}")
                 return False
         
         return True
         
     except ImportError as e:
-        print(f"❌ Ошибка импорта классов: {e}")
+        print(f"[ERROR] Ошибка импорта классов: {e}")
         return False
 
 def test_dependency_check():
@@ -87,15 +87,15 @@ def test_dependency_check():
         for module_name, display_name in critical_imports:
             try:
                 __import__(module_name)
-                print(f"✅ {display_name} доступен")
+                print(f"[OK] {display_name} доступен")
             except ImportError:
-                print(f"❌ {display_name} не найден")
+                print(f"[ERROR] {display_name} не найден")
                 return False
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка проверки зависимостей: {e}")
+        print(f"[ERROR] Ошибка проверки зависимостей: {e}")
         return False
 
 def test_module_structure():
@@ -120,20 +120,20 @@ def test_module_structure():
         for file_name in required_files:
             file_path = module_path / file_name
             if file_path.exists():
-                print(f"✅ {file_name} существует")
+                print(f"[OK] {file_name} существует")
             else:
-                print(f"❌ {file_name} отсутствует")
+                print(f"[ERROR] {file_name} отсутствует")
                 missing_files.append(file_name)
         
         if missing_files:
-            print(f"❌ Отсутствующие файлы: {missing_files}")
+            print(f"[ERROR] Отсутствующие файлы: {missing_files}")
             return False
         
-        print("✅ Все обязательные файлы документации присутствуют")
+        print("[OK] Все обязательные файлы документации присутствуют")
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка проверки структуры: {e}")
+        print(f"[ERROR] Ошибка проверки структуры: {e}")
         return False
 
 def test_config_integration():
@@ -143,12 +143,12 @@ def test_config_integration():
     try:
         # Проверяем доступность config_manager
         from utils.config_manager import ConfigManager, ConfigManagerSettings
-        print("✅ ConfigManager доступен")
+        print("[OK] ConfigManager доступен")
         
         # Проверяем основную конфигурацию
         config_path = Path("config/main_config.yaml")
         if config_path.exists():
-            print("✅ Основной конфигурационный файл найден")
+            print("[OK] Основной конфигурационный файл найден")
             
             # Правильная инициализация ConfigManager
             settings = ConfigManagerSettings(
@@ -167,20 +167,20 @@ def test_config_integration():
             
             for section in required_sections:
                 if section in main_config:
-                    print(f"✅ Секция '{section}' найдена в конфигурации")
+                    print(f"[OK] Секция '{section}' найдена в конфигурации")
                 else:
-                    print(f"⚠️  Секция '{section}' отсутствует (будет добавлена позже)")
+                    print(f"[WARNING]  Секция '{section}' отсутствует (будет добавлена позже)")
             
             return True
         else:
-            print("⚠️  Основной конфигурационный файл не найден")
+            print("[WARNING]  Основной конфигурационный файл не найден")
             return True  # Не критично на этапе разработки
             
     except ImportError as e:
-        print(f"❌ ConfigManager не доступен: {e}")
+        print(f"[ERROR] ConfigManager не доступен: {e}")
         return False
     except Exception as e:
-        print(f"❌ Ошибка интеграции конфигурации: {e}")
+        print(f"[ERROR] Ошибка интеграции конфигурации: {e}")
         print(f"   Детали: {traceback.format_exc()}")
         return False
 
@@ -199,22 +199,22 @@ def test_ready_components_integration():
     for module_name, component_name in ready_components:
         try:
             __import__(module_name)
-            print(f"✅ {component_name} доступен")
+            print(f"[OK] {component_name} доступен")
             available_components.append(component_name)
         except ImportError:
-            print(f"⚠️  {component_name} пока не доступен")
+            print(f"[WARNING]  {component_name} пока не доступен")
     
     if len(available_components) >= 2:
-        print(f"✅ Достаточно компонентов для начала разработки: {available_components}")
+        print(f"[OK] Достаточно компонентов для начала разработки: {available_components}")
         return True
     else:
-        print(f"⚠️  Мало готовых компонентов, но разработка может продолжаться")
+        print(f"[WARNING]  Мало готовых компонентов, но разработка может продолжаться")
         return True  # Не критично на раннем этапе
 
 def run_all_tests():
     """Запуск всех тестов"""
     print("=" * 60)
-    print("🚀 ТЕСТИРОВАНИЕ МОДУЛЯ EMBEDDING TRAINER")
+    print("[START] ТЕСТИРОВАНИЕ МОДУЛЯ EMBEDDING TRAINER")
     print("   Phase 3.1 - Basic Infrastructure Tests")
     print("=" * 60)
     
@@ -237,21 +237,21 @@ def run_all_tests():
             else:
                 failed += 1
         except Exception as e:
-            print(f"❌ Критическая ошибка в {test_func.__name__}: {e}")
+            print(f"[ERROR] Критическая ошибка в {test_func.__name__}: {e}")
             failed += 1
     
     print("\n" + "=" * 60)
-    print("📊 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ")
-    print(f"✅ Пройдено: {passed}")
-    print(f"❌ Провалено: {failed}")
-    print(f"📈 Успешность: {(passed/(passed+failed)*100):.1f}%")
+    print("[DATA] РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ")
+    print(f"[OK] Пройдено: {passed}")
+    print(f"[ERROR] Провалено: {failed}")
+    print(f"[CHART] Успешность: {(passed/(passed+failed)*100):.1f}%")
     
     if failed == 0:
-        print("🎉 Все тесты пройдены! Модуль готов к Stage 1.1")
+        print("[SUCCESS] Все тесты пройдены! Модуль готов к Stage 1.1")
     elif passed >= 4:
-        print("🎯 Большинство тестов пройдено. Можно продолжать разработку")
+        print("[TARGET] Большинство тестов пройдено. Можно продолжать разработку")
     else:
-        print("⚠️  Критические проблемы. Требуется исправление")
+        print("[WARNING]  Критические проблемы. Требуется исправление")
     
     print("=" * 60)
     

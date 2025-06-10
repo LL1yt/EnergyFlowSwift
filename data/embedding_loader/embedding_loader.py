@@ -365,7 +365,7 @@ class EmbeddingLoader:
                         # Пробуем получить конфигурацию embedding_loader
                         config = config_manager.get_config('embedding_loader')
                         if config:
-                            logger.info("✅ Loaded embedding_loader config from ConfigManager")
+                            logger.info("[OK] Loaded embedding_loader config from ConfigManager")
                             return config
                         
                         # Пробуем секции с префиксом embedding_loader_*
@@ -378,7 +378,7 @@ class EmbeddingLoader:
                                 embedding_config[subsection] = section_data
                         
                         if embedding_config:
-                            logger.info("✅ Loaded embedding_loader config from ConfigManager (prefixed sections)")
+                            logger.info("[OK] Loaded embedding_loader config from ConfigManager (prefixed sections)")
                             return embedding_config
                             
                 except ImportError:

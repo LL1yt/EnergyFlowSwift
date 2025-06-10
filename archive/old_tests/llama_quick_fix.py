@@ -93,7 +93,7 @@ def test_llama_with_real_data(strategy: str = "hierarchical", device: str = "cpu
     questions = batch[0].to(device).float()  # 4096D (question embeddings) - конвертируем в float32
     answers = batch[1].to(device).float()    # 4096D (answer embeddings) - конвертируем в float32
     
-    logger.info(f"📊 Real data loaded:")
+    logger.info(f"[DATA] Real data loaded:")
     logger.info(f"   Questions: {questions.shape}")
     logger.info(f"   Answers: {answers.shape}")
     logger.info(f"   Baseline Q→A similarity: {F.cosine_similarity(questions, answers, dim=1).mean().item():.3f}")
@@ -182,7 +182,7 @@ def test_llama_with_real_data(strategy: str = "hierarchical", device: str = "cpu
         }
     }
     
-    logger.info(f"✅ Test completed:")
+    logger.info(f"[OK] Test completed:")
     logger.info(f"   Final loss: {final_loss:.4f}")
     logger.info(f"   Surface Q→A similarity: {surface_qa_similarities[0]:.3f} → {final_surface_qa:.3f} (Δ{surface_improvement:+.3f})")
     logger.info(f"   Overall success: {overall_success} ({success_count}/3 criteria)")
@@ -202,31 +202,31 @@ def print_results(result: Dict[str, Any]):
     training = result["training_results"]
     success = result["success_metrics"]
     
-    print(f"\n📊 MODEL INFO:")
+    print(f"\n[DATA] MODEL INFO:")
     print(f"   Strategy: {result['strategy']}")
     print(f"   Parameters: {model['parameter_count']:,}")
     print(f"   Compression: {model['compression_ratio']:.3f}")
     
-    print(f"\n📚 DATA INFO:")
+    print(f"\n[BOOKS] DATA INFO:")
     print(f"   Real dialogue pairs: {data['real_dialogue_pairs']}")
     print(f"   Baseline Q→A similarity: {data['baseline_qa_similarity']:.3f}")
     
-    print(f"\n🎯 TRAINING RESULTS:")
+    print(f"\n[TARGET] TRAINING RESULTS:")
     print(f"   Training time: {training['training_time']:.1f}s")
     print(f"   Final loss: {training['final_loss']:.4f}")
     print(f"   Surface Q→A similarity: {training['final_surface_qa_similarity']:.3f}")
     print(f"   Surface improvement: {training['surface_similarity_improvement']:+.3f}")
     
-    print(f"\n✅ SUCCESS EVALUATION:")
+    print(f"\n[OK] SUCCESS EVALUATION:")
     print(f"   Converged: {success['converged']}")
     print(f"   Positive learning: {success['positive_learning']}")
     print(f"   Stable training: {success['stable_training']}")
     print(f"   Overall success: {success['overall_success']} ({success['success_score']})")
     
     if success["overall_success"]:
-        print(f"\n🎉 SUCCESS! Architecture works with real Meta-Llama-3-8B data!")
+        print(f"\n[SUCCESS] SUCCESS! Architecture works with real Meta-Llama-3-8B data!")
     else:
-        print(f"\n🔧 Needs improvement, but basic functionality confirmed.")
+        print(f"\n[CONFIG] Needs improvement, but basic functionality confirmed.")
 
 
 if __name__ == "__main__":
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     
     # Определяем устройство
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"🔧 Using device: {device}")
+    print(f"[CONFIG] Using device: {device}")
     
     # Тестируем с реальными данными
     result = test_llama_with_real_data("hierarchical", device)
@@ -249,4 +249,4 @@ if __name__ == "__main__":
     # Печатаем результаты
     print_results(result)
     
-    print(f"\n📁 Results saved to: {output_dir}/fixed_test_results.json") 
+    print(f"\n[FOLDER] Results saved to: {output_dir}/fixed_test_results.json") 

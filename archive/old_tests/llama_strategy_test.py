@@ -175,12 +175,12 @@ class LlamaStrategyOptimizer:
                 "similarity_history": cosine_similarities
             }
             
-            logger.info(f"   ✅ Result: loss={final_loss:.3f}, similarity={final_similarity:.3f}, converged={converged}")
+            logger.info(f"   [OK] Result: loss={final_loss:.3f}, similarity={final_similarity:.3f}, converged={converged}")
             
             return result
             
         except Exception as e:
-            logger.error(f"   ❌ Failed: {e}")
+            logger.error(f"   [ERROR] Failed: {e}")
             return {
                 "strategy": strategy,
                 "learning_rate": learning_rate,
@@ -256,7 +256,7 @@ class LlamaStrategyOptimizer:
     def run_quick_test(self) -> Dict[str, Any]:
         """Быстрое тестирование (только 2 лучшие стратегии)"""
         
-        logger.info(f"🚀 Starting quick LLaMA strategy test...")
+        logger.info(f"[START] Starting quick LLaMA strategy test...")
         
         # Только лучшие стратегии для быстрого тестирования
         quick_strategies = ["learned_linear", "hierarchical"]
@@ -282,7 +282,7 @@ class LlamaStrategyOptimizer:
     def run_comprehensive_test(self) -> Dict[str, Any]:
         """Запуск полного тестирования всех стратегий"""
         
-        logger.info(f"🚀 Starting comprehensive LLaMA strategy testing...")
+        logger.info(f"[START] Starting comprehensive LLaMA strategy testing...")
         logger.info(f"   Total combinations: {len(self.strategies_to_test) * len(self.learning_rates) * len(self.batch_sizes)}")
         
         all_results = []
@@ -293,7 +293,7 @@ class LlamaStrategyOptimizer:
             for lr in self.learning_rates:
                 for batch_size in self.batch_sizes:
                     current_test += 1
-                    logger.info(f"📊 Test {current_test}/{total_tests}")
+                    logger.info(f"[DATA] Test {current_test}/{total_tests}")
                     
                     result = self.test_single_strategy(strategy, lr, batch_size)
                     all_results.append(result)
@@ -443,7 +443,7 @@ class LlamaStrategyOptimizer:
         with open(analysis_file, 'w', encoding='utf-8') as f:
             json.dump(analysis, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"📁 Results saved:")
+        logger.info(f"[FOLDER] Results saved:")
         logger.info(f"   Details: {results_file}")
         logger.info(f"   Analysis: {analysis_file}")
     
@@ -455,14 +455,14 @@ class LlamaStrategyOptimizer:
         print("🦙" * 20)
         
         summary = analysis.get("summary", {})
-        print(f"\n📊 SUMMARY:")
+        print(f"\n[DATA] SUMMARY:")
         print(f"   Tests run: {summary.get('total_tests', 0)}")
         print(f"   Successful: {summary.get('successful_tests', 0)} ({summary.get('success_rate', 0)*100:.1f}%)")
         print(f"   Converged: {summary.get('converged_tests', 0)} ({summary.get('convergence_rate', 0)*100:.1f}%)")
         
         if analysis.get("best_overall"):
             best = analysis["best_overall"]
-            print(f"\n🏆 BEST CONFIGURATION:")
+            print(f"\n[TROPHY] BEST CONFIGURATION:")
             print(f"   Strategy: {best['strategy']}")
             print(f"   Learning rate: {best['learning_rate']}")
             print(f"   Batch size: {best['batch_size']}")
@@ -474,13 +474,13 @@ class LlamaStrategyOptimizer:
         
         if analysis.get("recommendations"):
             rec = analysis["recommendations"]
-            print(f"\n💡 RECOMMENDATIONS:")
-            print(f"   🚀 Production ready: {rec.get('production_ready', 'None')}")
+            print(f"\n[IDEA] RECOMMENDATIONS:")
+            print(f"   [START] Production ready: {rec.get('production_ready', 'None')}")
             print(f"   🛠️  Development suitable: {', '.join(rec.get('development_suitable', []))}")
-            print(f"   ⚡ Fastest training: {rec.get('fastest_training', 'None')}")
-            print(f"   ⭐ Best quality: {rec.get('best_quality', 'None')}")
+            print(f"   [FAST] Fastest training: {rec.get('fastest_training', 'None')}")
+            print(f"   [STAR] Best quality: {rec.get('best_quality', 'None')}")
         
-        print(f"\n📁 Detailed results saved to: {self.output_dir}")
+        print(f"\n[FOLDER] Detailed results saved to: {self.output_dir}")
 
 
 def run_llama_quick_test(device: str = "cpu") -> Dict[str, Any]:
@@ -520,15 +520,15 @@ if __name__ == "__main__":
     
     # Определяем устройство
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"🔧 Using device: {device}")
+    print(f"[CONFIG] Using device: {device}")
     
     # Запускаем быстрый тест сначала
-    print("⚡ Running quick test first...")
+    print("[FAST] Running quick test first...")
     results = run_llama_quick_test(device)
     
-    print("\n✅ Quick test completed!")
+    print("\n[OK] Quick test completed!")
     if results.get("best_overall"):
         best = results["best_overall"]
-        print(f"🏆 Recommended strategy: {best['strategy']} (quality: {best['quality_score']:.3f})")
+        print(f"[TROPHY] Recommended strategy: {best['strategy']} (quality: {best['quality_score']:.3f})")
     else:
-        print("❌ No successful configurations found - check system setup") 
+        print("[ERROR] No successful configurations found - check system setup") 

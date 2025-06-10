@@ -96,7 +96,7 @@ class OvernightTrainingManager:
         batch_size = 1024  # Оптимально для RTX 5090
         learning_rate = 0.0001  # Lower LR для долгосрочного обучения
         
-        logger.info(f"🎯 Training configuration:")
+        logger.info(f"[TARGET] Training configuration:")
         logger.info(f"   Epochs: UNLIMITED (ручная остановка Ctrl+C)")
         logger.info(f"   Batch size: {batch_size} (оптимально для RTX 5090)")
         logger.info(f"   Learning rate: {learning_rate}")
@@ -107,7 +107,7 @@ class OvernightTrainingManager:
         no_improvement_count = 0
         # Убираем early stopping - пусть работает всю ночь!
         
-        logger.info("🚀 Starting UNLIMITED training - используйте Ctrl+C для остановки")
+        logger.info("[START] Starting UNLIMITED training - используйте Ctrl+C для остановки")
         logger.info("=" * 60)
         
         try:
@@ -132,7 +132,7 @@ class OvernightTrainingManager:
                         batch_similarities.append(metrics.get('cosine_similarity', 0.0))
                         
                     except Exception as e:
-                        logger.warning(f"⚠️ Batch {batch_idx} failed: {e}")
+                        logger.warning(f"[WARNING] Batch {batch_idx} failed: {e}")
                         continue
                 
                 # Epoch metrics
@@ -167,7 +167,7 @@ class OvernightTrainingManager:
                 if improvement_detected and not self.progress['learning_detected']:
                     self.progress['learning_detected'] = True
                     self.progress['first_improvement_epoch'] = epoch + 1
-                    logger.info(f"🎉 ПЕРВОЕ УЛУЧШЕНИЕ ОБНАРУЖЕНО НА EPOCH {epoch + 1}!")
+                    logger.info(f"[SUCCESS] ПЕРВОЕ УЛУЧШЕНИЕ ОБНАРУЖЕНО НА EPOCH {epoch + 1}!")
                     
                 if not improvement_detected:
                     no_improvement_count += 1
@@ -176,15 +176,15 @@ class OvernightTrainingManager:
                 if (epoch + 1) % 10 == 0 or improvement_detected:
                     elapsed = datetime.now() - self.start_time
                     
-                    logger.info(f"📊 EPOCH {epoch + 1} (UNLIMITED):")
+                    logger.info(f"[DATA] EPOCH {epoch + 1} (UNLIMITED):")
                     logger.info(f"   Loss: {epoch_loss:.6f} (best: {self.progress['best_loss']:.6f})")
                     logger.info(f"   Similarity: {epoch_similarity:.6f} (best: {self.progress['best_similarity']:.6f})")
                     logger.info(f"   Epoch time: {epoch_time:.1f}s")
                     logger.info(f"   Total elapsed: {elapsed}")
-                    logger.info(f"   Learning detected: {'✅ YES' if self.progress['learning_detected'] else '❌ NO'}")
+                    logger.info(f"   Learning detected: {'[OK] YES' if self.progress['learning_detected'] else '[ERROR] NO'}")
                     
                     if improvement_detected:
-                        logger.info(f"   🎯 IMPROVEMENT! No improvement count reset")
+                        logger.info(f"   [TARGET] IMPROVEMENT! No improvement count reset")
                         
                 # Save progress regularly
                 if (epoch + 1) % 20 == 0:
@@ -196,7 +196,7 @@ class OvernightTrainingManager:
                 
                 # НЕТ early stopping - пусть работает всю ночь!
                 # if no_improvement_count >= max_no_improvement:
-                #     logger.info(f"⏹️ Early stopping: {no_improvement_count} epochs without improvement")
+                #     logger.info(f"[STOP] Early stopping: {no_improvement_count} epochs without improvement")
                 #     break
                     
                 # Memory cleanup
@@ -223,12 +223,12 @@ class OvernightTrainingManager:
             trainer = EmergentCubeTrainer(config, device=str(self.device))
             
             total_params = sum(p.numel() for p in trainer.parameters())
-            logger.info(f"✅ Trainer created: {total_params:,} parameters")
+            logger.info(f"[OK] Trainer created: {total_params:,} parameters")
             
             return trainer
             
         except Exception as e:
-            logger.error(f"❌ Failed to create trainer: {e}")
+            logger.error(f"[ERROR] Failed to create trainer: {e}")
             return None
     
     def _setup_dataset(self) -> list:
@@ -261,11 +261,11 @@ class OvernightTrainingManager:
                 normalize_embeddings=True
             )
             
-            logger.info(f"✅ Dataset created: {len(dataset)} examples")
+            logger.info(f"[OK] Dataset created: {len(dataset)} examples")
             return dataset
             
         except Exception as e:
-            logger.error(f"❌ Failed to create dataset: {e}")
+            logger.error(f"[ERROR] Failed to create dataset: {e}")
             return []
     
     def _prepare_batch(self, dataset, batch_idx: int, batch_size: int):
@@ -299,7 +299,7 @@ class OvernightTrainingManager:
             'progress': self.progress
         }, checkpoint_path)
         
-        logger.info(f"💾 Checkpoint saved: {checkpoint_path}")
+        logger.info(f"[SAVE] Checkpoint saved: {checkpoint_path}")
     
     def _save_progress(self):
         """Save current progress to file"""
@@ -308,7 +308,7 @@ class OvernightTrainingManager:
         with open(progress_file, 'w', encoding='utf-8') as f:
             json.dump(self.progress, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"📊 Progress saved: {progress_file}")
+        logger.info(f"[DATA] Progress saved: {progress_file}")
     
     def _finalize_training(self, trainer):
         """Finalize training and save results"""
@@ -340,12 +340,12 @@ class OvernightTrainingManager:
         logger.info(f"Epochs завершено: {self.progress['epochs_completed']}")
         logger.info(f"Лучший loss: {self.progress['best_loss']:.6f}")
         logger.info(f"Лучший similarity: {self.progress['best_similarity']:.6f}")
-        logger.info(f"Обучение обнаружено: {'✅ ДА' if self.progress['learning_detected'] else '❌ НЕТ'}")
+        logger.info(f"Обучение обнаружено: {'[OK] ДА' if self.progress['learning_detected'] else '[ERROR] НЕТ'}")
         if self.progress['learning_detected']:
             logger.info(f"Первое улучшение на epoch: {self.progress['first_improvement_epoch']}")
         
-        logger.info(f"\n📊 Результаты сохранены: {results_file}")
-        logger.info(f"💾 Финальная модель: {final_model_path}")
+        logger.info(f"\n[DATA] Результаты сохранены: {results_file}")
+        logger.info(f"[SAVE] Финальная модель: {final_model_path}")
         
         return final_results
     
@@ -389,30 +389,30 @@ class OvernightTrainingManager:
 
 def main():
     """Запуск неограниченного обучения"""
-    print("🚀 Подготовка к НЕОГРАНИЧЕННОМУ обучению...")
+    print("[START] Подготовка к НЕОГРАНИЧЕННОМУ обучению...")
     
     # Проверяем ресурсы
     if torch.cuda.is_available():
-        print(f"✅ GPU доступна: {torch.cuda.get_device_name(0)}")
+        print(f"[OK] GPU доступна: {torch.cuda.get_device_name(0)}")
         print(f"   Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     else:
-        print("⚠️ GPU не доступна, используется CPU")
+        print("[WARNING] GPU не доступна, используется CPU")
     
     # Информация о batch size
-    print(f"🎯 Оптимизация для RTX 5090:")
+    print(f"[TARGET] Оптимизация для RTX 5090:")
     print(f"   Batch size: 1024 (максимальная утилизация GPU)")
     print(f"   Epochs: НЕОГРАНИЧЕНО")
     print(f"   Остановка: Ctrl+C или автоматическая при отсутствии прогресса")
     
     # Estimate performance
-    print(f"⏰ Ориентировочная скорость: ~60s per epoch")
+    print(f"[TIME] Ориентировочная скорость: ~60s per epoch")
     print(f"   Прогресс будет виден каждые 10 epochs")
     print(f"   Автосохранение каждые 25 epochs")
     
     # Confirm
     user_input = input("\n🤔 Запустить НЕОГРАНИЧЕННОЕ обучение? (y/n): ").strip().lower()
     if user_input != 'y':
-        print("❌ Обучение отменено")
+        print("[ERROR] Обучение отменено")
         return
     
     print("\n🌙 ЗАПУСК НЕОГРАНИЧЕННОГО ОБУЧЕНИЯ...")

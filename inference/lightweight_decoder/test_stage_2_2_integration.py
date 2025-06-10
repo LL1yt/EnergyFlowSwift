@@ -2,13 +2,13 @@
 🧪 Stage 2.2: Advanced Optimization & Performance Validation
 
 TESTING SCOPE:
-- ✅ RET v2.1 integration в GenerativeDecoder
-- ✅ API consistency с PhraseBankDecoder
-- ✅ Performance monitoring integration
-- ✅ Quality assessment system
-- ✅ Configuration management
-- ✅ Unified interface validation
-- ✅ Production readiness verification
+- [OK] RET v2.1 integration в GenerativeDecoder
+- [OK] API consistency с PhraseBankDecoder
+- [OK] Performance monitoring integration
+- [OK] Quality assessment system
+- [OK] Configuration management
+- [OK] Unified interface validation
+- [OK] Production readiness verification
 
 SUCCESS CRITERIA:
 - Unified API works seamlessly
@@ -83,8 +83,8 @@ class Stage22IntegrationTest(unittest.TestCase):
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
     def test_01_ret_v21_integration_success(self):
-        """🎯 TEST 1: RET v2.1 Integration Success"""
-        logger.info("🎯 TEST 1: RET v2.1 Integration Success")
+        """[TARGET] TEST 1: RET v2.1 Integration Success"""
+        logger.info("[TARGET] TEST 1: RET v2.1 Integration Success")
         
         # Verify RET v2.1 is loaded
         self.assertEqual(self.config.architecture_type, "resource_efficient_v21")
@@ -106,12 +106,12 @@ class Stage22IntegrationTest(unittest.TestCase):
         self.assertLess(param_variance, 0.05, 
                        f"Parameter count variance >5% from expected RET v2.1")
         
-        logger.info(f"   ✅ RET v2.1 integration VERIFIED!")
-        logger.info(f"   ✅ Parameters: {param_count:,} (matches expected)")
+        logger.info(f"   [OK] RET v2.1 integration VERIFIED!")
+        logger.info(f"   [OK] Parameters: {param_count:,} (matches expected)")
     
     def test_02_api_consistency_with_phrase_decoder(self):
-        """🔄 TEST 2: API Consistency with PhraseBankDecoder"""
-        logger.info("🔄 TEST 2: API Consistency with PhraseBankDecoder")
+        """[REFRESH] TEST 2: API Consistency with PhraseBankDecoder"""
+        logger.info("[REFRESH] TEST 2: API Consistency with PhraseBankDecoder")
         
         # Test decode method signature consistency
         result_generative = self.decoder.decode(self.test_embedding)
@@ -125,13 +125,13 @@ class Stage22IntegrationTest(unittest.TestCase):
         try:
             result_with_kwargs = self.decoder.decode(self.test_embedding, **kwargs_test)
             self.assertIsInstance(result_with_kwargs, str)
-            logger.info(f"   ✅ GenerativeDecoder API consistency VERIFIED!")
+            logger.info(f"   [OK] GenerativeDecoder API consistency VERIFIED!")
         except Exception as e:
             self.fail(f"API consistency test failed: {e}")
     
     def test_03_performance_monitoring_integration(self):
-        """📊 TEST 3: Performance Monitoring Integration"""
-        logger.info("📊 TEST 3: Performance Monitoring Integration")
+        """[DATA] TEST 3: Performance Monitoring Integration"""
+        logger.info("[DATA] TEST 3: Performance Monitoring Integration")
         
         # Test generation with monitoring
         result = self.decoder.generate(self.test_embedding, max_length=20)
@@ -157,11 +157,11 @@ class Stage22IntegrationTest(unittest.TestCase):
         logger.info(f"   Generation time: {result['generation_time']:.3f}s")
         logger.info(f"   Quality score: {quality_metrics['overall_quality']:.3f}")
         logger.info(f"   Parameters used: {result['parameters_used']:,}")
-        logger.info(f"   ✅ Performance monitoring INTEGRATED!")
+        logger.info(f"   [OK] Performance monitoring INTEGRATED!")
     
     def test_04_quality_assessment_system(self):
-        """🎯 TEST 4: Quality Assessment System"""
-        logger.info("🎯 TEST 4: Quality Assessment System")
+        """[TARGET] TEST 4: Quality Assessment System"""
+        logger.info("[TARGET] TEST 4: Quality Assessment System")
         
         # Generate multiple samples для quality testing
         qualities = []
@@ -184,11 +184,11 @@ class Stage22IntegrationTest(unittest.TestCase):
         
         logger.info(f"   Average quality: {avg_quality:.3f}")
         logger.info(f"   Quality pass rate: {quality_pass_rate:.1%}")
-        logger.info(f"   ✅ Quality assessment system WORKING!")
+        logger.info(f"   [OK] Quality assessment system WORKING!")
     
     def test_05_configuration_management(self):
-        """⚙️ TEST 5: Configuration Management"""
-        logger.info("⚙️ TEST 5: Configuration Management")
+        """[GEAR] TEST 5: Configuration Management"""
+        logger.info("[GEAR] TEST 5: Configuration Management")
         
         # Test different configurations
         configs_to_test = [
@@ -224,11 +224,11 @@ class Stage22IntegrationTest(unittest.TestCase):
             
             del custom_decoder
         
-        logger.info(f"   ✅ Configuration management FLEXIBLE!")
+        logger.info(f"   [OK] Configuration management FLEXIBLE!")
     
     def test_06_rtx_5090_optimization_maintained(self):
-        """🚀 TEST 6: RTX 5090 Optimization Maintained"""
-        logger.info("🚀 TEST 6: RTX 5090 Optimization Maintained")
+        """[START] TEST 6: RTX 5090 Optimization Maintained"""
+        logger.info("[START] TEST 6: RTX 5090 Optimization Maintained")
         
         if not torch.cuda.is_available():
             self.skipTest("CUDA not available - skipping RTX 5090 test")
@@ -256,11 +256,11 @@ class Stage22IntegrationTest(unittest.TestCase):
         # Verify reasonable memory usage
         self.assertLess(memory_used, 200, "Memory usage too high for RTX 5090 optimization")
         
-        logger.info(f"   ✅ RTX 5090 optimization MAINTAINED!")
+        logger.info(f"   [OK] RTX 5090 optimization MAINTAINED!")
     
     def test_07_unified_interface_validation(self):
-        """🔗 TEST 7: Unified Interface Validation"""
-        logger.info("🔗 TEST 7: Unified Interface Validation")
+        """[LINK] TEST 7: Unified Interface Validation"""
+        logger.info("[LINK] TEST 7: Unified Interface Validation")
         
         # Test factory function
         factory_decoder = create_generative_decoder(
@@ -294,7 +294,7 @@ class Stage22IntegrationTest(unittest.TestCase):
         
         logger.info(f"   Factory decoder result: '{factory_result[:40]}...'")
         logger.info(f"   Performance report keys: {list(performance_report.keys())}")
-        logger.info(f"   ✅ Unified interface VALIDATED!")
+        logger.info(f"   [OK] Unified interface VALIDATED!")
     
     def test_08_production_readiness_verification(self):
         """🏭 TEST 8: Production Readiness Verification"""
@@ -317,14 +317,14 @@ class Stage22IntegrationTest(unittest.TestCase):
             
             # Should either handle gracefully or raise appropriate error
             if 'error' in str(result).lower() or 'fallback' in str(result).lower():
-                logger.info("   ✅ Error handling: Graceful fallback")
+                logger.info("   [OK] Error handling: Graceful fallback")
             else:
-                logger.info("   ✅ Error handling: Processed successfully")
+                logger.info("   [OK] Error handling: Processed successfully")
                 
         except ValueError as e:
-            logger.info(f"   ✅ Error handling: Appropriate exception - {e}")
+            logger.info(f"   [OK] Error handling: Appropriate exception - {e}")
         except Exception as e:
-            logger.warning(f"   ⚠️ Unexpected error type: {e}")
+            logger.warning(f"   [WARNING] Unexpected error type: {e}")
         
         # Test save/load (if implemented)
         try:
@@ -332,21 +332,21 @@ class Stage22IntegrationTest(unittest.TestCase):
             self.decoder.save_model(save_path)
             
             if save_path.exists():
-                logger.info("   ✅ Model saving: Working")
+                logger.info("   [OK] Model saving: Working")
                 save_path.unlink()  # Cleanup
             
         except NotImplementedError:
             logger.info("   ℹ️ Model saving: Not implemented")
         except Exception as e:
-            logger.warning(f"   ⚠️ Model saving error: {e}")
+            logger.warning(f"   [WARNING] Model saving error: {e}")
         
-        logger.info(f"   ✅ Production readiness VERIFIED!")
+        logger.info(f"   [OK] Production readiness VERIFIED!")
 
 
 def run_stage_2_2_tests():
     """Run all Stage 2.2 tests"""
     
-    logger.info("🚀 Starting Stage 2.2: Advanced Optimization & Performance Validation Tests")
+    logger.info("[START] Starting Stage 2.2: Advanced Optimization & Performance Validation Tests")
     logger.info("=" * 80)
     
     # Run test suite
@@ -357,12 +357,12 @@ def run_stage_2_2_tests():
     # Summary
     logger.info("=" * 80)
     if result.wasSuccessful():
-        logger.info("🎉 ALL Stage 2.2 TESTS PASSED!")
-        logger.info("✅ RET v2.1 → GenerativeDecoder integration COMPLETE!")
-        logger.info("✅ Advanced optimization & performance validation SUCCESSFUL!")
-        logger.info("🚀 Ready for Stage 2.3: Quality optimization & training preparation!")
+        logger.info("[SUCCESS] ALL Stage 2.2 TESTS PASSED!")
+        logger.info("[OK] RET v2.1 → GenerativeDecoder integration COMPLETE!")
+        logger.info("[OK] Advanced optimization & performance validation SUCCESSFUL!")
+        logger.info("[START] Ready for Stage 2.3: Quality optimization & training preparation!")
     else:
-        logger.error(f"❌ Stage 2.2 tests failed: {len(result.failures)} failures, {len(result.errors)} errors")
+        logger.error(f"[ERROR] Stage 2.2 tests failed: {len(result.failures)} failures, {len(result.errors)} errors")
         for failure in result.failures:
             logger.error(f"   FAILURE: {failure[0]} - {failure[1]}")
         for error in result.errors:

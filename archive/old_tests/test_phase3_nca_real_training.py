@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🚀 Phase 3 Task 3.1: Real Training Workflow Test with NCA
+[START] Phase 3 Task 3.1: Real Training Workflow Test with NCA
 
 Тестирует Neural Cellular Automata на реальном dialogue training workflow:
 1. Dialogue dataset loading и processing
@@ -62,12 +62,12 @@ def create_test_dialogue_data():
 
 def test_nca_real_training():
     """Main test: Real training workflow с NCA integration"""
-    print("🚀 Testing NCA on Real Training Workflow...")
+    print("[START] Testing NCA on Real Training Workflow...")
     print("=" * 60)
     
     try:
         # Setup configurations
-        print("📋 Setting up training configurations...")
+        print("[INFO] Setting up training configurations...")
         
         # NCA enabled configuration
         nca_config = EmergentTrainingConfig()
@@ -109,7 +109,7 @@ def test_nca_real_training():
         print(f"Dataset created: {len(dataset)} dialogue pairs")
         
         # Initialize trainers
-        print("🧠 Initializing trainers...")
+        print("[BRAIN] Initializing trainers...")
         nca_trainer = EmergentCubeTrainer(nca_config, device="cpu")
         standard_trainer = EmergentCubeTrainer(standard_config, device="cpu")
         
@@ -123,7 +123,7 @@ def test_nca_real_training():
         print(f"NCA initial status: {nca_status.get('status', 'Unknown')}")
         print(f"NCA config enable_nca: {nca_config.enable_nca}")
         
-        print("✅ Trainers initialized successfully")
+        print("[OK] Trainers initialized successfully")
         
         # Run training comparison
         print("\n🏋️ Starting training comparison...")
@@ -137,17 +137,17 @@ def test_nca_real_training():
         standard_results = run_training_session(standard_trainer, dataset, "Standard")
         
         # Compare results
-        print("\n📊 Training Results Comparison:")
+        print("\n[DATA] Training Results Comparison:")
         compare_training_results(nca_results, standard_results)
         
         # Analyze NCA metrics
-        print("\n🧠 NCA Metrics Analysis:")
+        print("\n[BRAIN] NCA Metrics Analysis:")
         analyze_nca_metrics(nca_trainer, nca_results)
         
         return True
         
     except Exception as e:
-        print(f"❌ Real training test failed: {e}")
+        print(f"[ERROR] Real training test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -155,7 +155,7 @@ def test_nca_real_training():
 def run_training_session(trainer, dataset, session_name: str) -> Dict[str, Any]:
     """Запускает training session и собирает метрики"""
     
-    print(f"🔄 Running {session_name} training session...")
+    print(f"[REFRESH] Running {session_name} training session...")
     
     results = {
         'session_name': session_name,
@@ -180,37 +180,37 @@ def run_training_session(trainer, dataset, session_name: str) -> Dict[str, Any]:
         for batch_idx in range(num_batches):
             try:
                 # ДИАГНОСТИКА: Детальная проверка dataset access
-                print(f"    🔍 Accessing dataset[{batch_idx % len(dataset)}] from dataset length {len(dataset)}")
+                print(f"    [MAGNIFY] Accessing dataset[{batch_idx % len(dataset)}] from dataset length {len(dataset)}")
                 
                 # Get dialogue pair (dataset returns tuple: (question_emb, answer_emb))
                 try:
                     dialogue_pair = dataset[batch_idx % len(dataset)]
-                    print(f"    🔍 Dataset returned: {type(dialogue_pair)}")
+                    print(f"    [MAGNIFY] Dataset returned: {type(dialogue_pair)}")
                     
                     if dialogue_pair is None:
-                        print(f"    ❌ Dataset returned None for index {batch_idx % len(dataset)}")
+                        print(f"    [ERROR] Dataset returned None for index {batch_idx % len(dataset)}")
                         continue
                     
                     if isinstance(dialogue_pair, tuple) and len(dialogue_pair) == 2:
                         question_emb, answer_emb = dialogue_pair
                     else:
-                        print(f"    ❌ Unexpected dataset return format: {type(dialogue_pair)}, length: {len(dialogue_pair) if hasattr(dialogue_pair, '__len__') else 'N/A'}")
+                        print(f"    [ERROR] Unexpected dataset return format: {type(dialogue_pair)}, length: {len(dialogue_pair) if hasattr(dialogue_pair, '__len__') else 'N/A'}")
                         continue
                         
                 except Exception as dataset_error:
-                    print(f"    ❌ Dataset access error at index {batch_idx % len(dataset)}: {dataset_error}")
+                    print(f"    [ERROR] Dataset access error at index {batch_idx % len(dataset)}: {dataset_error}")
                     continue
                 
                 # ДИАГНОСТИКА: Проверяем на None values
                 if question_emb is None:
-                    print(f"    ❌ question_emb is None at batch {batch_idx}")
+                    print(f"    [ERROR] question_emb is None at batch {batch_idx}")
                     continue
                 if answer_emb is None:
-                    print(f"    ❌ answer_emb is None at batch {batch_idx}")
+                    print(f"    [ERROR] answer_emb is None at batch {batch_idx}")
                     continue
                 
-                print(f"    🔍 Batch {batch_idx}: question_emb type={type(question_emb)}, answer_emb type={type(answer_emb)}")
-                print(f"    🔍 Batch {batch_idx}: question_emb shape={getattr(question_emb, 'shape', 'NO SHAPE')}, answer_emb shape={getattr(answer_emb, 'shape', 'NO SHAPE')}")
+                print(f"    [MAGNIFY] Batch {batch_idx}: question_emb type={type(question_emb)}, answer_emb type={type(answer_emb)}")
+                print(f"    [MAGNIFY] Batch {batch_idx}: question_emb shape={getattr(question_emb, 'shape', 'NO SHAPE')}, answer_emb shape={getattr(answer_emb, 'shape', 'NO SHAPE')}")
                 
                 # Add batch dimension if needed
                 if hasattr(question_emb, 'dim') and question_emb.dim() == 1:
@@ -242,22 +242,22 @@ def run_training_session(trainer, dataset, session_name: str) -> Dict[str, Any]:
                 
                 # Manual training step (more control)
                 # ДИАГНОСТИКА: Проверяем входы перед forward pass
-                print(f"    🔍 Pre-forward: question_emb shape={question_emb.shape}, answer_emb shape={answer_emb.shape}")
+                print(f"    [MAGNIFY] Pre-forward: question_emb shape={question_emb.shape}, answer_emb shape={answer_emb.shape}")
                 
                 # Forward pass
                 try:
                     outputs = trainer.forward(question_emb)
-                    print(f"    ✅ Forward pass completed, outputs keys: {list(outputs.keys())}")
+                    print(f"    [OK] Forward pass completed, outputs keys: {list(outputs.keys())}")
                     
                     # ДИАГНОСТИКА: Проверяем outputs
                     for key, value in outputs.items():
                         if value is None:
-                            print(f"    ❌ Output '{key}' is None!")
+                            print(f"    [ERROR] Output '{key}' is None!")
                         else:
-                            print(f"    🔍 Output '{key}': {value.shape}")
+                            print(f"    [MAGNIFY] Output '{key}': {value.shape}")
                 
                 except Exception as forward_error:
-                    print(f"    ❌ Forward pass failed: {forward_error}")
+                    print(f"    [ERROR] Forward pass failed: {forward_error}")
                     import traceback
                     traceback.print_exc()
                     continue
@@ -268,63 +268,63 @@ def run_training_session(trainer, dataset, session_name: str) -> Dict[str, Any]:
                     'target_embedding': answer_emb      # Dialogue similarity target
                 }
                 
-                print(f"    🔍 Targets prepared: {list(targets.keys())}")
+                print(f"    [MAGNIFY] Targets prepared: {list(targets.keys())}")
                 
                 # Compute loss
                 try:
                     loss_results = trainer.compute_loss(outputs, targets)
-                    print(f"    ✅ Loss computation completed")
+                    print(f"    [OK] Loss computation completed")
                 except Exception as loss_error:
-                    print(f"    ❌ Loss computation failed: {loss_error}")
+                    print(f"    [ERROR] Loss computation failed: {loss_error}")
                     import traceback
                     traceback.print_exc()
                     continue
                 total_loss = loss_results['total_loss']
-                print(f"    🔍 Total loss: {total_loss.item():.6f}")
+                print(f"    [MAGNIFY] Total loss: {total_loss.item():.6f}")
                 
                 # КРИТИЧЕСКАЯ ДИАГНОСТИКА: Проверяем computational graph
-                print(f"    🔍 Loss requires_grad: {total_loss.requires_grad}")
-                print(f"    🔍 Loss grad_fn: {total_loss.grad_fn}")
-                print(f"    🔍 Loss device: {total_loss.device}")
+                print(f"    [MAGNIFY] Loss requires_grad: {total_loss.requires_grad}")
+                print(f"    [MAGNIFY] Loss grad_fn: {total_loss.grad_fn}")
+                print(f"    [MAGNIFY] Loss device: {total_loss.device}")
                 
                 # Проверяем все loss components
                 for key, loss_component in loss_results.items():
                     if torch.is_tensor(loss_component):
-                        print(f"    🔍 {key}: requires_grad={loss_component.requires_grad}, grad_fn={loss_component.grad_fn}")
+                        print(f"    [MAGNIFY] {key}: requires_grad={loss_component.requires_grad}, grad_fn={loss_component.grad_fn}")
                 
                 # Если total_loss не требует градиентов, пропускаем backward
                 if not total_loss.requires_grad:
-                    print(f"    ⚠️ Total loss does not require gradients, skipping backward pass")
+                    print(f"    [WARNING] Total loss does not require gradients, skipping backward pass")
                     continue
                 
                 # Backward pass
                 try:
-                    print(f"    🔍 Starting backward pass...")
+                    print(f"    [MAGNIFY] Starting backward pass...")
                     trainer.optimizer.zero_grad()
-                    print(f"    🔍 Gradients zeroed")
+                    print(f"    [MAGNIFY] Gradients zeroed")
                     
                     total_loss.backward()
-                    print(f"    🔍 Backward completed")
+                    print(f"    [MAGNIFY] Backward completed")
                     
                     # Optimizer step - теперь с enhanced handling в trainer
-                    print(f"    🔍 Starting optimizer step...")
+                    print(f"    [MAGNIFY] Starting optimizer step...")
                     
                     # Gradient clipping
                     torch.nn.utils.clip_grad_norm_(trainer.parameters(), max_norm=1.0)
-                    print(f"    🔍 Gradients clipped")
+                    print(f"    [MAGNIFY] Gradients clipped")
                     
                     trainer.optimizer.step()
-                    print(f"    ✅ Optimizer step completed")
+                    print(f"    [OK] Optimizer step completed")
                     
                     # КРИТИЧЕСКОЕ: Полная очистка состояний после каждого batch для предотвращения accumulation
-                    print(f"    🔧 Cleaning states after batch...")
+                    print(f"    [CONFIG] Cleaning states after batch...")
                     if hasattr(trainer, '_full_state_reset'):
                         trainer._full_state_reset()
                     torch.cuda.empty_cache() if torch.cuda.is_available() else None
-                    print(f"    ✅ State cleanup completed")
+                    print(f"    [OK] State cleanup completed")
                     
                 except Exception as backward_error:
-                    print(f"    ❌ Backward pass failed: {backward_error}")
+                    print(f"    [ERROR] Backward pass failed: {backward_error}")
                     import traceback
                     traceback.print_exc()
                     continue
@@ -349,7 +349,7 @@ def run_training_session(trainer, dataset, session_name: str) -> Dict[str, Any]:
                 print(f"    Batch {batch_idx + 1}: Loss = {step_results.get('total_loss', 0.0):.6f}")
                 
             except Exception as e:
-                print(f"    ⚠️ Batch {batch_idx + 1} failed: {e}")
+                print(f"    [WARNING] Batch {batch_idx + 1} failed: {e}")
                 continue
         
         epoch_time = time.time() - epoch_start
@@ -362,7 +362,7 @@ def run_training_session(trainer, dataset, session_name: str) -> Dict[str, Any]:
     
     results['total_time'] = time.time() - start_time
     
-    print(f"✅ {session_name} training completed in {results['total_time']:.2f}s")
+    print(f"[OK] {session_name} training completed in {results['total_time']:.2f}s")
     
     return results
 
@@ -393,25 +393,25 @@ def compare_training_results(nca_results: Dict, standard_results: Dict):
     print(f"{'Loss Std Dev':<20} {nca_loss_std:<15.6f} {std_loss_std:<15.6f} {'N/A':<15}")
     
     # Performance analysis
-    print(f"\n📈 Performance Analysis:")
+    print(f"\n[CHART] Performance Analysis:")
     if time_diff < 50:  # Less than 50% overhead
-        print(f"  ✅ NCA overhead acceptable: {time_diff:+.1f}%")
+        print(f"  [OK] NCA overhead acceptable: {time_diff:+.1f}%")
     else:
-        print(f"  ⚠️ NCA overhead high: {time_diff:+.1f}%")
+        print(f"  [WARNING] NCA overhead high: {time_diff:+.1f}%")
     
     if abs(loss_diff) < 20:  # Less than 20% difference
-        print(f"  ✅ Loss consistency maintained: {loss_diff:+.1f}%")
+        print(f"  [OK] Loss consistency maintained: {loss_diff:+.1f}%")
     else:
-        print(f"  ⚠️ Significant loss difference: {loss_diff:+.1f}%")
+        print(f"  [WARNING] Significant loss difference: {loss_diff:+.1f}%")
 
 def analyze_nca_metrics(trainer, results: Dict):
     """Анализирует NCA metrics из training session"""
     
     if not results['nca_metrics']:
-        print("  ⚠️ No NCA metrics collected")
+        print("  [WARNING] No NCA metrics collected")
         return
     
-    print(f"  📊 NCA Metrics Summary:")
+    print(f"  [DATA] NCA Metrics Summary:")
     
     # Get final NCA summary
     final_summary = trainer.get_nca_metrics()
@@ -456,7 +456,7 @@ def analyze_nca_metrics(trainer, results: Dict):
 
 def test_nca_pattern_preservation():
     """Тест preservation emergent patterns во время training"""
-    print("\n🎨 Testing Pattern Preservation During Training...")
+    print("\n[ART] Testing Pattern Preservation During Training...")
     
     try:
         # Create trainer with NCA
@@ -488,7 +488,7 @@ def test_nca_pattern_preservation():
         
         # Analyze pattern preservation
         if len(pattern_history) >= 3:
-            print("  📈 Pattern Evolution Analysis:")
+            print("  [CHART] Pattern Evolution Analysis:")
             
             # Check spatial coherence evolution
             if 'spatial_coherence' in pattern_history[0]:
@@ -498,9 +498,9 @@ def test_nca_pattern_preservation():
                 print(f"    Spatial Coherence Trend: {coherence_trend:+.6f} (per step)")
                 
                 if abs(coherence_trend) < 0.01:
-                    print("    ✅ Spatial coherence stable")
+                    print("    [OK] Spatial coherence stable")
                 else:
-                    print(f"    ⚠️ Spatial coherence {'increasing' if coherence_trend > 0 else 'decreasing'}")
+                    print(f"    [WARNING] Spatial coherence {'increasing' if coherence_trend > 0 else 'decreasing'}")
             
             # Check specialization evolution
             if 'emergent_specialization' in pattern_history[0]:
@@ -510,20 +510,20 @@ def test_nca_pattern_preservation():
                 print(f"    Specialization Trend: {spec_trend:+.6f} (per step)")
                 
                 if spec_trend > 0:
-                    print("    ✅ Emergent specialization developing")
+                    print("    [OK] Emergent specialization developing")
                 else:
-                    print("    📊 Specialization pattern stable/decreasing")
+                    print("    [DATA] Specialization pattern stable/decreasing")
         
-        print("  ✅ Pattern preservation test completed")
+        print("  [OK] Pattern preservation test completed")
         return True
         
     except Exception as e:
-        print(f"  ❌ Pattern preservation test failed: {e}")
+        print(f"  [ERROR] Pattern preservation test failed: {e}")
         return False
 
 def run_comprehensive_test():
     """Запускает comprehensive test suite для real training workflow"""
-    print("🧠 PHASE 3 Task 3.1: Real Training Workflow Test with NCA")
+    print("[BRAIN] PHASE 3 Task 3.1: Real Training Workflow Test with NCA")
     print("=" * 70)
     
     test_results = []
@@ -544,12 +544,12 @@ def run_comprehensive_test():
     print(f"🧪 Real Training Test Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("✅ ALL REAL TRAINING TESTS PASSED!")
-        print("🎉 NCA integration works correctly in real training workflow")
-        print("🚀 Ready for production deployment and Task 3.2 implementation")
+        print("[OK] ALL REAL TRAINING TESTS PASSED!")
+        print("[SUCCESS] NCA integration works correctly in real training workflow")
+        print("[START] Ready for production deployment and Task 3.2 implementation")
         return True
     else:
-        print(f"❌ {total - passed} tests failed. NCA needs refinement.")
+        print(f"[ERROR] {total - passed} tests failed. NCA needs refinement.")
         return False
 
 if __name__ == "__main__":

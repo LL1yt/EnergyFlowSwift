@@ -37,17 +37,17 @@ def test_module_imports():
             ExportFormat,
             get_module_info
         )
-        print("  ✅ Базовые компоненты импортированы успешно")
+        print("  [OK] Базовые компоненты импортированы успешно")
         
         # Проверяем информацию о модуле
         info = get_module_info()
-        print(f"  📊 Версия модуля: {info['version']}")
-        print(f"  📦 Доступность визуализаторов: {info['visualizers_available']}")
+        print(f"  [DATA] Версия модуля: {info['version']}")
+        print(f"  [PACKAGE] Доступность визуализаторов: {info['visualizers_available']}")
         
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка импорта: {e}")
+        print(f"  [ERROR] Ошибка импорта: {e}")
         traceback.print_exc()
         return False
 
@@ -61,7 +61,7 @@ def test_configuration():
         
         # Тест создания дефолтной конфигурации
         config = VisualizationConfig()
-        print(f"  ✅ Дефолтная конфигурация создана")
+        print(f"  [OK] Дефолтная конфигурация создана")
         print(f"     Title: {config.title}")
         print(f"     Size: {config.width}x{config.height}")
         print(f"     Engine: {config.engine.value}")
@@ -70,20 +70,20 @@ def test_configuration():
         assert config.width > 0, "Width должен быть положительным"
         assert config.height > 0, "Height должен быть положительным"
         assert 0 <= config.cell_opacity <= 1, "Opacity должен быть между 0 и 1"
-        print("  ✅ Валидация конфигурации прошла успешно")
+        print("  [OK] Валидация конфигурации прошла успешно")
         
         # Тест загрузки из файла (если файл существует)
         config_path = Path("data/data_visualization/config/default.yaml")
         if config_path.exists():
             loaded_config = load_visualization_config(str(config_path))
-            print("  ✅ Конфигурация загружена из YAML файла")
+            print("  [OK] Конфигурация загружена из YAML файла")
         else:
-            print("  ⚠️  YAML файл конфигурации не найден (ожидаемо)")
+            print("  [WARNING]  YAML файл конфигурации не найден (ожидаемо)")
             
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка тестирования конфигурации: {e}")
+        print(f"  [ERROR] Ошибка тестирования конфигурации: {e}")
         traceback.print_exc()
         return False
 
@@ -98,14 +98,14 @@ def test_core_integration():
         
         # Создаем тестовую решетку
         lattice = create_lattice_from_config()
-        print(f"  ✅ Решетка создана: {lattice.config.dimensions}")
+        print(f"  [OK] Решетка создана: {lattice.config.dimensions}")
         
         # Проверяем доступность методов для визуализации
         states = lattice.get_states()
-        print(f"  ✅ Состояния получены: shape {states.shape}")
+        print(f"  [OK] Состояния получены: shape {states.shape}")
         
         io_info = lattice.get_io_point_info()
-        print(f"  ✅ I/O информация получена: {len(io_info)} ключей")
+        print(f"  [OK] I/O информация получена: {len(io_info)} ключей")
         
         # Тестируем IOPointPlacer
         dimensions = (8, 8, 8)
@@ -119,12 +119,12 @@ def test_core_integration():
         input_points = io_placer.get_input_points(Face.FRONT)
         output_points = io_placer.get_output_points(Face.BACK)
         
-        print(f"  ✅ IOPointPlacer работает: {len(input_points)} input, {len(output_points)} output точек")
+        print(f"  [OK] IOPointPlacer работает: {len(input_points)} input, {len(output_points)} output точек")
         
         return True
         
     except Exception as e:
-        print(f"  ❌ Ошибка интеграции с core: {e}")
+        print(f"  [ERROR] Ошибка интеграции с core: {e}")
         traceback.print_exc()
         return False
 
@@ -137,29 +137,29 @@ def test_visualization_creation():
         # Проверяем доступность функций создания
         from data.data_visualization import create_visualizer, create_io_visualizer
         
-        print("  ✅ Функции создания визуализаторов доступны")
+        print("  [OK] Функции создания визуализаторов доступны")
         
         # Пробуем создать визуализаторы (может не получиться если visualizers.py не готов)
         try:
             visualizer = create_visualizer()
-            print("  ✅ Lattice3DVisualizer создан успешно")
+            print("  [OK] Lattice3DVisualizer создан успешно")
             visualizer_available = True
         except ImportError as e:
-            print(f"  ⚠️  Lattice3DVisualizer недоступен: {e}")
+            print(f"  [WARNING]  Lattice3DVisualizer недоступен: {e}")
             visualizer_available = False
             
         try:
             io_visualizer = create_io_visualizer()
-            print("  ✅ IOPointVisualizer создан успешно")
+            print("  [OK] IOPointVisualizer создан успешно")
             io_visualizer_available = True
         except ImportError as e:
-            print(f"  ⚠️  IOPointVisualizer недоступен: {e}")
+            print(f"  [WARNING]  IOPointVisualizer недоступен: {e}")
             io_visualizer_available = False
             
         return visualizer_available or io_visualizer_available
         
     except Exception as e:
-        print(f"  ❌ Ошибка создания визуализации: {e}")
+        print(f"  [ERROR] Ошибка создания визуализации: {e}")
         traceback.print_exc()
         return False
 
@@ -172,7 +172,7 @@ def test_quick_functions():
         from data.data_visualization import quick_visualize_lattice, quick_visualize_io_strategy
         from core.lattice_3d import create_lattice_from_config, IOPointPlacer, PlacementStrategy, Face
         
-        print("  ✅ Быстрые функции импортированы")
+        print("  [OK] Быстрые функции импортированы")
         
         # Создаем тестовые объекты
         lattice = create_lattice_from_config()
@@ -185,24 +185,24 @@ def test_quick_functions():
         # Тестируем быстрые функции (без фактического рендеринга)
         try:
             fig = quick_visualize_lattice(lattice, title="Test Visualization")
-            print("  ✅ quick_visualize_lattice работает")
+            print("  [OK] quick_visualize_lattice работает")
             quick_lattice_ok = True
         except Exception as e:
-            print(f"  ⚠️  quick_visualize_lattice недоступна: {e}")
+            print(f"  [WARNING]  quick_visualize_lattice недоступна: {e}")
             quick_lattice_ok = False
             
         try:
             fig = quick_visualize_io_strategy(io_placer, Face.FRONT)
-            print("  ✅ quick_visualize_io_strategy работает")
+            print("  [OK] quick_visualize_io_strategy работает")
             quick_io_ok = True
         except Exception as e:
-            print(f"  ⚠️  quick_visualize_io_strategy недоступна: {e}")
+            print(f"  [WARNING]  quick_visualize_io_strategy недоступна: {e}")
             quick_io_ok = False
             
         return quick_lattice_ok or quick_io_ok
         
     except Exception as e:
-        print(f"  ❌ Ошибка быстрых функций: {e}")
+        print(f"  [ERROR] Ошибка быстрых функций: {e}")
         traceback.print_exc()
         return False
 
@@ -222,10 +222,10 @@ def test_dependencies():
     for name, module in dependencies.items():
         try:
             __import__(module)
-            print(f"  ✅ {name} доступен")
+            print(f"  [OK] {name} доступен")
             results[name] = True
         except ImportError:
-            print(f"  ❌ {name} НЕ доступен")
+            print(f"  [ERROR] {name} НЕ доступен")
             results[name] = False
             
     return all(results.values())
@@ -233,7 +233,7 @@ def test_dependencies():
 
 def run_all_tests():
     """Запуск всех тестов"""
-    print("🚀 Запуск базовых тестов модуля data_visualization")
+    print("[START] Запуск базовых тестов модуля data_visualization")
     print("=" * 60)
     
     tests = [
@@ -252,30 +252,30 @@ def run_all_tests():
             result = test_func()
             results.append((test_name, result))
         except Exception as e:
-            print(f"\n❌ Критическая ошибка в тесте '{test_name}': {e}")
+            print(f"\n[ERROR] Критическая ошибка в тесте '{test_name}': {e}")
             results.append((test_name, False))
     
     # Итоговый отчет
     print("\n" + "=" * 60)
-    print("📊 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ:")
+    print("[DATA] РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ:")
     
     passed = 0
     for test_name, result in results:
-        status = "✅ PASS" if result else "❌ FAIL"
+        status = "[OK] PASS" if result else "[ERROR] FAIL"
         print(f"  {status} {test_name}")
         if result:
             passed += 1
     
-    print(f"\n🎯 Пройдено: {passed}/{len(results)} тестов")
+    print(f"\n[TARGET] Пройдено: {passed}/{len(results)} тестов")
     
     if passed == len(results):
-        print("🎉 Все тесты пройдены успешно!")
+        print("[SUCCESS] Все тесты пройдены успешно!")
         return True
     elif passed >= len(results) * 0.7:
-        print("⚠️  Большинство тестов пройдено (модуль частично функционален)")
+        print("[WARNING]  Большинство тестов пройдено (модуль частично функционален)")
         return True
     else:
-        print("❌ Много проблем - требуется доработка")
+        print("[ERROR] Много проблем - требуется доработка")
         return False
 
 

@@ -173,7 +173,7 @@ def test_config_converter():
     count = test_unpacking(**config_obj.nested)
     assert count == 2  # value1 и value2
     
-    print("✅ Config converter works!")
+    print("[OK] Config converter works!")
     return True
 
 if __name__ == "__main__":

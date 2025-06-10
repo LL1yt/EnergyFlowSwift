@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-🎯 ТЕСТ ОПТИМАЛЬНОГО РЕШЕНИЯ: Smart State Management
+[TARGET] ТЕСТ ОПТИМАЛЬНОГО РЕШЕНИЯ: Smart State Management
 
 Проверяем баланс между:
-✅ Стабильность (нет tensor version errors)
-✅ Архитектурные преимущества (emergent specialization, memory continuity)
-✅ Производительность (минимальная overhead)
+[OK] Стабильность (нет tensor version errors)
+[OK] Архитектурные преимущества (emergent specialization, memory continuity)
+[OK] Производительность (минимальная overhead)
 """
 
 import sys
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 def test_optimal_stability():
     """Тест стабильности с оптимальной стратегией"""
     
-    print("🎯 === OPTIMAL SOLUTION STABILITY TEST ===")
+    print("[TARGET] === OPTIMAL SOLUTION STABILITY TEST ===")
     
     # Создаем реалистичную конфигурацию для тестирования
     config = EmergentTrainingConfig()
@@ -43,7 +43,7 @@ def test_optimal_stability():
     
     # Создаем trainer
     trainer = EmergentCubeTrainer(config=config, device="cpu")
-    print(f"✅ Trainer created with {trainer.get_system_info()['total_system_params']} parameters")
+    print(f"[OK] Trainer created with {trainer.get_system_info()['total_system_params']} parameters")
     
     # Создаем test data (адаптивно под размер куба)
     batch_size = 4
@@ -56,7 +56,7 @@ def test_optimal_stability():
     for i, cell in enumerate(trainer.gmlp_cells[:3]):
         score = cell.get_specialization_score()
         initial_specialization_scores.append(score)
-        print(f"🧠 Cell {i} initial specialization score: {score:.6f}")
+        print(f"[BRAIN] Cell {i} initial specialization score: {score:.6f}")
     
     # Запускаем 15 последовательных training steps
     successful_steps = 0
@@ -64,12 +64,12 @@ def test_optimal_stability():
     
     for step in range(15):
         try:
-            print(f"\n🔄 === TRAINING STEP {step + 1}/15 ===")
+            print(f"\n[REFRESH] === TRAINING STEP {step + 1}/15 ===")
             
             # Training step
             loss_metrics = trainer.train_step(question_embeddings, answer_embeddings)
             
-            print(f"✅ Step {step + 1} SUCCESS:")
+            print(f"[OK] Step {step + 1} SUCCESS:")
             print(f"   Total loss: {loss_metrics['total_loss']:.6f}")
             print(f"   Cosine similarity: {loss_metrics['cosine_similarity']:.6f}")
             
@@ -79,21 +79,21 @@ def test_optimal_stability():
                 score = cell.get_specialization_score()
                 current_scores.append(score)
                 if step % 5 == 4:  # Каждые 5 шагов
-                    print(f"🧠 Cell {i} specialization score: {score:.6f}")
+                    print(f"[BRAIN] Cell {i} specialization score: {score:.6f}")
             
             specialization_evolution.append(current_scores)
             successful_steps += 1
             
         except Exception as e:
-            print(f"❌ Step {step + 1} FAILED: {e}")
+            print(f"[ERROR] Step {step + 1} FAILED: {e}")
             break
     
-    print(f"\n🎯 === РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ===")
-    print(f"✅ Успешных шагов: {successful_steps}/15")
+    print(f"\n[TARGET] === РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ===")
+    print(f"[OK] Успешных шагов: {successful_steps}/15")
     
     # Анализ emergent behavior
     if len(specialization_evolution) > 5:
-        print("\n🧠 === АНАЛИЗ EMERGENT SPECIALIZATION ===")
+        print("\n[BRAIN] === АНАЛИЗ EMERGENT SPECIALIZATION ===")
         
         # Проверяем развитие specialization
         final_scores = specialization_evolution[-1]
@@ -106,12 +106,12 @@ def test_optimal_stability():
             
             # Проверяем что specialization развивается
             if improvement > 0.001:
-                print(f"   ✅ Cell {i}: Emergent specialization развивается!")
+                print(f"   [OK] Cell {i}: Emergent specialization развивается!")
             else:
-                print(f"   ⚠️ Cell {i}: Слабое развитие specialization")
+                print(f"   [WARNING] Cell {i}: Слабое развитие specialization")
     
     # Проверяем memory continuity
-    print("\n🧠 === АНАЛИЗ MEMORY CONTINUITY ===")
+    print("\n[BRAIN] === АНАЛИЗ MEMORY CONTINUITY ===")
     memory_preserved_cells = 0
     for i, cell in enumerate(trainer.gmlp_cells[:5]):
         if hasattr(cell.base_gmlp, 'memory_state') and cell.base_gmlp.memory_state is not None:
@@ -119,16 +119,16 @@ def test_optimal_stability():
             
     print(f"Cells с preserved memory: {memory_preserved_cells}/5")
     if memory_preserved_cells >= 3:
-        print("✅ Memory continuity сохраняется!")
+        print("[OK] Memory continuity сохраняется!")
     else:
-        print("⚠️ Memory continuity нарушена")
+        print("[WARNING] Memory continuity нарушена")
     
     return successful_steps >= 10  # 10+ успешных шагов = хороший результат
 
 def test_performance_overhead():
     """Тест overhead от smart state management"""
     
-    print("\n⚡ === PERFORMANCE OVERHEAD TEST ===")
+    print("\n[FAST] === PERFORMANCE OVERHEAD TEST ===")
     
     import time
     
@@ -159,16 +159,16 @@ def test_performance_overhead():
     print(f"Average time per training step: {avg_time_per_step:.3f}s")
     
     if avg_time_per_step < 2.0:  # Менее 2 секунд на шаг
-        print("✅ Performance overhead приемлемый")
+        print("[OK] Performance overhead приемлемый")
         return True
     else:
-        print("⚠️ Performance overhead высокий")
+        print("[WARNING] Performance overhead высокий")
         return False
 
 def test_adaptive_cleanup_strategy():
     """Тест адаптивной стратегии очистки"""
     
-    print("\n🧠 === ADAPTIVE CLEANUP STRATEGY TEST ===")
+    print("\n[BRAIN] === ADAPTIVE CLEANUP STRATEGY TEST ===")
     
     config = EmergentTrainingConfig()
     config.cube_dimensions = (5, 5, 5)  # Реалистичный размер
@@ -206,14 +206,14 @@ def test_adaptive_cleanup_strategy():
     print(f"Full reset ratio: {full_reset_ratio:.2%}")
     
     if 0.1 <= full_reset_ratio <= 0.3:  # 10-30% шагов с full reset
-        print("✅ Адаптивная стратегия сбалансирована")
+        print("[OK] Адаптивная стратегия сбалансирована")
         return True
     else:
-        print("⚠️ Адаптивная стратегия требует настройки")
+        print("[WARNING] Адаптивная стратегия требует настройки")
         return False
 
 if __name__ == "__main__":
-    print("🚀 Starting optimal solution comprehensive test...")
+    print("[START] Starting optimal solution comprehensive test...")
     
     # Тест 1: Стабильность
     stability_success = test_optimal_stability()
@@ -224,12 +224,12 @@ if __name__ == "__main__":
     # Тест 3: Adaptive strategy
     strategy_success = test_adaptive_cleanup_strategy()
     
-    print(f"\n🎯 === FINAL RESULTS ===")
-    print(f"Stability: {'✅ PASS' if stability_success else '❌ FAIL'}")
-    print(f"Performance: {'✅ PASS' if performance_success else '❌ FAIL'}")
-    print(f"Strategy: {'✅ PASS' if strategy_success else '❌ FAIL'}")
+    print(f"\n[TARGET] === FINAL RESULTS ===")
+    print(f"Stability: {'[OK] PASS' if stability_success else '[ERROR] FAIL'}")
+    print(f"Performance: {'[OK] PASS' if performance_success else '[ERROR] FAIL'}")
+    print(f"Strategy: {'[OK] PASS' if strategy_success else '[ERROR] FAIL'}")
     
     if stability_success and performance_success and strategy_success:
-        print("\n🎉 OPTIMAL SOLUTION READY FOR PRODUCTION!")
+        print("\n[SUCCESS] OPTIMAL SOLUTION READY FOR PRODUCTION!")
     else:
-        print("\n⚠️ Some issues detected - check logs for details") 
+        print("\n[WARNING] Some issues detected - check logs for details") 

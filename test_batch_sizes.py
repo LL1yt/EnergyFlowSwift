@@ -36,7 +36,7 @@ def test_batch_sizes():
     results = []
 
     for batch_size in batch_sizes:
-        logger.info(f"\n🚀 Testing batch_size={batch_size}")
+        logger.info(f"\n[START] Testing batch_size={batch_size}")
         logger.info("=" * 50)
 
         try:
@@ -82,7 +82,7 @@ def test_batch_sizes():
                     "stdout": result.stdout[-500:],  # Последние 500 символов
                 }
 
-                logger.info(f"✅ Batch {batch_size} completed!")
+                logger.info(f"[OK] Batch {batch_size} completed!")
                 logger.info(f"   Final similarity: {final_similarity:.4f}")
                 logger.info(f"   Time: {test_time/60:.1f} minutes")
 
@@ -94,13 +94,13 @@ def test_batch_sizes():
                     "time_minutes": test_time / 60,
                 }
 
-                logger.error(f"❌ Batch {batch_size} failed!")
+                logger.error(f"[ERROR] Batch {batch_size} failed!")
                 logger.error(f"   Error: {result.stderr[:200]}...")
 
             results.append(test_result)
 
         except subprocess.TimeoutExpired:
-            logger.error(f"⏰ Batch {batch_size} timed out (>10 minutes)")
+            logger.error(f"[TIME] Batch {batch_size} timed out (>10 minutes)")
             results.append(
                 {
                     "batch_size": batch_size,
@@ -144,19 +144,19 @@ def analyze_batch_results(results: List[Dict[str, Any]]):
     """Анализирует результаты тестирования разных batch sizes"""
 
     logger.info("\n" + "=" * 60)
-    logger.info("📊 BATCH SIZE COMPARISON RESULTS")
+    logger.info("[DATA] BATCH SIZE COMPARISON RESULTS")
     logger.info("=" * 60)
 
     successful_results = [r for r in results if r["success"]]
 
     if not successful_results:
-        logger.error("❌ No successful tests!")
+        logger.error("[ERROR] No successful tests!")
         return
 
     # Сортируем по качеству
     successful_results.sort(key=lambda x: x["final_similarity"], reverse=True)
 
-    logger.info("\n🏆 Results ranked by similarity:")
+    logger.info("\n[TROPHY] Results ranked by similarity:")
     for i, result in enumerate(successful_results):
         rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
         logger.info(
@@ -166,16 +166,16 @@ def analyze_batch_results(results: List[Dict[str, Any]]):
         )
 
     # Анализ трендов
-    logger.info("\n📈 Analysis:")
+    logger.info("\n[CHART] Analysis:")
 
     best_result = successful_results[0]
     worst_result = successful_results[-1]
 
     logger.info(
-        f"   🎯 Best batch size: {best_result['batch_size']} (similarity: {best_result['final_similarity']:.4f})"
+        f"   [TARGET] Best batch size: {best_result['batch_size']} (similarity: {best_result['final_similarity']:.4f})"
     )
     logger.info(
-        f"   ❌ Worst batch size: {worst_result['batch_size']} (similarity: {worst_result['final_similarity']:.4f})"
+        f"   [ERROR] Worst batch size: {worst_result['batch_size']} (similarity: {worst_result['final_similarity']:.4f})"
     )
 
     # Проверяем тренд: ухудшается ли качество с ростом batch size?
@@ -196,7 +196,7 @@ def analyze_batch_results(results: List[Dict[str, Any]]):
             )
 
             if small_avg > large_avg:
-                logger.info(f"   ✅ Confirmed: Small batches (≤64) perform better!")
+                logger.info(f"   [OK] Confirmed: Small batches (≤64) perform better!")
                 logger.info(f"      Small batches avg: {small_avg:.4f}")
                 logger.info(f"      Large batches avg: {large_avg:.4f}")
             else:
@@ -205,36 +205,36 @@ def analyze_batch_results(results: List[Dict[str, Any]]):
                 )
 
     # Рекомендации
-    logger.info("\n💡 Recommendations:")
+    logger.info("\n[IDEA] Recommendations:")
     if best_result["batch_size"] <= 64:
         logger.info(
-            f"   ✅ Use batch_size={best_result['batch_size']} for optimal quality"
+            f"   [OK] Use batch_size={best_result['batch_size']} for optimal quality"
         )
     else:
         logger.info(
-            f"   ⚠️ Best was batch_size={best_result['batch_size']}, but consider 32-64 for stability"
+            f"   [WARNING] Best was batch_size={best_result['batch_size']}, but consider 32-64 for stability"
         )
 
     logger.info(f"   🚫 Avoid very large batch sizes (>128) for this type of task")
-    logger.info(f"   ⚡ For speed vs quality, balance around 32-64")
+    logger.info(f"   [FAST] For speed vs quality, balance around 32-64")
 
 
 def quick_batch_recommendation():
     """Быстрые рекомендации без тестирования"""
 
-    logger.info("🎯 Quick Batch Size Recommendations for 3D CNN:")
+    logger.info("[TARGET] Quick Batch Size Recommendations for 3D CNN:")
     logger.info("")
-    logger.info("📊 For different priorities:")
+    logger.info("[DATA] For different priorities:")
     logger.info("   🎮 Quick testing:     --batch-size 64")
     logger.info("   🧪 Best quality:      --batch-size 32")
-    logger.info("   ⚡ Speed (if fits):   --batch-size 128")
-    logger.info("   💾 Memory limited:    --batch-size 16")
+    logger.info("   [FAST] Speed (if fits):   --batch-size 128")
+    logger.info("   [SAVE] Memory limited:    --batch-size 16")
     logger.info("")
-    logger.info("❌ Avoid:")
+    logger.info("[ERROR] Avoid:")
     logger.info("   --batch-size 256+   (poor generalization)")
     logger.info("   --batch-size 4096   (terrible for learning!)")
     logger.info("")
-    logger.info("🎯 Sweet spot: 32-64 for most scenarios")
+    logger.info("[TARGET] Sweet spot: 32-64 for most scenarios")
 
 
 if __name__ == "__main__":

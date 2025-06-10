@@ -31,7 +31,7 @@ def create_test_embeddings():
             vector_str = ' '.join([f"{v:.6f}" for v in vector])
             f.write(f"{word} {vector_str}\n")
     
-    print(f"✅ Создан тестовый GloVe файл: {glove_path}")
+    print(f"[OK] Создан тестовый GloVe файл: {glove_path}")
     
     # 2. Создаем простой Word2Vec-like файл (с заголовком)
     w2v_path = test_dir / "test_word2vec.txt"
@@ -43,7 +43,7 @@ def create_test_embeddings():
             vector_str = ' '.join([f"{v:.6f}" for v in vector])
             f.write(f"{word} {vector_str}\n")
     
-    print(f"✅ Создан тестовый Word2Vec файл: {w2v_path}")
+    print(f"[OK] Создан тестовый Word2Vec файл: {w2v_path}")
     
     # 3. Создаем BERT-like PyTorch файл
     bert_path = test_dir / "test_bert.pt"
@@ -52,7 +52,7 @@ def create_test_embeddings():
     bert_embeddings = torch.randn(10, 8)
     torch.save(bert_embeddings, bert_path)
     
-    print(f"✅ Создан тестовый BERT файл: {bert_path}")
+    print(f"[OK] Создан тестовый BERT файл: {bert_path}")
     
     return {
         'glove': str(glove_path),
@@ -74,11 +74,11 @@ def test_embedding_loader():
         # Импортируем наш модуль
         from data.embedding_loader import EmbeddingLoader, EmbeddingPreprocessor
         
-        print("\n✅ Модуль успешно импортирован")
+        print("\n[OK] Модуль успешно импортирован")
         
         # Создаем загрузчик
         loader = EmbeddingLoader(cache_dir="./data/cache/test/")
-        print("✅ EmbeddingLoader инициализирован")
+        print("[OK] EmbeddingLoader инициализирован")
         
         # Тест 1: Загрузка GloVe
         print("\n" + "-"*40)
@@ -91,13 +91,13 @@ def test_embedding_loader():
             preprocess=True
         )
         
-        print(f"✅ GloVe загружен: {glove_embeddings.shape}")
+        print(f"[OK] GloVe загружен: {glove_embeddings.shape}")
         print(f"   Тип: {glove_embeddings.dtype}")
         print(f"   Устройство: {glove_embeddings.device}")
         
         # Проверяем размеры
         assert glove_embeddings.shape == (10, 5), f"Неожиданный размер: {glove_embeddings.shape}"
-        print("✅ Размеры корректны")
+        print("[OK] Размеры корректны")
         
         # Тест 2: Загрузка Word2Vec
         print("\n" + "-"*40)
@@ -110,9 +110,9 @@ def test_embedding_loader():
             preprocess=True
         )
         
-        print(f"✅ Word2Vec загружен: {w2v_embeddings.shape}")
+        print(f"[OK] Word2Vec загружен: {w2v_embeddings.shape}")
         assert w2v_embeddings.shape == (10, 5), f"Неожиданный размер: {w2v_embeddings.shape}"
-        print("✅ Размеры корректны")
+        print("[OK] Размеры корректны")
         
         # Тест 3: Загрузка BERT
         print("\n" + "-"*40)
@@ -125,9 +125,9 @@ def test_embedding_loader():
             preprocess=True
         )
         
-        print(f"✅ BERT загружен: {bert_embeddings.shape}")
+        print(f"[OK] BERT загружен: {bert_embeddings.shape}")
         assert bert_embeddings.shape == (10, 8), f"Неожиданный размер: {bert_embeddings.shape}"
-        print("✅ Размеры корректны")
+        print("[OK] Размеры корректны")
         
         # Тест 4: Предобработка
         print("\n" + "-"*40)
@@ -147,7 +147,7 @@ def test_embedding_loader():
         # Проверяем нормализацию
         norms = torch.norm(normalized, dim=1)
         assert torch.allclose(norms, torch.ones_like(norms), atol=1e-6), "Нормализация не работает"
-        print("✅ Нормализация работает корректно")
+        print("[OK] Нормализация работает корректно")
         
         # Центрирование
         centered = preprocessor.preprocess(
@@ -159,7 +159,7 @@ def test_embedding_loader():
         
         mean = centered.mean(dim=0)
         assert torch.allclose(mean, torch.zeros_like(mean), atol=1e-6), "Центрирование не работает"
-        print("✅ Центрирование работает корректно")
+        print("[OK] Центрирование работает корректно")
         
         # Тест 5: Кэширование
         print("\n" + "-"*40)
@@ -169,16 +169,16 @@ def test_embedding_loader():
         # Кэшируем данные
         cache_key = "test_glove_cache"
         loader.cache_embeddings(glove_embeddings, cache_key)
-        print("✅ Данные закэшированы")
+        print("[OK] Данные закэшированы")
         
         # Загружаем из кэша
         cached_embeddings = loader.load_from_cache(cache_key)
         
         if cached_embeddings is not None:
             assert torch.equal(glove_embeddings, cached_embeddings), "Кэш не работает корректно"
-            print("✅ Кэширование работает корректно")
+            print("[OK] Кэширование работает корректно")
         else:
-            print("⚠️  Кэш не найден (возможно, проблема с диском)")
+            print("[WARNING]  Кэш не найден (возможно, проблема с диском)")
         
         # Тест 6: Статистики
         print("\n" + "-"*40)
@@ -186,7 +186,7 @@ def test_embedding_loader():
         print("-"*40)
         
         info = loader.get_embedding_info(glove_embeddings)
-        print(f"✅ Статистики получены:")
+        print(f"[OK] Статистики получены:")
         print(f"   Форма: {info['shape']}")
         print(f"   Память: {info['memory_mb']:.2f} MB")
         print(f"   Мин: {info['min_value']:.4f}")
@@ -204,16 +204,16 @@ def test_embedding_loader():
         for fmt in expected_formats:
             assert fmt in formats, f"Формат {fmt} не поддерживается"
         
-        print(f"✅ Поддерживаемые форматы: {formats}")
+        print(f"[OK] Поддерживаемые форматы: {formats}")
         
         print("\n" + "="*60)
-        print("🎉 ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
+        print("[SUCCESS] ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
         print("="*60)
         
         return True
         
     except Exception as e:
-        print(f"\n❌ ОШИБКА В ТЕСТАХ: {e}")
+        print(f"\n[ERROR] ОШИБКА В ТЕСТАХ: {e}")
         import traceback
         traceback.print_exc()
         return False

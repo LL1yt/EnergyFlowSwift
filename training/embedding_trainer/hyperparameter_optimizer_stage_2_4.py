@@ -116,10 +116,10 @@ class HyperparameterOptimizer:
     
     def run_comprehensive_optimization(self) -> Dict[str, any]:
         """Запуск полной оптимизации гиперпараметров"""
-        print("🚀 Starting Stage 2.4 Comprehensive Hyperparameter Optimization...")
+        print("[START] Starting Stage 2.4 Comprehensive Hyperparameter Optimization...")
         
         # Phase 1: Core parameter grid search
-        print("\n📊 Phase 1: Core Parameter Grid Search")
+        print("\n[DATA] Phase 1: Core Parameter Grid Search")
         core_results = self._run_core_parameter_search()
         
         # Phase 2: Advanced parameter optimization
@@ -131,22 +131,22 @@ class HyperparameterOptimizer:
         architecture_results = self._run_architecture_optimization(advanced_results)
         
         # Phase 4: Final validation
-        print("\n✅ Phase 4: Final Validation")
+        print("\n[OK] Phase 4: Final Validation")
         final_results = self._run_final_validation(architecture_results)
         
         # Comprehensive analysis
         optimization_summary = self._generate_optimization_summary()
         
-        print(f"\n🎉 Stage 2.4 Optimization Complete!")
+        print(f"\n[SUCCESS] Stage 2.4 Optimization Complete!")
         print(f"   Best Q→A similarity: {self.best_qa_similarity:.1%}")
-        print(f"   Target achieved: {'✅' if self.best_qa_similarity >= self.config.target_qa_similarity else '❌'}")
+        print(f"   Target achieved: {'[OK]' if self.best_qa_similarity >= self.config.target_qa_similarity else '[ERROR]'}")
         print(f"   Total experiments: {self.current_experiment}")
         
         return optimization_summary
     
     def _run_core_parameter_search(self) -> Dict[str, any]:
         """Phase 1: Grid search основных параметров"""
-        print("🎯 Searching learning rate + batch size combinations...")
+        print("[TARGET] Searching learning rate + batch size combinations...")
         
         best_core_config = None
         best_core_similarity = 0.0
@@ -178,10 +178,10 @@ class HyperparameterOptimizer:
                 
                 # Early success check
                 if result['qa_similarity'] >= self.config.early_success_threshold:
-                    print(f"🎉 Early success achieved: {result['qa_similarity']:.1%}")
+                    print(f"[SUCCESS] Early success achieved: {result['qa_similarity']:.1%}")
                     break
         
-        print(f"📊 Core search complete. Best: {best_core_similarity:.1%}")
+        print(f"[DATA] Core search complete. Best: {best_core_similarity:.1%}")
         return {"config": best_core_config, "qa_similarity": best_core_similarity}
     
     def _run_advanced_parameter_search(self, core_results: Dict) -> Dict[str, any]:
@@ -227,7 +227,7 @@ class HyperparameterOptimizer:
                     
                     # Early success check
                     if result['qa_similarity'] >= self.config.target_qa_similarity:
-                        print(f"🎉 TARGET ACHIEVED: {result['qa_similarity']:.1%}")
+                        print(f"[SUCCESS] TARGET ACHIEVED: {result['qa_similarity']:.1%}")
                         self.best_config = test_config
                         self.best_qa_similarity = result['qa_similarity']
                         return {"config": test_config, "qa_similarity": result['qa_similarity']}
@@ -276,7 +276,7 @@ class HyperparameterOptimizer:
     
     def _run_final_validation(self, architecture_results: Dict) -> Dict[str, any]:
         """Phase 4: Финальная валидация лучшей конфигурации"""
-        print("✅ Running final validation with best configuration...")
+        print("[OK] Running final validation with best configuration...")
         
         best_config = architecture_results["config"]
         
@@ -308,10 +308,10 @@ class HyperparameterOptimizer:
             self.best_qa_similarity = mean_similarity
             self.best_config = best_config
         
-        print(f"✅ Final validation complete:")
+        print(f"[OK] Final validation complete:")
         print(f"   Mean Q→A similarity: {mean_similarity:.1%} ± {confidence_interval:.1%}")
         print(f"   Standard deviation: {std_similarity:.3f}")
-        print(f"   Target achieved: {'✅' if final_result['target_achieved'] else '❌'}")
+        print(f"   Target achieved: {'[OK]' if final_result['target_achieved'] else '[ERROR]'}")
         
         return final_result
     
@@ -347,7 +347,7 @@ class HyperparameterOptimizer:
                 "success": True
             }
             
-            print(f"     ✅ Q→A similarity: {result['qa_similarity']:.1%} ({training_time:.1f}s)")
+            print(f"     [OK] Q→A similarity: {result['qa_similarity']:.1%} ({training_time:.1f}s)")
             
         except Exception as e:
             self.logger.error(f"Experiment {experiment_name} failed: {e}")
@@ -359,7 +359,7 @@ class HyperparameterOptimizer:
                 "error": str(e),
                 "success": False
             }
-            print(f"     ❌ Failed: {str(e)}")
+            print(f"     [ERROR] Failed: {str(e)}")
         
         # Сохранение результата
         self.experiment_results.append(result)
@@ -523,7 +523,7 @@ def analyze_optimization_results(results_file: str = "checkpoints/stage_2_4/expe
 
 if __name__ == "__main__":
     # Демонстрация Stage 2.4 optimization
-    print("🚀 Testing Stage 2.4 Advanced Hyperparameter Optimization...")
+    print("[START] Testing Stage 2.4 Advanced Hyperparameter Optimization...")
     
     # Quick mode для демонстрации
     results = run_stage_2_4_optimization(
@@ -532,10 +532,10 @@ if __name__ == "__main__":
         quick_mode=True
     )
     
-    print(f"\n📊 Stage 2.4 Optimization Results:")
+    print(f"\n[DATA] Stage 2.4 Optimization Results:")
     print(f"   Target achieved: {results.get('target_achieved', False)}")
     print(f"   Best Q→A similarity: {results.get('best_qa_similarity', 0):.1%}")
     print(f"   Improvement: +{results.get('improvement_from_stage_2_3', 0):.1%}")
     print(f"   Total experiments: {results.get('total_experiments', 0)}")
     
-    print("\n✅ Stage 2.4 Hyperparameter Optimization system ready!") 
+    print("\n[OK] Stage 2.4 Hyperparameter Optimization system ready!") 

@@ -1,11 +1,11 @@
 """
-🚀 Resource-Efficient Transformer v2.0 - RADICAL OPTIMIZATION
+[START] Resource-Efficient Transformer v2.0 - RADICAL OPTIMIZATION
 
 Критические улучшения на основе RTX 5090 тестов:
 - PROBLEM: 62M parameters vs 1M target  
 - PROBLEM: 18.7% memory vs 52% target
-- SUCCESS: 50% speed improvement ✅
-- SUCCESS: Full RTX 5090 compatibility ✅
+- SUCCESS: 50% speed improvement [OK]
+- SUCCESS: Full RTX 5090 compatibility [OK]
 
 SOLUTIONS v2.0:
 - Compact vocab (1K vs 32K) - reduces lm_head from 32M to 1M params
@@ -199,10 +199,10 @@ class SharedTransformerLayer(nn.Module):
 
 class ResourceEfficientDecoderV2(nn.Module):
     """
-    🚀 Resource-Efficient Transformer v2.0 - RADICAL OPTIMIZATION
+    [START] Resource-Efficient Transformer v2.0 - RADICAL OPTIMIZATION
     
     Target: <800K parameters, 60% memory reduction, maintain 50% speedup
-    RTX 5090 Fully Compatible ✅
+    RTX 5090 Fully Compatible [OK]
     """
     
     def __init__(self, config: Optional[RETConfigV2] = None):
@@ -245,7 +245,7 @@ class ResourceEfficientDecoderV2(nn.Module):
         self.apply(self._init_weights)
         
         param_count = self._count_parameters()
-        logger.info(f"🚀 ResourceEfficientDecoderV2 initialized:")
+        logger.info(f"[START] ResourceEfficientDecoderV2 initialized:")
         logger.info(f"   Parameters: {param_count:,} (target: <{config.target_parameters:,})")
         logger.info(f"   Vocab size: {config.vocab_size:,} (reduced from 32K)")
         logger.info(f"   Hidden size: {config.hidden_size} (reduced from 1024)")
@@ -253,9 +253,9 @@ class ResourceEfficientDecoderV2(nn.Module):
         logger.info(f"   Target memory reduction: {config.memory_reduction_factor:.1%}")
         
         if param_count > config.target_parameters:
-            logger.warning(f"⚠️ Parameter count {param_count:,} exceeds target {config.target_parameters:,}")
+            logger.warning(f"[WARNING] Parameter count {param_count:,} exceeds target {config.target_parameters:,}")
         else:
-            logger.info(f"✅ Parameter target achieved!")
+            logger.info(f"[OK] Parameter target achieved!")
     
     def _init_weights(self, module):
         """Initialize weights with smaller std для compact model"""
@@ -275,7 +275,7 @@ class ResourceEfficientDecoderV2(nn.Module):
         transformer_params = sum(p.numel() for p in self.transformer_layers.parameters())
         bridge_params = sum(p.numel() for p in self.embedding_bridge.parameters())
         
-        logger.info(f"📊 Parameter breakdown:")
+        logger.info(f"[DATA] Parameter breakdown:")
         logger.info(f"   Embedding: {embedding_params:,}")
         logger.info(f"   Transformers: {transformer_params:,}")
         logger.info(f"   Bridge: {bridge_params:,}")
@@ -374,7 +374,7 @@ class ResourceEfficientDecoderV2(nn.Module):
             # Update metrics
             self.metrics.update(result['metrics'])
             
-            logger.info(f"🚀 RET v2.0 Generation completed:")
+            logger.info(f"[START] RET v2.0 Generation completed:")
             logger.info(f"   Tokens: {len(tokens)}")
             logger.info(f"   Time: {result['metrics']['forward_time']:.3f}s")
             logger.info(f"   Parameters: {result['metrics']['parameters_active']:,}")
@@ -383,7 +383,7 @@ class ResourceEfficientDecoderV2(nn.Module):
             return text
             
         except Exception as e:
-            logger.error(f"❌ RET v2.0 Generation failed: {e}")
+            logger.error(f"[ERROR] RET v2.0 Generation failed: {e}")
             return f"RET v2.0 Generation Error: {str(e)}"
     
     def get_model_info(self) -> Dict[str, Any]:
@@ -424,7 +424,7 @@ def create_resource_efficient_decoder_v2(config_path: Optional[str] = None) -> R
     
     decoder = ResourceEfficientDecoderV2(config)
     
-    logger.info("🎯 ResourceEfficientDecoderV2 created successfully!")
+    logger.info("[TARGET] ResourceEfficientDecoderV2 created successfully!")
     logger.info(f"   RADICAL optimizations: {config.aggressive_pruning_ratio:.1%} pruning")
     logger.info(f"   Memory target: {config.memory_reduction_factor:.1%}")
     logger.info(f"   Parameters: {decoder._count_parameters():,} (target: {config.target_parameters:,})")
@@ -434,7 +434,7 @@ def create_resource_efficient_decoder_v2(config_path: Optional[str] = None) -> R
 
 if __name__ == "__main__":
     # Тестирование RET v2.0 decoder
-    print("🚀 Testing Resource-Efficient Transformer v2.0...")
+    print("[START] Testing Resource-Efficient Transformer v2.0...")
     
     # Create v2.0 decoder
     decoder = create_resource_efficient_decoder_v2()
@@ -448,5 +448,5 @@ if __name__ == "__main__":
     print(f"Generated: {result}")
     print(f"Model info: {decoder.get_model_info()}")
     
-    print("✅ RET v2.0 Decoder test completed!")
-    print(f"💾 Parameters achieved: {decoder._count_parameters():,}") 
+    print("[OK] RET v2.0 Decoder test completed!")
+    print(f"[SAVE] Parameters achieved: {decoder._count_parameters():,}") 

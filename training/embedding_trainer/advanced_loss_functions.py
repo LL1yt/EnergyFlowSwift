@@ -72,7 +72,7 @@ class AdvancedLossFunction(nn.Module):
         self.current_epoch = 0
         self.total_epochs = 100  # Will be updated during training
         
-        print(f"🚀 AdvancedLossFunction initialized")
+        print(f"[START] AdvancedLossFunction initialized")
         print(f"   Curriculum learning: {self.config.use_curriculum_loss}")
         print(f"   Triplet loss: {self.config.use_triplet_loss}")
         print(f"   Contrastive loss: {self.config.use_contrastive_loss}")
@@ -498,7 +498,7 @@ def compute_loss_with_negatives(
 
 if __name__ == "__main__":
     # Демонстрация системы
-    print("🚀 Testing Advanced Loss Functions...")
+    print("[START] Testing Advanced Loss Functions...")
     
     # Создание loss function
     loss_fn = create_advanced_loss_function()
@@ -518,13 +518,13 @@ if __name__ == "__main__":
         loss_fn, input_emb, target_emb, output_emb, difficulty, neg_sampler
     )
     
-    print(f"📊 Loss Components:")
+    print(f"[DATA] Loss Components:")
     for name, loss in losses.items():
         print(f"   {name}: {loss.item():.4f}")
     
-    print(f"\n🎯 Current loss weights:")
+    print(f"\n[TARGET] Current loss weights:")
     weights = loss_fn.get_loss_weights()
     for name, weight in weights.items():
         print(f"   {name}: {weight:.3f}")
     
-    print("\n✅ Advanced Loss Functions system ready!") 
+    print("\n[OK] Advanced Loss Functions system ready!") 

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 def test_adapter_cube_trainer_creation():
     """Тест создания обновленного AdapterCubeTrainer"""
-    print("🔧 Testing AdapterCubeTrainer creation with EmbeddingProcessor.SURFACE_ONLY...")
+    print("[CONFIG] Testing AdapterCubeTrainer creation with EmbeddingProcessor.SURFACE_ONLY...")
     
     try:
         from training.embedding_trainer.adapter_integration import (
@@ -60,7 +60,7 @@ def test_adapter_cube_trainer_creation():
         
         # Информация о системе
         info = trainer.get_info()
-        print("✅ AdapterCubeTrainer создан успешно:")
+        print("[OK] AdapterCubeTrainer создан успешно:")
         print(f"   Teacher: {info['teacher_model']}")
         print(f"   Surface size: {info['processor']['surface_size']}D")
         print(f"   Processing mode: {info['processor']['mode']}")
@@ -69,7 +69,7 @@ def test_adapter_cube_trainer_creation():
         return trainer
         
     except Exception as e:
-        print(f"❌ Ошибка создания AdapterCubeTrainer: {e}")
+        print(f"[ERROR] Ошибка создания AdapterCubeTrainer: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -77,7 +77,7 @@ def test_adapter_cube_trainer_creation():
 
 def test_end_to_end_pipeline(trainer):
     """Тест end-to-end pipeline: teacher embeddings → surface processing → output"""
-    print("\n🚀 Testing end-to-end pipeline...")
+    print("\n[START] Testing end-to-end pipeline...")
     
     try:
         # Создание тестовых teacher embeddings (LLaMA-3-8B: 4096D)
@@ -100,7 +100,7 @@ def test_end_to_end_pipeline(trainer):
         
         print(f"📤 Output: {output.shape}")
         print(f"⏱️  Processing time: {processing_time:.4f}s")
-        print(f"⚡ Throughput: {batch_size / processing_time:.1f} samples/sec")
+        print(f"[FAST] Throughput: {batch_size / processing_time:.1f} samples/sec")
         
         # Проверка результатов
         expected_surface_size = 15 * 15  # single surface strategy
@@ -114,13 +114,13 @@ def test_end_to_end_pipeline(trainer):
         surface_embeddings = results["surface_embeddings"]
         assert surface_embeddings.shape == (batch_size, expected_surface_size), f"Неверная surface shape: {surface_embeddings.shape}"
         
-        print("✅ End-to-end pipeline работает корректно")
+        print("[OK] End-to-end pipeline работает корректно")
         print(f"   Teacher ({teacher_dim}D) → Adapter ({expected_surface_size}D) → Processor ({expected_surface_size}D)")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка в end-to-end pipeline: {e}")
+        print(f"[ERROR] Ошибка в end-to-end pipeline: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -128,7 +128,7 @@ def test_end_to_end_pipeline(trainer):
 
 def test_training_workflows(trainer):
     """Тест различных режимов обучения"""
-    print("\n🎯 Testing training workflows...")
+    print("\n[TARGET] Testing training workflows...")
     
     try:
         # Подготовка тестовых данных
@@ -141,7 +141,7 @@ def test_training_workflows(trainer):
         print(f"📥 Training data: questions {question_embeddings.shape}, answers {answer_embeddings.shape}")
         
         # Тест joint training step
-        print("\n🔗 Testing joint training step...")
+        print("\n[LINK] Testing joint training step...")
         trainer.config.joint_training = True
         
         joint_metrics = trainer.train_step(question_embeddings, answer_embeddings)
@@ -176,12 +176,12 @@ def test_training_workflows(trainer):
         print(f"   Processor loss: {processor_metrics['total_loss']:.6f}")
         print(f"   Processor QA similarity: {processor_metrics['qa_similarity']:.4f}")
         
-        print("✅ Все режимы обучения работают корректно")
+        print("[OK] Все режимы обучения работают корректно")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка в training workflows: {e}")
+        print(f"[ERROR] Ошибка в training workflows: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -189,7 +189,7 @@ def test_training_workflows(trainer):
 
 def test_gradient_flow(trainer):
     """Тест gradient flow для training готовности"""
-    print("\n🔄 Testing gradient flow...")
+    print("\n[REFRESH] Testing gradient flow...")
     
     try:
         # Включаем anomaly detection для debugging
@@ -206,7 +206,7 @@ def test_gradient_flow(trainer):
         target_surface = trainer.adapter(answer_embeddings)
         loss = torch.nn.functional.mse_loss(results["output"], target_surface)
         
-        print(f"📊 Test loss: {loss.item():.6f}")
+        print(f"[DATA] Test loss: {loss.item():.6f}")
         
         # Backward pass
         loss.backward()
@@ -232,8 +232,8 @@ def test_gradient_flow(trainer):
                 processor_params_with_grad += 1
         processor_grad_norm = np.sqrt(processor_grad_norm)
         
-        print(f"🔗 Adapter gradients: norm={adapter_grad_norm:.6f}, params={adapter_params_with_grad}")
-        print(f"🧠 Processor gradients: norm={processor_grad_norm:.6f}, params={processor_params_with_grad}")
+        print(f"[LINK] Adapter gradients: norm={adapter_grad_norm:.6f}, params={adapter_params_with_grad}")
+        print(f"[BRAIN] Processor gradients: norm={processor_grad_norm:.6f}, params={processor_params_with_grad}")
         
         # Проверка что градиенты есть
         assert adapter_grad_norm > 0, "Adapter градиенты отсутствуют"
@@ -241,12 +241,12 @@ def test_gradient_flow(trainer):
         assert adapter_params_with_grad > 0, "Нет параметров с градиентами в adapter"
         assert processor_params_with_grad > 0, "Нет параметров с градиентами в processor"
         
-        print("✅ Gradient flow работает корректно")
+        print("[OK] Gradient flow работает корректно")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка в gradient flow: {e}")
+        print(f"[ERROR] Ошибка в gradient flow: {e}")
         # Выключаем anomaly detection в случае ошибки
         torch.autograd.set_detect_anomaly(False)
         import traceback
@@ -256,7 +256,7 @@ def test_gradient_flow(trainer):
 
 def test_performance_benchmark(trainer):
     """Тест производительности интегрированной системы"""
-    print("\n⚡ Performance benchmark...")
+    print("\n[FAST] Performance benchmark...")
     
     try:
         # Подготовка различных размеров batch
@@ -284,12 +284,12 @@ def test_performance_benchmark(trainer):
             
             print(f"{batch_size:>9} | {avg_time_per_batch:>11.4f}s | {throughput:>9.1f} smp/s")
         
-        print("✅ Performance benchmark завершен")
+        print("[OK] Performance benchmark завершен")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка в performance benchmark: {e}")
+        print(f"[ERROR] Ошибка в performance benchmark: {e}")
         return False
 
 
@@ -313,7 +313,7 @@ def test_convenience_functions():
         llama_info = llama_trainer.get_info()
         assert llama_info["teacher_model"] == "Meta-Llama-3-8B", "Неверная teacher модель для LLaMA"
         
-        print(f"✅ LLaMA-3 trainer: {llama_info['teacher_model']}, {llama_info['total_parameters']:,} params")
+        print(f"[OK] LLaMA-3 trainer: {llama_info['teacher_model']}, {llama_info['total_parameters']:,} params")
         
         # Тест DistilBERT тренера
         bert_trainer = create_distilbert_cube_trainer(
@@ -325,14 +325,14 @@ def test_convenience_functions():
         bert_info = bert_trainer.get_info()
         assert bert_info["teacher_model"] == "DistilBERT", "Неверная teacher модель для BERT"
         
-        print(f"✅ DistilBERT trainer: {bert_info['teacher_model']}, {bert_info['total_parameters']:,} params")
+        print(f"[OK] DistilBERT trainer: {bert_info['teacher_model']}, {bert_info['total_parameters']:,} params")
         
-        print("✅ Convenience functions работают корректно")
+        print("[OK] Convenience functions работают корректно")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка в convenience functions: {e}")
+        print(f"[ERROR] Ошибка в convenience functions: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -373,25 +373,25 @@ def run_comprehensive_test():
     
     # Результаты
     print("\n" + "=" * 80)
-    print("📊 TEST RESULTS:")
+    print("[DATA] TEST RESULTS:")
     print("=" * 80)
     
     passed = 0
     total = len(test_results)
     
     for test_name, success in test_results:
-        status = "✅ PASS" if success else "❌ FAIL"
+        status = "[OK] PASS" if success else "[ERROR] FAIL"
         print(f"{status} {test_name}")
         if success:
             passed += 1
     
-    print(f"\n📈 Overall: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
+    print(f"\n[CHART] Overall: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
     
     if passed == total:
-        print("🎉 ALL TESTS PASSED! AdapterCubeTrainer integration готов к использованию.")
+        print("[SUCCESS] ALL TESTS PASSED! AdapterCubeTrainer integration готов к использованию.")
         return True
     else:
-        print("⚠️  Some tests failed. Требует исправления.")
+        print("[WARNING]  Some tests failed. Требует исправления.")
         return False
 
 

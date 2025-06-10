@@ -165,7 +165,7 @@ class ConfigVersionManager:
         # Загружаем существующие версии
         self._load_versions()
         
-        self.logger.info(f"📚 ConfigVersionManager initialized with {len(self._versions)} versions")
+        self.logger.info(f"[BOOKS] ConfigVersionManager initialized with {len(self._versions)} versions")
     
     def track_changes(self, 
                      old_config: Dict[str, Any], 
@@ -295,7 +295,7 @@ class ConfigVersionManager:
         if self.auto_save:
             self._save_version(config_version, config_data)
         
-        self.logger.info(f"📌 Created config version {version} with {len(changes)} changes")
+        self.logger.info(f"[PIN] Created config version {version} with {len(changes)} changes")
         return config_version
     
     def get_version(self, version: str) -> Optional[ConfigVersion]:
@@ -369,13 +369,13 @@ class ConfigVersionManager:
             is_stable=True
         )
         
-        self.logger.info(f"🔄 Rolled back to version {target_version} as {rollback_version}")
+        self.logger.info(f"[REFRESH] Rolled back to version {target_version} as {rollback_version}")
         return config_data
     
     def add_migration(self, migration: ConfigMigration):
         """Добавление миграции"""
         self._migrations.append(migration)
-        self.logger.info(f"📋 Added migration: {migration.get_description()}")
+        self.logger.info(f"[INFO] Added migration: {migration.get_description()}")
     
     def migrate_to_version(self, 
                           from_version: str, 
@@ -405,7 +405,7 @@ class ConfigVersionManager:
         
         try:
             migrated_data = migration.migrate(config_data)
-            self.logger.info(f"🔄 Migrated config from {from_version} to {to_version}")
+            self.logger.info(f"[REFRESH] Migrated config from {from_version} to {to_version}")
             return migrated_data
         except Exception as e:
             self.logger.error(f"Migration failed: {e}")
@@ -454,7 +454,7 @@ class ConfigVersionManager:
             with open(output_path, 'w', encoding='utf-8') as f:
                 yaml.dump(history, f, default_flow_style=False, allow_unicode=True)
         
-        self.logger.info(f"📊 Exported version history to {output_file}")
+        self.logger.info(f"[DATA] Exported version history to {output_file}")
     
     # ========================================
     # PRIVATE METHODS

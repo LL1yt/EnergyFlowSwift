@@ -24,7 +24,7 @@ def test_dynamic_config_standalone():
 
         # Тест автоопределения режима
         auto_config = manager.create_config_for_mode("auto")
-        print(f"✅ Auto-detected mode: {auto_config['_metadata']['mode']}")
+        print(f"[OK] Auto-detected mode: {auto_config['_metadata']['mode']}")
 
         # Тест всех режимов
         for mode in ["development", "research", "validation"]:
@@ -42,17 +42,17 @@ def test_dynamic_config_standalone():
                 lattice["zs"], int
             ), f"zs must be int, got {type(lattice['zs'])}"
 
-            print(f"✅ {mode.upper()} mode:")
+            print(f"[OK] {mode.upper()} mode:")
             print(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
             print(f"   Neurons: {lattice['total_neurons']:,}")
             print(f"   Embedding dim: {config['embeddings']['embedding_dim']:,}")
             print(f"   Batch size: {config['training']['batch_size']}")
 
-        print("✅ Standalone Dynamic Configuration System works!")
+        print("[OK] Standalone Dynamic Configuration System works!")
         return True
 
     except Exception as e:
-        print(f"❌ Standalone test failed: {e}")
+        print(f"[ERROR] Standalone test failed: {e}")
         return False
 
 
@@ -80,14 +80,14 @@ def test_config_manager_integration():
         # Проверка наличия динамической конфигурации
         dynamic_info = config_manager.get_dynamic_config_info()
         if dynamic_info:
-            print(f"✅ Dynamic config info: {dynamic_info}")
+            print(f"[OK] Dynamic config info: {dynamic_info}")
         else:
-            print("⚠️ Dynamic config info not found")
+            print("[WARNING] Dynamic config info not found")
 
         # Проверка загруженных секций
         lattice_config = config_manager.get_config("lattice")
         if lattice_config:
-            print(f"✅ Lattice config loaded:")
+            print(f"[OK] Lattice config loaded:")
             print(
                 f"   Size: {lattice_config.get('xs', 'N/A')}x{lattice_config.get('ys', 'N/A')}x{lattice_config.get('zs', 'N/A')}"
             )
@@ -95,26 +95,26 @@ def test_config_manager_integration():
 
         embeddings_config = config_manager.get_config("embeddings")
         if embeddings_config:
-            print(f"✅ Embeddings config loaded:")
+            print(f"[OK] Embeddings config loaded:")
             print(f"   Embedding dim: {embeddings_config.get('embedding_dim', 'N/A')}")
 
         # Тест регенерации
         success = config_manager.regenerate_dynamic_config("development")
-        print(f"✅ Regeneration success: {success}")
+        print(f"[OK] Regeneration success: {success}")
 
         # Проверка изменений после регенерации
         new_lattice_config = config_manager.get_config("lattice")
         if new_lattice_config:
-            print(f"✅ After regeneration:")
+            print(f"[OK] After regeneration:")
             print(
                 f"   Size: {new_lattice_config.get('xs', 'N/A')}x{new_lattice_config.get('ys', 'N/A')}x{new_lattice_config.get('zs', 'N/A')}"
             )
 
-        print("✅ ConfigManager integration works!")
+        print("[OK] ConfigManager integration works!")
         return True
 
     except Exception as e:
-        print(f"❌ Integration test failed: {e}")
+        print(f"[ERROR] Integration test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -131,26 +131,26 @@ def test_hardware_detection():
         generator = DynamicConfigGenerator()
         detected_mode = generator.detect_hardware_mode()
 
-        print(f"✅ Detected hardware mode: {detected_mode}")
+        print(f"[OK] Detected hardware mode: {detected_mode}")
 
         # Генерируем конфигурацию для автоопределенного режима
         config = generator.generate_config(detected_mode)
         lattice = config["lattice"]
 
-        print(f"✅ Config for detected mode:")
+        print(f"[OK] Config for detected mode:")
         print(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
         print(f"   Scale factor: {lattice['scale_factor']}")
 
         return True
 
     except Exception as e:
-        print(f"❌ Hardware detection test failed: {e}")
+        print(f"[ERROR] Hardware detection test failed: {e}")
         return False
 
 
 def main():
     """Основная функция тестирования"""
-    print("🚀 Testing Dynamic Configuration System Integration")
+    print("[START] Testing Dynamic Configuration System Integration")
     print("=" * 60)
 
     success_count = 0
@@ -169,12 +169,12 @@ def main():
         success_count += 1
 
     print("\n" + "=" * 60)
-    print(f"🎯 Results: {success_count}/{total_tests} tests passed")
+    print(f"[TARGET] Results: {success_count}/{total_tests} tests passed")
 
     if success_count == total_tests:
-        print("🎉 All tests passed! Dynamic Configuration System is ready to use.")
+        print("[SUCCESS] All tests passed! Dynamic Configuration System is ready to use.")
     else:
-        print("⚠️ Some tests failed. Check the implementation.")
+        print("[WARNING] Some tests failed. Check the implementation.")
 
     return success_count == total_tests
 

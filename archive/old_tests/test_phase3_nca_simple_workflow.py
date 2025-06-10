@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🚀 Phase 3 Task 3.1: Simplified Training Workflow Test with NCA
+[START] Phase 3 Task 3.1: Simplified Training Workflow Test with NCA
 
 Упрощенный тест без mixed precision для проверки NCA functionality:
 1. Synthetic embeddings (избегаем teacher model dependencies)
@@ -51,17 +51,17 @@ def create_synthetic_embeddings(num_pairs: int = 12, embedding_dim: int = 768):
 
 def test_nca_simple_training():
     """Main test: Simplified training workflow с NCA"""
-    print("🚀 Testing NCA on Simplified Training Workflow...")
+    print("[START] Testing NCA on Simplified Training Workflow...")
     print("=" * 60)
     
     try:
         # Create synthetic data
-        print("📊 Creating synthetic embeddings...")
+        print("[DATA] Creating synthetic embeddings...")
         question_embeddings, answer_embeddings = create_synthetic_embeddings(num_pairs=6)
         print(f"Created {len(question_embeddings)} Q&A pairs")
         
         # Setup configurations (smaller for testing)
-        print("📋 Setting up training configurations...")
+        print("[INFO] Setting up training configurations...")
         
         # NCA enabled configuration
         nca_config = EmergentTrainingConfig()
@@ -82,10 +82,10 @@ def test_nca_simple_training():
         standard_config.mixed_precision = False  # DISABLE mixed precision
         
         # Initialize trainers
-        print("🧠 Initializing trainers...")
+        print("[BRAIN] Initializing trainers...")
         nca_trainer = EmergentCubeTrainer(nca_config, device="cpu")
         standard_trainer = EmergentCubeTrainer(standard_config, device="cpu")
-        print("✅ Trainers initialized successfully")
+        print("[OK] Trainers initialized successfully")
         
         # Run simplified training
         print("\n🏋️ Starting simplified training comparison...")
@@ -103,17 +103,17 @@ def test_nca_simple_training():
         )
         
         # Compare results
-        print("\n📊 Training Results Comparison:")
+        print("\n[DATA] Training Results Comparison:")
         compare_simple_results(nca_results, standard_results)
         
         # Analyze NCA metrics
-        print("\n🧠 NCA Metrics Analysis:")
+        print("\n[BRAIN] NCA Metrics Analysis:")
         analyze_simple_nca_metrics(nca_trainer, nca_results)
         
         return True
         
     except Exception as e:
-        print(f"❌ Simplified training test failed: {e}")
+        print(f"[ERROR] Simplified training test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -121,7 +121,7 @@ def test_nca_simple_training():
 def run_simple_training_session(trainer, question_embeddings, answer_embeddings, session_name: str) -> Dict[str, Any]:
     """Simplified training session"""
     
-    print(f"🔄 Running {session_name} training session...")
+    print(f"[REFRESH] Running {session_name} training session...")
     
     results = {
         'session_name': session_name,
@@ -191,7 +191,7 @@ def run_simple_training_session(trainer, question_embeddings, answer_embeddings,
                 print(f"    Sample {sample_idx + 1}: Loss = {total_loss.item():.6f}")
                 
             except Exception as e:
-                print(f"    ⚠️ Sample {sample_idx + 1} failed: {e}")
+                print(f"    [WARNING] Sample {sample_idx + 1} failed: {e}")
                 continue
         
         epoch_time = time.time() - epoch_start
@@ -203,7 +203,7 @@ def run_simple_training_session(trainer, question_embeddings, answer_embeddings,
         print(f"  Epoch {epoch + 1} completed: Avg Loss = {avg_epoch_loss:.6f}, Time = {epoch_time:.2f}s")
     
     results['total_time'] = time.time() - start_time
-    print(f"✅ {session_name} training completed in {results['total_time']:.2f}s")
+    print(f"[OK] {session_name} training completed in {results['total_time']:.2f}s")
     
     return results
 
@@ -234,26 +234,26 @@ def compare_simple_results(nca_results: Dict, standard_results: Dict):
         print(f"{'Loss Reduction':<20} {nca_convergence:<15.6f} {std_convergence:<15.6f} {'N/A':<15}")
     
     # Performance analysis
-    print(f"\n📈 Performance Analysis:")
+    print(f"\n[CHART] Performance Analysis:")
     if time_diff < 100:  # Less than 100% overhead
-        print(f"  ✅ NCA overhead acceptable: {time_diff:+.1f}%")
+        print(f"  [OK] NCA overhead acceptable: {time_diff:+.1f}%")
     else:
-        print(f"  ⚠️ NCA overhead high: {time_diff:+.1f}%")
+        print(f"  [WARNING] NCA overhead high: {time_diff:+.1f}%")
     
     if nca_final_loss > 0 and std_final_loss > 0:
         if abs(loss_diff) < 50:  # Less than 50% difference
-            print(f"  ✅ Loss consistency maintained: {loss_diff:+.1f}%")
+            print(f"  [OK] Loss consistency maintained: {loss_diff:+.1f}%")
         else:
-            print(f"  ⚠️ Significant loss difference: {loss_diff:+.1f}%")
+            print(f"  [WARNING] Significant loss difference: {loss_diff:+.1f}%")
 
 def analyze_simple_nca_metrics(trainer, results: Dict):
     """Analyze NCA metrics from simplified training"""
     
     if not results['nca_metrics']:
-        print("  ⚠️ No NCA metrics collected")
+        print("  [WARNING] No NCA metrics collected")
         return
     
-    print(f"  📊 NCA Metrics Summary ({len(results['nca_metrics'])} snapshots):")
+    print(f"  [DATA] NCA Metrics Summary ({len(results['nca_metrics'])} snapshots):")
     
     # Get final summary
     final_summary = trainer.get_nca_metrics()
@@ -309,7 +309,7 @@ def analyze_simple_nca_metrics(trainer, results: Dict):
 
 def test_nca_pattern_evolution():
     """Test emergent pattern evolution during training"""
-    print("\n🎨 Testing NCA Pattern Evolution...")
+    print("\n[ART] Testing NCA Pattern Evolution...")
     
     try:
         # Create trainer with NCA
@@ -344,7 +344,7 @@ def test_nca_pattern_evolution():
         
         # Analyze evolution
         if len(pattern_history) >= 3:
-            print("  📈 Pattern Evolution Analysis:")
+            print("  [CHART] Pattern Evolution Analysis:")
             
             # Spatial coherence trend
             if 'spatial_coherence' in pattern_history[0]['patterns']:
@@ -358,10 +358,10 @@ def test_nca_pattern_evolution():
                     print(f"    Spatial Coherence Trend: {coherence_trend:+.6f} per step")
                     
                     if abs(coherence_trend) < 0.01:
-                        print("    ✅ Spatial coherence stable")
+                        print("    [OK] Spatial coherence stable")
                     else:
                         direction = "increasing" if coherence_trend > 0 else "decreasing"
-                        print(f"    📊 Spatial coherence {direction}")
+                        print(f"    [DATA] Spatial coherence {direction}")
             
             # Specialization development
             if 'emergent_specialization' in pattern_history[0]['patterns']:
@@ -375,24 +375,24 @@ def test_nca_pattern_evolution():
                     print(f"    Specialization Trend: {spec_trend:+.6f} per step")
                     
                     if spec_trend > 0.001:
-                        print("    ✅ Emergent specialization developing")
+                        print("    [OK] Emergent specialization developing")
                     elif abs(spec_trend) < 0.001:
-                        print("    📊 Specialization stable")
+                        print("    [DATA] Specialization stable")
                     else:
-                        print("    ⚠️ Specialization decreasing")
+                        print("    [WARNING] Specialization decreasing")
             
             print(f"    Pattern History: {len(pattern_history)} steps tracked")
         
-        print("  ✅ Pattern evolution test completed")
+        print("  [OK] Pattern evolution test completed")
         return True
         
     except Exception as e:
-        print(f"  ❌ Pattern evolution test failed: {e}")
+        print(f"  [ERROR] Pattern evolution test failed: {e}")
         return False
 
 def run_comprehensive_simple_test():
     """Run comprehensive simplified test suite"""
-    print("🧠 PHASE 3 Task 3.1: Simplified Real Training Workflow Test")
+    print("[BRAIN] PHASE 3 Task 3.1: Simplified Real Training Workflow Test")
     print("=" * 70)
     
     test_results = []
@@ -413,12 +413,12 @@ def run_comprehensive_simple_test():
     print(f"🧪 Simplified Training Test Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("✅ ALL SIMPLIFIED TESTS PASSED!")
-        print("🎉 NCA integration works in simplified training workflow")
-        print("🚀 Ready to proceed with full real-world testing")
+        print("[OK] ALL SIMPLIFIED TESTS PASSED!")
+        print("[SUCCESS] NCA integration works in simplified training workflow")
+        print("[START] Ready to proceed with full real-world testing")
         return True
     else:
-        print(f"❌ {total - passed} tests failed. NCA needs debugging.")
+        print(f"[ERROR] {total - passed} tests failed. NCA needs debugging.")
         return False
 
 if __name__ == "__main__":

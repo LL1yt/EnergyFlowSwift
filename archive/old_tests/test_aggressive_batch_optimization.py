@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🚀 Aggressive Batch Size Optimization - GPU Memory Utilization Test
+[START] Aggressive Batch Size Optimization - GPU Memory Utilization Test
 Testing very large batch sizes to maximize 32GB GPU memory usage
 """
 
@@ -21,16 +21,16 @@ from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
 
 def test_memory_scaling():
     """Test batch sizes up to memory limit"""
-    print("🚀 AGGRESSIVE BATCH SIZE SCALING TEST")
+    print("[START] AGGRESSIVE BATCH SIZE SCALING TEST")
     print("="*80)
     
     if not torch.cuda.is_available():
-        print("❌ CUDA not available")
+        print("[ERROR] CUDA not available")
         return
     
     total_memory = torch.cuda.get_device_properties(0).total_memory
-    print(f"🔥 GPU: {torch.cuda.get_device_name(0)}")
-    print(f"💾 Total Memory: {total_memory / 1024**3:.1f} GB")
+    print(f"[HOT] GPU: {torch.cuda.get_device_name(0)}")
+    print(f"[SAVE] Total Memory: {total_memory / 1024**3:.1f} GB")
     
     # Test progressively larger batch sizes
     batch_sizes = [64, 128, 256, 512, 1024, 1536, 2048]  # Very aggressive scaling
@@ -61,7 +61,7 @@ def test_memory_scaling():
             answer_embeddings = torch.randn(batch_size, 4096, device=device)
             
             tensor_memory = torch.cuda.memory_allocated()
-            print(f"   📊 Tensor memory: {(tensor_memory - baseline_memory) / 1024**2:.1f} MB")
+            print(f"   [DATA] Tensor memory: {(tensor_memory - baseline_memory) / 1024**2:.1f} MB")
             
             # Test forward pass (most memory intensive)
             start_time = time.time()
@@ -85,10 +85,10 @@ def test_memory_scaling():
                     'memory_percent': memory_utilization
                 }
                 
-                print(f"   ✅ SUCCESS!")
+                print(f"   [OK] SUCCESS!")
                 print(f"   ⏱️  Forward time: {forward_time:.3f}s")
-                print(f"   🚀 Throughput: {throughput:.1f} samples/sec")
-                print(f"   💾 Memory used: {memory_gb:.2f} GB ({memory_utilization:.1f}%)")
+                print(f"   [START] Throughput: {throughput:.1f} samples/sec")
+                print(f"   [SAVE] Memory used: {memory_gb:.2f} GB ({memory_utilization:.1f}%)")
                 
                 # Test backward pass if forward succeeded
                 try:
@@ -113,11 +113,11 @@ def test_memory_scaling():
                         'full_training_step': True
                     })
                     
-                    print(f"   🔥 Backward time: {backward_time:.3f}s")
-                    print(f"   📈 Peak memory: {peak_gb:.2f} GB ({peak_percent:.1f}%)")
+                    print(f"   [HOT] Backward time: {backward_time:.3f}s")
+                    print(f"   [CHART] Peak memory: {peak_gb:.2f} GB ({peak_percent:.1f}%)")
                     
                 except Exception as e:
-                    print(f"   ⚠️  Backward failed: {e}")
+                    print(f"   [WARNING]  Backward failed: {e}")
                     results[batch_size]['full_training_step'] = False
                 
             except torch.cuda.OutOfMemoryError as e:
@@ -134,7 +134,7 @@ def test_memory_scaling():
                 break
                 
             except Exception as e:
-                print(f"   ❌ ERROR: {e}")
+                print(f"   [ERROR] ERROR: {e}")
                 results[batch_size] = {
                     'success': False,
                     'error': str(e)
@@ -159,16 +159,16 @@ def test_memory_scaling():
 
 def find_optimal_batch_size(results):
     """Find the optimal batch size based on throughput and memory efficiency"""
-    print(f"\n📊 OPTIMIZATION ANALYSIS")
+    print(f"\n[DATA] OPTIMIZATION ANALYSIS")
     print("="*80)
     
     successful_results = {k: v for k, v in results.items() if v.get('success', False)}
     
     if not successful_results:
-        print("❌ No successful batch sizes found")
+        print("[ERROR] No successful batch sizes found")
         return None
     
-    print(f"📈 PERFORMANCE SUMMARY:")
+    print(f"[CHART] PERFORMANCE SUMMARY:")
     for batch_size, result in successful_results.items():
         throughput = result.get('throughput', 0)
         memory_percent = result.get('memory_percent', 0)
@@ -196,9 +196,9 @@ def find_optimal_batch_size(results):
     
     if best_batch:
         result = successful_results[best_batch]
-        print(f"\n🎯 OPTIMAL BATCH SIZE: {best_batch}")
-        print(f"   🚀 Throughput: {result['throughput']:.1f} samples/sec")
-        print(f"   💾 Memory usage: {result.get('peak_memory_percent', result.get('memory_percent', 0)):.1f}%")
+        print(f"\n[TARGET] OPTIMAL BATCH SIZE: {best_batch}")
+        print(f"   [START] Throughput: {result['throughput']:.1f} samples/sec")
+        print(f"   [SAVE] Memory usage: {result.get('peak_memory_percent', result.get('memory_percent', 0)):.1f}%")
         print(f"   ⚖️  Efficiency score: {best_score:.1f}")
     
     return best_batch
@@ -231,7 +231,7 @@ def test_memory_limits():
             # Quick forward test
             _ = trainer.forward(question_embeddings)
             
-            print(f"   ✅ SUCCESS at batch {mid}")
+            print(f"   [OK] SUCCESS at batch {mid}")
             max_working_batch = mid
             low = mid + 1
             
@@ -244,16 +244,16 @@ def test_memory_limits():
             torch.cuda.empty_cache()
             
         except Exception as e:
-            print(f"   ❌ Error at batch {mid}: {e}")
+            print(f"   [ERROR] Error at batch {mid}: {e}")
             high = mid - 1
     
-    print(f"\n🎯 MAXIMUM BATCH SIZE: {max_working_batch}")
+    print(f"\n[TARGET] MAXIMUM BATCH SIZE: {max_working_batch}")
     return max_working_batch
 
 
 def main():
     """Run aggressive batch size optimization"""
-    print("🚀 AGGRESSIVE GPU MEMORY UTILIZATION TEST")
+    print("[START] AGGRESSIVE GPU MEMORY UTILIZATION TEST")
     print("="*80)
     print("Finding optimal batch size for 32GB GPU memory")
     
@@ -268,11 +268,11 @@ def main():
     
     # Final recommendations
     print(f"\n" + "="*80)
-    print("🎯 FINAL RECOMMENDATIONS")
+    print("[TARGET] FINAL RECOMMENDATIONS")
     print("="*80)
     
     if optimal_batch:
-        print(f"✅ RECOMMENDED BATCH SIZE: {optimal_batch}")
+        print(f"[OK] RECOMMENDED BATCH SIZE: {optimal_batch}")
         print(f"   - Optimal balance of throughput and memory utilization")
         
         if optimal_batch in results:
@@ -282,12 +282,12 @@ def main():
             print(f"   - Throughput: {result.get('throughput', 0):.1f} samples/sec")
     
     if max_batch and max_batch != optimal_batch:
-        print(f"⚠️  MAXIMUM POSSIBLE: {max_batch}")
+        print(f"[WARNING]  MAXIMUM POSSIBLE: {max_batch}")
         print(f"   - May not be optimal for performance")
     
     # Update config recommendation
     if optimal_batch:
-        print(f"\n📝 CONFIG UPDATE:")
+        print(f"\n[WRITE] CONFIG UPDATE:")
         print(f"   # In your training script:")
         print(f"   batch_size = {optimal_batch}")
         print(f"   gradient_accumulation_steps = 1  # No accumulation needed")

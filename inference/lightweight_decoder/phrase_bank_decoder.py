@@ -6,7 +6,7 @@
 
 Phase 2.7.1 - PhraseBankDecoder Implementation
 Phase 2.7.2 - STAGE 1.2 OPTIMIZATION ✨
-Phase 2.7.3 - STAGE 1.3 PRODUCTION READINESS 🚀
+Phase 2.7.3 - STAGE 1.3 PRODUCTION READINESS [START]
 """
 
 import torch
@@ -280,7 +280,7 @@ class ContextAnalyzer:
         if not candidates:
             return candidates
         
-        # 🎯 Context-aware scoring
+        # [TARGET] Context-aware scoring
         scored_candidates = []
         
         for phrase, base_similarity in candidates:
@@ -587,7 +587,7 @@ class QualityAssessor:
         return min(1.0, diversity)
 
 class PhraseBankDecoder:
-    """🚀 Production-ready декодер на основе phrase bank (Stage 1.3)"""
+    """[START] Production-ready декодер на основе phrase bank (Stage 1.3)"""
     
     def __init__(self, 
                  embedding_dim: int = 768,
@@ -649,7 +649,7 @@ class PhraseBankDecoder:
         logging.info("Phrase bank loaded successfully")
     
     def decode(self, embedding: torch.Tensor) -> str:
-        """🚀 Production-ready декодирование с Stage 1.3 оптимизациями"""
+        """[START] Production-ready декодирование с Stage 1.3 оптимизациями"""
         if not self.ready:
             error_msg = "Phrase bank not loaded. Call load_phrase_bank() first."
             return self.error_handler.handle_error(
@@ -772,7 +772,7 @@ class PhraseBankDecoder:
         return results
     
     def get_statistics(self) -> Dict:
-        """🚀 Production-ready статистика декодера"""
+        """[START] Production-ready статистика декодера"""
         success_rate = (
             self.stats['successful_decodings'] / max(self.stats['total_decodings'], 1) * 100
         )
@@ -805,7 +805,7 @@ class PhraseBankDecoder:
         return base_stats
     
     def _update_stats(self, quality_metrics: Dict, success: bool, decode_time: float = 0.0):
-        """🚀 Обновление расширенной статистики"""
+        """[START] Обновление расширенной статистики"""
         self.stats['total_decodings'] += 1
         
         if success:
@@ -968,7 +968,7 @@ class PhraseBankDecoder:
         return health
     
     def optimize_for_production(self):
-        """🚀 Оптимизация для продакшн режима"""
+        """[START] Оптимизация для продакшн режима"""
         optimizations = []
         
         # Включаем кэширование если отключено

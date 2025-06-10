@@ -218,7 +218,7 @@ def run_basic_tests():
     passed_tests = 0
     
     for test_class in test_classes:
-        print(f"\n📋 Testing {test_class.__name__}:")
+        print(f"\n[INFO] Testing {test_class.__name__}:")
         test_instance = test_class()
         
         for method_name in dir(test_instance):
@@ -227,18 +227,18 @@ def run_basic_tests():
                 try:
                     method = getattr(test_instance, method_name)
                     method()
-                    print(f"  ✅ {method_name}")
+                    print(f"  [OK] {method_name}")
                     passed_tests += 1
                 except Exception as e:
-                    print(f"  ❌ {method_name}: {e}")
+                    print(f"  [ERROR] {method_name}: {e}")
     
-    print(f"\n🎯 Test Results: {passed_tests}/{total_tests} passed")
+    print(f"\n[TARGET] Test Results: {passed_tests}/{total_tests} passed")
     
     if passed_tests == total_tests:
-        print("✅ All Model Comparison Suite basic tests passed!")
+        print("[OK] All Model Comparison Suite basic tests passed!")
         return True
     else:
-        print("❌ Some tests failed!")
+        print("[ERROR] Some tests failed!")
         return False
 
 

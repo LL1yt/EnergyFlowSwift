@@ -36,7 +36,7 @@ try:
     from data.embedding_loader.format_handlers import SUPPORTED_LLM_MODELS
     EMBEDDING_LOADER_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  Warning: EmbeddingLoader not available: {e}")
+    print(f"[WARNING]  Warning: EmbeddingLoader not available: {e}")
     EMBEDDING_LOADER_AVAILABLE = False
 
 
@@ -109,7 +109,7 @@ class DialogueConfig:
                     if len(available_models) > 1:
                         self.fallback_model = available_models[1]
                     
-                    print(f"📋 Loaded teacher models from central config:")
+                    print(f"[INFO] Loaded teacher models from central config:")
                     print(f"   Primary: {self.teacher_model}")
                     print(f"   Fallback: {self.fallback_model}")
             
@@ -138,10 +138,10 @@ class DialogueConfig:
                         self.validation_split = val_settings.get('split', self.validation_split)
                         self.random_seed = val_settings.get('seed', self.random_seed)
                 
-                print(f"✅ DialogueConfig integrated with central configuration")
+                print(f"[OK] DialogueConfig integrated with central configuration")
             
         except Exception as e:
-            print(f"⚠️ Could not load from central config ({e}), using defaults")
+            print(f"[WARNING] Could not load from central config ({e}), using defaults")
 
 
 def map_model_name_to_key(model_name: str) -> str:
@@ -185,7 +185,7 @@ def map_model_name_to_key(model_name: str) -> str:
         return common_mappings[model_name]
     
     # Fallback - если ничего не найдено, возвращаем distilbert
-    print(f"⚠️ Model '{model_name}' not found in SUPPORTED_LLM_MODELS, using 'distilbert' as fallback")
+    print(f"[WARNING] Model '{model_name}' not found in SUPPORTED_LLM_MODELS, using 'distilbert' as fallback")
     return "distilbert"
 
 
@@ -214,7 +214,7 @@ class DialogueDataset(Dataset):
             answer_embeddings: Готовые эмбединги ответов (опционально)
         """
         self.logger = logging.getLogger(__name__)
-        self.logger.info("🚀 Initializing DialogueDataset for Stage 1.3...")
+        self.logger.info("[START] Initializing DialogueDataset for Stage 1.3...")
         
         # Проверка зависимостей
         if not EMBEDDING_LOADER_AVAILABLE:
@@ -276,7 +276,7 @@ class DialogueDataset(Dataset):
         # Создание train/val split
         self._create_train_val_split()
         
-        self.logger.info(f"✅ DialogueDataset initialized successfully")
+        self.logger.info(f"[OK] DialogueDataset initialized successfully")
         self.logger.info(f"   Total conversation pairs: {len(self.question_embeddings)}")
         self.logger.info(f"   Train pairs: {len(self.train_questions)}")
         self.logger.info(f"   Val pairs: {len(self.val_questions)}")
@@ -320,13 +320,13 @@ class DialogueDataset(Dataset):
                 texts=["Test message"],
                 model_key=teacher_model_key
             )
-            self.logger.info(f"✅ Teacher model {self.config.teacher_model} (key: {teacher_model_key}) is available")
+            self.logger.info(f"[OK] Teacher model {self.config.teacher_model} (key: {teacher_model_key}) is available")
             
             # Обновляем config с правильным ключом
             self.config.teacher_model = teacher_model_key
             
         except Exception as e:
-            self.logger.warning(f"⚠️  Teacher model {self.config.teacher_model} not available: {e}")
+            self.logger.warning(f"[WARNING]  Teacher model {self.config.teacher_model} not available: {e}")
             
             # Пробуем fallback
             fallback_key = map_model_name_to_key(self.config.fallback_model)

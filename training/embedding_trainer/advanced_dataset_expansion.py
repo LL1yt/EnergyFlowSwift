@@ -45,10 +45,10 @@ class DatasetExpansionConfig:
                 from utils.config_loader import get_multi_teacher_config
                 config = get_multi_teacher_config()
                 self.teacher_models = config.get('models', ['distilbert'])
-                print(f"📋 Loaded teacher models from config: {self.teacher_models}")
+                print(f"[INFO] Loaded teacher models from config: {self.teacher_models}")
             except Exception:
                 self.teacher_models = ["llama3-8b-local", "distilbert", "roberta"]  # Fallback
-                print(f"⚠️ Using fallback teacher models: {self.teacher_models}")
+                print(f"[WARNING] Using fallback teacher models: {self.teacher_models}")
 
 
 class AdvancedDatasetExpander:
@@ -72,7 +72,7 @@ class AdvancedDatasetExpander:
         # Для оценки качества
         self.quality_scorer = QualityScorer(self.embedding_loader)
         
-        print(f"🚀 AdvancedDatasetExpander initialized")
+        print(f"[START] AdvancedDatasetExpander initialized")
         print(f"   Target pairs: {self.config.target_pairs}")
         print(f"   Domains: {len(self.config.domains)}")
         print(f"   Teacher models: {len(self.config.teacher_models)}")
@@ -179,7 +179,7 @@ class AdvancedDatasetExpander:
         Returns:
             DialogueDataset с 100+ качественными парами
         """
-        print("🎯 Creating expanded dataset...")
+        print("[TARGET] Creating expanded dataset...")
         
         # 1. Генерация базовых пар из шаблонов
         base_pairs = self._generate_base_pairs()
@@ -205,7 +205,7 @@ class AdvancedDatasetExpander:
         # 6. Создание финального dataset
         final_dataset = self._create_final_dataset(curriculum_pairs)
         
-        print(f"🎉 Expanded dataset created successfully!")
+        print(f"[SUCCESS] Expanded dataset created successfully!")
         print(f"   Final pairs: {len(curriculum_pairs)}")
         print(f"   Quality score range: {self._get_quality_range(curriculum_pairs)}")
         
@@ -300,16 +300,16 @@ class AdvancedDatasetExpander:
         if not filtered_pairs and quality_scores:
             # Если ничего не прошло фильтр, используем top половину
             avg_score = sum(quality_scores) / len(quality_scores)
-            print(f"   ⚠️ No pairs passed threshold {self.config.quality_score_threshold:.2f}")
-            print(f"   📊 Average quality score: {avg_score:.3f}")
-            print(f"   🔄 Using pairs with score > {avg_score:.3f}")
+            print(f"   [WARNING] No pairs passed threshold {self.config.quality_score_threshold:.2f}")
+            print(f"   [DATA] Average quality score: {avg_score:.3f}")
+            print(f"   [REFRESH] Using pairs with score > {avg_score:.3f}")
             
             for pair, score in zip(pairs, quality_scores):
                 if score >= avg_score:
                     pair["quality_score"] = score
                     filtered_pairs.append(pair)
         
-        print(f"   ✅ Quality filtering: {len(filtered_pairs)}/{len(pairs)} pairs kept")
+        print(f"   [OK] Quality filtering: {len(filtered_pairs)}/{len(pairs)} pairs kept")
         return filtered_pairs
     
     def _ensure_diversity(self, pairs: List[Dict]) -> List[Dict]:
@@ -477,16 +477,16 @@ def analyze_dataset_diversity(dataset: DialogueDataset) -> Dict:
 
 if __name__ == "__main__":
     # Демонстрация системы
-    print("🚀 Testing Advanced Dataset Expansion...")
+    print("[START] Testing Advanced Dataset Expansion...")
     
     # Создание расширенного dataset
     expanded_dataset = create_expanded_dataset(target_pairs=100)
     
     # Статистика
     stats = expanded_dataset.get_statistics()
-    print(f"📊 Dataset Statistics:")
+    print(f"[DATA] Dataset Statistics:")
     print(f"   Total pairs: {stats['total_dialogue_pairs']}")
     print(f"   Embedding dimension: {stats['embedding_dimension']}")
     print(f"   Teacher model: {stats['teacher_model']}")
     
-    print("\n✅ Advanced Dataset Expansion system ready!") 
+    print("\n[OK] Advanced Dataset Expansion system ready!") 

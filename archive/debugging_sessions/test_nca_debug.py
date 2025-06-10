@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🔧 Debug Test для NCA Training Workflow
+[CONFIG] Debug Test для NCA Training Workflow
 
 Простая диагностика проблемы с trainer.forward()
 """
@@ -17,7 +17,7 @@ from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
 
 def debug_trainer_forward():
     """Отладка trainer.forward() с разными входными данными"""
-    print("🔧 Debug: Trainer Forward Pass")
+    print("[CONFIG] Debug: Trainer Forward Pass")
     print("=" * 50)
     
     try:
@@ -29,7 +29,7 @@ def debug_trainer_forward():
         config.mixed_precision = False
         
         trainer = EmergentCubeTrainer(config, device="cpu")
-        print("✅ Trainer initialized")
+        print("[OK] Trainer initialized")
         
         # Test 1: Surface-size input (what trainer expects)
         print("\n1️⃣ Testing surface-size input...")
@@ -48,7 +48,7 @@ def debug_trainer_forward():
                     else:
                         print(f"  {key}: None")
         else:
-            print("❌ Forward returned None!")
+            print("[ERROR] Forward returned None!")
             
         # Test 2: 4096D input (что пытался передать before)
         print("\n2️⃣ Testing 4096D input...")
@@ -65,7 +65,7 @@ def debug_trainer_forward():
                     else:
                         print(f"  {key}: None")
         except Exception as e:
-            print(f"❌ 4096D input failed: {e}")
+            print(f"[ERROR] 4096D input failed: {e}")
         
         # Test 3: Check trainer components
         print("\n3️⃣ Checking trainer components...")
@@ -86,19 +86,19 @@ def debug_trainer_forward():
                 print(f"Processed cube shape: {processed_cube.shape}")
                 
             except Exception as e:
-                print(f"❌ Direct lattice call failed: {e}")
+                print(f"[ERROR] Direct lattice call failed: {e}")
         
         return True
         
     except Exception as e:
-        print(f"❌ Debug failed: {e}")
+        print(f"[ERROR] Debug failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def debug_nca_trainer():
     """Отладка NCA trainer"""
-    print("\n🧠 Debug: NCA Trainer")
+    print("\n[BRAIN] Debug: NCA Trainer")
     print("=" * 50)
     
     try:
@@ -110,7 +110,7 @@ def debug_nca_trainer():
         config.mixed_precision = False
         
         trainer = EmergentCubeTrainer(config, device="cpu")
-        print("✅ NCA Trainer initialized")
+        print("[OK] NCA Trainer initialized")
         
         # Check NCA components
         print(f"NCA enabled: {hasattr(trainer, 'nca_system')}")
@@ -139,14 +139,14 @@ def debug_nca_trainer():
         return True
         
     except Exception as e:
-        print(f"❌ NCA Debug failed: {e}")
+        print(f"[ERROR] NCA Debug failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def test_loss_computation():
     """Тест loss computation с правильными данными"""
-    print("\n📊 Debug: Loss Computation")
+    print("\n[DATA] Debug: Loss Computation")
     print("=" * 50)
     
     try:
@@ -188,32 +188,32 @@ def test_loss_computation():
             
             return True
         else:
-            print("❌ Forward pass returned None")
+            print("[ERROR] Forward pass returned None")
             return False
         
     except Exception as e:
-        print(f"❌ Loss computation failed: {e}")
+        print(f"[ERROR] Loss computation failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def run_debug_suite():
     """Запуск полной отладочной suite"""
-    print("🔧 NCA Training Debug Suite")
+    print("[CONFIG] NCA Training Debug Suite")
     print("=" * 60)
     
     results = []
     
     # Standard trainer debug
-    print("\n🔍 Standard Trainer Debug")
+    print("\n[MAGNIFY] Standard Trainer Debug")
     results.append(debug_trainer_forward())
     
     # NCA trainer debug  
-    print("\n🔍 NCA Trainer Debug")
+    print("\n[MAGNIFY] NCA Trainer Debug")
     results.append(debug_nca_trainer())
     
     # Loss computation debug
-    print("\n🔍 Loss Computation Debug")
+    print("\n[MAGNIFY] Loss Computation Debug")
     results.append(test_loss_computation())
     
     # Summary
@@ -224,9 +224,9 @@ def run_debug_suite():
     print(f"🧪 Debug Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("✅ All debug tests passed! Ready for training workflow")
+        print("[OK] All debug tests passed! Ready for training workflow")
     else:
-        print(f"❌ {total - passed} tests failed. Need fixes before training")
+        print(f"[ERROR] {total - passed} tests failed. Need fixes before training")
     
     return passed == total
 

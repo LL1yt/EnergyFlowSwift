@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🔧 gMLP Parameter Optimization для 25K Target
+[CONFIG] gMLP Parameter Optimization для 25K Target
 ==============================================
 
 Находим оптимальную конфигурацию gMLP клетки для точного достижения ~25,000 параметров
@@ -25,7 +25,7 @@ def count_parameters(model) -> int:
 def optimize_gmlp_config() -> Dict[str, Any]:
     """Find optimal gMLP configuration для 25K parameters"""
     
-    print("🔧 Optimizing gMLP Configuration для 25K Parameters")
+    print("[CONFIG] Optimizing gMLP Configuration для 25K Parameters")
     print("=" * 60)
     
     target_params = 25000
@@ -77,32 +77,32 @@ def optimize_gmlp_config() -> Dict[str, Any]:
                         best_params = param_count
                         
                 except Exception as e:
-                    print(f"❌ Failed config hidden_dim={hidden_dim}: {e}")
+                    print(f"[ERROR] Failed config hidden_dim={hidden_dim}: {e}")
     
     print("\n" + "=" * 60)
-    print("🎯 OPTIMIZATION RESULTS")
+    print("[TARGET] OPTIMIZATION RESULTS")
     print("=" * 60)
     
     if best_config:
-        print(f"✅ Best Configuration:")
+        print(f"[OK] Best Configuration:")
         for key, value in best_config.items():
             print(f"   {key}: {value}")
         
-        print(f"\n📊 Parameter Analysis:")
+        print(f"\n[DATA] Parameter Analysis:")
         print(f"   Target: {target_params:,} parameters")
         print(f"   Achieved: {best_params:,} parameters")
         print(f"   Difference: {best_diff:,} parameters")
         print(f"   Ratio: {best_params/target_params:.3f}x target")
         
         if best_diff <= 2000:  # Within 2K parameters
-            print(f"🎉 EXCELLENT: Within 2K of target!")
+            print(f"[SUCCESS] EXCELLENT: Within 2K of target!")
         elif best_diff <= 5000:  # Within 5K parameters
-            print(f"✅ GOOD: Within 5K of target")
+            print(f"[OK] GOOD: Within 5K of target")
         else:
-            print(f"⚠️  ACCEPTABLE: {best_diff:,} parameters from target")
+            print(f"[WARNING]  ACCEPTABLE: {best_diff:,} parameters from target")
     
     # Show top 5 configurations
-    print(f"\n📋 Top 5 Configurations:")
+    print(f"\n[INFO] Top 5 Configurations:")
     configurations.sort(key=lambda x: x['diff'])
     
     for i, config_result in enumerate(configurations[:5]):
@@ -129,8 +129,8 @@ def test_optimized_config(config: Dict[str, Any]):
         cell = GatedMLPCell(**config)
         param_count = count_parameters(cell)
         
-        print(f"✅ Cell created successfully")
-        print(f"📊 Parameters: {param_count:,}")
+        print(f"[OK] Cell created successfully")
+        print(f"[DATA] Parameters: {param_count:,}")
         
         # Test forward pass
         batch_size = 2
@@ -140,9 +140,9 @@ def test_optimized_config(config: Dict[str, Any]):
         
         output = cell(neighbor_states, own_state, external_input)
         
-        print(f"✅ Forward pass successful")
-        print(f"📊 Input shape: {own_state.shape}")
-        print(f"📊 Output shape: {output.shape}")
+        print(f"[OK] Forward pass successful")
+        print(f"[DATA] Input shape: {own_state.shape}")
+        print(f"[DATA] Output shape: {output.shape}")
         
         # Test gradient flow
         loss = output.mean()
@@ -151,19 +151,19 @@ def test_optimized_config(config: Dict[str, Any]):
         grad_params = sum(1 for p in cell.parameters() if p.grad is not None)
         total_params = len(list(cell.parameters()))
         
-        print(f"✅ Gradient flow successful")
-        print(f"📊 Parameters with gradients: {grad_params}/{total_params}")
+        print(f"[OK] Gradient flow successful")
+        print(f"[DATA] Parameters with gradients: {grad_params}/{total_params}")
         
         return True
         
     except Exception as e:
-        print(f"❌ Test failed: {e}")
+        print(f"[ERROR] Test failed: {e}")
         return False
 
 
 def calculate_full_system_size(config: Dict[str, Any]):
     """Calculate full system parameter count"""
-    print(f"\n🖥️  Full System Analysis")
+    print(f"\n[PC]  Full System Analysis")
     print("=" * 40)
     
     # Single cell parameters
@@ -184,16 +184,16 @@ def calculate_full_system_size(config: Dict[str, Any]):
     
     total_system_params = lattice_params + adapter_params + spatial_propagation_params + loss_function_params
     
-    print(f"📊 Single Cell: {cell_params:,} parameters")
-    print(f"📊 Total Cells: {total_cells:,} cells")
-    print(f"📊 Lattice: {lattice_params:,} parameters")
-    print(f"📊 Adapter: {adapter_params:,} parameters")
-    print(f"📊 Spatial Prop: {spatial_propagation_params:,} parameters")
-    print(f"📊 Total System: {total_system_params:,} parameters")
+    print(f"[DATA] Single Cell: {cell_params:,} parameters")
+    print(f"[DATA] Total Cells: {total_cells:,} cells")
+    print(f"[DATA] Lattice: {lattice_params:,} parameters")
+    print(f"[DATA] Adapter: {adapter_params:,} parameters")
+    print(f"[DATA] Spatial Prop: {spatial_propagation_params:,} parameters")
+    print(f"[DATA] Total System: {total_system_params:,} parameters")
     
     # Memory estimation
     memory_gb = total_system_params * 4 / (1024**3)  # 4 bytes per float32
-    print(f"💾 Estimated Memory: {memory_gb:.2f} GB")
+    print(f"[SAVE] Estimated Memory: {memory_gb:.2f} GB")
     
     return {
         'cell_params': cell_params,
@@ -216,11 +216,11 @@ if __name__ == "__main__":
             # Analyze full system
             system_analysis = calculate_full_system_size(optimal_config)
             
-            print(f"\n🎯 FINAL RECOMMENDATION:")
-            print(f"✅ Use configuration: {optimal_config}")
-            print(f"✅ System feasible: {system_analysis['memory_gb']:.1f}GB memory")
-            print(f"✅ Ready для emergent training!")
+            print(f"\n[TARGET] FINAL RECOMMENDATION:")
+            print(f"[OK] Use configuration: {optimal_config}")
+            print(f"[OK] System feasible: {system_analysis['memory_gb']:.1f}GB memory")
+            print(f"[OK] Ready для emergent training!")
         else:
-            print(f"\n❌ Optimal configuration failed testing")
+            print(f"\n[ERROR] Optimal configuration failed testing")
     else:
-        print(f"\n❌ No suitable configuration found") 
+        print(f"\n[ERROR] No suitable configuration found") 

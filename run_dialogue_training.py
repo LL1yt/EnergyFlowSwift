@@ -98,10 +98,10 @@ def setup_training_environment() -> Tuple[str, Path]:
     # Определение устройства
     if torch.cuda.is_available():
         device = "cuda"
-        logger.info(f"🚀 Using GPU: {torch.cuda.get_device_name()}")
+        logger.info(f"[START] Using GPU: {torch.cuda.get_device_name()}")
     else:
         device = "cpu"
-        logger.info("💻 Using CPU for training")
+        logger.info("[COMPUTER] Using CPU for training")
     
     # Создание директорий
     log_dir = Path("logs")
@@ -214,7 +214,7 @@ def run_dialogue_training(args):
     patience_counter = 0
     
     for epoch in range(args.epochs):
-        logger.info(f"\n📈 EPOCH {epoch + 1}/{args.epochs}")
+        logger.info(f"\n[CHART] EPOCH {epoch + 1}/{args.epochs}")
         logger.info("-" * 40)
         
         # Training phase
@@ -336,7 +336,7 @@ def run_dialogue_training(args):
                 'val_similarity': avg_val_similarity,
                 'config': config
             }, checkpoint_path)
-            logger.info(f"💾 Saved best model: {checkpoint_path}")
+            logger.info(f"[SAVE] Saved best model: {checkpoint_path}")
         else:
             patience_counter += 1
         
@@ -351,11 +351,11 @@ def run_dialogue_training(args):
             break
     
     # 6. Результаты обучения
-    logger.info("\n🏆 DIALOGUE TRAINING COMPLETED!")
+    logger.info("\n[TROPHY] DIALOGUE TRAINING COMPLETED!")
     logger.info("=" * 60)
-    logger.info(f"🎯 Best validation similarity: {best_val_similarity:.4f}")
-    logger.info(f"📊 Total epochs: {len(training_history)}")
-    logger.info(f"🎓 Target achieved: {'✅ YES' if best_val_similarity >= config.target_similarity else '❌ NO'}")
+    logger.info(f"[TARGET] Best validation similarity: {best_val_similarity:.4f}")
+    logger.info(f"[DATA] Total epochs: {len(training_history)}")
+    logger.info(f"[GRADUATE] Target achieved: {'[OK] YES' if best_val_similarity >= config.target_similarity else '[ERROR] NO'}")
     
     # Сохранение результатов
     results_file = results_dir / f"dialogue_training_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -380,7 +380,7 @@ def run_dialogue_training(args):
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
     
-    logger.info(f"💾 Results saved: {results_file}")
+    logger.info(f"[SAVE] Results saved: {results_file}")
     
     # Построение graphиков
     if args.plot_results:
@@ -422,7 +422,7 @@ def plot_training_results(training_history: List[Dict], results_dir: Path):
     
     plot_file = results_dir / f"dialogue_training_plot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
     plt.savefig(plot_file, dpi=300, bbox_inches='tight')
-    logger.info(f"📊 Training plots saved: {plot_file}")
+    logger.info(f"[DATA] Training plots saved: {plot_file}")
     plt.close()
 
 
@@ -482,7 +482,7 @@ def main():
         return 0
         
     except Exception as e:
-        logger.error(f"❌ Training failed: {e}", exc_info=True)
+        logger.error(f"[ERROR] Training failed: {e}", exc_info=True)
         return 1
 
 

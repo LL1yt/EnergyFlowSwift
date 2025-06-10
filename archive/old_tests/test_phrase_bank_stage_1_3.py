@@ -21,7 +21,7 @@ import os
 import tempfile
 import json
 
-# 🔧 CUDA COMPATIBILITY FIX для RTX 5090
+# [CONFIG] CUDA COMPATIBILITY FIX для RTX 5090
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 torch.backends.cudnn.enabled = False
 torch.set_default_device('cpu')
@@ -31,7 +31,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 def test_caching_mechanism():
     """Тест механизма кэширования"""
-    print("\n💾 Testing caching mechanism...")
+    print("\n[SAVE] Testing caching mechanism...")
     
     try:
         from inference.lightweight_decoder.phrase_bank_decoder import (
@@ -50,7 +50,7 @@ def test_caching_mechanism():
         embedding_loader = EmbeddingLoader(cache_dir="./cache")
         decoder.load_phrase_bank(embedding_loader=embedding_loader)
         
-        print("   🔄 Testing cache functionality...")
+        print("   [REFRESH] Testing cache functionality...")
         
         # Первое декодирование (должно добавить в кэш)
         test_text = "Hello world"
@@ -85,7 +85,7 @@ def test_caching_mechanism():
         assert result1 == result2, "Results should be identical"
         assert stats['cache_hits'] >= 1, "Should have at least one cache hit"
         
-        print("   ✅ Caching mechanism works correctly")
+        print("   [OK] Caching mechanism works correctly")
         
         # Тест очистки кэша
         print("   🗑️  Testing cache clearing...")
@@ -96,7 +96,7 @@ def test_caching_mechanism():
         return True
         
     except Exception as e:
-        print(f"   ❌ Caching mechanism failed: {e}")
+        print(f"   [ERROR] Caching mechanism failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -121,7 +121,7 @@ def test_error_handling_fallbacks():
         
         decoder = PhraseBankDecoder(config=config)
         
-        print("   🔍 Testing error handling without loaded phrase bank...")
+        print("   [MAGNIFY] Testing error handling without loaded phrase bank...")
         
         # Попытка декодировать без загруженного phrase bank
         dummy_embedding = torch.randn(768)
@@ -134,7 +134,7 @@ def test_error_handling_fallbacks():
         embedding_loader = EmbeddingLoader(cache_dir="./cache")
         decoder.load_phrase_bank(embedding_loader=embedding_loader)
         
-        print("   ⚠️  Testing invalid input handling...")
+        print("   [WARNING]  Testing invalid input handling...")
         
         # Тест с неправильной размерностью эмбединга
         wrong_embedding = torch.randn(512)  # Неправильная размерность
@@ -155,14 +155,14 @@ def test_error_handling_fallbacks():
         return True
         
     except Exception as e:
-        print(f"   ❌ Error handling test failed: {e}")
+        print(f"   [ERROR] Error handling test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def test_configuration_management():
     """Тест управления конфигурацией"""
-    print("\n⚙️  Testing configuration management...")
+    print("\n[GEAR]  Testing configuration management...")
     
     try:
         from inference.lightweight_decoder.phrase_bank_decoder import (
@@ -170,7 +170,7 @@ def test_configuration_management():
         )
         from data.embedding_loader import EmbeddingLoader
         
-        print("   📝 Testing configuration validation...")
+        print("   [WRITE] Testing configuration validation...")
         
         # Тест валидации конфигурации
         try:
@@ -180,10 +180,10 @@ def test_configuration_management():
                 context_weight=-0.1,       # Неправильное значение
                 max_candidates=-5          # Неправильное значение
             )
-            print("   ❌ Configuration validation failed to catch errors")
+            print("   [ERROR] Configuration validation failed to catch errors")
             return False
         except ValueError as e:
-            print(f"   ✅ Configuration validation works: caught {len(str(e).split(';'))} errors")
+            print(f"   [OK] Configuration validation works: caught {len(str(e).split(';'))} errors")
         
         # Правильная конфигурация
         config = DecodingConfig(
@@ -197,7 +197,7 @@ def test_configuration_management():
         embedding_loader = EmbeddingLoader(cache_dir="./cache")
         decoder.load_phrase_bank(embedding_loader=embedding_loader)
         
-        print("   💾 Testing configuration save/load...")
+        print("   [SAVE] Testing configuration save/load...")
         
         # Сохранение конфигурации
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -224,7 +224,7 @@ def test_configuration_management():
         return True
         
     except Exception as e:
-        print(f"   ❌ Configuration management failed: {e}")
+        print(f"   [ERROR] Configuration management failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -248,7 +248,7 @@ def test_health_monitoring():
         embedding_loader = EmbeddingLoader(cache_dir="./cache")
         decoder.load_phrase_bank(embedding_loader=embedding_loader)
         
-        print("   🔍 Testing initial health status...")
+        print("   [MAGNIFY] Testing initial health status...")
         
         # Проверка начального состояния здоровья
         health = decoder.get_health_status()
@@ -260,7 +260,7 @@ def test_health_monitoring():
         assert health['status'] == 'healthy', "Initial status should be healthy"
         assert health['ready'] == True, "System should be ready"
         
-        print("   📊 Testing performance monitoring...")
+        print("   [DATA] Testing performance monitoring...")
         
         # Выполняем несколько декодирований для сбора статистики
         test_texts = ["Hello", "World", "Test", "Example"]
@@ -293,14 +293,14 @@ def test_health_monitoring():
         return True
         
     except Exception as e:
-        print(f"   ❌ Health monitoring failed: {e}")
+        print(f"   [ERROR] Health monitoring failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def test_production_optimization():
     """Тест оптимизации для продакшн режима"""
-    print("\n🚀 Testing production optimization...")
+    print("\n[START] Testing production optimization...")
     
     try:
         from inference.lightweight_decoder.phrase_bank_decoder import (
@@ -321,13 +321,13 @@ def test_production_optimization():
         embedding_loader = EmbeddingLoader(cache_dir="./cache")
         decoder.load_phrase_bank(embedding_loader=embedding_loader)
         
-        print("   📋 Initial configuration:")
+        print("   [INFO] Initial configuration:")
         initial_stats = decoder.get_statistics()
         initial_config = initial_stats['config']
         print(f"     Caching: {initial_config['caching_enabled']}")
         print(f"     Fallbacks: {initial_config['fallbacks_enabled']}")
         
-        print("   🔧 Applying production optimizations...")
+        print("   [CONFIG] Applying production optimizations...")
         
         # Применяем производственные оптимизации
         optimizations = decoder.optimize_for_production()
@@ -340,7 +340,7 @@ def test_production_optimization():
         optimized_stats = decoder.get_statistics()
         optimized_config = optimized_stats['config']
         
-        print("   📊 Optimized configuration:")
+        print("   [DATA] Optimized configuration:")
         print(f"     Caching: {optimized_config['caching_enabled']}")
         print(f"     Fallbacks: {optimized_config['fallbacks_enabled']}")
         
@@ -349,7 +349,7 @@ def test_production_optimization():
         assert optimized_config['fallbacks_enabled'] == True, "Fallbacks should be enabled"
         
         # Тест производительности после оптимизации
-        print("   ⚡ Testing optimized performance...")
+        print("   [FAST] Testing optimized performance...")
         
         test_embedding = embedding_loader.load_from_llm(
             texts=["Performance test"],
@@ -374,14 +374,14 @@ def test_production_optimization():
         return True
         
     except Exception as e:
-        print(f"   ❌ Production optimization failed: {e}")
+        print(f"   [ERROR] Production optimization failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def test_comprehensive_integration():
     """Тест комплексной интеграции всех Stage 1.3 возможностей"""
-    print("\n🔗 Testing comprehensive integration...")
+    print("\n[LINK] Testing comprehensive integration...")
     
     try:
         from inference.lightweight_decoder.phrase_bank_decoder import (
@@ -442,13 +442,13 @@ def test_comprehensive_integration():
             results.append(result)
             print(f"     Case {i+1}: '{result}' ({decode_time*1000:.1f}ms)")
         
-        print(f"   📊 Workflow completed in {total_time*1000:.1f}ms")
+        print(f"   [DATA] Workflow completed in {total_time*1000:.1f}ms")
         
         # Финальная статистика
         final_stats = decoder.get_statistics()
         health = decoder.get_health_status()
         
-        print("   📈 Final statistics:")
+        print("   [CHART] Final statistics:")
         print(f"     Total decodings: {final_stats['total_decodings']}")
         print(f"     Success rate: {final_stats['success_rate']}")
         print(f"     Cache hit rate: {final_stats['cache_hit_rate']}")
@@ -462,7 +462,7 @@ def test_comprehensive_integration():
         assert health['status'] == 'healthy', "System should remain healthy"
         
         # Дополнительные проверки для лучшей диагностики
-        print(f"   🔍 Diagnostic info:")
+        print(f"   [MAGNIFY] Diagnostic info:")
         print(f"     Cache efficiency working: {final_stats['cache_hit_rate'] != '0.0%'}")
         print(f"     All test cases processed: {len(results) == len(test_cases)}")
         print(f"     Fallback responses minimal: {sum(1 for r in results if 'No context-aware' not in r) >= 2}")
@@ -470,14 +470,14 @@ def test_comprehensive_integration():
         return True
         
     except Exception as e:
-        print(f"   ❌ Comprehensive integration failed: {e}")
+        print(f"   [ERROR] Comprehensive integration failed: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 def main():
     """Главная функция тестирования Stage 1.3"""
-    print("🚀 PHASE 2.7.3 - PhraseBankDecoder Stage 1.3 Production Readiness Test")
+    print("[START] PHASE 2.7.3 - PhraseBankDecoder Stage 1.3 Production Readiness Test")
     print("="*70)
     
     test_results = []
@@ -494,14 +494,14 @@ def main():
     
     for test_name, test_func in tests:
         try:
-            print(f"\n📋 Running {test_name}...")
+            print(f"\n[INFO] Running {test_name}...")
             result = test_func()
             test_results.append((test_name, result))
             
             if result:
-                print(f"✅ {test_name}: PASSED")
+                print(f"[OK] {test_name}: PASSED")
             else:
-                print(f"❌ {test_name}: FAILED")
+                print(f"[ERROR] {test_name}: FAILED")
                 
         except Exception as e:
             print(f"💥 {test_name}: CRASHED - {e}")
@@ -509,7 +509,7 @@ def main():
     
     # Итоговые результаты
     print("\n" + "="*70)
-    print("🎯 STAGE 1.3 PRODUCTION READINESS RESULTS")
+    print("[TARGET] STAGE 1.3 PRODUCTION READINESS RESULTS")
     print("="*70)
     
     passed = sum(1 for _, result in test_results if result)
@@ -517,29 +517,29 @@ def main():
     success_rate = (passed / total) * 100 if total > 0 else 0
     
     for test_name, result in test_results:
-        status = "✅ PASS" if result else "❌ FAIL"
+        status = "[OK] PASS" if result else "[ERROR] FAIL"
         print(f"{status} {test_name}")
     
-    print(f"\n🎯 Stage 1.3: {passed}/{total} tests passed ({success_rate:.1f}%)")
+    print(f"\n[TARGET] Stage 1.3: {passed}/{total} tests passed ({success_rate:.1f}%)")
     
     if success_rate >= 85:
-        print("\n🎉 STAGE 1.3 PRODUCTION READINESS: SUCCESS!")
-        print("📋 PhraseBankDecoder is production-ready!")
+        print("\n[SUCCESS] STAGE 1.3 PRODUCTION READINESS: SUCCESS!")
+        print("[INFO] PhraseBankDecoder is production-ready!")
         
         # Checkpoint 1.3 summary
-        print("\n📊 CHECKPOINT 1.3 ACHIEVEMENTS:")
-        print("✅ Advanced caching mechanism operational")
-        print("✅ Robust error handling with fallbacks")
-        print("✅ Complete configuration management")
-        print("✅ Real-time health monitoring")
-        print("✅ Production optimization capabilities")
-        print("✅ Comprehensive integration verified")
+        print("\n[DATA] CHECKPOINT 1.3 ACHIEVEMENTS:")
+        print("[OK] Advanced caching mechanism operational")
+        print("[OK] Robust error handling with fallbacks")
+        print("[OK] Complete configuration management")
+        print("[OK] Real-time health monitoring")
+        print("[OK] Production optimization capabilities")
+        print("[OK] Comprehensive integration verified")
         
-        print("\n🚀 READY FOR NEXT PHASE: GenerativeDecoder Implementation!")
+        print("\n[START] READY FOR NEXT PHASE: GenerativeDecoder Implementation!")
         
     else:
-        print(f"\n⚠️  STAGE 1.3 NEEDS IMPROVEMENT: {success_rate:.1f}% < 85%")
-        print("🔧 Review failed tests and enhance production readiness")
+        print(f"\n[WARNING]  STAGE 1.3 NEEDS IMPROVEMENT: {success_rate:.1f}% < 85%")
+        print("[CONFIG] Review failed tests and enhance production readiness")
 
 if __name__ == "__main__":
     main() 

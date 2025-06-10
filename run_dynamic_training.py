@@ -1,5 +1,5 @@
 """
-🚀 Dynamic Training Script с автоматической конфигурацией
+[START] Dynamic Training Script с автоматической конфигурацией
 Использует Dynamic Configuration System для оптимального использования железа
 """
 
@@ -30,7 +30,7 @@ def setup_environment():
         torch.cuda.empty_cache()
         torch.cuda.set_per_process_memory_fraction(0.9)  # Используем 90% GPU памяти
 
-    logger.info("🔧 Environment setup completed")
+    logger.info("[CONFIG] Environment setup completed")
 
 
 class DynamicTrainingManager:
@@ -92,7 +92,7 @@ class DynamicTrainingManager:
             # Информация о режиме
             dynamic_info = self.config_manager.get_dynamic_config_info()
             if dynamic_info:
-                logger.info(f"🎯 Loaded dynamic config: {dynamic_info['mode']} mode")
+                logger.info(f"[TARGET] Loaded dynamic config: {dynamic_info['mode']} mode")
                 logger.info(f"   Scale factor: {dynamic_info['scale_factor']}")
 
             # Выводим основную информацию
@@ -100,7 +100,7 @@ class DynamicTrainingManager:
             embeddings = self.dynamic_config["embeddings"]
             training = self.dynamic_config["training"]
 
-            logger.info(f"📊 Configuration loaded:")
+            logger.info(f"[DATA] Configuration loaded:")
             logger.info(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
             logger.info(f"   Total neurons: {lattice['total_neurons']:,}")
             logger.info(f"   Embedding dim: {embeddings['embedding_dim']:,}")
@@ -108,7 +108,7 @@ class DynamicTrainingManager:
             logger.info(f"   Learning rate: {training['learning_rate']}")
 
         except Exception as e:
-            logger.error(f"❌ Failed to load dynamic config: {e}")
+            logger.error(f"[ERROR] Failed to load dynamic config: {e}")
             raise
 
     # Метод _apply_custom_scale() удален - теперь custom scale
@@ -131,7 +131,7 @@ class DynamicTrainingManager:
             training_config = self.dynamic_config["training"]
 
             # Логируем динамическую конфигурацию для отладки
-            logger.info(f"🔍 Dynamic gMLP config from generator:")
+            logger.info(f"[MAGNIFY] Dynamic gMLP config from generator:")
             logger.info(f"   target_params: {gmlp_config.get('target_params')}")
             logger.info(f"   state_size: {gmlp_config.get('state_size')}")
             logger.info(f"   hidden_dim: {gmlp_config.get('hidden_dim')}")
@@ -184,7 +184,7 @@ class DynamicTrainingManager:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             self.trainer = EmergentCubeTrainer(trainer_config, device=device)
 
-            logger.info(f"✅ Trainer created successfully")
+            logger.info(f"[OK] Trainer created successfully")
             logger.info(f"   Device: {device}")
             logger.info(f"   Mixed precision: {trainer_config.mixed_precision}")
             logger.info(
@@ -194,7 +194,7 @@ class DynamicTrainingManager:
             return self.trainer
 
         except Exception as e:
-            logger.error(f"❌ Failed to create trainer: {e}")
+            logger.error(f"[ERROR] Failed to create trainer: {e}")
             raise
 
     def prepare_dataset(
@@ -224,7 +224,7 @@ class DynamicTrainingManager:
             latest_dataset = datasets[0]
             embeddings_file = latest_dataset["file_path"]
 
-            logger.info(f"📁 Using precomputed dataset: {latest_dataset['filename']}")
+            logger.info(f"[FOLDER] Using precomputed dataset: {latest_dataset['filename']}")
             logger.info(f"   Available size: {latest_dataset['size']} pairs")
             logger.info(f"   Teacher model: {latest_dataset['teacher_model']}")
 
@@ -249,7 +249,7 @@ class DynamicTrainingManager:
                 dataset = Subset(dataset, indices)
                 logger.info(f"   Limited to: {limit} pairs (reproducible with seed=42)")
 
-            logger.info(f"📁 Dataset prepared:")
+            logger.info(f"[FOLDER] Dataset prepared:")
             logger.info(f"   Final size: {len(dataset)} pairs")
 
             # Проверяем образец
@@ -263,7 +263,7 @@ class DynamicTrainingManager:
             return dataset
 
         except Exception as e:
-            logger.error(f"❌ Failed to prepare dataset: {e}")
+            logger.error(f"[ERROR] Failed to prepare dataset: {e}")
             raise
 
     def run_training(
@@ -284,7 +284,7 @@ class DynamicTrainingManager:
             if resume_trainer is not None:
                 trainer = resume_trainer
                 logger.info(
-                    f"🔄 Using resumed trainer (starting from epoch {start_epoch + 1})"
+                    f"[REFRESH] Using resumed trainer (starting from epoch {start_epoch + 1})"
                 )
             else:
                 trainer = self.create_trainer()
@@ -328,7 +328,7 @@ class DynamicTrainingManager:
             )
 
             # Запуск обучения
-            logger.info(f"🚀 Starting dynamic training:")
+            logger.info(f"[START] Starting dynamic training:")
             logger.info(f"   Dataset size: {len(dataset)}")
             logger.info(f"   Epochs: {epochs}")
             logger.info(f"   Batch size: {batch_size}")
@@ -469,7 +469,7 @@ class DynamicTrainingManager:
                 trainer, len(dataset), epochs, best_similarity, total_time, training_log
             )
 
-            logger.info(f"🎉 Training completed:")
+            logger.info(f"[SUCCESS] Training completed:")
             logger.info(f"   Total time: {total_time/60:.1f} minutes")
             logger.info(f"   Final similarity: {avg_similarity:.4f}")
             logger.info(f"   Best similarity: {best_similarity:.4f}")
@@ -485,7 +485,7 @@ class DynamicTrainingManager:
             }
 
         except Exception as e:
-            logger.error(f"❌ Training failed: {e}")
+            logger.error(f"[ERROR] Training failed: {e}")
             raise
 
     def _save_training_results(
@@ -574,16 +574,16 @@ class DynamicTrainingManager:
                         indent=2,
                     )
 
-                logger.info(f"📋 Detailed training log saved: {log_path}")
+                logger.info(f"[INFO] Detailed training log saved: {log_path}")
 
-                logger.info(f"✅ Results saved with scale indication: {result_name}")
+                logger.info(f"[OK] Results saved with scale indication: {result_name}")
             else:
                 logger.info(
-                    f"⚠️ Similarity too low ({best_similarity:.3f}), skipping checkpoint save"
+                    f"[WARNING] Similarity too low ({best_similarity:.3f}), skipping checkpoint save"
                 )
 
         except Exception as e:
-            logger.error(f"❌ Failed to save training results: {e}")
+            logger.error(f"[ERROR] Failed to save training results: {e}")
 
     def _estimate_training_time(self, dataset_size: int, epochs: int) -> str:
         """Оценка времени обучения"""
@@ -675,16 +675,16 @@ def main():
         )
 
         # Результаты
-        logger.info("📈 Training Results:")
+        logger.info("[CHART] Training Results:")
         for key, value in results.items():
             logger.info(f"   {key}: {value}")
 
-        logger.info("✅ Dynamic training completed successfully!")
+        logger.info("[OK] Dynamic training completed successfully!")
 
     except KeyboardInterrupt:
-        logger.info("⏹️ Training interrupted by user")
+        logger.info("[STOP] Training interrupted by user")
     except Exception as e:
-        logger.error(f"❌ Training failed: {e}")
+        logger.error(f"[ERROR] Training failed: {e}")
         import traceback
 
         traceback.print_exc()

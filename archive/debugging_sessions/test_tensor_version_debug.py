@@ -37,46 +37,46 @@ def test_tensor_versions():
     
     # Создаем trainer
     trainer = EmergentCubeTrainer(config=config, device="cpu")
-    print(f"✅ Trainer created with {trainer.get_system_info()['total_system_params']} parameters")
+    print(f"[OK] Trainer created with {trainer.get_system_info()['total_system_params']} parameters")
     
     # Создаем test data
     batch_size = 4
     question_embeddings = torch.randn(batch_size, 225, requires_grad=True)
     answer_embeddings = torch.randn(batch_size, 4096, requires_grad=True)
     
-    print("\n🔍 === TRAINING STEP 1 ===")
+    print("\n[MAGNIFY] === TRAINING STEP 1 ===")
     try:
         # Первый training step
         loss_1 = trainer.train_step(question_embeddings, answer_embeddings)
-        print(f"✅ Step 1 SUCCESS: loss = {loss_1['total_loss']:.6f}")
+        print(f"[OK] Step 1 SUCCESS: loss = {loss_1['total_loss']:.6f}")
         
         # Диагностика состояния после первого шага
         trainer._debug_tensor_versions("AFTER Step 1")
         
     except Exception as e:
-        print(f"❌ Step 1 FAILED: {e}")
+        print(f"[ERROR] Step 1 FAILED: {e}")
         return False
     
-    print("\n🔍 === TRAINING STEP 2 ===")
+    print("\n[MAGNIFY] === TRAINING STEP 2 ===")
     try:
         # Второй training step (здесь должна быть ошибка)
         loss_2 = trainer.train_step(question_embeddings, answer_embeddings)
-        print(f"✅ Step 2 SUCCESS: loss = {loss_2['total_loss']:.6f}")
+        print(f"[OK] Step 2 SUCCESS: loss = {loss_2['total_loss']:.6f}")
         
     except RuntimeError as e:
         if "is at version" in str(e) and "expected version" in str(e):
-            print(f"❌ Step 2 FAILED with VERSION ERROR: {e}")
+            print(f"[ERROR] Step 2 FAILED with VERSION ERROR: {e}")
             
             # Детальный анализ версий проблемных тензоров
-            print("\n🔍 === DETAILED VERSION ANALYSIS ===")
+            print("\n[MAGNIFY] === DETAILED VERSION ANALYSIS ===")
             trainer._debug_tensor_versions("DURING ERROR Step 2")
             
             return False
         else:
-            print(f"❌ Step 2 FAILED with OTHER ERROR: {e}")
+            print(f"[ERROR] Step 2 FAILED with OTHER ERROR: {e}")
             return False
     
-    print("\n✅ === ALL TESTS PASSED ===")
+    print("\n[OK] === ALL TESTS PASSED ===")
     return True
 
 def test_specialization_tracker_isolation():
@@ -91,7 +91,7 @@ def test_specialization_tracker_isolation():
     
     # Проверяем версию tracker'а до и после forward pass
     initial_version = cell.specialization_tracker._version if hasattr(cell.specialization_tracker, '_version') else 'N/A'
-    print(f"🔍 Initial tracker version: {initial_version}")
+    print(f"[MAGNIFY] Initial tracker version: {initial_version}")
     
     # Первый forward pass
     neighbor_states = torch.randn(1, 6, 8)
@@ -99,17 +99,17 @@ def test_specialization_tracker_isolation():
     
     output_1 = cell(neighbor_states, own_state)
     version_after_1 = cell.specialization_tracker._version if hasattr(cell.specialization_tracker, '_version') else 'N/A'
-    print(f"🔍 After forward 1 version: {version_after_1}")
+    print(f"[MAGNIFY] After forward 1 version: {version_after_1}")
     
     # Второй forward pass (проблемное место)
     output_2 = cell(neighbor_states, own_state)
     version_after_2 = cell.specialization_tracker._version if hasattr(cell.specialization_tracker, '_version') else 'N/A'
-    print(f"🔍 After forward 2 version: {version_after_2}")
+    print(f"[MAGNIFY] After forward 2 version: {version_after_2}")
     
-    print(f"✅ Specialization tracker isolation test completed")
+    print(f"[OK] Specialization tracker isolation test completed")
 
 if __name__ == "__main__":
-    print("🚀 Starting tensor version diagnostic tests...")
+    print("[START] Starting tensor version diagnostic tests...")
     
     # Тест 1: Полный training steps
     success = test_tensor_versions()
@@ -118,6 +118,6 @@ if __name__ == "__main__":
     test_specialization_tracker_isolation()
     
     if success:
-        print("\n🎉 ALL DIAGNOSTIC TESTS PASSED")
+        print("\n[SUCCESS] ALL DIAGNOSTIC TESTS PASSED")
     else:
-        print("\n⚠️ DIAGNOSTIC TESTS REVEALED ISSUES - check logs for details") 
+        print("\n[WARNING] DIAGNOSTIC TESTS REVEALED ISSUES - check logs for details") 

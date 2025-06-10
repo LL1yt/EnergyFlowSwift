@@ -1,5 +1,5 @@
 """
-🎯 QUALITY OPTIMIZER - Stage 2.3 Production Integration
+[TARGET] QUALITY OPTIMIZER - Stage 2.3 Production Integration
 Продвинутая система оптимизации качества генерации для GenerativeDecoder
 
 Возможности:
@@ -137,7 +137,7 @@ class AdvancedQualityAssessment:
         if SENTENCE_TRANSFORMER_AVAILABLE:
             try:
                 self.bert_model = SentenceTransformer('all-MiniLM-L6-v2')
-                logger.info("🎯 BERTScore model загружена успешно")
+                logger.info("[TARGET] BERTScore model загружена успешно")
             except Exception as e:
                 logger.warning(f"Не удалось загрузить BERTScore model: {e}")
                 self.bert_model = None
@@ -511,7 +511,7 @@ class AdvancedQualityAssessment:
 
 class GenerationParameterOptimizer:
     """
-    ⚡ ОПТИМИЗАТОР ПАРАМЕТРОВ ГЕНЕРАЦИИ
+    [FAST] ОПТИМИЗАТОР ПАРАМЕТРОВ ГЕНЕРАЦИИ
     
     Stage 2.3 optimization для fine-tuning параметров GenerativeDecoder:
     - Адаптивная оптимизация temperature, top_k, top_p
@@ -528,7 +528,7 @@ class GenerationParameterOptimizer:
         self.best_params = None
         self.best_score = 0.0
         
-        logger.info("⚡ GenerationParameterOptimizer инициализирован")
+        logger.info("[FAST] GenerationParameterOptimizer инициализирован")
     
     def optimize_parameters(self, 
                           model,
@@ -550,7 +550,7 @@ class GenerationParameterOptimizer:
         
         max_iterations = max_iterations or self.config.max_optimization_iterations
         
-        logger.info(f"🚀 Начинаем оптимизацию параметров (max_iterations={max_iterations})")
+        logger.info(f"[START] Начинаем оптимизацию параметров (max_iterations={max_iterations})")
         
         # Инициализация
         best_params = self._get_initial_parameters()
@@ -574,7 +574,7 @@ class GenerationParameterOptimizer:
                 best_score = candidate_score
                 patience_counter = 0
                 
-                logger.info(f"🎯 Iteration {iteration}: Новые лучшие параметры! Score: {best_score:.4f}")
+                logger.info(f"[TARGET] Iteration {iteration}: Новые лучшие параметры! Score: {best_score:.4f}")
                 
             else:
                 patience_counter += 1
@@ -605,8 +605,8 @@ class GenerationParameterOptimizer:
             'optimization_history': self.optimization_history
         }
         
-        logger.info(f"✅ Оптимизация завершена! Лучший score: {best_score:.4f}")
-        logger.info(f"📊 Лучшие параметры: {best_params}")
+        logger.info(f"[OK] Оптимизация завершена! Лучший score: {best_score:.4f}")
+        logger.info(f"[DATA] Лучшие параметры: {best_params}")
         
         return optimization_result
     
@@ -736,7 +736,7 @@ class GenerationParameterOptimizer:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"💾 Результаты оптимизации сохранены: {filepath}")
+        logger.info(f"[SAVE] Результаты оптимизации сохранены: {filepath}")
 
 
 # Factory function
@@ -776,7 +776,7 @@ if __name__ == "__main__":
     
     metrics = assessor.assess_comprehensive_quality(test_generated, test_reference, 0.1)
     
-    print(f"📊 Quality Metrics:")
+    print(f"[DATA] Quality Metrics:")
     print(f"   BLEU: {metrics.bleu_score:.3f}")
     print(f"   ROUGE-L: {metrics.rouge_l:.3f}")
     print(f"   Coherence: {metrics.coherence_score:.3f}")
@@ -784,4 +784,4 @@ if __name__ == "__main__":
     print(f"   Overall: {metrics.overall_quality:.3f}")
     print(f"   Production Ready: {metrics.production_readiness:.3f}")
     
-    print("✅ Quality Optimization System - READY!")
+    print("[OK] Quality Optimization System - READY!")

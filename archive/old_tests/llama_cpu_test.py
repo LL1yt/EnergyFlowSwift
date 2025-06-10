@@ -48,17 +48,17 @@ def create_cpu_dialogue_dataset(dialogue_pairs, teacher_model: str = "llama3-8b-
         # Загружаем данные
         dataset._load_from_dialogue_pairs(dialogue_pairs)
         dataset._create_train_val_split()
-        logger.info("✅ Dataset created with CPU LLaMA")
+        logger.info("[OK] Dataset created with CPU LLaMA")
         
     except Exception as e:
-        logger.error(f"❌ CPU LLaMA failed: {e}")
+        logger.error(f"[ERROR] CPU LLaMA failed: {e}")
         # Fallback на distilbert
         config.teacher_model = "distilbert"
         config.embedding_dim = 768
         dataset = DialogueDataset(config=config)
         dataset._load_from_dialogue_pairs(dialogue_pairs)
         dataset._create_train_val_split()
-        logger.info("⚠️ Fallback to distilbert")
+        logger.info("[WARNING] Fallback to distilbert")
     
     finally:
         # Восстанавливаем device
@@ -112,13 +112,13 @@ def test_llama_cpu(strategy: str = "hierarchical") -> Dict[str, Any]:
     ]
     
     # 4. Создаем dataset с CPU LLaMA
-    logger.info("📚 Creating dataset with CPU LLaMA access...")
+    logger.info("[BOOKS] Creating dataset with CPU LLaMA access...")
     
     dataset = create_cpu_dialogue_dataset(dialogue_pairs, "llama3-8b-local")
     
     # Проверяем результат
     stats = dataset.get_statistics()
-    logger.info(f"📊 Dataset stats:")
+    logger.info(f"[DATA] Dataset stats:")
     logger.info(f"   Teacher model: {stats['teacher_model']}")
     logger.info(f"   Embedding dim: {stats['embedding_dimension']}")
     logger.info(f"   Total pairs: {stats['total_dialogue_pairs']}")
@@ -126,7 +126,7 @@ def test_llama_cpu(strategy: str = "hierarchical") -> Dict[str, Any]:
     # Адаптируем trainer под фактическую размерность
     actual_dim = stats['embedding_dimension']
     if actual_dim != config.teacher_embedding_dim:
-        logger.info(f"🔧 Adapting trainer to {actual_dim}D embeddings")
+        logger.info(f"[CONFIG] Adapting trainer to {actual_dim}D embeddings")
         config.teacher_embedding_dim = actual_dim
         trainer = AdapterCubeTrainer(config, device=device)
         trainer.initialize_components()
@@ -138,7 +138,7 @@ def test_llama_cpu(strategy: str = "hierarchical") -> Dict[str, Any]:
     questions = batch[0].to(device).float()
     answers = batch[1].to(device).float()
     
-    logger.info(f"📊 Real data loaded:")
+    logger.info(f"[DATA] Real data loaded:")
     logger.info(f"   Questions: {questions.shape}")
     logger.info(f"   Answers: {answers.shape}")
     logger.info(f"   Device: {questions.device}")
@@ -159,7 +159,7 @@ def test_llama_cpu(strategy: str = "hierarchical") -> Dict[str, Any]:
     num_epochs = 5  # Меньше эпох для CPU
     baseline_qa = F.cosine_similarity(questions, answers, dim=1).mean().item()
     
-    logger.info(f"🚀 Starting CPU training for {num_epochs} epochs...")
+    logger.info(f"[START] Starting CPU training for {num_epochs} epochs...")
     
     for epoch in range(num_epochs):
         # Training step
@@ -222,7 +222,7 @@ def test_llama_cpu(strategy: str = "hierarchical") -> Dict[str, Any]:
         }
     }
     
-    logger.info(f"✅ CPU Test completed:")
+    logger.info(f"[OK] CPU Test completed:")
     logger.info(f"   Used model: {dataset.config.teacher_model}")
     logger.info(f"   Final loss: {final_loss:.4f}")
     logger.info(f"   Surface Q→A: {surface_qa_similarities[0]:.3f} → {final_surface_qa:.3f} (Δ{surface_improvement:+.3f})")
@@ -233,7 +233,7 @@ def test_llama_cpu(strategy: str = "hierarchical") -> Dict[str, Any]:
 
 if __name__ == "__main__":
     print("🦙 Starting CPU Meta-LLaMA-3-8B Test...")
-    print("⚠️  Using CPU due to CUDA compatibility issues")
+    print("[WARNING]  Using CPU due to CUDA compatibility issues")
     
     result = test_llama_cpu("hierarchical")
     
@@ -244,13 +244,13 @@ if __name__ == "__main__":
     with open(output_dir / "cpu_test_results.json", 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
     
-    print(f"\n📁 Results saved to: {output_dir}/cpu_test_results.json")
+    print(f"\n[FOLDER] Results saved to: {output_dir}/cpu_test_results.json")
     
     if result["model_info"]["actual_teacher_model"] == "llama3-8b-local":
-        print("🎉 SUCCESS! Used local LLaMA-3-8B on CPU!")
+        print("[SUCCESS] SUCCESS! Used local LLaMA-3-8B on CPU!")
     else:
-        print(f"⚠️  Used fallback model: {result['model_info']['actual_teacher_model']}")
+        print(f"[WARNING]  Used fallback model: {result['model_info']['actual_teacher_model']}")
     
-    print("\n💡 To fix CUDA issue, reinstall PyTorch with proper RTX 5090 support:")
+    print("\n[IDEA] To fix CUDA issue, reinstall PyTorch with proper RTX 5090 support:")
     print("   pip uninstall torch torchvision torchaudio")
     print("   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128") 

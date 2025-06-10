@@ -87,7 +87,7 @@ class CellPrototype(nn.Module):
         # Инициализируем веса для стабильности
         self._initialize_weights()
         
-        logger.info(f"✅ CellPrototype создан успешно")
+        logger.info(f"[OK] CellPrototype создан успешно")
     
     def _get_activation_function(self, activation: str) -> nn.Module:
         """
@@ -294,7 +294,7 @@ def test_cell_basic():
     for key, value in info.items():
         print(f"    {key}: {value}")
     
-    print("  ✅ Базовый тест пройден успешно!")
+    print("  [OK] Базовый тест пройден успешно!")
     return True
 
 
@@ -302,12 +302,12 @@ if __name__ == "__main__":
     # Настраиваем логирование для тестирования
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     
-    print("🚀 Тестирование модуля CellPrototype")
+    print("[START] Тестирование модуля CellPrototype")
     print("=" * 40)
     
     try:
         test_cell_basic()
-        print("\n✅ Все тесты пройдены успешно!")
+        print("\n[OK] Все тесты пройдены успешно!")
     except Exception as e:
-        print(f"\n❌ Ошибка в тестах: {e}")
+        print(f"\n[ERROR] Ошибка в тестах: {e}")
         raise 

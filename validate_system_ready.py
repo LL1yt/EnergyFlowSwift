@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🎯 System Readiness Validation
+[TARGET] System Readiness Validation
 Быстрая проверка готовности к реальному обучению
 
 ПРОВЕРЯЕТ:
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def test_llama_availability():
     """Test LLaMA-3-8B basic functionality"""
-    logger.info("🔍 Testing LLaMA-3-8B availability...")
+    logger.info("[MAGNIFY] Testing LLaMA-3-8B availability...")
     
     try:
         from utils.llm_handler import create_llm_handler
@@ -33,19 +33,19 @@ def test_llama_availability():
         embedding = llm.generate_embedding("Test text for validation")
         
         if embedding.shape[-1] == 4096:
-            logger.info(f"✅ LLaMA-3-8B working: {embedding.shape}")
+            logger.info(f"[OK] LLaMA-3-8B working: {embedding.shape}")
             return True
         else:
-            logger.error(f"❌ Wrong embedding dimension: {embedding.shape}")
+            logger.error(f"[ERROR] Wrong embedding dimension: {embedding.shape}")
             return False
             
     except Exception as e:
-        logger.error(f"❌ LLaMA-3-8B test failed: {e}")
+        logger.error(f"[ERROR] LLaMA-3-8B test failed: {e}")
         return False
 
 def test_cube_processing():
     """Test 3D Cube basic initialization"""
-    logger.info("🎲 Testing 3D Cube initialization...")
+    logger.info("[DICE] Testing 3D Cube initialization...")
     
     try:
         from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
@@ -64,19 +64,19 @@ def test_cube_processing():
         
         if system_info and 'total_system_params' in system_info:
             params = system_info['total_system_params']
-            logger.info(f"✅ Cube initialization working: {params:,} parameters")
+            logger.info(f"[OK] Cube initialization working: {params:,} parameters")
             return True
         else:
-            logger.error("❌ Cube initialization failed - no system info")
+            logger.error("[ERROR] Cube initialization failed - no system info")
             return False
             
     except Exception as e:
-        logger.error(f"❌ Cube initialization test failed: {e}")
+        logger.error(f"[ERROR] Cube initialization test failed: {e}")
         return False
 
 def test_end_to_end_pipeline():
     """Test complete pipeline"""
-    logger.info("🔄 Testing end-to-end pipeline...")
+    logger.info("[REFRESH] Testing end-to-end pipeline...")
     
     try:
         from utils.llm_handler import create_llm_handler
@@ -94,16 +94,16 @@ def test_end_to_end_pipeline():
         )
         surface = adapter.forward(embedding.unsqueeze(0))
         
-        logger.info(f"✅ Pipeline working: {embedding.shape} → {surface.shape}")
+        logger.info(f"[OK] Pipeline working: {embedding.shape} → {surface.shape}")
         return True
         
     except Exception as e:
-        logger.error(f"❌ End-to-end pipeline test failed: {e}")
+        logger.error(f"[ERROR] End-to-end pipeline test failed: {e}")
         return False
 
 def test_mini_training():
     """Test mini training session"""
-    logger.info("🚀 Testing mini training session...")
+    logger.info("[START] Testing mini training session...")
     
     try:
         from training.embedding_trainer.dialogue_dataset import create_dialogue_dataset
@@ -161,20 +161,20 @@ def test_mini_training():
         
         if len(losses) >= 2:
             improvement = (losses[0] - losses[-1]) / losses[0] if losses[0] > 0 else 0
-            logger.info(f"✅ Mini training working: {improvement:.1%} improvement")
+            logger.info(f"[OK] Mini training working: {improvement:.1%} improvement")
             return improvement > 0.05  # 5% minimum improvement
         else:
-            logger.error("❌ Mini training failed")
+            logger.error("[ERROR] Mini training failed")
             return False
             
     except Exception as e:
-        logger.error(f"❌ Mini training test failed: {e}")
+        logger.error(f"[ERROR] Mini training test failed: {e}")
         return False
 
 def main():
     """Run all validation tests"""
     logger.info("=" * 60)
-    logger.info("🎯 SYSTEM READINESS VALIDATION")
+    logger.info("[TARGET] SYSTEM READINESS VALIDATION")
     logger.info("=" * 60)
     
     tests = [
@@ -194,29 +194,29 @@ def main():
         
         results[test_name] = {'success': success, 'duration': duration}
         
-        status = "✅ PASSED" if success else "❌ FAILED"
+        status = "[OK] PASSED" if success else "[ERROR] FAILED"
         logger.info(f"{status} ({duration:.1f}s)")
     
     # Summary
     logger.info("\n" + "=" * 60)
-    logger.info("📊 VALIDATION SUMMARY")
+    logger.info("[DATA] VALIDATION SUMMARY")
     logger.info("=" * 60)
     
     passed = sum(1 for r in results.values() if r['success'])
     total = len(results)
     
     for test_name, result in results.items():
-        status = "✅" if result['success'] else "❌"
+        status = "[OK]" if result['success'] else "[ERROR]"
         logger.info(f"{status} {test_name}: {result['duration']:.1f}s")
     
     logger.info(f"\nOverall: {passed}/{total} tests passed")
     
     if passed == total:
-        logger.info("🎉 SYSTEM READY FOR REAL TRAINING!")
-        logger.info("🚀 You can now run: python real_llama_training_production.py")
+        logger.info("[SUCCESS] SYSTEM READY FOR REAL TRAINING!")
+        logger.info("[START] You can now run: python real_llama_training_production.py")
         return True
     else:
-        logger.error("❌ System not ready - fix failing tests first")
+        logger.error("[ERROR] System not ready - fix failing tests first")
         return False
 
 if __name__ == "__main__":

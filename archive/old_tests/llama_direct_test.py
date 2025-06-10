@@ -37,12 +37,12 @@ def create_direct_dialogue_dataset(dialogue_pairs, teacher_model: str = "llama3-
     
     # ВРЕМЕННО патчим метод _validate_teacher_model чтобы он ничего не делал
     original_validate = DialogueDataset._validate_teacher_model
-    DialogueDataset._validate_teacher_model = lambda self: logger.info("🔧 Skipping teacher model validation")
+    DialogueDataset._validate_teacher_model = lambda self: logger.info("[CONFIG] Skipping teacher model validation")
     
     try:
         # Создаем dataset БЕЗ автоматической валидации - передаем dialogue_pairs напрямую
         dataset = DialogueDataset(config=config, dialogue_pairs=dialogue_pairs)
-        logger.info("✅ Dataset created with bypassed validation")
+        logger.info("[OK] Dataset created with bypassed validation")
         return dataset
     finally:
         # Восстанавливаем оригинальный метод
@@ -93,23 +93,23 @@ def test_llama_direct(strategy: str = "hierarchical", device: str = "cpu") -> Di
     ]
     
     # 4. Создаем dataset БЕЗ валидации - прямой вызов
-    logger.info("📚 Creating dataset with DIRECT LLaMA access...")
+    logger.info("[BOOKS] Creating dataset with DIRECT LLaMA access...")
     
     try:
         dataset = create_direct_dialogue_dataset(dialogue_pairs, "llama3-8b-local")
-        logger.info("✅ Dataset created successfully!")
+        logger.info("[OK] Dataset created successfully!")
         
         # Проверяем что получили
         stats = dataset.get_statistics()
-        logger.info(f"📊 Dataset stats:")
+        logger.info(f"[DATA] Dataset stats:")
         logger.info(f"   Teacher model: {stats['teacher_model']}")
         logger.info(f"   Embedding dim: {stats['embedding_dimension']}")
         logger.info(f"   Total pairs: {stats['total_dialogue_pairs']}")
         
     except Exception as e:
-        logger.error(f"❌ Dataset creation failed: {e}")
+        logger.error(f"[ERROR] Dataset creation failed: {e}")
         # Если все же не получается, пробуем через cache
-        logger.info("🔄 Trying fallback approach...")
+        logger.info("[REFRESH] Trying fallback approach...")
         
         # Пробуем создать через обычный способ но с отключенной валидацией
         from training.embedding_trainer.dialogue_dataset import create_dialogue_dataset
@@ -125,7 +125,7 @@ def test_llama_direct(strategy: str = "hierarchical", device: str = "cpu") -> Di
         trainer = AdapterCubeTrainer(config, device=device)
         trainer.initialize_components()
         
-        logger.info("⚠️ Using fallback distilbert model")
+        logger.info("[WARNING] Using fallback distilbert model")
     
     # 5. Получаем batch данных
     dataloader = dataset.get_dataloader(batch_size=8, shuffle=True)
@@ -134,7 +134,7 @@ def test_llama_direct(strategy: str = "hierarchical", device: str = "cpu") -> Di
     questions = batch[0].to(device).float()  # Embedding dimensions
     answers = batch[1].to(device).float()    # Embedding dimensions
     
-    logger.info(f"📊 Real data loaded:")
+    logger.info(f"[DATA] Real data loaded:")
     logger.info(f"   Questions: {questions.shape}")
     logger.info(f"   Answers: {answers.shape}")
     logger.info(f"   Data type: {questions.dtype}")
@@ -142,8 +142,8 @@ def test_llama_direct(strategy: str = "hierarchical", device: str = "cpu") -> Di
     
     # 6. Проверяем совместимость размерностей
     if questions.shape[1] != config.teacher_embedding_dim:
-        logger.warning(f"⚠️  Dimension mismatch: got {questions.shape[1]}, expected {config.teacher_embedding_dim}")
-        logger.info("🔧 Recreating trainer with correct dimensions...")
+        logger.warning(f"[WARNING]  Dimension mismatch: got {questions.shape[1]}, expected {config.teacher_embedding_dim}")
+        logger.info("[CONFIG] Recreating trainer with correct dimensions...")
         
         config.teacher_embedding_dim = questions.shape[1]
         trainer = AdapterCubeTrainer(config, device=device)
@@ -163,7 +163,7 @@ def test_llama_direct(strategy: str = "hierarchical", device: str = "cpu") -> Di
     num_epochs = 10
     baseline_qa = F.cosine_similarity(questions, answers, dim=1).mean().item()
     
-    logger.info(f"🚀 Starting training for {num_epochs} epochs...")
+    logger.info(f"[START] Starting training for {num_epochs} epochs...")
     
     for epoch in range(num_epochs):
         # Training step
@@ -226,7 +226,7 @@ def test_llama_direct(strategy: str = "hierarchical", device: str = "cpu") -> Di
         }
     }
     
-    logger.info(f"✅ DIRECT Test completed:")
+    logger.info(f"[OK] DIRECT Test completed:")
     logger.info(f"   Used model: {dataset.config.teacher_model}")
     logger.info(f"   Final loss: {final_loss:.4f}")
     logger.info(f"   Surface Q→A: {surface_qa_similarities[0]:.3f} → {final_surface_qa:.3f} (Δ{surface_improvement:+.3f})")
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     print("🦙 Starting DIRECT Meta-LLaMA-3-8B Test (bypassing validation)...")
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"🔧 Using device: {device}")
+    print(f"[CONFIG] Using device: {device}")
     
     result = test_llama_direct("hierarchical", device)
     
@@ -250,9 +250,9 @@ if __name__ == "__main__":
     with open(output_dir / "direct_test_results.json", 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
     
-    print(f"\n📁 Results saved to: {output_dir}/direct_test_results.json")
+    print(f"\n[FOLDER] Results saved to: {output_dir}/direct_test_results.json")
     
     if result["model_info"]["actual_teacher_model"] == "llama3-8b-local":
-        print("🎉 SUCCESS! Used local LLaMA-3-8B directly!")
+        print("[SUCCESS] SUCCESS! Used local LLaMA-3-8B directly!")
     else:
-        print(f"⚠️  Used fallback model: {result['model_info']['actual_teacher_model']}") 
+        print(f"[WARNING]  Used fallback model: {result['model_info']['actual_teacher_model']}") 

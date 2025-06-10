@@ -175,14 +175,14 @@ class GatedMLPCell(nn.Module):
         total_params = sum(p.numel() for p in self.parameters())
         trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
 
-        logger.info(f"✅ GatedMLPCell параметры:")
+        logger.info(f"[OK] GatedMLPCell параметры:")
         logger.info(f"   Total: {total_params:,} parameters")
         logger.info(f"   Trainable: {trainable_params:,} parameters")
         logger.info(f"   Target: ~{self.target_params:,} (current: {total_params:,})")
 
         if total_params > self.target_params * 1.2:  # 20% допуск
             logger.warning(
-                f"⚠️  Parameter count превышает target {self.target_params:,}: {total_params:,}"
+                f"[WARNING]  Parameter count превышает target {self.target_params:,}: {total_params:,}"
             )
 
     def forward(
@@ -404,12 +404,12 @@ def test_gmlp_cell_basic() -> bool:
 
         # Информация о клетке
         info = cell.get_info()
-        logger.info(f"✅ gMLP Cell тест пройден: {info['total_parameters']} params")
+        logger.info(f"[OK] gMLP Cell тест пройден: {info['total_parameters']} params")
 
         return True
 
     except Exception as e:
-        logger.error(f"❌ gMLP Cell тест failed: {e}")
+        logger.error(f"[ERROR] gMLP Cell тест failed: {e}")
         return False
 
 
@@ -417,4 +417,4 @@ if __name__ == "__main__":
     # Быстрый тест при запуске модуля
     logging.basicConfig(level=logging.INFO)
     success = test_gmlp_cell_basic()
-    print(f"gMLP Cell test: {'✅ PASSED' if success else '❌ FAILED'}")
+    print(f"gMLP Cell test: {'[OK] PASSED' if success else '[ERROR] FAILED'}")

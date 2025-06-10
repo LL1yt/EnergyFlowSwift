@@ -44,7 +44,7 @@ class ExtendedOptimizationStrategy:
         
     def run_comprehensive_strategy(self) -> dict:
         """Запуск полной стратегии оптимизации"""
-        print("🚀 STAGE 2.4 EXTENDED: AGGRESSIVE OPTIMIZATION STRATEGY")
+        print("[START] STAGE 2.4 EXTENDED: AGGRESSIVE OPTIMIZATION STRATEGY")
         print("=" * 70)
         print(f"Baseline (Stage 2.3): {self.baseline_qa_similarity:.1%}")
         print(f"Target: {self.target_qa_similarity:.1%}")
@@ -54,17 +54,17 @@ class ExtendedOptimizationStrategy:
         start_time = time.time()
         
         # Phase 1: Baseline Validation
-        print("📋 PHASE 1: BASELINE VALIDATION")
+        print("[INFO] PHASE 1: BASELINE VALIDATION")
         print("-" * 40)
         baseline_result = self._validate_baseline()
         
         # Phase 2: Conservative Optimization
-        print("\n🎯 PHASE 2: CONSERVATIVE OPTIMIZATION")
+        print("\n[TARGET] PHASE 2: CONSERVATIVE OPTIMIZATION")
         print("-" * 40)
         conservative_result = self._run_conservative_optimization(baseline_result)
         
         # Phase 3: Aggressive Optimization
-        print("\n⚡ PHASE 3: AGGRESSIVE OPTIMIZATION")
+        print("\n[FAST] PHASE 3: AGGRESSIVE OPTIMIZATION")
         print("-" * 40)
         aggressive_result = self._run_aggressive_optimization(conservative_result)
         
@@ -81,7 +81,7 @@ class ExtendedOptimizationStrategy:
     
     def _validate_baseline(self) -> dict:
         """Phase 1: Воспроизведение Stage 2.3 результата"""
-        print("🔍 Validating Stage 2.3 baseline configuration...")
+        print("[MAGNIFY] Validating Stage 2.3 baseline configuration...")
         
         try:
             # Конфигурация Stage 2.3 (известная рабочая)
@@ -111,28 +111,28 @@ class ExtendedOptimizationStrategy:
             baseline_results = self._run_single_config(stage_2_3_config, "baseline_stage_2_3")
             
             baseline_qa = baseline_results.get('qa_similarity', 0)
-            print(f"   📊 Baseline result: {baseline_qa:.1%}")
+            print(f"   [DATA] Baseline result: {baseline_qa:.1%}")
             
             if baseline_qa >= self.baseline_qa_similarity * 0.95:  # 95% of expected
-                print("   ✅ Baseline validation SUCCESSFUL")
+                print("   [OK] Baseline validation SUCCESSFUL")
                 return {"config": stage_2_3_config, "qa_similarity": baseline_qa, "status": "SUCCESS"}
             else:
-                print(f"   ⚠️ Baseline validation shows degradation: {baseline_qa:.1%} vs expected {self.baseline_qa_similarity:.1%}")
+                print(f"   [WARNING] Baseline validation shows degradation: {baseline_qa:.1%} vs expected {self.baseline_qa_similarity:.1%}")
                 return {"config": stage_2_3_config, "qa_similarity": baseline_qa, "status": "DEGRADED"}
                 
         except Exception as e:
-            print(f"   ❌ Baseline validation failed: {e}")
+            print(f"   [ERROR] Baseline validation failed: {e}")
             return {"config": None, "qa_similarity": 0, "status": "FAILED", "error": str(e)}
     
     def _run_conservative_optimization(self, baseline_result: dict) -> dict:
         """Phase 2: Консервативная оптимизация близко к baseline"""
-        print("🎯 Conservative optimization around proven configuration...")
+        print("[TARGET] Conservative optimization around proven configuration...")
         
         base_config = baseline_result["config"]
         best_result = baseline_result
         
         if baseline_result["status"] != "SUCCESS":
-            print("   ⚠️ Baseline failed, using default configuration")
+            print("   [WARNING] Baseline failed, using default configuration")
             base_config = Stage23Config()
         
         # Conservative parameter variations (близко к Stage 2.3)
@@ -175,14 +175,14 @@ class ExtendedOptimizationStrategy:
             
             if result.get('qa_similarity', 0) > best_result.get('qa_similarity', 0):
                 best_result = {"config": test_config, "qa_similarity": result['qa_similarity']}
-                print(f"      🎉 New best: {result['qa_similarity']:.1%}")
+                print(f"      [SUCCESS] New best: {result['qa_similarity']:.1%}")
         
-        print(f"   📊 Conservative phase best: {best_result.get('qa_similarity', 0):.1%}")
+        print(f"   [DATA] Conservative phase best: {best_result.get('qa_similarity', 0):.1%}")
         return best_result
     
     def _run_aggressive_optimization(self, conservative_result: dict) -> dict:
         """Phase 3: Агрессивная оптимизация"""
-        print("⚡ Aggressive optimization with expanded search space...")
+        print("[FAST] Aggressive optimization with expanded search space...")
         
         best_result = conservative_result
         
@@ -210,7 +210,7 @@ class ExtendedOptimizationStrategy:
         ]
         
         for i, config_params in enumerate(aggressive_configs):
-            print(f"   🚀 Aggressive experiment {i+1}/{len(aggressive_configs)}")
+            print(f"   [START] Aggressive experiment {i+1}/{len(aggressive_configs)}")
             
             test_config = Stage23Config(
                 learning_rate=config_params.get("learning_rate", 0.0003),
@@ -230,14 +230,14 @@ class ExtendedOptimizationStrategy:
             
             if result.get('qa_similarity', 0) > best_result.get('qa_similarity', 0):
                 best_result = {"config": test_config, "qa_similarity": result['qa_similarity']}
-                print(f"      🎉 NEW BREAKTHROUGH: {result['qa_similarity']:.1%}")
+                print(f"      [SUCCESS] NEW BREAKTHROUGH: {result['qa_similarity']:.1%}")
                 
                 # Early success check
                 if result['qa_similarity'] >= self.target_qa_similarity:
-                    print(f"      🏆 TARGET ACHIEVED! Stopping optimization.")
+                    print(f"      [TROPHY] TARGET ACHIEVED! Stopping optimization.")
                     break
         
-        print(f"   📊 Aggressive phase best: {best_result.get('qa_similarity', 0):.1%}")
+        print(f"   [DATA] Aggressive phase best: {best_result.get('qa_similarity', 0):.1%}")
         return best_result
     
     def _run_architecture_experiments(self, aggressive_result: dict) -> dict:
@@ -278,13 +278,13 @@ class ExtendedOptimizationStrategy:
             
             if result.get('qa_similarity', 0) > best_result.get('qa_similarity', 0):
                 best_result = {"config": test_config, "qa_similarity": result['qa_similarity']}
-                print(f"      🎉 ARCHITECTURE BREAKTHROUGH: {result['qa_similarity']:.1%}")
+                print(f"      [SUCCESS] ARCHITECTURE BREAKTHROUGH: {result['qa_similarity']:.1%}")
                 
                 if result['qa_similarity'] >= self.target_qa_similarity:
-                    print(f"      🏆 TARGET ACHIEVED! Stopping optimization.")
+                    print(f"      [TROPHY] TARGET ACHIEVED! Stopping optimization.")
                     break
         
-        print(f"   📊 Architecture phase best: {best_result.get('qa_similarity', 0):.1%}")
+        print(f"   [DATA] Architecture phase best: {best_result.get('qa_similarity', 0):.1%}")
         return best_result
     
     def _run_single_config(self, config: Stage23Config, experiment_name: str) -> dict:
@@ -315,11 +315,11 @@ class ExtendedOptimizationStrategy:
             # Сохранение результата
             self.results_history.append(result)
             
-            print(f"      ✅ {experiment_name}: {qa_similarity:.1%} ({training_time:.1f}s)")
+            print(f"      [OK] {experiment_name}: {qa_similarity:.1%} ({training_time:.1f}s)")
             return result
             
         except Exception as e:
-            print(f"      ❌ {experiment_name}: Failed - {e}")
+            print(f"      [ERROR] {experiment_name}: Failed - {e}")
             return {"experiment_name": experiment_name, "qa_similarity": 0.0, "success": False, "error": str(e)}
     
     def _generate_final_analysis(self, total_time: float) -> dict:
@@ -351,32 +351,32 @@ class ExtendedOptimizationStrategy:
         
         # Отображение результатов
         print("\n" + "=" * 70)
-        print("🏆 STAGE 2.4 EXTENDED OPTIMIZATION - FINAL RESULTS")
+        print("[TROPHY] STAGE 2.4 EXTENDED OPTIMIZATION - FINAL RESULTS")
         print("=" * 70)
         
-        print(f"🎯 Target achieved: {'✅' if final_analysis['target_achieved'] else '❌'}")
-        print(f"🏆 Best Q→A similarity: {best_qa:.1%}")
-        print(f"📊 Mean Q→A similarity: {mean_qa:.1%}")
-        print(f"📈 Improvement from Stage 2.3: {final_analysis['improvement_from_stage_2_3']:+.1%}")
+        print(f"[TARGET] Target achieved: {'[OK]' if final_analysis['target_achieved'] else '[ERROR]'}")
+        print(f"[TROPHY] Best Q→A similarity: {best_qa:.1%}")
+        print(f"[DATA] Mean Q→A similarity: {mean_qa:.1%}")
+        print(f"[CHART] Improvement from Stage 2.3: {final_analysis['improvement_from_stage_2_3']:+.1%}")
         print(f"🧪 Total experiments: {final_analysis['total_experiments']}")
-        print(f"✅ Success rate: {final_analysis['success_rate']:.1%}")
+        print(f"[OK] Success rate: {final_analysis['success_rate']:.1%}")
         print(f"⏱️ Total time: {total_time:.1f} seconds")
         
         if final_analysis['target_achieved']:
-            print("\n🎉 BREAKTHROUGH ACHIEVED! 50%+ Q→A similarity reached!")
-            print("🚀 Ready for Stage 3.1: End-to-End Integration")
+            print("\n[SUCCESS] BREAKTHROUGH ACHIEVED! 50%+ Q→A similarity reached!")
+            print("[START] Ready for Stage 3.1: End-to-End Integration")
         else:
             gap = self.target_qa_similarity - best_qa
-            print(f"\n⚠️ Target not yet reached. Remaining gap: {gap:.1%}")
-            print("💡 Consider additional optimization strategies")
+            print(f"\n[WARNING] Target not yet reached. Remaining gap: {gap:.1%}")
+            print("[IDEA] Consider additional optimization strategies")
         
         return final_analysis
 
 
 def main():
     """Запуск расширенной оптимизации"""
-    print("🚀 STAGE 2.4 EXTENDED: AGGRESSIVE HYPERPARAMETER OPTIMIZATION")
-    print("🎯 Mission: Overcome regression and achieve 50%+ Q→A similarity!")
+    print("[START] STAGE 2.4 EXTENDED: AGGRESSIVE HYPERPARAMETER OPTIMIZATION")
+    print("[TARGET] Mission: Overcome regression and achieve 50%+ Q→A similarity!")
     print()
     
     # Создание стратегии
@@ -393,10 +393,10 @@ def main():
         with open(results_dir / "extended_optimization_results.json", "w", encoding='utf-8') as f:
             json.dump(results, f, indent=2, default=str, ensure_ascii=False)
         
-        print(f"\n📄 Results saved to: {results_dir}/")
+        print(f"\n[FILE] Results saved to: {results_dir}/")
         
     except Exception as e:
-        print(f"⚠️ Could not save results: {e}")
+        print(f"[WARNING] Could not save results: {e}")
     
     return results
 

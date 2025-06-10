@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 def test_surface_only_config():
     """Тест создания surface-only конфигурации"""
-    print("🔧 Testing surface-only configuration creation...")
+    print("[CONFIG] Testing surface-only configuration creation...")
     
     try:
         from core.embedding_processor import create_surface_only_config, ProcessingMode
@@ -45,7 +45,7 @@ def test_surface_only_config():
         assert config.surface_dimensions == (15, 15), f"Неверные surface_dimensions: {config.surface_dimensions}"
         assert config.surface_processing_depth == 11, f"Неверный processing_depth: {config.surface_processing_depth}"
         
-        print("✅ Surface-only конфигурация создана успешно")
+        print("[OK] Surface-only конфигурация создана успешно")
         print(f"   Mode: {config.processing_mode.value}")
         print(f"   Dimensions: {config.input_dim}D → {config.output_dim}D")
         print(f"   Surface: {config.surface_dimensions}")
@@ -54,13 +54,13 @@ def test_surface_only_config():
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка в surface-only конфигурации: {e}")
+        print(f"[ERROR] Ошибка в surface-only конфигурации: {e}")
         return False
 
 
 def test_surface_only_processor_initialization():
     """Тест инициализации EmbeddingProcessor в surface-only режиме"""
-    print("\n🚀 Testing EmbeddingProcessor initialization for surface-only mode...")
+    print("\n[START] Testing EmbeddingProcessor initialization for surface-only mode...")
     
     try:
         from core.embedding_processor import EmbeddingProcessor, create_surface_only_config
@@ -79,22 +79,22 @@ def test_surface_only_processor_initialization():
         # Проверка настроек
         assert processor.config.processing_mode.value == "surface_only", "Неверный режим процессора"
         
-        print("✅ EmbeddingProcessor инициализирован успешно")
+        print("[OK] EmbeddingProcessor инициализирован успешно")
         print(f"   Режим: {processor.config.processing_mode.value}")
-        print(f"   EmbeddingReshaper: {'❌ Пропущен' if processor.reshaper is None else '✅ Создан'}")
-        print(f"   Lattice3D: {'❌ Пропущен' if processor.lattice is None else '✅ Создан'}")
-        print(f"   Metrics: {'✅ Созданы' if processor.metrics is not None else '❌ Отсутствуют'}")
+        print(f"   EmbeddingReshaper: {'[ERROR] Пропущен' if processor.reshaper is None else '[OK] Создан'}")
+        print(f"   Lattice3D: {'[ERROR] Пропущен' if processor.lattice is None else '[OK] Создан'}")
+        print(f"   Metrics: {'[OK] Созданы' if processor.metrics is not None else '[ERROR] Отсутствуют'}")
         
         return processor
         
     except Exception as e:
-        print(f"❌ Ошибка инициализации процессора: {e}")
+        print(f"[ERROR] Ошибка инициализации процессора: {e}")
         return None
 
 
 def test_surface_embedding_processing(processor):
     """Тест обработки surface embeddings"""
-    print("\n🧠 Testing surface embedding processing...")
+    print("\n[BRAIN] Testing surface embedding processing...")
     
     try:
         # Создание тестового surface embedding
@@ -117,7 +117,7 @@ def test_surface_embedding_processing(processor):
         
         # Проверка качества
         similarity = torch.cosine_similarity(surface_embedding, processed_surface, dim=0).item()
-        print(f"📊 Cosine similarity: {similarity:.4f}")
+        print(f"[DATA] Cosine similarity: {similarity:.4f}")
         
         # Проверка что это не identity transformation
         l2_distance = torch.norm(surface_embedding - processed_surface, p=2).item()
@@ -125,18 +125,18 @@ def test_surface_embedding_processing(processor):
         
         assert l2_distance > 0.01, "Слишком малое изменение - возможно identity transformation"
         
-        print("✅ Surface embedding обработка успешна")
+        print("[OK] Surface embedding обработка успешна")
         
         return True, similarity
         
     except Exception as e:
-        print(f"❌ Ошибка обработки surface embedding: {e}")
+        print(f"[ERROR] Ошибка обработки surface embedding: {e}")
         return False, 0.0
 
 
 def test_batch_processing(processor):
     """Тест batch обработки surface embeddings"""
-    print("\n📦 Testing batch processing...")
+    print("\n[PACKAGE] Testing batch processing...")
     
     try:
         # Создание batch surface embeddings
@@ -152,7 +152,7 @@ def test_batch_processing(processor):
         
         print(f"📤 Output batch: {batch_processed.shape}")
         print(f"⏱️  Batch processing time: {processing_time:.4f}s")
-        print(f"⚡ Throughput: {batch_size / processing_time:.1f} samples/sec")
+        print(f"[FAST] Throughput: {batch_size / processing_time:.1f} samples/sec")
         
         # Проверка результата
         assert batch_processed.shape == batch_surfaces.shape, f"Batch shape mismatch: {batch_processed.shape} != {batch_surfaces.shape}"
@@ -166,20 +166,20 @@ def test_batch_processing(processor):
             print(f"   Sample {i}: similarity = {sim:.3f}")
         
         avg_similarity = np.mean(similarities)
-        print(f"📊 Average batch similarity: {avg_similarity:.4f}")
+        print(f"[DATA] Average batch similarity: {avg_similarity:.4f}")
         
-        print("✅ Batch processing успешен")
+        print("[OK] Batch processing успешен")
         
         return True, avg_similarity
         
     except Exception as e:
-        print(f"❌ Ошибка batch processing: {e}")
+        print(f"[ERROR] Ошибка batch processing: {e}")
         return False, 0.0
 
 
 def test_gradient_flow(processor):
     """Тест gradient flow для training готовности"""
-    print("\n🔄 Testing gradient flow for training readiness...")
+    print("\n[REFRESH] Testing gradient flow for training readiness...")
     
     try:
         # Создание тестовых данных с градиентами
@@ -192,7 +192,7 @@ def test_gradient_flow(processor):
         # Простая loss function для тестирования
         loss = torch.nn.functional.mse_loss(output_surface, target_surface)
         
-        print(f"📊 Test loss: {loss.item():.6f}")
+        print(f"[DATA] Test loss: {loss.item():.6f}")
         
         # Backward pass
         loss.backward()
@@ -200,23 +200,23 @@ def test_gradient_flow(processor):
         # Проверка gradients
         assert surface_input.grad is not None, "Input gradients отсутствуют"
         grad_norm = torch.norm(surface_input.grad).item()
-        print(f"🔄 Gradient norm: {grad_norm:.6f}")
+        print(f"[REFRESH] Gradient norm: {grad_norm:.6f}")
         
         assert grad_norm > 1e-8, f"Слишком малые градиенты: {grad_norm}"
         
-        print("✅ Gradient flow работает корректно")
-        print("✅ Система готова к training")
+        print("[OK] Gradient flow работает корректно")
+        print("[OK] Система готова к training")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка gradient flow: {e}")
+        print(f"[ERROR] Ошибка gradient flow: {e}")
         return False
 
 
 def test_universal_adapter_compatibility():
     """Тест совместимости с Universal Adapter размерами"""
-    print("\n🔗 Testing Universal Adapter compatibility...")
+    print("\n[LINK] Testing Universal Adapter compatibility...")
     
     try:
         from core.embedding_processor import EmbeddingProcessor, create_surface_only_config
@@ -248,14 +248,14 @@ def test_universal_adapter_compatibility():
             assert processed.shape == test_surface.shape, f"Shape mismatch для {test_case['name']}"
             
             similarity = torch.cosine_similarity(test_surface, processed, dim=0).item()
-            print(f"     ✅ {test_case['name']}: similarity = {similarity:.3f}")
+            print(f"     [OK] {test_case['name']}: similarity = {similarity:.3f}")
         
-        print("✅ Universal Adapter compatibility подтверждена")
+        print("[OK] Universal Adapter compatibility подтверждена")
         
         return True
         
     except Exception as e:
-        print(f"❌ Ошибка Universal Adapter compatibility: {e}")
+        print(f"[ERROR] Ошибка Universal Adapter compatibility: {e}")
         return False
 
 
@@ -292,7 +292,7 @@ def run_comprehensive_test():
     
     # Финальный отчет
     print("\n" + "=" * 60)
-    print("📊 FINAL TEST RESULTS:")
+    print("[DATA] FINAL TEST RESULTS:")
     print("=" * 60)
     
     total_tests = len([k for k in results.keys() if k.endswith('_similarity')==False])
@@ -300,21 +300,21 @@ def run_comprehensive_test():
     
     for test_name, result in results.items():
         if not test_name.endswith('_similarity'):
-            status = "✅ PASS" if result else "❌ FAIL"
+            status = "[OK] PASS" if result else "[ERROR] FAIL"
             print(f"{status} {test_name.replace('_', ' ').title()}")
     
     if 'single_similarity' in results:
-        print(f"📊 Single processing similarity: {results['single_similarity']:.3f}")
+        print(f"[DATA] Single processing similarity: {results['single_similarity']:.3f}")
     if 'batch_similarity' in results:
-        print(f"📊 Batch processing similarity: {results['batch_similarity']:.3f}")
+        print(f"[DATA] Batch processing similarity: {results['batch_similarity']:.3f}")
     
-    print(f"\n🎯 OVERALL: {passed_tests}/{total_tests} tests passed")
+    print(f"\n[TARGET] OVERALL: {passed_tests}/{total_tests} tests passed")
     
     if passed_tests == total_tests:
-        print("🎉 ALL TESTS PASSED! Surface-only integration готова к использованию!")
-        print("🚀 Ready for Stage 3.1.2 integration with Universal Adapter!")
+        print("[SUCCESS] ALL TESTS PASSED! Surface-only integration готова к использованию!")
+        print("[START] Ready for Stage 3.1.2 integration with Universal Adapter!")
     else:
-        print("⚠️  Some tests failed. Review errors above.")
+        print("[WARNING]  Some tests failed. Review errors above.")
     
     return passed_tests == total_tests
 

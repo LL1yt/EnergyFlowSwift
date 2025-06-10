@@ -1,5 +1,5 @@
 """
-🚀 Stage 3.1.4.1: Emergent Training Execution Script
+[START] Stage 3.1.4.1: Emergent Training Execution Script
 ====================================================
 
 Production-ready emergent training с:
@@ -63,7 +63,7 @@ class EmergentTrainingRunner:
         self.results_dir = Path(self.config['output']['save_directory'])
         self.results_dir.mkdir(parents=True, exist_ok=True)
         
-        logger.info("🧠 EmergentTrainingRunner initialized")
+        logger.info("[BRAIN] EmergentTrainingRunner initialized")
         logger.info(f"   Config: {config_path}")
         logger.info(f"   Results: {self.results_dir}")
     
@@ -72,15 +72,15 @@ class EmergentTrainingRunner:
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
-            logger.info(f"✅ Configuration loaded from {self.config_path}")
+            logger.info(f"[OK] Configuration loaded from {self.config_path}")
             return config
         except Exception as e:
-            logger.error(f"❌ Failed to load config: {e}")
+            logger.error(f"[ERROR] Failed to load config: {e}")
             raise
     
     def setup_trainer(self):
         """Setup emergent trainer from configuration"""
-        logger.info("🔧 Setting up EmergentCubeTrainer...")
+        logger.info("[CONFIG] Setting up EmergentCubeTrainer...")
         
         # Extract configuration
         emergent_config = self.config['emergent_training']
@@ -112,13 +112,13 @@ class EmergentTrainingRunner:
         
         # Log system info
         info = self.trainer.get_system_info()
-        logger.info("✅ Trainer setup complete:")
+        logger.info("[OK] Trainer setup complete:")
         for key, value in info.items():
             logger.info(f"   {key}: {value}")
     
     def load_training_data(self) -> Dict[str, torch.Tensor]:
         """Load real training data с LLaMA-3-8B embeddings"""
-        logger.info("📚 Loading training data...")
+        logger.info("[BOOKS] Loading training data...")
         
         # Use existing dialogue dataset infrastructure
         dataset_config = {
@@ -157,12 +157,12 @@ class EmergentTrainingRunner:
                 'num_batches': len(questions)
             }
             
-            logger.info(f"✅ Training data loaded: {len(questions)} batches")
+            logger.info(f"[OK] Training data loaded: {len(questions)} batches")
             return training_data
             
         except Exception as e:
-            logger.warning(f"⚠️  Failed to load real data: {e}")
-            logger.info("📝 Using synthetic data для testing...")
+            logger.warning(f"[WARNING]  Failed to load real data: {e}")
+            logger.info("[WRITE] Using synthetic data для testing...")
             
             # Synthetic fallback
             batch_size = self.config['emergent_training']['batch_size']
@@ -232,7 +232,7 @@ class EmergentTrainingRunner:
                     }
                 
         except Exception as e:
-            logger.warning(f"⚠️  Emergent analysis failed: {e}")
+            logger.warning(f"[WARNING]  Emergent analysis failed: {e}")
             analysis['error'] = str(e)
         
         self.emergent_analysis.append(analysis)
@@ -272,7 +272,7 @@ class EmergentTrainingRunner:
     
     def run_training(self):
         """Run complete emergent training pipeline"""
-        logger.info("🚀 Starting emergent training...")
+        logger.info("[START] Starting emergent training...")
         
         # Setup
         self.setup_trainer()
@@ -284,7 +284,7 @@ class EmergentTrainingRunner:
         
         # Training loop
         for epoch in range(epochs):
-            logger.info(f"\n🎯 EPOCH {epoch+1}/{epochs}")
+            logger.info(f"\n[TARGET] EPOCH {epoch+1}/{epochs}")
             
             epoch_metrics = []
             epoch_start_time = time.time()
@@ -316,7 +316,7 @@ class EmergentTrainingRunner:
             avg_metrics = self._average_metrics(epoch_metrics)
             avg_metrics['epoch_time'] = epoch_time
             
-            logger.info(f"📊 EPOCH {epoch+1} SUMMARY:")
+            logger.info(f"[DATA] EPOCH {epoch+1} SUMMARY:")
             logger.info(f"   Average loss: {avg_metrics['total_loss']:.6f}")
             logger.info(f"   Average similarity: {avg_metrics['cosine_similarity']:.6f}")
             logger.info(f"   Epoch time: {epoch_time:.1f}s")
@@ -355,7 +355,7 @@ class EmergentTrainingRunner:
     def _print_final_summary(self):
         """Print final training summary"""
         logger.info("\n" + "="*60)
-        logger.info("🎯 EMERGENT TRAINING COMPLETE!")
+        logger.info("[TARGET] EMERGENT TRAINING COMPLETE!")
         logger.info("="*60)
         
         if self.training_history:
@@ -367,7 +367,7 @@ class EmergentTrainingRunner:
             final_sim = self.training_history[-1]['cosine_similarity']
             sim_improvement = final_sim - initial_sim
             
-            logger.info(f"📊 TRAINING METRICS:")
+            logger.info(f"[DATA] TRAINING METRICS:")
             logger.info(f"   Initial loss: {initial_loss:.6f}")
             logger.info(f"   Final loss: {final_loss:.6f}")
             logger.info(f"   Loss improvement: {loss_improvement:.6f}")
@@ -379,24 +379,24 @@ class EmergentTrainingRunner:
             final_analysis = self.emergent_analysis[-1]
             if 'layer_analysis' in final_analysis:
                 spec_index = final_analysis['layer_analysis'].get('specialization_index', 0)
-                logger.info(f"🧠 EMERGENT BEHAVIOR:")
+                logger.info(f"[BRAIN] EMERGENT BEHAVIOR:")
                 logger.info(f"   Final specialization index: {spec_index:.3f}")
         
         # System performance
         if self.trainer:
             info = self.trainer.get_system_info()
-            logger.info(f"🖥️  SYSTEM INFO:")
+            logger.info(f"[PC]  SYSTEM INFO:")
             logger.info(f"   Total parameters: {info['total_system_params']:,}")
             logger.info(f"   Cells: {info['total_cells']}")
             logger.info(f"   Avg params per cell: {info['avg_params_per_cell']:.0f}")
         
-        logger.info(f"💾 Results saved to: {self.results_dir}")
-        logger.info("🎉 Stage 3.1.4.1 Emergent Training Infrastructure COMPLETE!")
+        logger.info(f"[SAVE] Results saved to: {self.results_dir}")
+        logger.info("[SUCCESS] Stage 3.1.4.1 Emergent Training Infrastructure COMPLETE!")
 
 
 def main():
     """Main execution function"""
-    print("🧠 Stage 3.1.4.1: Emergent Training Infrastructure")
+    print("[BRAIN] Stage 3.1.4.1: Emergent Training Infrastructure")
     print("="*60)
     
     try:
@@ -405,9 +405,9 @@ def main():
         runner.run_training()
         
     except KeyboardInterrupt:
-        print("\n⚠️  Training interrupted by user")
+        print("\n[WARNING]  Training interrupted by user")
     except Exception as e:
-        print(f"\n❌ Training failed: {e}")
+        print(f"\n[ERROR] Training failed: {e}")
         import traceback
         traceback.print_exc()
         return 1

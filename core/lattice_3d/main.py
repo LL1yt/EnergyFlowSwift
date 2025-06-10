@@ -448,12 +448,12 @@ def load_lattice_config(config_path: Optional[str] = None) -> LatticeConfig:
                     # Пробуем получить конфигурацию lattice_3d
                     lattice_data = config_manager.get_config('lattice_3d')
                     if lattice_data:
-                        logging.info("✅ Loaded lattice config from ConfigManager")
+                        logging.info("[OK] Loaded lattice config from ConfigManager")
                     else:
                         # Пробуем секцию lattice
                         lattice_data = config_manager.get_config('lattice')
                         if lattice_data:
-                            logging.info("✅ Loaded lattice config from ConfigManager (lattice section)")
+                            logging.info("[OK] Loaded lattice config from ConfigManager (lattice section)")
                     
                     if lattice_data:
                         # Преобразуем конфигурацию через ConfigManager

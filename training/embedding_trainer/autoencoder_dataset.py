@@ -33,7 +33,7 @@ try:
     from data.embedding_loader import EmbeddingLoader
     EMBEDDING_LOADER_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  Warning: EmbeddingLoader not available: {e}")
+    print(f"[WARNING]  Warning: EmbeddingLoader not available: {e}")
     EMBEDDING_LOADER_AVAILABLE = False
 
 
@@ -96,7 +96,7 @@ class AutoencoderDataset(Dataset):
             embeddings: Готовые эмбединги (опционально)
         """
         self.logger = logging.getLogger(__name__)
-        self.logger.info("🚀 Initializing AutoencoderDataset...")
+        self.logger.info("[START] Initializing AutoencoderDataset...")
         
         # Проверка зависимостей
         if not EMBEDDING_LOADER_AVAILABLE:
@@ -146,7 +146,7 @@ class AutoencoderDataset(Dataset):
         # Создание train/val split
         self._create_train_val_split()
         
-        self.logger.info(f"✅ AutoencoderDataset initialized successfully")
+        self.logger.info(f"[OK] AutoencoderDataset initialized successfully")
         self.logger.info(f"   Total samples: {len(self.embeddings)}")
         self.logger.info(f"   Train samples: {len(self.train_embeddings)}")
         self.logger.info(f"   Val samples: {len(self.val_embeddings)}")

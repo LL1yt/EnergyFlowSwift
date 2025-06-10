@@ -42,7 +42,7 @@ def test_autoencoder_dataset():
     
     try:
         # ========== ТЕСТ 1: ИМПОРТ И БАЗОВАЯ ИНИЦИАЛИЗАЦИЯ ==========
-        print("\n📦 ТЕСТ 1: Импорт и базовая инициализация")
+        print("\n[PACKAGE] ТЕСТ 1: Импорт и базовая инициализация")
         print("-" * 40)
         
         try:
@@ -52,13 +52,13 @@ def test_autoencoder_dataset():
                 create_text_dataset, 
                 create_file_dataset
             )
-            print("✅ AutoencoderDataset импортирован успешно")
+            print("[OK] AutoencoderDataset импортирован успешно")
         except ImportError as e:
-            print(f"❌ Ошибка импорта: {e}")
+            print(f"[ERROR] Ошибка импорта: {e}")
             return False
         
         # ========== ТЕСТ 2: СОЗДАНИЕ ИЗ ГОТОВЫХ ЭМБЕДИНГОВ ==========
-        print("\n🎯 ТЕСТ 2: Создание из готовых эмбедингов")
+        print("\n[TARGET] ТЕСТ 2: Создание из готовых эмбедингов")
         print("-" * 40)
         
         # Создаем тестовые эмбединги
@@ -76,7 +76,7 @@ def test_autoencoder_dataset():
                 embeddings=test_embeddings
             )
             
-            print(f"✅ Dataset создан: {dataset}")
+            print(f"[OK] Dataset создан: {dataset}")
             print(f"   Total samples: {len(dataset.embeddings)}")
             print(f"   Train samples: {len(dataset.train_embeddings)}")  
             print(f"   Val samples: {len(dataset.val_embeddings)}")
@@ -86,16 +86,16 @@ def test_autoencoder_dataset():
             expected_train_size = 100 - expected_val_size
             
             if len(dataset.val_embeddings) == expected_val_size:
-                print("✅ Validation split корректный")
+                print("[OK] Validation split корректный")
             else:
-                print(f"❌ Validation split некорректный: {len(dataset.val_embeddings)} vs {expected_val_size}")
+                print(f"[ERROR] Validation split некорректный: {len(dataset.val_embeddings)} vs {expected_val_size}")
                 
         except Exception as e:
-            print(f"❌ Ошибка создания dataset из эмбедингов: {e}")
+            print(f"[ERROR] Ошибка создания dataset из эмбедингов: {e}")
             return False
         
         # ========== ТЕСТ 3: СОЗДАНИЕ ИЗ ТЕКСТОВ ==========
-        print("\n📝 ТЕСТ 3: Создание из текстов (с EmbeddingLoader)")
+        print("\n[WRITE] ТЕСТ 3: Создание из текстов (с EmbeddingLoader)")
         print("-" * 40)
         
         test_texts = [
@@ -116,7 +116,7 @@ def test_autoencoder_dataset():
                 normalize_embeddings=True
             )
             
-            print(f"✅ Text dataset создан: {text_dataset}")
+            print(f"[OK] Text dataset создан: {text_dataset}")
             print(f"   Total samples: {len(text_dataset.embeddings)}")
             print(f"   Embedding dim: {text_dataset.config.embedding_dim}")
             
@@ -125,16 +125,16 @@ def test_autoencoder_dataset():
             print(f"   Sample shapes: input={sample_input.shape}, target={sample_target.shape}")
             
             if sample_input.shape == sample_target.shape:
-                print("✅ Autoencoder sample format корректный")
+                print("[OK] Autoencoder sample format корректный")
             else:
-                print("❌ Autoencoder sample format некорректный")
+                print("[ERROR] Autoencoder sample format некорректный")
                 
         except Exception as e:
-            print(f"❌ Ошибка создания dataset из текстов: {e}")
+            print(f"[ERROR] Ошибка создания dataset из текстов: {e}")
             return False
         
         # ========== ТЕСТ 4: DATALOADER INTEGRATION ==========
-        print("\n🔄 ТЕСТ 4: DataLoader интеграция")
+        print("\n[REFRESH] ТЕСТ 4: DataLoader интеграция")
         print("-" * 40)
         
         try:
@@ -152,24 +152,24 @@ def test_autoencoder_dataset():
                 validation=True
             )
             
-            print(f"✅ Train DataLoader создан: {len(train_loader)} batches")
-            print(f"✅ Val DataLoader создан: {len(val_loader)} batches")
+            print(f"[OK] Train DataLoader создан: {len(train_loader)} batches")
+            print(f"[OK] Val DataLoader создан: {len(val_loader)} batches")
             
             # Тест итерации
             batch_input, batch_target = next(iter(train_loader))
             print(f"   Batch shapes: input={batch_input.shape}, target={batch_target.shape}")
             
             if batch_input.shape == batch_target.shape:
-                print("✅ DataLoader batch format корректный")
+                print("[OK] DataLoader batch format корректный")
             else:
-                print("❌ DataLoader batch format некорректный")
+                print("[ERROR] DataLoader batch format некорректный")
                 
         except Exception as e:
-            print(f"❌ Ошибка DataLoader интеграции: {e}")
+            print(f"[ERROR] Ошибка DataLoader интеграции: {e}")
             return False
         
         # ========== ТЕСТ 5: ФАЙЛОВЫЕ ИСТОЧНИКИ ДАННЫХ ==========
-        print("\n📁 ТЕСТ 5: Файловые источники данных")
+        print("\n[FOLDER] ТЕСТ 5: Файловые источники данных")
         print("-" * 40)
         
         try:
@@ -191,17 +191,17 @@ def test_autoencoder_dataset():
                 cache_dir=str(temp_path / "cache_test5")
             )
             
-            print(f"✅ File dataset создан: {file_dataset}")
+            print(f"[OK] File dataset создан: {file_dataset}")
             print(f"   Total samples: {len(file_dataset.embeddings)}")
             print(f"   Train samples: {len(file_dataset.train_embeddings)}")
             print(f"   Val samples: {len(file_dataset.val_embeddings)}")
             
         except Exception as e:
-            print(f"❌ Ошибка создания dataset из файлов: {e}")
+            print(f"[ERROR] Ошибка создания dataset из файлов: {e}")
             return False
         
         # ========== ТЕСТ 6: РЕЖИМ ВАЛИДАЦИИ ==========
-        print("\n🔍 ТЕСТ 6: Режим валидации")
+        print("\n[MAGNIFY] ТЕСТ 6: Режим валидации")
         print("-" * 40)
         
         try:
@@ -216,16 +216,16 @@ def test_autoencoder_dataset():
             print(f"   Validation mode length: {val_len}")
             
             if train_len != val_len:
-                print("✅ Режим валидации работает корректно")
+                print("[OK] Режим валидации работает корректно")
             else:
-                print("❌ Режим валидации не работает")
+                print("[ERROR] Режим валидации не работает")
                 
         except Exception as e:
-            print(f"❌ Ошибка режима валидации: {e}")
+            print(f"[ERROR] Ошибка режима валидации: {e}")
             return False
         
         # ========== ТЕСТ 7: КОНФИГУРАЦИОННАЯ СИСТЕМА ==========
-        print("\n⚙️  ТЕСТ 7: Конфигурационная система")
+        print("\n[GEAR]  ТЕСТ 7: Конфигурационная система")
         print("-" * 40)
         
         try:
@@ -244,7 +244,7 @@ def test_autoencoder_dataset():
                 embeddings=torch.randn(80, 512)
             )
             
-            print(f"✅ Dataset из dict config: {dict_dataset}")
+            print(f"[OK] Dataset из dict config: {dict_dataset}")
             
             # Сохранение конфигурации в JSON
             config_file = temp_path / "test_config.json"
@@ -257,19 +257,19 @@ def test_autoencoder_dataset():
                 embeddings=torch.randn(60, 512)
             )
             
-            print(f"✅ Dataset из JSON config: {json_dataset}")
+            print(f"[OK] Dataset из JSON config: {json_dataset}")
             
         except Exception as e:
-            print(f"❌ Ошибка конфигурационной системы: {e}")
+            print(f"[ERROR] Ошибка конфигурационной системы: {e}")
             return False
         
         # ========== ТЕСТ 8: СТАТИСТИКА И МЕТАДАННЫЕ ==========
-        print("\n📊 ТЕСТ 8: Статистика и метаданные")
+        print("\n[DATA] ТЕСТ 8: Статистика и метаданные")
         print("-" * 40)
         
         try:
             stats = dataset.get_statistics()
-            print("✅ Статистика получена:")
+            print("[OK] Статистика получена:")
             for key, value in stats.items():
                 if isinstance(value, (int, float)):
                     print(f"   {key}: {value:.4f}" if isinstance(value, float) else f"   {key}: {value}")
@@ -280,7 +280,7 @@ def test_autoencoder_dataset():
             
             # Sample embeddings
             samples = dataset.get_sample_embeddings(n_samples=3)
-            print(f"✅ Sample embeddings получены:")
+            print(f"[OK] Sample embeddings получены:")
             for split, embs in samples.items():
                 print(f"   {split}: {embs.shape}")
             
@@ -289,16 +289,16 @@ def test_autoencoder_dataset():
             dataset.save_dataset_info(str(info_file))
             
             if info_file.exists():
-                print("✅ Dataset info сохранен успешно")
+                print("[OK] Dataset info сохранен успешно")
             else:
-                print("❌ Dataset info не сохранен")
+                print("[ERROR] Dataset info не сохранен")
                 
         except Exception as e:
-            print(f"❌ Ошибка статистики и метаданных: {e}")
+            print(f"[ERROR] Ошибка статистики и метаданных: {e}")
             return False
         
         # ========== ТЕСТ 9: CACHING СИСТЕМА ==========
-        print("\n💾 ТЕСТ 9: Caching система")
+        print("\n[SAVE] ТЕСТ 9: Caching система")
         print("-" * 40)
         
         try:
@@ -330,12 +330,12 @@ def test_autoencoder_dataset():
             print(f"   Second creation - cache hits: {cache_hit_count}")
             
             if cache_hit_count > 0:
-                print("✅ Caching система работает корректно")
+                print("[OK] Caching система работает корректно")
             else:
-                print("⚠️  Caching система не сработала (возможно, кэш недоступен)")
+                print("[WARNING]  Caching система не сработала (возможно, кэш недоступен)")
                 
         except Exception as e:
-            print(f"❌ Ошибка caching системы: {e}")
+            print(f"[ERROR] Ошибка caching системы: {e}")
             return False
         
         # ========== ТЕСТ 10: NOISE AUGMENTATION ==========
@@ -366,20 +366,20 @@ def test_autoencoder_dataset():
             print(f"   Input difference from 1.0: {input_diff:.6f}")
             
             if target_diff < 1e-6 and input_diff > 1e-3:
-                print("✅ Noise augmentation работает корректно")
+                print("[OK] Noise augmentation работает корректно")
             else:
-                print("❌ Noise augmentation не работает")
+                print("[ERROR] Noise augmentation не работает")
                 
         except Exception as e:
-            print(f"❌ Ошибка noise augmentation: {e}")
+            print(f"[ERROR] Ошибка noise augmentation: {e}")
             return False
         
         # ========== ФИНАЛЬНЫЕ РЕЗУЛЬТАТЫ ==========
         print("\n" + "=" * 60)
-        print("🎉 ВСЕ ТЕСТЫ ЗАВЕРШЕНЫ УСПЕШНО!")
-        print("✅ AutoencoderDataset полностью функционален")
+        print("[SUCCESS] ВСЕ ТЕСТЫ ЗАВЕРШЕНЫ УСПЕШНО!")
+        print("[OK] AutoencoderDataset полностью функционален")
         print()
-        print("🚀 ГОТОВНОСТЬ К STAGE 1.3:")
+        print("[START] ГОТОВНОСТЬ К STAGE 1.3:")
         print("   ✓ Интеграция с EmbeddingLoader работает")
         print("   ✓ Smart caching реализован")  
         print("   ✓ Batch processing функционален")
@@ -390,7 +390,7 @@ def test_autoencoder_dataset():
         print("   ✓ Метрики и статистика доступны")
         print("   ✓ Noise augmentation работает")
         print()
-        print("📋 STAGE 1.2 - AutoencoderDataset: ЗАВЕРШЕН!")
+        print("[INFO] STAGE 1.2 - AutoencoderDataset: ЗАВЕРШЕН!")
         
         return True
         
@@ -406,7 +406,7 @@ def test_autoencoder_dataset():
             shutil.rmtree(temp_dir)
             print(f"\n🧹 Временные файлы очищены: {temp_dir}")
         except:
-            print(f"\n⚠️  Не удалось очистить временные файлы: {temp_dir}")
+            print(f"\n[WARNING]  Не удалось очистить временные файлы: {temp_dir}")
 
 
 if __name__ == "__main__":

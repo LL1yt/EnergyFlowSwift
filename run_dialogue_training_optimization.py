@@ -239,23 +239,23 @@ def create_optimized_training_config(args) -> TrainingConfig:
         device=device,
         random_seed=42,
         
-        # 🔧 ОПТИМИЗИРОВАННАЯ АРХИТЕКТУРА
+        # [CONFIG] ОПТИМИЗИРОВАННАЯ АРХИТЕКТУРА
         lattice_size=[8, 8, 12],           # Проверенная конфигурация
         embedding_dim=768,                  # DistilBERT размерность
         batch_size=args.batch_size,         # Увеличенный batch size
         
-        # 🚀 ОПТИМИЗИРОВАННЫЕ ПАРАМЕТРЫ ОБУЧЕНИЯ
+        # [START] ОПТИМИЗИРОВАННЫЕ ПАРАМЕТРЫ ОБУЧЕНИЯ
         learning_rate=args.learning_rate,   # Оптимизированный LR
         epochs=args.epochs,                 # Больше эпох для convergence
         optimizer="adam",                   # Adam (AdamW настроим отдельно)
         loss_function="mse",                # MSE может работать лучше для regression
         
-        # 🎯 ПОВЫШЕННЫЕ ЦЕЛИ
+        # [TARGET] ПОВЫШЕННЫЕ ЦЕЛИ
         target_similarity=0.80,             # Цель 80%
         convergence_threshold=0.001,
         early_stopping_patience=30,         # Больше patience для достижения цели
         
-        # 📊 ENHANCED MONITORING
+        # [DATA] ENHANCED MONITORING
         log_interval=2,                     # Частое логирование
         save_interval=10,                   # Частое сохранение checkpoints
         checkpoint_dir="checkpoints/dialogue_training_optimization"
@@ -340,7 +340,7 @@ def create_lr_scheduler(optimizer, scheduler_type: str = "plateau"):
 
 def run_optimized_dialogue_training(args):
     """Основная функция оптимизированного dialogue training"""
-    logger.info("🚀 STARTING DIALOGUE TRAINING OPTIMIZATION - STAGE 2.2")
+    logger.info("[START] STARTING DIALOGUE TRAINING OPTIMIZATION - STAGE 2.2")
     logger.info("=" * 70)
     logger.info("GOAL: Increase Q→A similarity from 27.24% to 80%+")
     logger.info("=" * 70)
@@ -419,7 +419,7 @@ def run_optimized_dialogue_training(args):
     logger.info(f"   Validation batches: {len(val_loader)}")
     
     # 7. ENHANCED TRAINING LOOP
-    logger.info("\n🎓 STARTING OPTIMIZED TRAINING...")
+    logger.info("\n[GRADUATE] STARTING OPTIMIZED TRAINING...")
     logger.info("=" * 50)
     
     best_val_similarity = 0.0
@@ -521,7 +521,7 @@ def run_optimized_dialogue_training(args):
         logger.info(f"   Val:   Loss={avg_val_loss:.4f}, Similarity={avg_val_similarity:.4f}")
         logger.info(f"   LR: {current_lr:.6f}")
         
-        # 🎯 Проверка прогресса к цели
+        # [TARGET] Проверка прогресса к цели
         progress = (avg_val_similarity / config.target_similarity) * 100
         logger.info(f"   Progress to goal: {progress:.1f}% ({avg_val_similarity:.4f}/{config.target_similarity})")
         
@@ -552,14 +552,14 @@ def run_optimized_dialogue_training(args):
                 'config': config,
                 'training_args': vars(args)
             }, checkpoint_path)
-            logger.info(f"💾 NEW BEST MODEL saved: {checkpoint_path}")
+            logger.info(f"[SAVE] NEW BEST MODEL saved: {checkpoint_path}")
         else:
             patience_counter += 1
         
         # Проверка на достижение целевой similarity
         if avg_val_similarity >= config.target_similarity:
-            logger.info(f"🎉 TARGET SIMILARITY ACHIEVED: {avg_val_similarity:.4f} >= {config.target_similarity}")
-            logger.info("🏆 STAGE 2.2 OBJECTIVE COMPLETED!")
+            logger.info(f"[SUCCESS] TARGET SIMILARITY ACHIEVED: {avg_val_similarity:.4f} >= {config.target_similarity}")
+            logger.info("[TROPHY] STAGE 2.2 OBJECTIVE COMPLETED!")
             break
         
         # Проверка early stopping
@@ -569,13 +569,13 @@ def run_optimized_dialogue_training(args):
     
     # 8. ИТОГОВЫЕ РЕЗУЛЬТАТЫ
     logger.info("\n" + "=" * 70)
-    logger.info("🏆 DIALOGUE TRAINING OPTIMIZATION COMPLETED!")
+    logger.info("[TROPHY] DIALOGUE TRAINING OPTIMIZATION COMPLETED!")
     logger.info("=" * 70)
-    logger.info(f"🎯 Best validation similarity: {best_val_similarity:.4f}")
-    logger.info(f"📈 Improvement: {best_val_similarity:.4f} vs 0.2724 (baseline)")
-    logger.info(f"🎲 Improvement factor: {best_val_similarity / 0.2724:.2f}x")
-    logger.info(f"📊 Total epochs: {len(training_history)}")
-    logger.info(f"🎓 Target achieved: {'✅ YES' if best_val_similarity >= config.target_similarity else '❌ NO (Progress: ' + f'{(best_val_similarity/config.target_similarity)*100:.1f}%)'}")
+    logger.info(f"[TARGET] Best validation similarity: {best_val_similarity:.4f}")
+    logger.info(f"[CHART] Improvement: {best_val_similarity:.4f} vs 0.2724 (baseline)")
+    logger.info(f"[DICE] Improvement factor: {best_val_similarity / 0.2724:.2f}x")
+    logger.info(f"[DATA] Total epochs: {len(training_history)}")
+    logger.info(f"[GRADUATE] Target achieved: {'[OK] YES' if best_val_similarity >= config.target_similarity else '[ERROR] NO (Progress: ' + f'{(best_val_similarity/config.target_similarity)*100:.1f}%)'}")
     
     # Сохранение результатов
     results_file = results_dir / f"optimization_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -611,7 +611,7 @@ def run_optimized_dialogue_training(args):
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
     
-    logger.info(f"💾 Optimization results saved: {results_file}")
+    logger.info(f"[SAVE] Optimization results saved: {results_file}")
     
     # Построение графиков
     if args.plot_results:
@@ -678,7 +678,7 @@ def plot_optimization_results(training_history: List[Dict], results_dir: Path, b
     
     plot_file = results_dir / f"optimization_plot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
     plt.savefig(plot_file, dpi=300, bbox_inches='tight')
-    logger.info(f"📊 Optimization plots saved: {plot_file}")
+    logger.info(f"[DATA] Optimization plots saved: {plot_file}")
     plt.close()
 
 
@@ -686,7 +686,7 @@ def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='Dialogue Training Optimization - Stage 2.2')
     
-    # 🔧 ENHANCED TRAINING PARAMETERS
+    # [CONFIG] ENHANCED TRAINING PARAMETERS
     parser.add_argument('--epochs', type=int, default=100, 
                        help='Number of training epochs (default: 100, vs 20 in Stage 2.1)')
     parser.add_argument('--batch_size', type=int, default=32, 
@@ -694,7 +694,7 @@ def main():
     parser.add_argument('--learning_rate', type=float, default=0.0005, 
                        help='Learning rate (default: 0.0005, vs 0.001 in Stage 2.1)')
     
-    # 🚀 ADVANCED OPTIMIZATION
+    # [START] ADVANCED OPTIMIZATION
     parser.add_argument('--advanced_optimizer', action='store_true', default=True,
                        help='Use AdamW optimizer with weight decay (default: True)')
     parser.add_argument('--lr_schedule', action='store_true', default=True,
@@ -707,16 +707,16 @@ def main():
     parser.add_argument('--gradient_clipping', action='store_true', default=True,
                        help='Enable gradient clipping for stability (default: True)')
     
-    # 📊 DATA ENHANCEMENT
+    # [DATA] DATA ENHANCEMENT
     parser.add_argument('--data_augmentation', action='store_true', default=True,
                        help='Enable data augmentation (default: True)')
     
-    # 🤖 MODEL PARAMETERS
+    # [BOT] MODEL PARAMETERS
     parser.add_argument('--teacher_model', type=str, default='distilbert', 
                        choices=['llama3-8b', 'mistral-7b', 'distilbert', 'bert-base'],
                        help='Teacher LLM model for embeddings (default: distilbert)')
     
-    # 📊 LOGGING И VISUALIZATION
+    # [DATA] LOGGING И VISUALIZATION
     parser.add_argument('--log_interval', type=int, default=2, 
                        help='Logging interval during training (default: 2)')
     parser.add_argument('--plot_results', action='store_true', default=True,
@@ -731,7 +731,7 @@ def main():
         logger.info("DEBUG mode enabled")
     
     # Информация о запуске
-    logger.info("🚀 DIALOGUE TRAINING OPTIMIZATION - STAGE 2.2 PHASE 3")
+    logger.info("[START] DIALOGUE TRAINING OPTIMIZATION - STAGE 2.2 PHASE 3")
     logger.info("GOAL: Increase Q→A similarity from 27.24% to 80%+")
     logger.info("=" * 60)
     logger.info("OPTIMIZATION SETTINGS:")
@@ -752,23 +752,23 @@ def main():
         # Итоговый отчет
         improvement = best_similarity / 0.2724
         logger.info("\n" + "=" * 70)
-        logger.info("🏆 DIALOGUE TRAINING OPTIMIZATION STAGE 2.2 COMPLETED!")
+        logger.info("[TROPHY] DIALOGUE TRAINING OPTIMIZATION STAGE 2.2 COMPLETED!")
         logger.info("=" * 70)
-        logger.info(f"📈 Best Q→A similarity: {best_similarity:.4f}")
-        logger.info(f"📊 Baseline similarity: 0.2724")
-        logger.info(f"🚀 Improvement factor: {improvement:.2f}x")
-        logger.info(f"🎯 Target (0.80): {'✅ ACHIEVED' if best_similarity >= 0.80 else f'🔶 PROGRESS: {(best_similarity/0.80)*100:.1f}%'}")
+        logger.info(f"[CHART] Best Q→A similarity: {best_similarity:.4f}")
+        logger.info(f"[DATA] Baseline similarity: 0.2724")
+        logger.info(f"[START] Improvement factor: {improvement:.2f}x")
+        logger.info(f"[TARGET] Target (0.80): {'[OK] ACHIEVED' if best_similarity >= 0.80 else f'🔶 PROGRESS: {(best_similarity/0.80)*100:.1f}%'}")
         
         if best_similarity >= 0.80:
-            logger.info("🎉 STAGE 2.2 OBJECTIVE COMPLETED!")
+            logger.info("[SUCCESS] STAGE 2.2 OBJECTIVE COMPLETED!")
             logger.info("Ready for Stage 2.3!")
         else:
-            logger.info("🔄 Continue optimization or proceed to Stage 2.3 with current progress")
+            logger.info("[REFRESH] Continue optimization or proceed to Stage 2.3 with current progress")
         
         return 0
         
     except Exception as e:
-        logger.error(f"❌ Optimization failed: {e}", exc_info=True)
+        logger.error(f"[ERROR] Optimization failed: {e}", exc_info=True)
         return 1
 
 

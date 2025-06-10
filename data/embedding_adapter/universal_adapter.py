@@ -1,5 +1,5 @@
 """
-🔧 Universal Embedding Adapter
+[CONFIG] Universal Embedding Adapter
 Универсальная система конвертации эмбедингов между любыми размерностями
 Поддержка любых Teacher моделей и любых размеров куба
 """
@@ -47,7 +47,7 @@ class UniversalEmbeddingAdapter(nn.Module):
             self._build_adapter()
             self.initialized = True
         
-        logger.info(f"🔧 UniversalEmbeddingAdapter создан: {input_dim}D → {output_dim}D, strategy={strategy}")
+        logger.info(f"[CONFIG] UniversalEmbeddingAdapter создан: {input_dim}D → {output_dim}D, strategy={strategy}")
     
     def _build_adapter(self):
         """Построение адаптера после определения размеров"""
@@ -200,7 +200,7 @@ class UniversalEmbeddingAdapter(nn.Module):
         self._build_adapter()
         self.initialized = True
         
-        logger.info(f"🔧 Adapter инициализирован из данных: {self.input_dim}D → {self.output_dim}D")
+        logger.info(f"[CONFIG] Adapter инициализирован из данных: {self.input_dim}D → {self.output_dim}D")
     
     def forward(self, x: torch.Tensor, return_reconstruction: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
@@ -297,7 +297,7 @@ class UniversalEmbeddingAdapter(nn.Module):
         with open(path, 'w') as f:
             yaml.dump(config, f, default_flow_style=False)
         
-        logger.info(f"💾 Adapter config сохранен: {path}")
+        logger.info(f"[SAVE] Adapter config сохранен: {path}")
     
     @classmethod
     def from_config(cls, config_path: Union[str, Path]) -> 'UniversalEmbeddingAdapter':
@@ -332,7 +332,7 @@ class AdapterManager:
             "embedding_dim": embedding_dim,
             "config": kwargs
         }
-        logger.info(f"📝 Модель зарегистрирована: {model_name} ({embedding_dim}D)")
+        logger.info(f"[WRITE] Модель зарегистрирована: {model_name} ({embedding_dim}D)")
     
     def get_adapter(self, 
                    source_model: str, 
@@ -363,7 +363,7 @@ class AdapterManager:
         config_path = self.config_dir / f"{adapter_key}.yaml"
         adapter.save_config(config_path)
         
-        logger.info(f"🔧 Создан адаптер: {source_model} ({source_dim}D) → surface ({target_surface_size}D)")
+        logger.info(f"[CONFIG] Создан адаптер: {source_model} ({source_dim}D) → surface ({target_surface_size}D)")
         
         return adapter
     
@@ -424,7 +424,7 @@ def create_adapter_for_cube(cube_dimensions: Tuple[int, int, int],
         strategy=strategy
     )
     
-    logger.info(f"🎯 Адаптер создан для куба {cube_dimensions}: {teacher_model} ({source_dim}D) → surface ({surface_size}D)")
+    logger.info(f"[TARGET] Адаптер создан для куба {cube_dimensions}: {teacher_model} ({source_dim}D) → surface ({surface_size}D)")
     
     return adapter
 

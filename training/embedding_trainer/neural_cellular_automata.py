@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🧠 Phase 3 Task 3.1: Neural Cellular Automata Patterns
+[BRAIN] Phase 3 Task 3.1: Neural Cellular Automata Patterns
 
 Реализация emergent behavior preservation во время GPU-optimized training.
 
@@ -80,7 +80,7 @@ class StochasticCellUpdater(nn.Module):
         )
 
         logger.info(
-            f"🎲 StochasticCellUpdater initialized: {self.total_cells} cells, p={self.update_probability}"
+            f"[DICE] StochasticCellUpdater initialized: {self.total_cells} cells, p={self.update_probability}"
         )
 
     def generate_update_mask(
@@ -214,7 +214,7 @@ class ResidualUpdateRules(nn.Module):
         )
 
         logger.info(
-            f"🔄 ResidualUpdateRules initialized: state_size={state_size}, lr={self.residual_lr}"
+            f"[REFRESH] ResidualUpdateRules initialized: state_size={state_size}, lr={self.residual_lr}"
         )
 
     def forward(
@@ -303,7 +303,7 @@ class PatternFormationMetrics(nn.Module):
         )
         self.step_counter = 0
 
-        logger.info(f"📊 PatternFormationMetrics initialized: {cube_dimensions} cube")
+        logger.info(f"[DATA] PatternFormationMetrics initialized: {cube_dimensions} cube")
 
     def compute_spatial_coherence(self, cube_states: torch.Tensor) -> torch.Tensor:
         """
@@ -375,7 +375,7 @@ class PatternFormationMetrics(nn.Module):
         else:
             # Fallback: если нет valid neighbors, возвращаем нейтральное значение
             logger.warning(
-                "⚠️ [NCA] No valid neighbors found for spatial coherence computation"
+                "[WARNING] [NCA] No valid neighbors found for spatial coherence computation"
             )
             spatial_coherence = torch.tensor(
                 0.5, device=cube_states.device
@@ -435,7 +435,7 @@ class PatternFormationMetrics(nn.Module):
         else:
             # Fallback: если нет valid regions, возвращаем нейтральное значение
             logger.warning(
-                "⚠️ [NCA] No valid regions found for specialization computation"
+                "[WARNING] [NCA] No valid regions found for specialization computation"
             )
             specialization = torch.tensor(
                 0.1, device=cube_states.device
@@ -560,7 +560,7 @@ class NeuralCellularAutomata(nn.Module):
         self.training_step = 0
 
         logger.info(
-            f"🧠 NeuralCellularAutomata initialized: {cube_dimensions} cube, {state_size}D states"
+            f"[BRAIN] NeuralCellularAutomata initialized: {cube_dimensions} cube, {state_size}D states"
         )
 
     def forward(
@@ -584,20 +584,20 @@ class NeuralCellularAutomata(nn.Module):
         """
         # КРИТИЧЕСКАЯ ПРОВЕРКА: Защита от None inputs
         if current_states is None:
-            logger.error("❌ [NCA] current_states is None!")
+            logger.error("[ERROR] [NCA] current_states is None!")
             raise ValueError("NCA received None for current_states")
 
         if raw_updates is None:
-            logger.error("❌ [NCA] raw_updates is None!")
+            logger.error("[ERROR] [NCA] raw_updates is None!")
             raise ValueError("NCA received None for raw_updates")
 
         # ДИАГНОСТИКА: Проверяем размеры
-        logger.debug(f"🔍 [NCA] current_states: {current_states.shape}")
-        logger.debug(f"🔍 [NCA] raw_updates: {raw_updates.shape}")
+        logger.debug(f"[MAGNIFY] [NCA] current_states: {current_states.shape}")
+        logger.debug(f"[MAGNIFY] [NCA] raw_updates: {raw_updates.shape}")
 
         if current_states.shape != raw_updates.shape:
             logger.error(
-                f"❌ [NCA] Shape mismatch: current_states {current_states.shape} vs raw_updates {raw_updates.shape}"
+                f"[ERROR] [NCA] Shape mismatch: current_states {current_states.shape} vs raw_updates {raw_updates.shape}"
             )
             raise ValueError(
                 f"Shape mismatch in NCA inputs: {current_states.shape} vs {raw_updates.shape}"
@@ -732,11 +732,11 @@ def test_nca_basic() -> bool:
         assert "updated_states" in results
         assert results["updated_states"].shape == current_states.shape
 
-        print("✅ NCA basic functionality works!")
+        print("[OK] NCA basic functionality works!")
         return True
 
     except Exception as e:
-        print(f"❌ NCA test failed: {e}")
+        print(f"[ERROR] NCA test failed: {e}")
         return False
 
 

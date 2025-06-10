@@ -21,12 +21,12 @@ class LossFunctionDiagnostics:
     
     def __init__(self):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"🔧 Диагностика Loss Function (устройство: {self.device})")
+        print(f"[CONFIG] Диагностика Loss Function (устройство: {self.device})")
     
     def run_diagnostics(self):
         """Запуск полной диагностики loss function"""
         print("\n" + "="*60)
-        print("🔍 ДИАГНОСТИКА LOSS FUNCTION")
+        print("[MAGNIFY] ДИАГНОСТИКА LOSS FUNCTION")
         print("="*60)
         
         # 1. Создаем trainer
@@ -45,7 +45,7 @@ class LossFunctionDiagnostics:
         self._test_different_scenarios(trainer)
         
         print("\n" + "="*60)
-        print("✅ ДИАГНОСТИКА ЗАВЕРШЕНА")
+        print("[OK] ДИАГНОСТИКА ЗАВЕРШЕНА")
         print("="*60)
     
     def _create_trainer(self):
@@ -118,7 +118,7 @@ class LossFunctionDiagnostics:
     
     def _test_dialogue_similarity_loss(self, trainer, outputs, targets):
         """Детальное тестирование dialogue similarity loss"""
-        print(f"\n   📊 DIALOGUE SIMILARITY LOSS:")
+        print(f"\n   [DATA] DIALOGUE SIMILARITY LOSS:")
         
         final_output = outputs['final_output']
         target_embedding = targets['target_embedding']
@@ -140,13 +140,13 @@ class LossFunctionDiagnostics:
             
             # Проверяем на идентичность
             if torch.mean(cos_sim).item() > 0.999:
-                print(f"      🚨 ПРОБЛЕМА: Почти идентичные тензоры!")
+                print(f"      [ALERT] ПРОБЛЕМА: Почти идентичные тензоры!")
                 print(f"         final_output[:5]: {final_output[0][:5]}")
                 print(f"         projected_target[:5]: {projected_target[0][:5]}")
                 print(f"         difference: {(final_output[0][:5] - projected_target[0][:5]).abs()}")
                 
                 # Возможная причина: projection возвращает тот же тензор
-                print(f"      🔍 Проверка projection layer:")
+                print(f"      [MAGNIFY] Проверка projection layer:")
                 print(f"         Input to projection: {target_embedding[0][:5]}")
                 print(f"         Output from projection: {projected_target[0][:5]}")
                 
@@ -167,9 +167,9 @@ class LossFunctionDiagnostics:
             print(f"         random dialogue_loss: {random_loss.item():.6f}")
             
             if random_loss.item() > 0.5:
-                print(f"         ✅ Random vectors дают нормальный loss > 0.5")
+                print(f"         [OK] Random vectors дают нормальный loss > 0.5")
             else:
-                print(f"         🚨 Даже random vectors дают низкий loss!")
+                print(f"         [ALERT] Даже random vectors дают низкий loss!")
     
     def _test_surface_consistency_loss(self, trainer, outputs, targets):
         """Тестирование surface consistency loss"""
@@ -186,15 +186,15 @@ class LossFunctionDiagnostics:
         print(f"      surface_consistency_loss (MSE): {surface_loss.item():.6f}")
         
         if surface_loss.item() < 0.001:
-            print(f"      🚨 ПРОБЛЕМА: Слишком маленький surface loss!")
+            print(f"      [ALERT] ПРОБЛЕМА: Слишком маленький surface loss!")
             print(f"         Разность: {(input_surface - output_surface).abs().mean().item():.8f}")
             print(f"         Возможно input_surface == output_surface")
         else:
-            print(f"      ✅ Surface loss выглядит нормально")
+            print(f"      [OK] Surface loss выглядит нормально")
     
     def _test_internal_dynamics_loss(self, trainer, outputs, targets):
         """Тестирование internal dynamics loss"""
-        print(f"\n   ⚙️ INTERNAL DYNAMICS LOSS:")
+        print(f"\n   [GEAR] INTERNAL DYNAMICS LOSS:")
         
         if 'internal_state' in outputs:
             internal_state = outputs['internal_state']
@@ -206,15 +206,15 @@ class LossFunctionDiagnostics:
             print(f"      internal_dynamics_loss (L2): {internal_loss.item():.6f}")
             
             if internal_loss.item() < 0.001:
-                print(f"      🚨 Очень маленький internal loss")
+                print(f"      [ALERT] Очень маленький internal loss")
             else:
-                print(f"      ✅ Internal loss выглядит разумно")
+                print(f"      [OK] Internal loss выглядит разумно")
         else:
-            print(f"      ⚠️ Нет internal_state в outputs")
+            print(f"      [WARNING] Нет internal_state в outputs")
     
     def _test_full_loss_computation(self, trainer, dataset):
         """Тестирование полного loss computation"""
-        print(f"\n🎯 ПОЛНЫЙ LOSS COMPUTATION:")
+        print(f"\n[TARGET] ПОЛНЫЙ LOSS COMPUTATION:")
         
         # Получаем sample
         sample = dataset[0]
@@ -247,26 +247,26 @@ class LossFunctionDiagnostics:
                 print(f"      {key}: {loss_val:.6f}")
                 
                 if loss_val == 0.0:
-                    print(f"         🚨 {key} = 0.0 - ПРОБЛЕМА!")
+                    print(f"         [ALERT] {key} = 0.0 - ПРОБЛЕМА!")
                 elif loss_val < 0.01:
-                    print(f"         ⚠️ {key} очень маленький")
+                    print(f"         [WARNING] {key} очень маленький")
                 else:
-                    print(f"         ✅ {key} выглядит нормально")
+                    print(f"         [OK] {key} выглядит нормально")
         
         print(f"   Total loss: {total_loss:.6f}")
         
         if total_loss == 0.0:
-            print(f"   🚨 КРИТИЧЕСКАЯ ПРОБЛЕМА: Total loss = 0.0!")
+            print(f"   [ALERT] КРИТИЧЕСКАЯ ПРОБЛЕМА: Total loss = 0.0!")
             print(f"      Все компоненты loss равны нулю")
             print(f"      Обучение невозможно в таком состоянии")
         elif total_loss < 0.1:
-            print(f"   ⚠️ Total loss очень маленький - может быть проблемой")
+            print(f"   [WARNING] Total loss очень маленький - может быть проблемой")
         else:
-            print(f"   ✅ Total loss выглядит разумно для начала обучения")
+            print(f"   [OK] Total loss выглядит разумно для начала обучения")
     
     def _test_different_scenarios(self, trainer):
         """Тестирование разных scenarios"""
-        print(f"\n🎭 ТЕСТИРОВАНИЕ РАЗНЫХ SCENARIOS:")
+        print(f"\n[MASK] ТЕСТИРОВАНИЕ РАЗНЫХ SCENARIOS:")
         
         # Scenario 1: Очень разные embeddings
         print(f"   Scenario 1: Противоположные векторы")
@@ -311,21 +311,21 @@ class LossFunctionDiagnostics:
         print(f"      Total loss с нулевыми векторами: {scenario3_loss:.6f}")
         
         # Анализ результатов
-        print(f"\n   📊 Анализ scenarios:")
+        print(f"\n   [DATA] Анализ scenarios:")
         if scenario1_loss > 1.0 and scenario2_loss > 0.5:
-            print(f"      ✅ Loss function работает - разные inputs дают разные losses")
+            print(f"      [OK] Loss function работает - разные inputs дают разные losses")
         elif all(loss < 0.01 for loss in [scenario1_loss, scenario2_loss, scenario3_loss]):
-            print(f"      🚨 ПРОБЛЕМА: Все scenarios дают нулевой loss!")
+            print(f"      [ALERT] ПРОБЛЕМА: Все scenarios дают нулевой loss!")
             print(f"         Loss function не работает правильно")
         else:
-            print(f"      ⚠️ Частичная проблема - некоторые scenarios дают нулевой loss")
+            print(f"      [WARNING] Частичная проблема - некоторые scenarios дают нулевой loss")
 
 def main():
     """Запуск диагностики loss function"""
     diagnostics = LossFunctionDiagnostics()
     diagnostics.run_diagnostics()
     
-    print("\n🎯 СЛЕДУЮЩИЕ ШАГИ:")
+    print("\n[TARGET] СЛЕДУЮЩИЕ ШАГИ:")
     print("1. Если loss function работает правильно - проблема в данных")
     print("2. Если loss = 0 во всех scenarios - проблема в реализации loss")
     print("3. Если только real data дает 0 - проблема в embeddings или projection")

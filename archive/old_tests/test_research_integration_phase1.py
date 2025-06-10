@@ -122,7 +122,7 @@ def test_mixed_precision_functionality():
     )
     
     trainer_mp = EmergentCubeTrainer(config=config_mp, device="cpu")
-    logger.info("✅ Mixed precision trainer created")
+    logger.info("[OK] Mixed precision trainer created")
     
     # Test без mixed precision
     config_no_mp = EmergentTrainingConfig(
@@ -132,7 +132,7 @@ def test_mixed_precision_functionality():
     )
     
     trainer_no_mp = EmergentCubeTrainer(config=config_no_mp, device="cpu")
-    logger.info("✅ Regular precision trainer created")
+    logger.info("[OK] Regular precision trainer created")
     
     # Test data
     batch_size = 2
@@ -141,21 +141,21 @@ def test_mixed_precision_functionality():
     
     try:
         # Test mixed precision
-        logger.info("🔄 Testing mixed precision mode...")
+        logger.info("[REFRESH] Testing mixed precision mode...")
         metrics_mp = trainer_mp.train_step(question_embeddings, answer_embeddings)
-        logger.info(f"   ✅ Mixed precision step completed: loss={metrics_mp['total_loss']:.6f}")
+        logger.info(f"   [OK] Mixed precision step completed: loss={metrics_mp['total_loss']:.6f}")
         
         # Test regular precision
-        logger.info("🔄 Testing regular precision mode...")
+        logger.info("[REFRESH] Testing regular precision mode...")
         metrics_no_mp = trainer_no_mp.train_step(question_embeddings, answer_embeddings)
-        logger.info(f"   ✅ Regular precision step completed: loss={metrics_no_mp['total_loss']:.6f}")
+        logger.info(f"   [OK] Regular precision step completed: loss={metrics_no_mp['total_loss']:.6f}")
         
         # Validate both modes work
-        logger.info("🎯 RESULT: Mixed precision functionality working!")
+        logger.info("[TARGET] RESULT: Mixed precision functionality working!")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Mixed precision test failed: {e}")
+        logger.error(f"[ERROR] Mixed precision test failed: {e}")
         return False
 
 def test_memory_usage():
@@ -172,7 +172,7 @@ def test_memory_usage():
     # Baseline memory
     gc.collect()
     baseline_memory = process.memory_info().rss / 1024 / 1024  # MB
-    logger.info(f"📊 Baseline memory: {baseline_memory:.1f} MB")
+    logger.info(f"[DATA] Baseline memory: {baseline_memory:.1f} MB")
     
     # Create trainer
     config = EmergentTrainingConfig(
@@ -187,7 +187,7 @@ def test_memory_usage():
     gc.collect()
     trainer_memory = process.memory_info().rss / 1024 / 1024  # MB
     trainer_usage = trainer_memory - baseline_memory
-    logger.info(f"📊 Trainer memory: {trainer_memory:.1f} MB (+{trainer_usage:.1f} MB)")
+    logger.info(f"[DATA] Trainer memory: {trainer_memory:.1f} MB (+{trainer_usage:.1f} MB)")
     
     # Test data
     batch_size = 8
@@ -202,19 +202,19 @@ def test_memory_usage():
         training_memory = process.memory_info().rss / 1024 / 1024  # MB
         training_usage = training_memory - baseline_memory
         
-        logger.info(f"📊 Training memory: {training_memory:.1f} MB (+{training_usage:.1f} MB)")
-        logger.info(f"📊 Total overhead: {training_usage:.1f} MB")
+        logger.info(f"[DATA] Training memory: {training_memory:.1f} MB (+{training_usage:.1f} MB)")
+        logger.info(f"[DATA] Total overhead: {training_usage:.1f} MB")
         
         # Check if within expected range (target: <300MB based on research)
         if training_usage < 300:
-            logger.info("✅ Memory usage within target range!")
+            logger.info("[OK] Memory usage within target range!")
             return True
         else:
-            logger.warning(f"⚠️ Memory usage higher than expected: {training_usage:.1f} MB")
+            logger.warning(f"[WARNING] Memory usage higher than expected: {training_usage:.1f} MB")
             return False
             
     except Exception as e:
-        logger.error(f"❌ Memory test failed: {e}")
+        logger.error(f"[ERROR] Memory test failed: {e}")
         return False
 
 def test_gradient_checkpointing():
@@ -241,23 +241,23 @@ def test_gradient_checkpointing():
         trainer.train()
         outputs = trainer.forward(question_embeddings)
         
-        logger.info("✅ Forward pass с gradient checkpointing completed")
-        logger.info(f"📊 Output shapes: {[(k, v.shape) for k, v in outputs.items() if torch.is_tensor(v)]}")
+        logger.info("[OK] Forward pass с gradient checkpointing completed")
+        logger.info(f"[DATA] Output shapes: {[(k, v.shape) for k, v in outputs.items() if torch.is_tensor(v)]}")
         
         # Test training step
         metrics = trainer.train_step(question_embeddings, answer_embeddings)
-        logger.info(f"✅ Training step с checkpointing completed: loss={metrics['total_loss']:.6f}")
+        logger.info(f"[OK] Training step с checkpointing completed: loss={metrics['total_loss']:.6f}")
         
         return True
         
     except Exception as e:
-        logger.error(f"❌ Gradient checkpointing test failed: {e}")
+        logger.error(f"[ERROR] Gradient checkpointing test failed: {e}")
         return False
 
 def run_all_tests():
     """Run all Phase 1 tests"""
     
-    logger.info("🚀 RESEARCH INTEGRATION PHASE 1 TESTING")
+    logger.info("[START] RESEARCH INTEGRATION PHASE 1 TESTING")
     logger.info("=" * 80)
     logger.info("Testing critical fixes from research integration plan:")
     logger.info("- Task 1.1: Computational Graph Fix")
@@ -280,14 +280,14 @@ def run_all_tests():
     results['gradient_checkpointing'] = test_gradient_checkpointing()
     
     # Summary
-    logger.info("🎯 PHASE 1 TESTING RESULTS")
+    logger.info("[TARGET] PHASE 1 TESTING RESULTS")
     logger.info("=" * 80)
     
     passed = 0
     total = len(results)
     
     for test_name, success in results.items():
-        status = "✅ PASS" if success else "❌ FAIL"
+        status = "[OK] PASS" if success else "[ERROR] FAIL"
         logger.info(f"{test_name:25} {status}")
         if success:
             passed += 1
@@ -296,11 +296,11 @@ def run_all_tests():
     logger.info(f"SUMMARY: {passed}/{total} tests passed ({100*passed/total:.1f}%)")
     
     if results['computational_graph']:
-        logger.info("🎉 CRITICAL: Computational graph stability FIXED!")
-        logger.info("🚀 Ready to proceed to Phase 2: GPU Optimization")
+        logger.info("[SUCCESS] CRITICAL: Computational graph stability FIXED!")
+        logger.info("[START] Ready to proceed to Phase 2: GPU Optimization")
     else:
-        logger.error("🚨 CRITICAL: Computational graph issue NOT resolved")
-        logger.error("❌ Cannot proceed to Phase 2 until this is fixed")
+        logger.error("[ALERT] CRITICAL: Computational graph issue NOT resolved")
+        logger.error("[ERROR] Cannot proceed to Phase 2 until this is fixed")
     
     return results
 
@@ -313,14 +313,14 @@ if __name__ == "__main__":
         
         # Exit code based on critical test
         if results['computational_graph']:
-            logger.info("✅ Phase 1 testing completed successfully")
+            logger.info("[OK] Phase 1 testing completed successfully")
             sys.exit(0)
         else:
-            logger.error("❌ Phase 1 critical test failed")
+            logger.error("[ERROR] Phase 1 critical test failed")
             sys.exit(1)
             
     except Exception as e:
-        logger.error(f"❌ Testing failed with error: {e}")
+        logger.error(f"[ERROR] Testing failed with error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1) 

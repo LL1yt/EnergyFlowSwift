@@ -92,7 +92,7 @@ class MinimalTrainer(nn.Module):
     
     def debug_tensor_versions(self, step_name):
         """Детальная диагностика tensor versions"""
-        logger.debug(f"\n🔍 [DEBUG] {step_name} - Tensor Versions:")
+        logger.debug(f"\n[MAGNIFY] [DEBUG] {step_name} - Tensor Versions:")
         
         for name, param in self.named_parameters():
             if hasattr(param, '_version'):
@@ -106,7 +106,7 @@ class MinimalTrainer(nn.Module):
 def test_tensor_version_conflict():
     """Тест на tensor version conflicts в минимальной обстановке"""
     
-    logger.info("🚀 [TEST] Starting minimal tensor version conflict test...")
+    logger.info("[START] [TEST] Starting minimal tensor version conflict test...")
     
     # Создаем trainer
     trainer = MinimalTrainer()
@@ -115,56 +115,56 @@ def test_tensor_version_conflict():
     input_data = torch.randn(1, 32, requires_grad=True)  # batch=1, state_size=32
     target_data = torch.randn(1, 32)
     
-    logger.info("📊 [TEST] Initial tensor versions:")
+    logger.info("[DATA] [TEST] Initial tensor versions:")
     trainer.debug_tensor_versions("INITIAL")
     
     # Первый training step
-    logger.info("\n🔄 [TEST] Step 1...")
+    logger.info("\n[REFRESH] [TEST] Step 1...")
     try:
         loss_1 = trainer.train_step(input_data.clone(), target_data)
-        logger.info(f"✅ [TEST] Step 1 successful, loss: {loss_1:.6f}")
+        logger.info(f"[OK] [TEST] Step 1 successful, loss: {loss_1:.6f}")
         
         trainer.debug_tensor_versions("AFTER_STEP_1")
         
     except Exception as e:
-        logger.error(f"❌ [TEST] Step 1 failed: {e}")
+        logger.error(f"[ERROR] [TEST] Step 1 failed: {e}")
         return False
     
     # Второй training step - тут должна быть проблема
-    logger.info("\n🔄 [TEST] Step 2...")
+    logger.info("\n[REFRESH] [TEST] Step 2...")
     try:
         loss_2 = trainer.train_step(input_data.clone(), target_data)
-        logger.info(f"✅ [TEST] Step 2 successful, loss: {loss_2:.6f}")
+        logger.info(f"[OK] [TEST] Step 2 successful, loss: {loss_2:.6f}")
         
         trainer.debug_tensor_versions("AFTER_STEP_2")
         
     except Exception as e:
-        logger.error(f"❌ [TEST] Step 2 failed: {e}")
-        logger.error(f"🔍 [DEBUG] Exception details: {type(e).__name__}: {e}")
+        logger.error(f"[ERROR] [TEST] Step 2 failed: {e}")
+        logger.error(f"[MAGNIFY] [DEBUG] Exception details: {type(e).__name__}: {e}")
         
         # Попытка понять, что именно вызвало ошибку
         trainer.debug_tensor_versions("ERROR_STATE")
         return False
     
     # Третий step для уверенности
-    logger.info("\n🔄 [TEST] Step 3...")
+    logger.info("\n[REFRESH] [TEST] Step 3...")
     try:
         loss_3 = trainer.train_step(input_data.clone(), target_data)
-        logger.info(f"✅ [TEST] Step 3 successful, loss: {loss_3:.6f}")
+        logger.info(f"[OK] [TEST] Step 3 successful, loss: {loss_3:.6f}")
         
     except Exception as e:
-        logger.error(f"❌ [TEST] Step 3 failed: {e}")
+        logger.error(f"[ERROR] [TEST] Step 3 failed: {e}")
         return False
     
-    logger.info("🎉 [TEST] All steps successful - no tensor version conflicts detected!")
+    logger.info("[SUCCESS] [TEST] All steps successful - no tensor version conflicts detected!")
     return True
 
 if __name__ == "__main__":
     success = test_tensor_version_conflict()
     
     if success:
-        print("\n✅ РЕЗУЛЬТАТ: Tensor version conflicts не обнаружены в минимальном тесте")
+        print("\n[OK] РЕЗУЛЬТАТ: Tensor version conflicts не обнаружены в минимальном тесте")
         print("   → Проблема может быть в более сложных компонентах (spatial propagation, multi-objective loss)")
     else:
-        print("\n❌ РЕЗУЛЬТАТ: Tensor version conflicts воспроизведены в минимальном тесте")
+        print("\n[ERROR] РЕЗУЛЬТАТ: Tensor version conflicts воспроизведены в минимальном тесте")
         print("   → Проблема в базовых компонентах (GatedMLPCell или простые операции)") 

@@ -27,22 +27,22 @@ def download_distilbert():
         os.makedirs(local_path, exist_ok=True)
         
         print(f"📥 Downloading DistilBERT: {model_name}")
-        print(f"💾 Saving to: {local_path}")
+        print(f"[SAVE] Saving to: {local_path}")
         
         # Проверяем не загружена ли модель уже
         if os.path.exists(os.path.join(local_path, "config.json")):
-            print("✅ DistilBERT already downloaded!")
+            print("[OK] DistilBERT already downloaded!")
             return local_path
         
-        print("🔄 Downloading tokenizer...")
+        print("[REFRESH] Downloading tokenizer...")
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         tokenizer.save_pretrained(local_path)
-        print("✅ Tokenizer saved!")
+        print("[OK] Tokenizer saved!")
         
-        print("🔄 Downloading model...")
+        print("[REFRESH] Downloading model...")
         model = AutoModel.from_pretrained(model_name)
         model.save_pretrained(local_path)
-        print("✅ Model saved!")
+        print("[OK] Model saved!")
         
         # Проверяем что все файлы на месте
         required_files = ["config.json", "tokenizer.json", "pytorch_model.bin"]
@@ -53,20 +53,20 @@ def download_distilbert():
                 missing_files.append(file)
         
         if missing_files:
-            print(f"⚠️  Warning: Missing files: {missing_files}")
+            print(f"[WARNING]  Warning: Missing files: {missing_files}")
         else:
-            print("🎉 DistilBERT successfully downloaded and cached!")
-            print(f"📁 Location: {os.path.abspath(local_path)}")
+            print("[SUCCESS] DistilBERT successfully downloaded and cached!")
+            print(f"[FOLDER] Location: {os.path.abspath(local_path)}")
         
         return local_path
         
     except ImportError:
-        print("❌ Error: transformers library not installed")
+        print("[ERROR] Error: transformers library not installed")
         print("Install with: pip install transformers")
         return None
         
     except Exception as e:
-        print(f"❌ Error downloading DistilBERT: {e}")
+        print(f"[ERROR] Error downloading DistilBERT: {e}")
         return None
 
 def test_cached_model():
@@ -83,14 +83,14 @@ def test_cached_model():
         
         embedding = handler.generate_embeddings([test_text])
         
-        print(f"✅ Test successful!")
-        print(f"📊 Embedding shape: {embedding.shape}")
-        print(f"🧠 Model info: {handler.get_model_info()}")
+        print(f"[OK] Test successful!")
+        print(f"[DATA] Embedding shape: {embedding.shape}")
+        print(f"[BRAIN] Model info: {handler.get_model_info()}")
         
         return True
         
     except Exception as e:
-        print(f"❌ Test failed: {e}")
+        print(f"[ERROR] Test failed: {e}")
         return False
 
 def get_model_size():
@@ -99,7 +99,7 @@ def get_model_size():
     local_path = os.path.join("models", "local_cache", "distilbert-base-uncased")
     
     if not os.path.exists(local_path):
-        print("📁 Model not found locally")
+        print("[FOLDER] Model not found locally")
         return
     
     total_size = 0
@@ -114,14 +114,14 @@ def get_model_size():
             
             # Показываем крупные файлы
             if size > 1024 * 1024:  # > 1MB
-                print(f"  📄 {file}: {size / (1024*1024):.1f} MB")
+                print(f"  [FILE] {file}: {size / (1024*1024):.1f} MB")
     
-    print(f"📊 Total size: {total_size / (1024*1024):.1f} MB ({file_count} files)")
+    print(f"[DATA] Total size: {total_size / (1024*1024):.1f} MB ({file_count} files)")
 
 def main():
     """Главная функция скрипта."""
     
-    print("🎯 DistilBERT Local Cache Setup")
+    print("[TARGET] DistilBERT Local Cache Setup")
     print("=" * 40)
     
     # 1. Загружаем модель
@@ -129,20 +129,20 @@ def main():
     
     if local_path:
         # 2. Показываем размер
-        print("\n📊 Model Information:")
+        print("\n[DATA] Model Information:")
         get_model_size()
         
         # 3. Тестируем
         if test_cached_model():
-            print("\n🎉 Setup completed successfully!")
-            print("💡 Now you can use DistilBERT without internet connection")
-            print("🚀 Run: python real_llama_training_production.py --distilbert")
+            print("\n[SUCCESS] Setup completed successfully!")
+            print("[IDEA] Now you can use DistilBERT without internet connection")
+            print("[START] Run: python real_llama_training_production.py --distilbert")
         else:
-            print("\n⚠️  Setup completed but test failed")
-            print("🔧 You may need to check your installation")
+            print("\n[WARNING]  Setup completed but test failed")
+            print("[CONFIG] You may need to check your installation")
     else:
-        print("\n❌ Setup failed")
-        print("🔧 Please check your internet connection and try again")
+        print("\n[ERROR] Setup failed")
+        print("[CONFIG] Please check your internet connection and try again")
 
 if __name__ == "__main__":
     main() 

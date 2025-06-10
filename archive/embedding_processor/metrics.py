@@ -136,7 +136,7 @@ class ProcessingMetrics:
         self.total_processed = 0
         self.start_time = time.time()
         
-        logger.info("📊 Метрики сброшены")
+        logger.info("[DATA] Метрики сброшены")
     
     def log_current_stats(self):
         """Логировать текущие статистики"""
@@ -145,12 +145,12 @@ class ProcessingMetrics:
         performance = self.get_performance_stats()
         
         logger.info("=== ТЕКУЩИЕ МЕТРИКИ EMBEDDINGPROCESSOR ===")
-        logger.info(f"📊 Средняя схожесть: {similarity_stats['mean']:.3f} (цель: {self.target_similarity:.3f})")
-        logger.info(f"🎯 Достижение цели: {quality['target_achievement_rate']:.1%}")
-        logger.info(f"⭐ Уровень качества: {quality['quality_level']}")
-        logger.info(f"⚡ Пропускная способность: {performance['throughput_embeddings_per_sec']:.1f} эмб/сек")
+        logger.info(f"[DATA] Средняя схожесть: {similarity_stats['mean']:.3f} (цель: {self.target_similarity:.3f})")
+        logger.info(f"[TARGET] Достижение цели: {quality['target_achievement_rate']:.1%}")
+        logger.info(f"[STAR] Уровень качества: {quality['quality_level']}")
+        logger.info(f"[FAST] Пропускная способность: {performance['throughput_embeddings_per_sec']:.1f} эмб/сек")
         logger.info(f"🔢 Обработано всего: {self.total_processed} эмбедингов")
-        logger.info(f"✅ Phase 2.5 готовность: {'ДА' if quality['phase_2_5_ready'] else 'НЕТ'}")
+        logger.info(f"[OK] Phase 2.5 готовность: {'ДА' if quality['phase_2_5_ready'] else 'НЕТ'}")
 
 
 def calculate_processing_quality(input_embeddings: torch.Tensor, 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🚀 Final Optimal GPU Configuration Test
+[START] Final Optimal GPU Configuration Test
 Testing with optimal batch_size=1024 (14.2x speedup, 80% GPU utilization)
 """
 
@@ -20,19 +20,19 @@ from training.embedding_trainer.emergent_training_stage_3_1_4_1 import (
 
 def test_optimal_configuration():
     """Test the optimal GPU configuration discovered"""
-    print("🚀 OPTIMAL GPU CONFIGURATION TEST")
+    print("[START] OPTIMAL GPU CONFIGURATION TEST")
     print("="*80)
     print("Testing batch_size=1024 (optimal balance: 176 samples/sec, 80% GPU)")
     
     if not torch.cuda.is_available():
-        print("❌ CUDA not available")
+        print("[ERROR] CUDA not available")
         return False
     
     # GPU info
     gpu_name = torch.cuda.get_device_name(0)
     total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-    print(f"🔥 GPU: {gpu_name}")
-    print(f"💾 Total Memory: {total_memory:.1f} GB")
+    print(f"[HOT] GPU: {gpu_name}")
+    print(f"[SAVE] Total Memory: {total_memory:.1f} GB")
     
     # Create optimal configuration
     config = EmergentTrainingConfig()
@@ -41,7 +41,7 @@ def test_optimal_configuration():
     config.channels_last_memory = True
     config.enable_8bit_optimizer = True
     
-    print(f"\n📋 OPTIMAL CONFIGURATION:")
+    print(f"\n[INFO] OPTIMAL CONFIGURATION:")
     print(f"   Batch size: 1024")
     print(f"   Mixed precision: {config.mixed_precision}")
     print(f"   Gradient accumulation: {config.gradient_accumulation_steps}")
@@ -67,12 +67,12 @@ def test_optimal_configuration():
     answer_embeddings = torch.randn(batch_size, 4096, device=device)
     
     # Warmup
-    print("   🔥 Warming up...")
+    print("   [HOT] Warming up...")
     _ = trainer.forward(question_embeddings[:32])  # Small warmup
     torch.cuda.synchronize()
     
     # Full test
-    print("   ⚡ Running full test...")
+    print("   [FAST] Running full test...")
     
     # Forward pass
     torch.cuda.synchronize()
@@ -84,8 +84,8 @@ def test_optimal_configuration():
     forward_time = time.time() - forward_start
     forward_memory = torch.cuda.memory_allocated() / 1024**3
     
-    print(f"   ✅ Forward pass: {forward_time:.3f}s")
-    print(f"   📊 Memory after forward: {forward_memory:.2f} GB")
+    print(f"   [OK] Forward pass: {forward_time:.3f}s")
+    print(f"   [DATA] Memory after forward: {forward_memory:.2f} GB")
     
     # Backward pass
     targets = {
@@ -103,19 +103,19 @@ def test_optimal_configuration():
     backward_time = time.time() - backward_start
     peak_memory = torch.cuda.max_memory_allocated() / 1024**3
     
-    print(f"   🔥 Backward pass: {backward_time:.3f}s")
-    print(f"   📈 Peak memory: {peak_memory:.2f} GB")
+    print(f"   [HOT] Backward pass: {backward_time:.3f}s")
+    print(f"   [CHART] Peak memory: {peak_memory:.2f} GB")
     
     # Calculate metrics
     total_time = forward_time + backward_time
     throughput = batch_size / total_time
     memory_utilization = (peak_memory / total_memory) * 100
     
-    print(f"\n📊 PERFORMANCE METRICS:")
-    print(f"   🚀 Total time: {total_time:.3f}s")
-    print(f"   ⚡ Throughput: {throughput:.1f} samples/sec")
-    print(f"   💾 Memory utilization: {memory_utilization:.1f}%")
-    print(f"   🎯 GPU efficiency: {'OPTIMAL' if 70 <= memory_utilization <= 85 else 'GOOD' if memory_utilization >= 50 else 'LOW'}")
+    print(f"\n[DATA] PERFORMANCE METRICS:")
+    print(f"   [START] Total time: {total_time:.3f}s")
+    print(f"   [FAST] Throughput: {throughput:.1f} samples/sec")
+    print(f"   [SAVE] Memory utilization: {memory_utilization:.1f}%")
+    print(f"   [TARGET] GPU efficiency: {'OPTIMAL' if 70 <= memory_utilization <= 85 else 'GOOD' if memory_utilization >= 50 else 'LOW'}")
     
     # Compare with baseline
     baseline_throughput = 12.4  # From batch_size=64 test
@@ -127,29 +127,29 @@ def test_optimal_configuration():
     print(f"   Speedup: {speedup:.1f}x")
     
     if speedup >= 10:
-        print("   🎉 OUTSTANDING improvement!")
+        print("   [SUCCESS] OUTSTANDING improvement!")
     elif speedup >= 5:
-        print("   ✅ EXCELLENT improvement!")
+        print("   [OK] EXCELLENT improvement!")
     elif speedup >= 2:
         print("   👍 GOOD improvement!")
     else:
-        print("   ⚠️  Modest improvement")
+        print("   [WARNING]  Modest improvement")
     
     # Efficiency analysis
-    print(f"\n💡 EFFICIENCY ANALYSIS:")
+    print(f"\n[IDEA] EFFICIENCY ANALYSIS:")
     if memory_utilization >= 75:
-        print("   💾 Memory: Excellent utilization (75%+)")
+        print("   [SAVE] Memory: Excellent utilization (75%+)")
     elif memory_utilization >= 50:
-        print("   💾 Memory: Good utilization (50%+)")
+        print("   [SAVE] Memory: Good utilization (50%+)")
     else:
-        print("   💾 Memory: Low utilization (<50%)")
+        print("   [SAVE] Memory: Low utilization (<50%)")
     
     if throughput >= 150:
-        print("   ⚡ Throughput: Excellent (150+ samples/sec)")
+        print("   [FAST] Throughput: Excellent (150+ samples/sec)")
     elif throughput >= 75:
-        print("   ⚡ Throughput: Good (75+ samples/sec)")
+        print("   [FAST] Throughput: Good (75+ samples/sec)")
     else:
-        print("   ⚡ Throughput: Needs optimization")
+        print("   [FAST] Throughput: Needs optimization")
     
     return {
         'throughput': throughput,
@@ -210,27 +210,27 @@ def test_training_step_stability():
     
     avg_throughput = batch_size / avg_time
     
-    print(f"\n📊 STABILITY METRICS:")
+    print(f"\n[DATA] STABILITY METRICS:")
     print(f"   ⏱️  Average time: {avg_time:.3f}s ± {time_std:.3f}s")
-    print(f"   🚀 Average throughput: {avg_throughput:.1f} samples/sec")
-    print(f"   💾 Average memory: {avg_memory:.2f} GB")
+    print(f"   [START] Average throughput: {avg_throughput:.1f} samples/sec")
+    print(f"   [SAVE] Average memory: {avg_memory:.2f} GB")
     
     stability_score = 1.0 - (time_std / avg_time)  # Lower variance = higher stability
-    print(f"   🎯 Stability score: {stability_score:.2f} (1.0 = perfect)")
+    print(f"   [TARGET] Stability score: {stability_score:.2f} (1.0 = perfect)")
     
     if stability_score >= 0.95:
-        print("   ✅ EXCELLENT stability!")
+        print("   [OK] EXCELLENT stability!")
     elif stability_score >= 0.85:
         print("   👍 GOOD stability")
     else:
-        print("   ⚠️  Variable performance")
+        print("   [WARNING]  Variable performance")
     
     return avg_throughput
 
 
 def main():
     """Run comprehensive optimal configuration test"""
-    print("🎯 PHASE 2 GPU OPTIMIZATION - FINAL VALIDATION")
+    print("[TARGET] PHASE 2 GPU OPTIMIZATION - FINAL VALIDATION")
     print("="*80)
     print("Validating optimal configuration: batch_size=1024")
     
@@ -245,51 +245,51 @@ def main():
     
     # Final summary
     print(f"\n" + "="*80)
-    print("🏆 PHASE 2 OPTIMIZATION SUCCESS SUMMARY")
+    print("[TROPHY] PHASE 2 OPTIMIZATION SUCCESS SUMMARY")
     print("="*80)
     
-    print(f"✅ PERFORMANCE ACHIEVED:")
-    print(f"   🚀 Throughput: {performance['throughput']:.1f} samples/sec")
-    print(f"   📈 Speedup: {performance['speedup']:.1f}x vs baseline")
-    print(f"   💾 GPU utilization: {performance['memory_utilization']:.1f}%")
-    print(f"   🎯 Peak memory: {performance['peak_memory_gb']:.1f} GB / 32 GB")
+    print(f"[OK] PERFORMANCE ACHIEVED:")
+    print(f"   [START] Throughput: {performance['throughput']:.1f} samples/sec")
+    print(f"   [CHART] Speedup: {performance['speedup']:.1f}x vs baseline")
+    print(f"   [SAVE] GPU utilization: {performance['memory_utilization']:.1f}%")
+    print(f"   [TARGET] Peak memory: {performance['peak_memory_gb']:.1f} GB / 32 GB")
     
-    print(f"\n✅ OPTIMIZATION GOALS MET:")
+    print(f"\n[OK] OPTIMIZATION GOALS MET:")
     goals_met = 0
     total_goals = 4
     
     if performance['throughput'] >= 150:
-        print("   ✅ Throughput > 150 samples/sec")
+        print("   [OK] Throughput > 150 samples/sec")
         goals_met += 1
     else:
-        print("   ❌ Throughput < 150 samples/sec")
+        print("   [ERROR] Throughput < 150 samples/sec")
     
     if performance['speedup'] >= 10:
-        print("   ✅ Speedup > 10x")
+        print("   [OK] Speedup > 10x")
         goals_met += 1
     else:
-        print("   ❌ Speedup < 10x")
+        print("   [ERROR] Speedup < 10x")
     
     if 70 <= performance['memory_utilization'] <= 90:
-        print("   ✅ Memory utilization 70-90%")
+        print("   [OK] Memory utilization 70-90%")
         goals_met += 1
     else:
-        print("   ❌ Memory utilization not optimal")
+        print("   [ERROR] Memory utilization not optimal")
     
     if performance['peak_memory_gb'] <= 30:
-        print("   ✅ Memory usage < 30GB")
+        print("   [OK] Memory usage < 30GB")
         goals_met += 1
     else:
-        print("   ❌ Memory usage > 30GB")
+        print("   [ERROR] Memory usage > 30GB")
     
     success_rate = goals_met / total_goals
-    print(f"\n🎯 SUCCESS RATE: {goals_met}/{total_goals} ({success_rate*100:.1f}%)")
+    print(f"\n[TARGET] SUCCESS RATE: {goals_met}/{total_goals} ({success_rate*100:.1f}%)")
     
     if success_rate >= 0.75:
-        print("🎉 PHASE 2 GPU OPTIMIZATION: SUCCESS!")
+        print("[SUCCESS] PHASE 2 GPU OPTIMIZATION: SUCCESS!")
         print("Ready for Phase 3: Advanced Features")
     else:
-        print("⚠️  PHASE 2: Partial success, needs tuning")
+        print("[WARNING]  PHASE 2: Partial success, needs tuning")
     
     return success_rate >= 0.75
 

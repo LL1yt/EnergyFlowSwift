@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🚀 Phase 2: GPU Optimization Testing
+[START] Phase 2: GPU Optimization Testing
 Testing Research Integration GPU optimization features:
 - Task 2.1: Channels-Last Memory Format (22% bandwidth improvement)
 - Task 2.2: Hierarchical Batching (effective batch 32)
@@ -51,7 +51,7 @@ def test_channels_last_memory_format():
         assert len(template_shape) == 5, f"Expected 5D tensor, got {len(template_shape)}D"
         
         # Check memory optimization implementation
-        print("✅ Cube states template created for memory optimization")
+        print("[OK] Cube states template created for memory optimization")
         
         # Test if the memory optimization doesn't break functionality
         print("   Testing memory-optimized tensor creation...")
@@ -68,19 +68,19 @@ def test_channels_last_memory_format():
         outputs = trainer.forward(surface_embeddings)
         forward_time = time.time() - start_time
         
-        print(f"✅ Forward pass completed in {forward_time:.4f}s")
+        print(f"[OK] Forward pass completed in {forward_time:.4f}s")
         print(f"   Output shape: {outputs['final_output'].shape}")
         
         # Verify memory optimization doesn't break functionality
         assert outputs['final_output'].shape[0] == batch_size, "Batch size mismatch"
         assert outputs['final_output'].shape[1] == 225, "Surface output size mismatch"  # 15×15
         
-        print("✅ Memory optimization integration verified (functionality preserved)")
+        print("[OK] Memory optimization integration verified (functionality preserved)")
         
         return True
         
     except Exception as e:
-        print(f"❌ Channels-last test failed: {e}")
+        print(f"[ERROR] Channels-last test failed: {e}")
         return False
 
 
@@ -114,7 +114,7 @@ def test_hierarchical_batching():
         metrics = trainer.train_step_hierarchical(question_embeddings, answer_embeddings)
         training_time = time.time() - start_time
         
-        print(f"✅ Hierarchical training completed in {training_time:.4f}s")
+        print(f"[OK] Hierarchical training completed in {training_time:.4f}s")
         print(f"   Effective batch size: {metrics.get('effective_batch_size', 'N/A')}")
         print(f"   Accumulation steps: {metrics.get('accumulation_steps', 'N/A')}")
         print(f"   Total loss: {metrics['total_loss']:.6f}")
@@ -124,12 +124,12 @@ def test_hierarchical_batching():
         assert 'accumulation_steps' in metrics, "Accumulation steps not reported"
         assert metrics['accumulation_steps'] == 4, f"Expected 4 accumulation steps, got {metrics['accumulation_steps']}"
         
-        print("✅ Hierarchical batching with gradient accumulation verified")
+        print("[OK] Hierarchical batching with gradient accumulation verified")
         
         return True
         
     except Exception as e:
-        print(f"❌ Hierarchical batching test failed: {e}")
+        print(f"[ERROR] Hierarchical batching test failed: {e}")
         return False
 
 
@@ -144,10 +144,10 @@ def test_8bit_optimizer():
         try:
             import bitsandbytes as bnb
             bitsandbytes_available = True
-            print("✅ bitsandbytes library available")
+            print("[OK] bitsandbytes library available")
         except ImportError:
             bitsandbytes_available = False
-            print("⚠️ bitsandbytes not available, testing fallback")
+            print("[WARNING] bitsandbytes not available, testing fallback")
         
         # Create trainer (should auto-detect and use 8-bit optimizer if available)
         config = EmergentTrainingConfig()
@@ -156,16 +156,16 @@ def test_8bit_optimizer():
         # Check optimizer type
         optimizer_type = type(trainer.optimizer).__name__
         if bitsandbytes_available:
-            print(f"✅ Optimizer type: {optimizer_type}")
+            print(f"[OK] Optimizer type: {optimizer_type}")
             if "AdamW8bit" in optimizer_type:
-                print("✅ 8-bit optimizer successfully enabled")
+                print("[OK] 8-bit optimizer successfully enabled")
             else:
-                print("⚠️ 8-bit optimizer not enabled (may fallback to standard)")
+                print("[WARNING] 8-bit optimizer not enabled (may fallback to standard)")
         else:
-            print(f"✅ Fallback optimizer type: {optimizer_type}")
+            print(f"[OK] Fallback optimizer type: {optimizer_type}")
             # Don't assert - just verify it's a working optimizer
             if "AdamW" in optimizer_type:
-                print("✅ Standard AdamW fallback working correctly")
+                print("[OK] Standard AdamW fallback working correctly")
         
         # Test basic optimization step
         batch_size = 4
@@ -179,14 +179,14 @@ def test_8bit_optimizer():
         # Test training step with 8-bit optimizer
         metrics = trainer.train_step(question_embeddings, answer_embeddings)
         
-        print(f"✅ Training step with optimizer completed")
+        print(f"[OK] Training step with optimizer completed")
         print(f"   Total loss: {metrics['total_loss']:.6f}")
         print(f"   Learning rate: {metrics['lr']:.6f}")
         
         return True
         
     except Exception as e:
-        print(f"❌ 8-bit optimizer test failed: {e}")
+        print(f"[ERROR] 8-bit optimizer test failed: {e}")
         return False
 
 
@@ -233,21 +233,21 @@ def test_combined_gpu_optimization():
             print(f"   Step {step+1}: {step_time:.4f}s, loss: {metrics['total_loss']:.6f}")
         
         avg_time = total_time / num_steps
-        print(f"✅ Combined optimization test completed")
+        print(f"[OK] Combined optimization test completed")
         print(f"   Average time per step: {avg_time:.4f}s")
         print(f"   All optimizations working together")
         
         return True
         
     except Exception as e:
-        print(f"❌ Combined optimization test failed: {e}")
+        print(f"[ERROR] Combined optimization test failed: {e}")
         return False
 
 
 def benchmark_performance():
     """Benchmark performance improvements"""
     print("\n" + "="*80)
-    print("📊 PERFORMANCE BENCHMARK")
+    print("[DATA] PERFORMANCE BENCHMARK")
     print("="*80)
     
     try:
@@ -302,26 +302,26 @@ def benchmark_performance():
         avg_optimized = sum(optimized_times) / len(optimized_times)
         speedup = avg_baseline / avg_optimized if avg_optimized > 0 else 1.0
         
-        print(f"📈 Performance Results:")
+        print(f"[CHART] Performance Results:")
         print(f"   Baseline average: {avg_baseline:.4f}s per step")
         print(f"   Optimized average: {avg_optimized:.4f}s per step")
         print(f"   Speedup: {speedup:.2f}x")
         
         if speedup > 1.1:
-            print("✅ Performance improvement detected")
+            print("[OK] Performance improvement detected")
         else:
-            print("⚠️ No significant speedup (expected on CPU)")
+            print("[WARNING] No significant speedup (expected on CPU)")
         
         return True
         
     except Exception as e:
-        print(f"❌ Performance benchmark failed: {e}")
+        print(f"[ERROR] Performance benchmark failed: {e}")
         return False
 
 
 def main():
     """Run all Phase 2 GPU optimization tests"""
-    print("🚀 PHASE 2: GPU OPTIMIZATION TESTING")
+    print("[START] PHASE 2: GPU OPTIMIZATION TESTING")
     print("="*80)
     print("Testing Research Integration GPU optimization features")
     print(f"PyTorch version: {torch.__version__}")
@@ -346,29 +346,29 @@ def main():
         try:
             print(f"\n🧪 Running {test_name}...")
             result = test_func()
-            results[test_name] = "✅ PASS" if result else "❌ FAIL"
+            results[test_name] = "[OK] PASS" if result else "[ERROR] FAIL"
         except Exception as e:
-            print(f"❌ {test_name} failed with exception: {e}")
-            results[test_name] = "❌ ERROR"
+            print(f"[ERROR] {test_name} failed with exception: {e}")
+            results[test_name] = "[ERROR] ERROR"
     
     # Summary
     print("\n" + "="*80)
-    print("📊 PHASE 2 TEST SUMMARY")
+    print("[DATA] PHASE 2 TEST SUMMARY")
     print("="*80)
     
     for test_name, result in results.items():
         print(f"{result} | {test_name}")
     
-    passed = sum(1 for r in results.values() if r == "✅ PASS")
+    passed = sum(1 for r in results.values() if r == "[OK] PASS")
     total = len(results)
     
-    print(f"\n🎯 OVERALL RESULT: {passed}/{total} tests passed")
+    print(f"\n[TARGET] OVERALL RESULT: {passed}/{total} tests passed")
     
     if passed == total:
-        print("🎉 Phase 2 GPU Optimization: ALL TESTS PASSED!")
-        print("🚀 Ready for Phase 3: Advanced Features")
+        print("[SUCCESS] Phase 2 GPU Optimization: ALL TESTS PASSED!")
+        print("[START] Ready for Phase 3: Advanced Features")
     else:
-        print("⚠️ Some tests failed. Review implementation.")
+        print("[WARNING] Some tests failed. Review implementation.")
     
     return passed == total
 

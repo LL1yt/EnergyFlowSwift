@@ -14,7 +14,7 @@ from training.embedding_trainer.dialogue_dataset import create_dialogue_dataset,
 
 def test_model_name_mapping():
     """Тестирование mapping функции"""
-    print("🔧 Тестирование model name mapping:")
+    print("[CONFIG] Тестирование model name mapping:")
     
     test_cases = [
         "distilbert-base-uncased",
@@ -30,7 +30,7 @@ def test_model_name_mapping():
 
 def test_fixed_data_pipeline():
     """Тестирование исправленного data pipeline"""
-    print("\n🔍 Тестирование исправленного data pipeline:")
+    print("\n[MAGNIFY] Тестирование исправленного data pipeline:")
     
     # Тестируем с разными моделями
     test_models = [
@@ -44,7 +44,7 @@ def test_fixed_data_pipeline():
     ]
     
     for model_name in test_models:
-        print(f"\n   📚 Testing with {model_name}:")
+        print(f"\n   [BOOKS] Testing with {model_name}:")
         
         try:
             dataset = create_dialogue_dataset(
@@ -69,25 +69,25 @@ def test_fixed_data_pipeline():
             print(f"      Answer embedding norm: {a_norm:.6f}")
             
             if q_norm > 0.1 and a_norm > 0.1:
-                print(f"      ✅ SUCCESS: Embeddings are non-zero!")
+                print(f"      [OK] SUCCESS: Embeddings are non-zero!")
             elif q_norm == 0.0 or a_norm == 0.0:
-                print(f"      ❌ FAILED: Still getting zero embeddings")
+                print(f"      [ERROR] FAILED: Still getting zero embeddings")
             else:
-                print(f"      ⚠️ WARNING: Very small embeddings")
+                print(f"      [WARNING] WARNING: Very small embeddings")
                 
         except Exception as e:
-            print(f"      ❌ ERROR: {e}")
+            print(f"      [ERROR] ERROR: {e}")
 
 def main():
     """Запуск тестов исправления"""
-    print("🎯 ТЕСТ ИСПРАВЛЕНИЯ DATA PIPELINE")
+    print("[TARGET] ТЕСТ ИСПРАВЛЕНИЯ DATA PIPELINE")
     print("="*50)
     
     test_model_name_mapping()
     test_fixed_data_pipeline()
     
     print("\n" + "="*50)
-    print("✅ ТЕСТИРОВАНИЕ ЗАВЕРШЕНО")
+    print("[OK] ТЕСТИРОВАНИЕ ЗАВЕРШЕНО")
 
 if __name__ == "__main__":
     main() 

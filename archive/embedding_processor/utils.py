@@ -192,7 +192,7 @@ def benchmark_processing_speed(processor,
         benchmark_results["test_configurations"].append(config_results)
         all_throughputs.extend(throughputs)
         
-        logger.info(f"⚡ Пропускная способность: {config_results['mean_throughput']:.1f} ± {config_results['std_throughput']:.1f} эмб/сек")
+        logger.info(f"[FAST] Пропускная способность: {config_results['mean_throughput']:.1f} ± {config_results['std_throughput']:.1f} эмб/сек")
     
     # Общая статистика
     benchmark_results["summary"] = {
@@ -266,7 +266,7 @@ def run_comprehensive_test(processor,
         all_similarities.append(quality["mean_cosine_similarity"])
         all_times.append(processing_time)
         
-        logger.info(f"✅ {mode.value}: similarity={quality['mean_cosine_similarity']:.3f}, time={processing_time:.3f}s")
+        logger.info(f"[OK] {mode.value}: similarity={quality['mean_cosine_similarity']:.3f}, time={processing_time:.3f}s")
     
     # Восстанавливаем исходный режим
     processor.set_mode(original_mode)
@@ -314,7 +314,7 @@ def export_processing_results(results: Dict[str, Any],
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(json_results, f, indent=2, ensure_ascii=False)
     
-    logger.info(f"📁 Результаты экспортированы в: {output_path}")
+    logger.info(f"[FOLDER] Результаты экспортированы в: {output_path}")
 
 
 def convert_to_json_serializable(obj: Any) -> Any:
@@ -354,7 +354,7 @@ def create_quality_report(processor,
     Returns:
         Dict с полным отчетом о качестве
     """
-    logger.info(f"📊 Создание отчета о качестве (samples={num_samples})")
+    logger.info(f"[DATA] Создание отчета о качестве (samples={num_samples})")
     
     # Тестируем на разных типах данных
     test_types = ["random", "semantic", "normalized"]
@@ -427,6 +427,6 @@ def create_quality_report(processor,
     # Экспорт отчета
     export_processing_results(quality_report, report_path)
     
-    logger.info(f"✅ Отчет готов: similarity={overall_similarity:.3f}, Phase 2.5 ready: {phase_2_5_ready}")
+    logger.info(f"[OK] Отчет готов: similarity={overall_similarity:.3f}, Phase 2.5 ready: {phase_2_5_ready}")
     
     return quality_report 

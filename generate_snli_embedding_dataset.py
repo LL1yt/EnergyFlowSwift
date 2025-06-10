@@ -286,7 +286,7 @@ def main():
             premise_embeddings, hypothesis_embeddings, snli_pairs, args.output_dir
         )
 
-        logger.info(f"✅ SNLI эмбеддинги готовы: {saved_file}")
+        logger.info(f"[OK] SNLI эмбеддинги готовы: {saved_file}")
         logger.info(f"   Теперь можно использовать в run_dynamic_training.py")
 
         # Тест загрузки через precomputed_embedding_loader
@@ -303,9 +303,9 @@ def main():
         logger.info(f"   Готов для обучения!")
 
     except KeyboardInterrupt:
-        logger.info("⏹️ Остановлено пользователем")
+        logger.info("[STOP] Остановлено пользователем")
     except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
+        logger.error(f"[ERROR] Ошибка: {e}")
         import traceback
 
         traceback.print_exc()

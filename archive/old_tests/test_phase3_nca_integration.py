@@ -41,7 +41,7 @@ def test_nca_integration_basic():
         assert hasattr(trainer, 'nca'), "NCA not initialized"
         assert trainer.nca is not None, "NCA is None"
         
-        print("✅ NCA Integration: Initialization successful")
+        print("[OK] NCA Integration: Initialization successful")
         
         # Test forward pass with NCA
         batch_size = 2
@@ -55,19 +55,19 @@ def test_nca_integration_basic():
         assert 'final_output' in outputs, "Missing final_output"
         assert outputs['final_output'].shape[0] == batch_size, "Batch size mismatch"
         
-        print("✅ NCA Integration: Forward pass successful")
+        print("[OK] NCA Integration: Forward pass successful")
         
         # Check NCA metrics
         nca_metrics = trainer.get_nca_metrics()
         assert nca_metrics['config']['pattern_detection'], "Pattern detection not enabled"
         assert nca_metrics['training_step'] > 0, "Training step not incremented"
         
-        print("✅ NCA Integration: Metrics collection successful")
+        print("[OK] NCA Integration: Metrics collection successful")
         
         return True
         
     except Exception as e:
-        print(f"❌ NCA Integration test failed: {e}")
+        print(f"[ERROR] NCA Integration test failed: {e}")
         return False
 
 def test_nca_vs_standard_comparison():
@@ -128,17 +128,17 @@ def test_nca_vs_standard_comparison():
         overhead = nca_time / standard_time - 1
         assert overhead < 0.5, f"NCA overhead too high: {overhead*100:.1f}%"
         
-        print("✅ Performance comparison: Reasonable overhead")
+        print("[OK] Performance comparison: Reasonable overhead")
         
         return True
         
     except Exception as e:
-        print(f"❌ Performance comparison failed: {e}")
+        print(f"[ERROR] Performance comparison failed: {e}")
         return False
 
 def test_nca_pattern_detection():
     """Тест обнаружения emergent patterns через NCA"""
-    print("\n🎨 Testing NCA Pattern Detection...")
+    print("\n[ART] Testing NCA Pattern Detection...")
     
     try:
         # Config with pattern detection enabled
@@ -183,9 +183,9 @@ def test_nca_pattern_detection():
                 print(f"   Emergent specialization: {specialization:.4f}")
                 assert 0 <= specialization <= 2, "Invalid specialization score"
             
-            print("✅ Pattern detection: Metrics computed successfully")
+            print("[OK] Pattern detection: Metrics computed successfully")
         else:
-            print("⚠️  Pattern detection: No patterns recorded (may be normal for short test)")
+            print("[WARNING]  Pattern detection: No patterns recorded (may be normal for short test)")
         
         # Check NCA summary
         nca_summary = trainer.get_nca_summary() if hasattr(trainer, 'get_nca_summary') else {}
@@ -194,12 +194,12 @@ def test_nca_pattern_detection():
         return True
         
     except Exception as e:
-        print(f"❌ Pattern detection test failed: {e}")
+        print(f"[ERROR] Pattern detection test failed: {e}")
         return False
 
 def test_nca_stochastic_updates():
     """Тест stochastic update механизма"""
-    print("\n🎲 Testing NCA Stochastic Updates...")
+    print("\n[DICE] Testing NCA Stochastic Updates...")
     
     try:
         # Config with specific NCA settings
@@ -249,20 +249,20 @@ def test_nca_stochastic_updates():
             avg_updates = update_stats.get('avg_updates', 0)
             assert avg_updates > 0, "No cell updates detected"
         
-        print("✅ Stochastic updates: Working correctly")
+        print("[OK] Stochastic updates: Working correctly")
         
         return True
         
     except Exception as e:
-        print(f"❌ Stochastic updates test failed: {e}")
+        print(f"[ERROR] Stochastic updates test failed: {e}")
         return False
 
 def test_nca_gpu_compatibility():
     """Тест совместимости NCA с GPU (если доступно)"""
-    print("\n🚀 Testing NCA GPU Compatibility...")
+    print("\n[START] Testing NCA GPU Compatibility...")
     
     if not torch.cuda.is_available():
-        print("⚠️  GPU not available, skipping GPU test")
+        print("[WARNING]  GPU not available, skipping GPU test")
         return True
     
     try:
@@ -288,17 +288,17 @@ def test_nca_gpu_compatibility():
         # Check output device
         assert outputs['final_output'].device.type == "cuda", "Output not on GPU"
         
-        print("✅ GPU compatibility: All components on GPU")
+        print("[OK] GPU compatibility: All components on GPU")
         
         return True
         
     except Exception as e:
-        print(f"❌ GPU compatibility test failed: {e}")
+        print(f"[ERROR] GPU compatibility test failed: {e}")
         return False
 
 def run_all_tests():
     """Запустить все тесты Phase 3 NCA integration"""
-    print("🧠 PHASE 3 Task 3.1: Neural Cellular Automata Integration Tests")
+    print("[BRAIN] PHASE 3 Task 3.1: Neural Cellular Automata Integration Tests")
     print("=" * 70)
     
     test_results = []
@@ -326,10 +326,10 @@ def run_all_tests():
     print(f"🧪 Test Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("✅ ALL TESTS PASSED! Phase 3 Task 3.1 NCA integration is working correctly")
+        print("[OK] ALL TESTS PASSED! Phase 3 Task 3.1 NCA integration is working correctly")
         return True
     else:
-        print(f"❌ {total - passed} tests failed. Check implementation.")
+        print(f"[ERROR] {total - passed} tests failed. Check implementation.")
         return False
 
 if __name__ == "__main__":
