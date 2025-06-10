@@ -277,7 +277,7 @@ class LargeEmbeddingDatasetGenerator:
 
     def generate_large_dataset(self, target_size: int = 10000) -> List[Dict[str, str]]:
         """Генерирует большой датасет диалогов"""
-        logger.info(f"🎯 Generating dataset with {target_size} samples...")
+        logger.info(f"[TARGET] Generating dataset with {target_size} samples...")
 
         all_dialogues = []
 
@@ -298,7 +298,7 @@ class LargeEmbeddingDatasetGenerator:
         if len(all_dialogues) > target_size:
             all_dialogues = random.sample(all_dialogues, target_size)
 
-        logger.info(f"✅ Generated {len(all_dialogues)} dialogue samples")
+        logger.info(f"[OK] Generated {len(all_dialogues)} dialogue samples")
         return all_dialogues
 
     def create_embedding_dataset(
@@ -308,7 +308,9 @@ class LargeEmbeddingDatasetGenerator:
         batch_size: int = 32,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Создает датасет эмбеддингов из диалогов"""
-        logger.info(f"🔄 Converting {len(dialogue_pairs)} dialogues to embeddings...")
+        logger.info(
+            f"[PROCESS] Converting {len(dialogue_pairs)} dialogues to embeddings..."
+        )
 
         questions = [pair["question"] for pair in dialogue_pairs]
         answers = [pair["answer"] for pair in dialogue_pairs]
@@ -345,9 +347,9 @@ class LargeEmbeddingDatasetGenerator:
             answer_embeddings = torch.nn.functional.normalize(
                 answer_embeddings, p=2, dim=1
             )
-            logger.info("✅ Embeddings normalized")
+            logger.info("[OK] Embeddings normalized")
 
-        logger.info(f"📊 Final embeddings shape:")
+        logger.info(f"[STATS] Final embeddings shape:")
         logger.info(f"   Questions: {question_embeddings.shape}")
         logger.info(f"   Answers: {answer_embeddings.shape}")
 
@@ -393,7 +395,7 @@ class LargeEmbeddingDatasetGenerator:
         with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"💾 Dataset saved:")
+        logger.info(f"[SAVE] Dataset saved:")
         logger.info(f"   Embeddings: {embeddings_file}")
         logger.info(f"   Metadata: {metadata_file}")
 
@@ -402,7 +404,7 @@ class LargeEmbeddingDatasetGenerator:
 
 def main():
     """Главная функция для генерации большого датасета"""
-    print("🚀 ГЕНЕРАТОР БОЛЬШОГО ДАТАСЕТА ЭМБЕДДИНГОВ")
+    print("[START] ГЕНЕРАТОР БОЛЬШОГО ДАТАСЕТА ЭМБЕДДИНГОВ")
     print("=" * 60)
 
     # Параметры
@@ -418,7 +420,7 @@ def main():
         dialogue_pairs = generator.generate_large_dataset(target_size)
         generation_time = time.time() - start_time
 
-        logger.info(f"⏰ Dialogue generation time: {generation_time:.1f}s")
+        logger.info(f"[TIME] Dialogue generation time: {generation_time:.1f}s")
 
         # 2. Создаем эмбеддинги
         start_time = time.time()
@@ -427,7 +429,7 @@ def main():
         )
         embedding_time = time.time() - start_time
 
-        logger.info(f"⏰ Embedding generation time: {embedding_time:.1f}s")
+        logger.info(f"[TIME] Embedding generation time: {embedding_time:.1f}s")
 
         # 3. Сохраняем датасет
         embeddings_file, metadata_file = generator.save_dataset(
@@ -435,7 +437,7 @@ def main():
         )
 
         # 4. Статистика
-        print("\n📊 СТАТИСТИКА ДАТАСЕТА:")
+        print("\n[STATS] СТАТИСТИКА ДАТАСЕТА:")
         print(f"   Размер: {len(question_embeddings):,} пар")
         print(f"   Размерность эмбеддингов: {question_embeddings.shape[1]}")
         print(f"   Размер файла: {embeddings_file.stat().st_size / 1024 / 1024:.1f} MB")
@@ -443,16 +445,16 @@ def main():
         print(f"   Время генерации: {generation_time + embedding_time:.1f}s")
 
         # 5. Тест загрузки
-        print("\n🧪 ТЕСТ ЗАГРУЗКИ:")
+        print("\n[TEST] ТЕСТ ЗАГРУЗКИ:")
         test_data = torch.load(embeddings_file)
-        print(f"   ✅ Файл успешно загружен")
-        print(f"   ✅ Размер: {test_data['size']}")
-        print(f"   ✅ Форма эмбеддингов: {test_data['question_embeddings'].shape}")
+        print(f"   [OK] Файл успешно загружен")
+        print(f"   [OK] Размер: {test_data['size']}")
+        print(f"   [OK] Форма эмбеддингов: {test_data['question_embeddings'].shape}")
 
         return 0
 
     except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
+        logger.error(f"[ERROR] Ошибка: {e}")
         return 1
 
 

@@ -61,10 +61,10 @@ class PrecomputedEmbeddingLoader:
         # Проверяем кэш
         cache_key = str(embeddings_path.absolute())
         if use_cache and cache_key in self.dataset_cache:
-            logger.info(f"📂 Loading dataset from cache: {embeddings_path.name}")
+            logger.info(f"[CACHE] Loading dataset from cache: {embeddings_path.name}")
             return self.dataset_cache[cache_key]
 
-        logger.info(f"📂 Loading embedding dataset from: {embeddings_path.name}")
+        logger.info(f"[LOAD] Loading embedding dataset from: {embeddings_path.name}")
 
         try:
             # Загружаем данные
@@ -96,7 +96,7 @@ class PrecomputedEmbeddingLoader:
             )
 
             # Информация о датасете
-            logger.info(f"✅ Dataset loaded successfully:")
+            logger.info(f"[OK] Dataset loaded successfully:")
             logger.info(f"   Size: {len(dataset):,} pairs")
             logger.info(f"   Embedding dimension: {question_embeddings.shape[1]}")
             logger.info(f"   Teacher model: {data.get('teacher_model', 'unknown')}")
@@ -121,7 +121,7 @@ class PrecomputedEmbeddingLoader:
             return dataset
 
         except Exception as e:
-            logger.error(f"❌ Failed to load embedding dataset: {e}")
+            logger.error(f"[ERROR] Failed to load embedding dataset: {e}")
             raise
 
     def list_available_datasets(self, data_dir: str = "data/embeddings") -> list:
@@ -172,7 +172,7 @@ class PrecomputedEmbeddingLoader:
     def clear_cache(self):
         """Очищает кэш загруженных датасетов"""
         self.dataset_cache.clear()
-        logger.info("🗑️ Dataset cache cleared")
+        logger.info("[CLEAR] Dataset cache cleared")
 
 
 def create_precomputed_dataset(embeddings_file: str) -> PrecomputedEmbeddingDataset:
@@ -186,12 +186,12 @@ def create_precomputed_dataset(embeddings_file: str) -> PrecomputedEmbeddingData
 
 def test_precomputed_loader():
     """Тест загрузчика готовых эмбеддингов"""
-    print("🧪 Testing PrecomputedEmbeddingLoader")
+    print("[TEST] Testing PrecomputedEmbeddingLoader")
 
     loader = PrecomputedEmbeddingLoader()
 
     # 1. Список доступных датасетов
-    print("\n📋 Available datasets:")
+    print("\n[LIST] Available datasets:")
     datasets = loader.list_available_datasets()
 
     if not datasets:
@@ -206,22 +206,22 @@ def test_precomputed_loader():
         print(f"      Created: {dataset_info['timestamp']}")
         print()
 
-    # 2. Загружаем самый новый датасет
+        # 2. Загружаем самый новый датасет
     latest_file = loader.get_latest_dataset()
     if latest_file:
-        print(f"📂 Loading latest dataset: {Path(latest_file).name}")
+        print(f"[LOAD] Loading latest dataset: {Path(latest_file).name}")
         dataset = loader.load_dataset(latest_file)
 
         # 3. Проверяем данные
         sample_q, sample_a = dataset[0]
-        print(f"✅ Sample loaded:")
+        print(f"[OK] Sample loaded:")
         print(f"   Question embedding shape: {sample_q.shape}")
         print(f"   Answer embedding shape: {sample_a.shape}")
         print(f"   Question norm: {sample_q.norm().item():.6f}")
         print(f"   Answer norm: {sample_a.norm().item():.6f}")
 
         # 4. Тест повторной загрузки (кэш)
-        print(f"\n🔄 Testing cache...")
+        print(f"\n[CACHE] Testing cache...")
         dataset2 = loader.load_dataset(latest_file)
         print(f"   Cache working: {dataset is dataset2}")
 
