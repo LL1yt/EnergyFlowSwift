@@ -246,15 +246,13 @@ class DynamicConfigGenerator:
 
         # Корректируем batch_size в зависимости от режима
         if mode == "development":
-            config["training"]["batch_size"] = 2048  # Маленькая решетка - большой batch
+            config["training"]["batch_size"] = 16
         elif mode == "research":
-            config["training"]["batch_size"] = 1024  # Средняя решетка - средний batch
+            config["training"]["batch_size"] = 32
         elif mode == "validation":
-            config["training"]["batch_size"] = 512  # Большая решетка - маленький batch
+            config["training"]["batch_size"] = 64
         elif mode == "production":
-            config["training"][
-                "batch_size"
-            ] = 256  # Огромная решетка - очень маленький batch
+            config["training"]["batch_size"] = 128
 
         logger.info(f"🎯 Configured for {mode} mode (scale={scale_factor})")
         return config

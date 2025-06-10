@@ -206,7 +206,9 @@ class DynamicTrainingManager:
             logger.error(f"❌ Failed to create trainer: {e}")
             raise
 
-    def prepare_dataset(self, limit: Optional[int] = None):
+    def prepare_dataset(
+        self, limit: Optional[int] = None, fixed_sampling: bool = False
+    ):
         """Подготовка датасета для обучения с использованием precomputed embeddings"""
         try:
             # Используем существующую систему PrecomputedEmbeddingLoader
@@ -243,9 +245,16 @@ class DynamicTrainingManager:
                 from torch.utils.data import Subset
                 import torch
 
-                # Фиксированная выборка для воспроизводимости
-                torch.manual_seed(42)  # Фиксированный seed для воспроизводимости
-                indices = torch.randperm(len(dataset))[:limit]
+                # Выбор типа выборки
+                if fixed_sampling:
+                    # Фиксированная выборка (первые N примеров)
+                    indices = torch.arange(limit)
+                    logger.info(f"   Using fixed sampling (first {limit} examples)")
+                else:
+                    # Случайная выборка с фиксированным seed для воспроизводимости
+                    torch.manual_seed(42)
+                    indices = torch.randperm(len(dataset))[:limit]
+                    logger.info(f"   Using random sampling with seed=42")
                 dataset = Subset(dataset, indices)
                 logger.info(f"   Limited to: {limit} pairs (reproducible with seed=42)")
 
@@ -273,6 +282,7 @@ class DynamicTrainingManager:
         batch_size: int = None,
         resume_trainer: Optional[Any] = None,
         start_epoch: int = 0,
+        fixed_sampling: bool = False,
     ):
         """Запуск обучения"""
         try:
@@ -290,7 +300,9 @@ class DynamicTrainingManager:
                 logger.info(f"🆕 Created fresh trainer")
 
             # Подготовка данных
-            dataset = self.prepare_dataset(limit=dataset_limit)
+            dataset = self.prepare_dataset(
+                limit=dataset_limit, fixed_sampling=fixed_sampling
+            )
 
             # Используем параметры из конфигурации если не указано
             if epochs is None:
@@ -315,6 +327,15 @@ class DynamicTrainingManager:
                 lr=self.dynamic_config["training"]["learning_rate"],
             )
 
+            # Warm-up scheduler (автоматически для resume)
+            from warmup_scheduler import create_warmup_scheduler
+
+            warmup_scheduler = create_warmup_scheduler(
+                optimizer=optimizer,
+                is_resume=(resume_trainer is not None),
+                warmup_epochs=3,  # 3 эпохи warm-up при resume
+            )
+
             # Запуск обучения
             logger.info(f"🚀 Starting dynamic training:")
             logger.info(f"   Dataset size: {len(dataset)}")
@@ -330,6 +351,17 @@ class DynamicTrainingManager:
 
             for epoch in range(start_epoch, start_epoch + epochs):
                 epoch_start = time.time()
+
+                # Warm-up scheduler step (если есть)
+                if warmup_scheduler:
+                    warmup_factor = warmup_scheduler.step(epoch + 1)
+                    warmup_info = warmup_scheduler.get_warmup_info()
+
+                    if warmup_info["is_warmup_phase"]:
+                        logger.info(
+                            f"[WARMUP] Epoch {epoch+1}: LR={warmup_info['current_lr']:.6f} "
+                            f"(factor={warmup_factor:.2f})"
+                        )
 
                 # Training epoch
                 total_loss = 0.0
@@ -400,11 +432,21 @@ class DynamicTrainingManager:
                     or avg_similarity > best_similarity
                 ):
                     total_epochs = start_epoch + epochs
+
+                    # Дополнительная информация для warm-up фазы
+                    warmup_info_str = ""
+                    if (
+                        warmup_scheduler
+                        and warmup_scheduler.get_warmup_info()["is_warmup_phase"]
+                    ):
+                        current_lr = warmup_scheduler.get_current_lr()
+                        warmup_info_str = f" | LR: {current_lr:.6f} [WARMUP]"
+
                     logger.info(
                         f"Epoch {epoch+1:3d}/{total_epochs} | "
                         f"Loss: {avg_loss:.6f} | "
                         f"Similarity: {avg_similarity:.4f} | "
-                        f"Time: {epoch_time:.1f}s"
+                        f"Time: {epoch_time:.1f}s{warmup_info_str}"
                     )
 
                 # Сохранение прогресса
@@ -614,6 +656,11 @@ def main():
         default=None,
         help="Custom scale factor (overrides mode default)",
     )
+    parser.add_argument(
+        "--fixed-sampling",
+        action="store_true",
+        help="Use fixed sampling instead of random (reproducible resume)",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
     args = parser.parse_args()
@@ -633,6 +680,7 @@ def main():
             dataset_limit=args.dataset_limit,
             epochs=args.epochs,
             batch_size=args.batch_size,
+            fixed_sampling=args.fixed_sampling,
         )
 
         # Результаты

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 import glob
+from warmup_scheduler import create_warmup_scheduler
 
 # Настройка логирования
 logging.basicConfig(
@@ -393,7 +394,7 @@ class SmartResumeManager:
             # Создаем trainer и загружаем веса
             trainer = training_manager.create_trainer()
             checkpoint_data = torch.load(checkpoint_info["path"], map_location="cpu")
-            trainer.load_state_dict(checkpoint_data["model_state_dict"])
+            trainer.load_state_dict(checkpoint_data["model_state_dict"], strict=False)
 
             logger.info(f"✅ Checkpoint weights loaded successfully")
 
