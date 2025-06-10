@@ -45,6 +45,16 @@ training_architecture:
                  (Input layer)        (Internal processing)        (Output layer)
                      ↓                          ↓                         ↓
                 GRADIENT FLOW ←←←←← BACKPROPAGATION ←←←←← LOSS COMPUTATION
+
+
+x=lattice_x*scale_factor; y=lattice_y*scale_factor; z=lattice_z*scale_factor
+
+768D embedding  → universal_adapter → x*y surface →           PROPAGATION through z           → x*y surface  → universal_adapter → 768D output
+                                                ↓                          ↓                         ↓
+                                            Layer 0               Layers 1-z                  Layer z
+                                            (Input layer)        (Internal processing)        (Output layer)
+                                                ↓                          ↓                         ↓
+                                            GRADIENT FLOW ←←←←← BACKPROPAGATION ←←←←← LOSS COMPUTATION
 ```
 
 ---

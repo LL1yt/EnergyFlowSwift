@@ -1,0 +1,49 @@
+{
+  "teacher_model": "distilbert-base-uncased",
+  "timestamp": "20250610_172311",
+  "size": 400,
+  "embedding_dim": 768,
+  "normalized": true,
+  "sample_dialogues": [
+    {
+      "question": "What is artificial intelligence?",
+      "answer": "AI is the simulation of human intelligence in machines."
+    },
+    {
+      "question": "Describe artificial intelligence?",
+      "answer": "In other words, ai is the simulation of human intelligence in machines. This concept is widely used in practice."
+    },
+    {
+      "question": "What exactly is artificial intelligence?",
+      "answer": "At its core, ai is the simulation of human intelligence in machines."
+    },
+    {
+      "question": "Tell me about artificial intelligence?",
+      "answer": "At its core, ai is the simulation of human intelligence in machines. This concept is widely used in practice."
+    },
+    {
+      "question": "Could you tell me about artificial intelligence?",
+      "answer": "In essence, ai is the simulation of human intelligence in machines. This knowledge is foundational to the subject."
+    },
+    {
+      "question": "Can you explain artificial intelligence?",
+      "answer": "Generally speaking, ai is the simulation of human intelligence in machines."
+    },
+    {
+      "question": "I need to know about artificial intelligence?",
+      "answer": "Essentially, ai is the simulation of human intelligence in machines. Understanding this is crucial for further learning."
+    },
+    {
+      "question": "Please explain artificial intelligence?",
+      "answer": "Generally speaking, ai is the simulation of human intelligence in machines."
+    },
+    {
+      "question": "Can you explain artificial intelligence?",
+      "answer": "At its core, ai is the simulation of human intelligence in machines. This forms the basis of the field."
+    },
+    {
+      "question": "How would you describe artificial intelligence?",
+      "answer": "In essence, ai is the simulation of human intelligence in machines."
+    }
+  ]
+}
