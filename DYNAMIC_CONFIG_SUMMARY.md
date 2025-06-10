@@ -14,6 +14,14 @@
 - **Синапсов на нейрон**: 5,000-15,000 (среднее: 10,000)
 - **Биологические пропорции**: глубина = 0.5 × ширина
 
+python experiment_with_scale.py
+python run_dynamic_training.py --scale 0.02 --dataset-limit 1000 --epochs 20
+
+# Стандартные режимы
+
+python run_dynamic_training.py --mode development # scale=0.01
+python run_dynamic_training.py --mode research # scale=0.1
+
 ## 🏗️ Архитектура системы
 
 ### 1. Основные компоненты

@@ -243,10 +243,11 @@ class DynamicTrainingManager:
                 from torch.utils.data import Subset
                 import torch
 
-                # Случайная выборка для разнообразия
+                # Фиксированная выборка для воспроизводимости
+                torch.manual_seed(42)  # Фиксированный seed для воспроизводимости
                 indices = torch.randperm(len(dataset))[:limit]
                 dataset = Subset(dataset, indices)
-                logger.info(f"   Limited to: {limit} pairs")
+                logger.info(f"   Limited to: {limit} pairs (reproducible with seed=42)")
 
             logger.info(f"📁 Dataset prepared:")
             logger.info(f"   Final size: {len(dataset)} pairs")
@@ -270,14 +271,23 @@ class DynamicTrainingManager:
         dataset_limit: Optional[int] = None,
         epochs: int = None,
         batch_size: int = None,
+        resume_trainer: Optional[Any] = None,
+        start_epoch: int = 0,
     ):
         """Запуск обучения"""
         try:
             # Подготовка
             setup_environment()
 
-            # Создание trainer
-            trainer = self.create_trainer()
+            # Создание trainer или использование переданного
+            if resume_trainer is not None:
+                trainer = resume_trainer
+                logger.info(
+                    f"🔄 Using resumed trainer (starting from epoch {start_epoch + 1})"
+                )
+            else:
+                trainer = self.create_trainer()
+                logger.info(f"🆕 Created fresh trainer")
 
             # Подготовка данных
             dataset = self.prepare_dataset(limit=dataset_limit)
@@ -318,7 +328,7 @@ class DynamicTrainingManager:
             best_similarity = 0.0
             training_log = []
 
-            for epoch in range(epochs):
+            for epoch in range(start_epoch, start_epoch + epochs):
                 epoch_start = time.time()
 
                 # Training epoch
@@ -384,9 +394,14 @@ class DynamicTrainingManager:
                 epoch_time = time.time() - epoch_start
 
                 # Лог каждые 5 эпох или важные события
-                if epoch % 5 == 0 or epoch <= 10 or avg_similarity > best_similarity:
+                if (
+                    epoch % 5 == 0
+                    or epoch <= start_epoch + 10
+                    or avg_similarity > best_similarity
+                ):
+                    total_epochs = start_epoch + epochs
                     logger.info(
-                        f"Epoch {epoch+1:3d}/{epochs} | "
+                        f"Epoch {epoch+1:3d}/{total_epochs} | "
                         f"Loss: {avg_loss:.6f} | "
                         f"Similarity: {avg_similarity:.4f} | "
                         f"Time: {epoch_time:.1f}s"
@@ -432,7 +447,8 @@ class DynamicTrainingManager:
                 "total_time": total_time,
                 "epochs": epochs,
                 "dataset_size": len(dataset),
-                "training_log": training_log,
+                # Убираем training_log из результатов, он сохранен в файл
+                "log_saved": True,
             }
 
         except Exception as e:
@@ -499,6 +515,10 @@ class DynamicTrainingManager:
                 # Сохраняем лог обучения
                 import json
 
+                # Создаем директорию logs если нужно
+                logs_dir = Path("logs")
+                logs_dir.mkdir(exist_ok=True)
+
                 log_path = (
                     f"logs/dynamic_training_{mode}_scale{scale_factor}_{timestamp}.json"
                 )
@@ -520,6 +540,8 @@ class DynamicTrainingManager:
                         f,
                         indent=2,
                     )
+
+                logger.info(f"📋 Detailed training log saved: {log_path}")
 
                 logger.info(f"✅ Results saved with scale indication: {result_name}")
             else:
