@@ -1,0 +1,373 @@
+"""
+Dynamic Configuration System для 3D Cellular Neural Network
+Основано на биологических данных вентролатеральной префронтальной коры (vlPFC)
+"""
+
+import math
+import yaml
+import torch
+from dataclasses import dataclass
+from typing import Dict, Any, Optional, Union
+from pathlib import Path
+import logging
+import re
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BiologicalConstants:
+    """Биологические константы vlPFC"""
+
+    # Нейроанатомические данные vlPFC
+    neurons_one_hemisphere: int = 93_750_000
+    neurons_both_hemispheres: int = 180_000_000
+    target_neurons_average: int = 136_875_000
+
+    # Синаптические характеристики
+    synapses_per_neuron_min: int = 5_000
+    synapses_per_neuron_max: int = 15_000
+    synapses_per_neuron_avg: int = 10_000
+
+    # Структурные пропорции
+    depth_to_width_ratio: float = 0.5  # depth = 0.5 × width
+
+    # Базовые размеры решетки для 100% масштаба
+    base_width: int = 666
+    base_height: int = 666
+
+    @property
+    def base_depth(self) -> int:
+        """Биологически корректная глубина"""
+        return int(self.base_width * self.depth_to_width_ratio)
+
+
+@dataclass
+class ScaleSettings:
+    """Настройки масштабирования для разных режимов"""
+
+    development: float = 0.01  # 1% - быстрая разработка
+    research: float = 0.1  # 10% - исследования
+    validation: float = 0.3  # 30% - валидация
+    production: float = 1.0  # 100% - продакшен
+
+    def get_scale(self, mode: str) -> float:
+        """Получить коэффициент масштабирования для режима"""
+        return getattr(self, mode, self.development)
+
+
+class ExpressionEvaluator:
+    """Вычислитель выражений для динамической конфигурации"""
+
+    def __init__(self):
+        self.bio_constants = BiologicalConstants()
+
+    def smart_round(self, value: float) -> int:
+        """Умное округление для получения целых чисел"""
+        return int(round(value))
+
+    def evaluate_expression(self, expr: str, context: Dict[str, Any]) -> Any:
+        """Вычислить выражение в контексте переменных"""
+        if (
+            not isinstance(expr, str)
+            or not expr.startswith("{")
+            or not expr.endswith("}")
+        ):
+            return expr
+
+        # Убираем фигурные скобки
+        expression = expr[1:-1]
+
+        # Добавляем функции в контекст
+        eval_context = {
+            **context,
+            "smart_round": self.smart_round,
+            "round": round,
+            "int": int,
+            "float": float,
+            "min": min,
+            "max": max,
+            "math": math,
+        }
+
+        try:
+            result = eval(expression, {"__builtins__": {}}, eval_context)
+            logger.debug(f"📐 Evaluated '{expr}' = {result}")
+            return result
+        except Exception as e:
+            logger.error(f"❌ Error evaluating expression '{expr}': {e}")
+            return expr
+
+    def process_config_dict(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Рекурсивно обработать конфигурацию, вычислив все выражения"""
+
+        def flatten_dict(d, parent_key="", sep="_"):
+            """Превратить вложенный словарь в плоский для создания глобального контекста"""
+            items = []
+            for k, v in d.items():
+                new_key = f"{parent_key}{sep}{k}" if parent_key else k
+                if isinstance(v, dict):
+                    items.extend(flatten_dict(v, new_key, sep=sep).items())
+                else:
+                    items.append((new_key, v))
+            return dict(items)
+
+        # Создаем глобальный контекст со всеми простыми значениями
+        global_context = {}
+
+        def collect_simple_values(data, prefix=""):
+            """Собрать все простые значения для контекста"""
+            for key, value in data.items():
+                full_key = f"{prefix}_{key}" if prefix else key
+
+                if isinstance(value, dict):
+                    collect_simple_values(value, full_key)
+                elif isinstance(value, (int, float)) or (
+                    isinstance(value, str) and not value.startswith("{")
+                ):
+                    global_context[key] = value  # Локальное имя
+                    global_context[full_key] = value  # Полное имя
+
+        # Собираем простые значения
+        collect_simple_values(config)
+
+        def process_section(data):
+            """Обработать секцию конфигурации"""
+            result = {}
+
+            # Копируем простые значения и обрабатываем вложенные секции
+            for key, value in data.items():
+                if isinstance(value, dict):
+                    result[key] = process_section(value)
+                elif isinstance(value, (int, float)) or (
+                    isinstance(value, str) and not value.startswith("{")
+                ):
+                    result[key] = value
+                    global_context[key] = value  # Обновляем контекст
+                else:
+                    result[key] = value
+
+            # Вычисляем выражения в несколько итераций
+            max_iterations = 15
+            for iteration in range(max_iterations):
+                changed = False
+
+                for key, value in data.items():
+                    if isinstance(value, str) and value.startswith("{"):
+                        new_value = self.evaluate_expression(value, global_context)
+                        if new_value != result.get(key) and not isinstance(
+                            new_value, str
+                        ):
+                            result[key] = new_value
+                            global_context[key] = new_value  # Добавляем в контекст
+                            changed = True
+
+                if not changed:
+                    break
+
+            return result
+
+        return process_section(config)
+
+
+class DynamicConfigGenerator:
+    """Генератор динамической конфигурации"""
+
+    def __init__(self):
+        self.bio_constants = BiologicalConstants()
+        self.scale_settings = ScaleSettings()
+        self.evaluator = ExpressionEvaluator()
+
+    def detect_hardware_mode(self) -> str:
+        """Автоматическое определение оптимального режима на основе GPU памяти"""
+        try:
+            if torch.cuda.is_available():
+                gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (
+                    1024**3
+                )
+                logger.info(f"🖥️ Detected GPU memory: {gpu_memory_gb:.1f}GB")
+
+                if gpu_memory_gb >= 20:
+                    return "validation"  # RTX 5090+
+                elif gpu_memory_gb >= 12:
+                    return "research"  # RTX 4070 Ti+
+                else:
+                    return "development"  # Меньше 12GB
+            else:
+                logger.warning("⚠️ CUDA not available, using development mode")
+                return "development"
+        except Exception as e:
+            logger.warning(f"⚠️ Hardware detection failed: {e}, using development mode")
+            return "development"
+
+    def create_base_config_template(self) -> Dict[str, Any]:
+        """Создать базовый шаблон конфигурации с выражениями"""
+        return {
+            "lattice": {
+                # Базовые размеры
+                "x": self.bio_constants.base_width,
+                "y": self.bio_constants.base_height,
+                "z": "{smart_round(x*0.5)}",  # Биологически точная глубина
+                # Масштабирование (будет заполнено позже)
+                "scale_factor": 0.1,  # Placeholder
+                "xs": "{smart_round(x*scale_factor)}",
+                "ys": "{smart_round(y*scale_factor)}",
+                "zs": "{smart_round(z*scale_factor)}",
+                # Автоматические вычисления
+                "total_neurons": "{xs * ys * zs}",
+                "surface_size": "{xs * ys}",
+                "volume": "{xs * ys * zs}",
+            },
+            "embeddings": {
+                "embedding_dim": "{smart_round(xs*ys)}",  # = surface_size
+                "teacher_embedding_dim": 768,
+            },
+            "training": {
+                "batch_size": 1024,  # Будет скорректировано по режиму
+                "learning_rate": 0.001,
+                "epochs": 100,
+            },
+            "gmlp": {
+                "state_size": 32,
+                "hidden_dim": 32,
+                "neighbor_count": 6,
+                "external_input_size": 12,
+            },
+        }
+
+    def adjust_config_for_mode(
+        self, config: Dict[str, Any], mode: str
+    ) -> Dict[str, Any]:
+        """Скорректировать конфигурацию для конкретного режима"""
+        scale_factor = self.scale_settings.get_scale(mode)
+
+        # Устанавливаем scale_factor
+        config["lattice"]["scale_factor"] = scale_factor
+
+        # Корректируем batch_size в зависимости от режима
+        if mode == "development":
+            config["training"]["batch_size"] = 2048  # Маленькая решетка - большой batch
+        elif mode == "research":
+            config["training"]["batch_size"] = 1024  # Средняя решетка - средний batch
+        elif mode == "validation":
+            config["training"]["batch_size"] = 512  # Большая решетка - маленький batch
+        elif mode == "production":
+            config["training"][
+                "batch_size"
+            ] = 256  # Огромная решетка - очень маленький batch
+
+        logger.info(f"🎯 Configured for {mode} mode (scale={scale_factor})")
+        return config
+
+    def generate_config(self, mode: str = "auto") -> Dict[str, Any]:
+        """Сгенерировать полную конфигурацию для режима"""
+
+        # Автоопределение режима если нужно
+        if mode == "auto":
+            mode = self.detect_hardware_mode()
+
+        # Создаем базовый шаблон
+        config = self.create_base_config_template()
+
+        # Корректируем под режим
+        config = self.adjust_config_for_mode(config, mode)
+
+        # Вычисляем все выражения
+        processed_config = self.evaluator.process_config_dict(config)
+
+        # Добавляем метаданные
+        processed_config["_metadata"] = {
+            "mode": mode,
+            "scale_factor": processed_config["lattice"]["scale_factor"],
+            "generated_by": "DynamicConfigGenerator",
+            "bio_constants_version": "1.0",
+        }
+
+        logger.info(f"✅ Generated config for {mode} mode:")
+        logger.info(
+            f"   Lattice: {processed_config['lattice']['xs']}x{processed_config['lattice']['ys']}x{processed_config['lattice']['zs']}"
+        )
+
+        # Безопасное форматирование чисел
+        total_neurons = processed_config["lattice"]["total_neurons"]
+        embedding_dim = processed_config["embeddings"]["embedding_dim"]
+
+        if isinstance(total_neurons, (int, float)):
+            logger.info(f"   Total neurons: {total_neurons:,}")
+        else:
+            logger.info(f"   Total neurons: {total_neurons}")
+
+        if isinstance(embedding_dim, (int, float)):
+            logger.info(f"   Embedding dim: {embedding_dim:,}")
+        else:
+            logger.info(f"   Embedding dim: {embedding_dim}")
+
+        return processed_config
+
+
+class DynamicConfigManager:
+    """Основной менеджер динамической конфигурации"""
+
+    def __init__(self, config_dir: Optional[Path] = None):
+        self.config_dir = config_dir or Path("config")
+        self.generator = DynamicConfigGenerator()
+
+    def create_config_for_mode(self, mode: str) -> Dict[str, Any]:
+        """Создать конфигурацию для конкретного режима"""
+        return self.generator.generate_config(mode)
+
+    def save_config(self, config: Dict[str, Any], filename: str) -> Path:
+        """Сохранить конфигурацию в файл"""
+        self.config_dir.mkdir(exist_ok=True)
+        filepath = self.config_dir / filename
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+
+        logger.info(f"💾 Saved config to {filepath}")
+        return filepath
+
+    def create_and_save_all_modes(self) -> Dict[str, Path]:
+        """Создать и сохранить конфигурации для всех режимов"""
+        modes = ["development", "research", "validation", "production"]
+        saved_files = {}
+
+        for mode in modes:
+            config = self.create_config_for_mode(mode)
+            filename = f"dynamic_config_{mode}.yaml"
+            filepath = self.save_config(config, filename)
+            saved_files[mode] = filepath
+
+        return saved_files
+
+
+# Удобные функции для использования
+def generate_config_for_current_hardware() -> Dict[str, Any]:
+    """Сгенерировать конфигурацию для текущего железа (автоопределение)"""
+    manager = DynamicConfigManager()
+    return manager.create_config_for_mode("auto")
+
+
+def get_recommended_config() -> Dict[str, Any]:
+    """Получить рекомендованную конфигурацию (алиас)"""
+    return generate_config_for_current_hardware()
+
+
+if __name__ == "__main__":
+    # Демонстрация работы
+    print("🧠 Testing Dynamic Configuration System...")
+
+    manager = DynamicConfigManager()
+
+    # Тест автоопределения
+    auto_config = manager.create_config_for_mode("auto")
+    print(f"\n🎯 Auto-detected mode: {auto_config['_metadata']['mode']}")
+
+    # Тест всех режимов
+    for mode in ["development", "research", "validation"]:
+        config = manager.create_config_for_mode(mode)
+        lattice = config["lattice"]
+        print(f"\n📊 {mode.upper()} mode:")
+        print(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
+        print(f"   Neurons: {lattice['total_neurons']:,}")
+        print(f"   Batch: {config['training']['batch_size']}")

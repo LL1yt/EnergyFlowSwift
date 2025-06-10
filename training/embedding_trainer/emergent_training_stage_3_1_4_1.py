@@ -914,6 +914,7 @@ class EmergentCubeTrainer(nn.Module):
                     neighbors,
                     external_input,
                     cell_idx,
+                    use_reentrant=False,
                 )
             else:
                 # Normal processing

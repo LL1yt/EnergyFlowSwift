@@ -283,12 +283,13 @@ class AdapterCubeTrainer:
         class SimpleIdentityProcessor(nn.Module):
             def __init__(self):
                 super().__init__()
+                # Добавляем dummy parameter чтобы оптимизатор не ломался
+                self.dummy_param = nn.Parameter(torch.zeros(1), requires_grad=False)
 
             def forward(self, x):
+                if isinstance(x, dict) and "processed_embeddings" in x:
+                    return x  # Уже обработанный результат
                 return {"processed_embeddings": x, "surface_output": x}
-
-            def parameters(self):
-                return []
 
         return SimpleIdentityProcessor()
 
@@ -302,21 +303,35 @@ class AdapterCubeTrainer:
         )
 
         # Создаем отдельный optimizer для EmbeddingProcessor
-        self.processor_optimizer = optim.AdamW(
-            self.embedding_processor.parameters(), lr=self.config.cube_learning_rate
-        )
+        processor_params = list(self.embedding_processor.parameters())
+
+        if len(processor_params) > 0:
+            self.processor_optimizer = optim.AdamW(
+                processor_params, lr=self.config.cube_learning_rate
+            )
+            self.logger.info(
+                f"✅ Processor optimizer created with {len(processor_params)} parameters"
+            )
+        else:
+            self.processor_optimizer = None
+            self.logger.info("⚠️ Processor optimizer skipped (no trainable parameters)")
 
         if self.config.joint_training:
             # Joint optimizer для обоих компонентов
-            all_params = list(self.adapter.parameters()) + list(
-                self.embedding_processor.parameters()
-            )
-            self.joint_optimizer = optim.AdamW(
-                all_params, lr=self.config.cube_learning_rate
-            )
-            self.logger.info(
-                "✅ Joint optimizer configured (adapter + embedding_processor)"
-            )
+            all_params = list(self.adapter.parameters())
+            if processor_params:
+                all_params.extend(processor_params)
+
+            if len(all_params) > 0:
+                self.joint_optimizer = optim.AdamW(
+                    all_params, lr=self.config.cube_learning_rate
+                )
+                self.logger.info(
+                    f"✅ Joint optimizer configured with {len(all_params)} total parameters"
+                )
+            else:
+                self.joint_optimizer = None
+                self.logger.warning("⚠️ Joint optimizer creation failed: no parameters")
         else:
             self.joint_optimizer = None
 
@@ -355,7 +370,16 @@ class AdapterCubeTrainer:
         ), f"Adapter output shape mismatch: {adapter_output.shape} vs expected (2, {expected_surface_size})"
 
         # EmbeddingProcessor forward
-        processor_output = self.embedding_processor.forward(adapter_output)
+        processor_result = self.embedding_processor.forward(adapter_output)
+
+        # Handle case when processor returns dict
+        if isinstance(processor_result, dict):
+            processor_output = processor_result.get(
+                "processed_embeddings",
+                processor_result.get("surface_output", adapter_output),
+            )
+        else:
+            processor_output = processor_result
 
         assert (
             processor_output.shape == adapter_output.shape
@@ -390,7 +414,16 @@ class AdapterCubeTrainer:
             reconstructed = None
 
         # 2. EmbeddingProcessor.SURFACE_ONLY: surface_size → surface_size
-        processed_embeddings = self.embedding_processor.forward(surface_embeddings)
+        processed_result = self.embedding_processor.forward(surface_embeddings)
+
+        # Handle case when processor returns dict
+        if isinstance(processed_result, dict):
+            processed_embeddings = processed_result.get(
+                "processed_embeddings",
+                processed_result.get("surface_output", surface_embeddings),
+            )
+        else:
+            processed_embeddings = processed_result
 
         if return_intermediate:
             return {
@@ -564,15 +597,27 @@ class AdapterCubeTrainer:
         # EmbeddingProcessor training
         processed_surface = self.embedding_processor.forward(question_surface)
 
+        # Handle case when processor returns dict
+        if isinstance(processed_surface, dict):
+            processed_surface = processed_surface.get(
+                "processed_embeddings",
+                processed_surface.get("surface_output", processed_surface),
+            )
+
         main_loss = nn.functional.cosine_embedding_loss(
             processed_surface,
             answer_surface,
             torch.ones(answer_surface.size(0)).to(self.device),
         )
 
-        self.processor_optimizer.zero_grad()
-        main_loss.backward()
-        self.processor_optimizer.step()
+        # Backward pass (только если есть trainable parameters)
+        if self.processor_optimizer is not None:
+            self.processor_optimizer.zero_grad()
+            main_loss.backward()
+            self.processor_optimizer.step()
+        else:
+            # Если нет trainable parameters, loss все равно нужен для метрик
+            pass
 
         # Metrics
         with torch.no_grad():
