@@ -244,6 +244,23 @@ class DynamicConfigGenerator:
                 "activation": "gelu",
                 "dropout": 0.1,
             },
+            # НОВАЯ СЕКЦИЯ: Minimal NCA Configuration
+            "nca": {
+                # NCA параметрическая эффективность: target 68-10000 параметров
+                "enabled": True,  # Флаг для переключения gMLP → NCA
+                "target_params": "{smart_round(max(68, min(10000, 10000 * scale_factor)))}",  # Масштабируется как gMLP
+                "neighbor_count": 6,  # Совместимо с 3D решеткой
+                # Масштабируемые размеры для NCA (формулы оптимизированы для NCA архитектуры):
+                "state_size": "{smart_round(max(4, min(20, (target_params / 8) ** 0.6)))}",  # Оптимизированное масштабирование
+                "hidden_dim": "{smart_round(max(2, min(12, (target_params / 12) ** 0.5)))}",  # Меньше чем gMLP
+                "external_input_size": "{smart_round(max(1, min(6, target_params / 50)))}",  # Линейное масштабирование
+                # NCA специфичные параметры
+                "activation": "tanh",  # Bounded activation для stability
+                "dropout": 0.0,  # NCA обычно без dropout
+                "use_memory": False,  # NCA имеет implicit memory
+                "alpha_init": 0.1,  # Начальное значение update strength
+                "beta_init": 0.05,  # Начальное значение neighbor influence
+            },
             # НОВАЯ СЕКЦИЯ: Emergent Training Configuration
             "emergent_training": {
                 # Base configuration (динамически привязанные)
@@ -313,13 +330,33 @@ class DynamicConfigGenerator:
         processed_config = self.evaluator.process_config_dict(config)
 
         # POST-PROCESSING: Специальная обработка для emergent_training
-        if "emergent_training" in processed_config and "gmlp" in processed_config:
-            # Копируем gmlp конфигурацию в emergent_training
-            processed_config["emergent_training"]["gmlp_config"] = processed_config[
-                "gmlp"
-            ].copy()
+        if "emergent_training" in processed_config:
+            # Проверяем какую архитектуру использовать
+            use_nca = processed_config.get("nca", {}).get("enabled", False)
 
-            logger.debug("[POST-PROCESS] Copied gmlp config to emergent_training")
+            if use_nca and "nca" in processed_config:
+                # Используем NCA архитектуру
+                processed_config["emergent_training"]["cell_architecture"] = "nca"
+                processed_config["emergent_training"]["gmlp_config"] = processed_config[
+                    "nca"
+                ].copy()
+                processed_config["emergent_training"]["nca_config"] = processed_config[
+                    "nca"
+                ].copy()
+                logger.info(
+                    "[POST-PROCESS] Using NCA architecture for emergent training"
+                )
+            elif "gmlp" in processed_config:
+                # Fallback на gMLP архитектуру
+                processed_config["emergent_training"]["cell_architecture"] = "gmlp"
+                processed_config["emergent_training"]["gmlp_config"] = processed_config[
+                    "gmlp"
+                ].copy()
+                logger.debug(
+                    "[POST-PROCESS] Using gMLP architecture for emergent training"
+                )
+            else:
+                logger.warning("[POST-PROCESS] No valid cell architecture found!")
 
         # Добавляем метаданные
         processed_config["_metadata"] = {
