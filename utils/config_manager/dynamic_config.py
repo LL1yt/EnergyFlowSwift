@@ -197,7 +197,9 @@ class DynamicConfigGenerator:
                 logger.warning("[WARNING] CUDA not available, using development mode")
                 return "development"
         except Exception as e:
-            logger.warning(f"[WARNING] Hardware detection failed: {e}, using development mode")
+            logger.warning(
+                f"[WARNING] Hardware detection failed: {e}, using development mode"
+            )
             return "development"
 
     def create_base_config_template(self) -> Dict[str, Any]:
@@ -242,6 +244,34 @@ class DynamicConfigGenerator:
                 "activation": "gelu",
                 "dropout": 0.1,
             },
+            # НОВАЯ СЕКЦИЯ: Emergent Training Configuration
+            "emergent_training": {
+                # Base configuration (динамически привязанные)
+                "teacher_model": "Meta-Llama-3-8B",
+                "cube_dimensions": "{[xs, ys, zs]}",  # Список из lattice параметров
+                # Emergent processing settings (КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ)
+                "enable_full_cube_gradient": True,
+                "spatial_propagation_depth": "{zs}",  # ИСПРАВЛЕНО: привязано к глубине решетки
+                "emergent_specialization": True,
+                # gMLP config будет заполнена из секции gmlp (специальная обработка)
+                "gmlp_config": None,  # Будет заполнено в post-processing
+                # Multi-objective loss configuration
+                "loss_weights": {
+                    "surface_reconstruction": 0.3,
+                    "internal_consistency": 0.3,
+                    "dialogue_similarity": 0.4,
+                },
+                # Training settings (привязанные к основной секции training)
+                "learning_rate": "{learning_rate}",
+                "batch_size": "{batch_size}",
+                "epochs": "{epochs}",
+                "warmup_epochs": 3,
+                # Optimization settings
+                "gradient_balancing": True,
+                "adaptive_loss_weighting": True,
+                "gradient_clip_norm": 1.0,
+                "weight_decay": 0.01,
+            },
         }
 
     def adjust_config_for_mode(
@@ -281,6 +311,15 @@ class DynamicConfigGenerator:
 
         # Вычисляем все выражения
         processed_config = self.evaluator.process_config_dict(config)
+
+        # POST-PROCESSING: Специальная обработка для emergent_training
+        if "emergent_training" in processed_config and "gmlp" in processed_config:
+            # Копируем gmlp конфигурацию в emergent_training
+            processed_config["emergent_training"]["gmlp_config"] = processed_config[
+                "gmlp"
+            ].copy()
+
+            logger.debug("[POST-PROCESS] Copied gmlp config to emergent_training")
 
         # Добавляем метаданные
         processed_config["_metadata"] = {

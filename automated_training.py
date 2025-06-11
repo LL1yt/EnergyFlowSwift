@@ -16,7 +16,12 @@ import json
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(),  # Консоль
+        logging.FileHandler("logs/automated_training.log", encoding="utf-8"),  # Файл
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -30,6 +35,8 @@ class AutomatedTrainer:
         scale: Optional[float] = None,
         max_total_time_hours: float = 8.0,
         dataset_limit_override: Optional[int] = None,
+        batch_size_override: Optional[int] = None,
+        timeout_multiplier: float = 2.0,
     ):
         """
         Args:
@@ -37,11 +44,15 @@ class AutomatedTrainer:
             scale: Custom scale factor
             max_total_time_hours: Максимальное время обучения в часах
             dataset_limit_override: Переопределить dataset_limit для всех стадий (для тестирования)
+            batch_size_override: Переопределить batch_size для всех стадий (для ускорения)
+            timeout_multiplier: Multiplier for the timeout
         """
         self.mode = mode
         self.scale = scale
         self.max_total_time_hours = max_total_time_hours
         self.dataset_limit_override = dataset_limit_override
+        self.batch_size_override = batch_size_override
+        self.timeout_multiplier = timeout_multiplier
         self.start_time = datetime.now()
 
         # История обучения
@@ -50,6 +61,9 @@ class AutomatedTrainer:
         # Создаем директорию для логов
         self.log_dir = Path("logs/automated_training")
         self.log_dir.mkdir(parents=True, exist_ok=True)
+
+        # Создаем директорию для основных логов
+        Path("logs").mkdir(exist_ok=True)
 
         # Файл лога сессии
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -61,6 +75,9 @@ class AutomatedTrainer:
         logger.info(f"   Max time: {max_total_time_hours} hours")
         if dataset_limit_override:
             logger.info(f"   Dataset limit override: {dataset_limit_override}")
+        if batch_size_override:
+            logger.info(f"   Batch size override: {batch_size_override}")
+        logger.info(f"   Timeout multiplier: {timeout_multiplier}")
         logger.info(f"   Session log: {self.session_log}")
 
     def get_progressive_config(self, stage: int) -> Dict[str, Any]:
@@ -108,13 +125,17 @@ class AutomatedTrainer:
         # Возвращаем конфигурацию или последнюю если stage слишком большой
         config = configs.get(stage, configs[5])
 
-        # Переопределяем dataset_limit если задан override
-        if self.dataset_limit_override:
+        # Переопределяем параметры если заданы override
+        if self.dataset_limit_override or self.batch_size_override:
             config = config.copy()  # Не изменяем оригинальную конфигурацию
-            config["dataset_limit"] = self.dataset_limit_override
-            config[
-                "description"
-            ] += f" (dataset override: {self.dataset_limit_override})"
+
+            if self.dataset_limit_override:
+                config["dataset_limit"] = self.dataset_limit_override
+                config["description"] += f" (dataset: {self.dataset_limit_override})"
+
+            if self.batch_size_override:
+                config["batch_size"] = self.batch_size_override
+                config["description"] += f" (batch: {self.batch_size_override})"
 
         return config
 
@@ -133,7 +154,21 @@ class AutomatedTrainer:
             time_per_1k_examples = 10
 
         estimated_minutes = (dataset_size / 1000) * time_per_1k_examples * epochs / 10
-        return estimated_minutes
+
+        # Минимальное время для инициализации и маленьких датасетов
+        min_time_minutes = 8.0  # минимум 8 минут (увеличено)
+        if dataset_size <= 100:  # Для очень маленьких датасетов
+            min_time_minutes = 12.0  # минимум 12 минут
+        elif dataset_size <= 1000:  # Для маленьких датасетов
+            min_time_minutes = 10.0  # минимум 10 минут
+
+        # Корректировка для больших batch size (ускоряют обучение)
+        if batch_size >= 128:
+            estimated_minutes *= 0.5  # 50% ускорение
+        elif batch_size >= 64:
+            estimated_minutes *= 0.7  # 30% ускорение
+
+        return max(estimated_minutes, min_time_minutes)
 
     def run_training_stage(
         self, stage: int, config: Dict[str, Any]
@@ -166,20 +201,103 @@ class AutomatedTrainer:
 
         logger.info(f"   Command: {' '.join(cmd)}")
 
-        # Запускаем обучение
+        # Запускаем обучение с real-time выводом
         start_time = time.time()
+        timeout_seconds = (
+            estimated_time * 60 * self.timeout_multiplier
+        )  # Таймаут = timeout_multiplier * от оценки
+        logger.info(
+            f"   [PROGRESS] Starting subprocess with timeout: {timeout_seconds/60:.1f} minutes"
+        )
+
         try:
-            result = subprocess.run(
+            # Запускаем процесс с захватом вывода для real-time логов
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=estimated_time * 60 * 2,  # Таймаут = 2x от оценки
+                universal_newlines=True,
+                bufsize=1,  # Построчная буферизация
             )
+
+            logger.info(f"   [PROGRESS] Process started with PID: {process.pid}")
+
+            # Собираем весь вывод для последующего анализа
+            stdout_lines = []
+            stderr_lines = []
+
+            # Читаем вывод в реальном времени
+            import select
+            import threading
+            from queue import Queue, Empty
+
+            def read_output(pipe, output_list, prefix):
+                """Читает вывод из pipe и добавляет в список"""
+                try:
+                    for line in iter(pipe.readline, ""):
+                        if line:
+                            line = line.rstrip()
+                            output_list.append(line)
+                            logger.info(f"   {prefix}: {line}")
+                except Exception as e:
+                    logger.error(f"   [ERROR] Reading {prefix}: {e}")
+                finally:
+                    pipe.close()
+
+            # Запускаем потоки для чтения stdout и stderr
+            stdout_thread = threading.Thread(
+                target=read_output, args=(process.stdout, stdout_lines, "[SUBPROCESS]")
+            )
+            stderr_thread = threading.Thread(
+                target=read_output,
+                args=(process.stderr, stderr_lines, "[SUBPROCESS-ERR]"),
+            )
+
+            stdout_thread.daemon = True
+            stderr_thread.daemon = True
+            stdout_thread.start()
+            stderr_thread.start()
+
+            # Ожидаем завершения с таймаутом
+            try:
+                process.wait(timeout=timeout_seconds)
+                return_code = process.returncode
+            except subprocess.TimeoutExpired:
+                logger.error(
+                    f"   [TIMEOUT] Process timed out after {timeout_seconds/60:.1f} minutes"
+                )
+                process.kill()
+                process.wait()
+                return_code = -1
+
+            # Ждем завершения потоков чтения
+            stdout_thread.join(timeout=5)
+            stderr_thread.join(timeout=5)
+
+            logger.info(
+                f"   [PROGRESS] Process completed with return code: {return_code}"
+            )
+
+            # Создаем объект result для совместимости с остальным кодом
+            class MockResult:
+                def __init__(self, returncode, stdout_list, stderr_list):
+                    self.returncode = returncode
+                    self.stdout = "\n".join(stdout_list)
+                    self.stderr = "\n".join(stderr_list)
+
+            result = MockResult(return_code, stdout_lines, stderr_lines)
 
             end_time = time.time()
             actual_time = (end_time - start_time) / 60  # в минутах
 
-            if result.returncode == 0:
+            if result.returncode == -1:
+                # Таймаут
+                logger.error(
+                    f"[ERROR] Stage {stage} timed out after {actual_time:.1f} minutes"
+                )
+                return None
+            elif result.returncode == 0:
                 logger.info(f"[OK] Stage {stage} completed successfully")
                 logger.info(f"   Actual time: {actual_time:.1f} minutes")
 
@@ -230,11 +348,6 @@ class AutomatedTrainer:
 
                 return None
 
-        except subprocess.TimeoutExpired:
-            logger.error(
-                f"[ERROR] Stage {stage} timed out after {estimated_time * 2:.1f} minutes"
-            )
-            return None
         except Exception as e:
             logger.error(f"[ERROR] Stage {stage} failed with exception: {e}")
             return None
@@ -312,11 +425,20 @@ class AutomatedTrainer:
 
     def run_automated_training(self):
         """Запускает автоматизированное обучение"""
+        logger.info(f"🎯 ======== AUTOMATED TRAINING SESSION STARTED ========")
         logger.info(f"[TARGET] Starting automated training session")
+        logger.info(f"   Start time: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info(f"   Max duration: {self.max_total_time_hours} hours")
         logger.info(
-            f"   Target end time: {self.start_time + timedelta(hours=self.max_total_time_hours)}"
+            f"   Target end time: {(self.start_time + timedelta(hours=self.max_total_time_hours)).strftime('%Y-%m-%d %H:%M:%S')}"
         )
+        logger.info(f"   Mode: {self.mode}")
+        if self.scale:
+            logger.info(f"   Scale factor: {self.scale}")
+        if self.dataset_limit_override:
+            logger.info(f"   Dataset limit override: {self.dataset_limit_override}")
+        logger.info(f"   Session log: {self.session_log}")
+        logger.info("=" * 60)
 
         stage = 1
 
@@ -336,18 +458,33 @@ class AutomatedTrainer:
                 break
 
             # Запускаем стадию
+            logger.info(f"🚀 [STAGE-{stage}] ======== STARTING STAGE {stage} ========")
+            stage_start_time = time.time()
+
             result = self.run_training_stage(stage, config)
+
+            stage_end_time = time.time()
+            stage_duration = (stage_end_time - stage_start_time) / 60
 
             if result is None:
                 logger.error(
-                    f"[ERROR] Stage {stage} failed, stopping automated training"
+                    f"[ERROR] Stage {stage} failed after {stage_duration:.1f} minutes, stopping automated training"
                 )
                 break
 
-            # Показываем прогресс
+            # Показываем детальный прогресс
             summary = self._generate_summary()
-            logger.info(f"[DATA] Progress after stage {stage}:")
-            logger.info(f"   Total stages completed: {summary['total_stages']}")
+            elapsed_total = (datetime.now() - self.start_time).total_seconds() / 3600
+            remaining_time = self.max_total_time_hours - elapsed_total
+
+            logger.info(f"✅ [STAGE-{stage}] ======== STAGE {stage} COMPLETED ========")
+            logger.info(f"   Stage duration: {stage_duration:.1f} minutes")
+            logger.info(f"[DATA] Overall Progress:")
+            logger.info(f"   Stages completed: {summary['total_stages']}")
+            logger.info(
+                f"   Session time: {elapsed_total:.1f}h / {self.max_total_time_hours}h"
+            )
+            logger.info(f"   Remaining time: {remaining_time:.1f}h")
             logger.info(
                 f"   Best similarity: {summary['best_similarity']:.4f}"
                 if summary["best_similarity"]
@@ -357,9 +494,20 @@ class AutomatedTrainer:
                 f"   Total training time: {summary['total_time_minutes']:.1f} minutes"
             )
 
+            # Показываем тренд похожести
+            if summary.get("similarity_trend") and len(summary["similarity_trend"]) > 1:
+                trend = summary["similarity_trend"]
+                logger.info(f"   Similarity trend: {[f'{s:.3f}' for s in trend]}")
+                if len(trend) >= 2:
+                    improvement = trend[-1] - trend[-2]
+                    logger.info(f"   Last improvement: {improvement:+.4f}")
+
             stage += 1
 
+            logger.info(f"[NEXT] Preparing for stage {stage}...")
+
             # Небольшая пауза между стадиями
+            logger.info("   [PAUSE] 10 second break between stages...")
             time.sleep(10)
 
         # Финальная сводка
@@ -424,6 +572,18 @@ def main():
         default=None,
         help="Override dataset_limit for all stages (useful for quick testing)",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Override batch_size for all stages (useful for faster training)",
+    )
+    parser.add_argument(
+        "--timeout-multiplier",
+        type=float,
+        default=2.0,
+        help="Timeout multiplier for the training process",
+    )
 
     args = parser.parse_args()
 
@@ -433,6 +593,8 @@ def main():
             scale=args.scale,
             max_total_time_hours=args.max_hours,
             dataset_limit_override=args.dataset_limit,
+            batch_size_override=args.batch_size,
+            timeout_multiplier=args.timeout_multiplier,
         )
 
         if args.test_config:

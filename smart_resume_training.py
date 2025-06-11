@@ -80,6 +80,20 @@ class SmartResumeManager:
                 "gmlp": full_config["gmlp"],
             }
 
+            # ДОБАВЛЯЕМ emergent_training секцию если она есть
+            if "emergent_training" in full_config:
+                self.current_config["emergent_training"] = full_config[
+                    "emergent_training"
+                ]
+                logger.info(f"[CONFIG] Added emergent_training section to config")
+                logger.info(
+                    f"   spatial_propagation_depth: {full_config['emergent_training']['spatial_propagation_depth']}"
+                )
+            else:
+                logger.warning(
+                    f"[WARNING] emergent_training section not found in dynamic config"
+                )
+
             # Сохраняем метаданные
             self.config_metadata = full_config.get("_metadata", {})
 
@@ -123,7 +137,9 @@ class SmartResumeManager:
         Returns:
             Список совместимых чекпоинтов, отсортированных по приоритету
         """
-        logger.info(f"[MAGNIFY] Searching for compatible checkpoints in {checkpoints_dir}")
+        logger.info(
+            f"[MAGNIFY] Searching for compatible checkpoints in {checkpoints_dir}"
+        )
 
         checkpoints_path = Path(checkpoints_dir)
         if not checkpoints_path.exists():
@@ -156,7 +172,9 @@ class SmartResumeManager:
             )
         )
 
-        logger.info(f"[TARGET] Found {len(compatible_checkpoints)} compatible checkpoints")
+        logger.info(
+            f"[TARGET] Found {len(compatible_checkpoints)} compatible checkpoints"
+        )
 
         # Показываем топ 5
         for i, cp in enumerate(compatible_checkpoints[:5]):
@@ -389,7 +407,9 @@ class SmartResumeManager:
         from run_dynamic_training import DynamicTrainingManager
 
         training_manager = DynamicTrainingManager(
-            forced_mode=self.forced_mode, custom_scale=self.custom_scale
+            forced_mode=self.forced_mode,
+            custom_scale=self.custom_scale,
+            external_config=self.current_config,  # Передаем готовую конфигурацию
         )
 
         return training_manager.run_training(
@@ -404,7 +424,9 @@ class SmartResumeManager:
         **kwargs,
     ) -> Dict[str, Any]:
         """Продолжает обучение с чекпоинта"""
-        logger.info(f"[PLAY] Resuming training from checkpoint: {checkpoint_info['name']}")
+        logger.info(
+            f"[PLAY] Resuming training from checkpoint: {checkpoint_info['name']}"
+        )
         logger.info(
             f"   Checkpoint similarity: {checkpoint_info['metadata'].get('best_similarity', 'unknown')}"
         )
@@ -415,7 +437,9 @@ class SmartResumeManager:
             from run_dynamic_training import DynamicTrainingManager
 
             training_manager = DynamicTrainingManager(
-                forced_mode=self.forced_mode, custom_scale=self.custom_scale
+                forced_mode=self.forced_mode,
+                custom_scale=self.custom_scale,
+                external_config=self.current_config,  # Передаем готовую конфигурацию
             )
 
             # Создаем trainer и загружаем веса

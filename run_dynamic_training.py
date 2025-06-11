@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 import gc
+from datetime import datetime
 
 # Настройка логирования
 logging.basicConfig(
@@ -37,23 +38,37 @@ class DynamicTrainingManager:
     """Менеджер обучения с динамической конфигурацией"""
 
     def __init__(
-        self, forced_mode: Optional[str] = None, custom_scale: Optional[float] = None
+        self,
+        forced_mode: Optional[str] = None,
+        custom_scale: Optional[float] = None,
+        external_config: Optional[Dict] = None,
     ):
         """
         Args:
-            forced_mode: Принудительный режим (development, research, validation, production)
-                        Если None, будет автоопределение
-            custom_scale: Пользовательский scale factor (переопределяет режим по умолчанию)
+            forced_mode: Принудительный режим ("development", "research", etc.)
+            custom_scale: Кастомный масштаб (перекрывает режим)
+            external_config: Готовая конфигурация (от smart_resume_training)
         """
         self.forced_mode = forced_mode
-        self.custom_scale = custom_scale
-        self.custom_scale_factor = custom_scale  # Алиас для совместимости
+        self.custom_scale_factor = custom_scale
+        self.external_config = external_config
+        self.trainer = None
         self.config_manager = None
         self.dynamic_config = None
-        self.trainer = None
 
-        # Загружаем конфигурацию
-        self._load_dynamic_config()
+        # Инициализируем конфигурацию
+        if self.external_config:
+            logger.info(f"[CONFIG] Using external configuration")
+            self.dynamic_config = self.external_config
+            # Логируем какие секции получили
+            available_sections = list(self.external_config.keys())
+            logger.info(f"   Available sections: {available_sections}")
+            if "emergent_training" in self.external_config:
+                logger.info(
+                    f"   emergent_training.spatial_propagation_depth: {self.external_config['emergent_training'].get('spatial_propagation_depth', 'unknown')}"
+                )
+        else:
+            self._load_dynamic_config()
 
     def _load_dynamic_config(self):
         """Загрузка динамической конфигурации"""
@@ -89,10 +104,35 @@ class DynamicTrainingManager:
                 "gmlp": self.config_manager.get_config("gmlp"),
             }
 
+            # ДОБАВЛЯЕМ emergent_training секцию если доступна
+            try:
+                emergent_training_config = self.config_manager.get_config(
+                    "emergent_training"
+                )
+                if emergent_training_config:
+                    self.dynamic_config["emergent_training"] = emergent_training_config
+                    logger.info(
+                        f"[CONFIG] Added emergent_training section to dynamic config"
+                    )
+                    logger.info(
+                        f"   spatial_propagation_depth: {emergent_training_config.get('spatial_propagation_depth', 'unknown')}"
+                    )
+                else:
+                    logger.warning(
+                        f"[WARNING] emergent_training section is empty in dynamic config"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"[WARNING] Failed to load emergent_training section: {e}"
+                )
+                logger.warning(f"   Will use fallback approach in create_trainer()")
+
             # Информация о режиме
             dynamic_info = self.config_manager.get_dynamic_config_info()
             if dynamic_info:
-                logger.info(f"[TARGET] Loaded dynamic config: {dynamic_info['mode']} mode")
+                logger.info(
+                    f"[TARGET] Loaded dynamic config: {dynamic_info['mode']} mode"
+                )
                 logger.info(f"   Scale factor: {dynamic_info['scale_factor']}")
 
             # Выводим основную информацию
@@ -125,60 +165,144 @@ class DynamicTrainingManager:
                 create_nca_config,
             )
 
-            # Создаем конфигурацию trainer'а на основе динамической конфигурации
-            lattice_config = self.dynamic_config["lattice"]
-            gmlp_config = self.dynamic_config["gmlp"]
-            training_config = self.dynamic_config["training"]
+            # Используем emergent_training секцию если доступна, иначе fallback
+            if "emergent_training" in self.dynamic_config:
+                emergent_config = self.dynamic_config["emergent_training"]
 
-            # Логируем динамическую конфигурацию для отладки
-            logger.info(f"[MAGNIFY] Dynamic gMLP config from generator:")
-            logger.info(f"   target_params: {gmlp_config.get('target_params')}")
-            logger.info(f"   state_size: {gmlp_config.get('state_size')}")
-            logger.info(f"   hidden_dim: {gmlp_config.get('hidden_dim')}")
-            logger.info(
-                f"   external_input_size: {gmlp_config.get('external_input_size')}"
-            )
-            logger.info(f"   memory_dim: {gmlp_config.get('memory_dim')}")
+                # Логируем использование emergent_training конфигурации
+                logger.info(
+                    f"[CONFIG] Using emergent_training section from dynamic config"
+                )
+                logger.info(f"   cube_dimensions: {emergent_config['cube_dimensions']}")
+                logger.info(
+                    f"   spatial_propagation_depth: {emergent_config['spatial_propagation_depth']}"
+                )
 
-            # Конфигурация EmergentTrainingConfig
-            trainer_config = EmergentTrainingConfig(
-                teacher_model="distilbert-base-uncased",
-                cube_dimensions=(
-                    lattice_config["xs"],
-                    lattice_config["ys"],
-                    lattice_config["zs"],
-                ),
-                # gMLP конфигурация из динамической системы
-                gmlp_config={
-                    "state_size": gmlp_config["state_size"],
-                    "neighbor_count": gmlp_config["neighbor_count"],
-                    "hidden_dim": gmlp_config["hidden_dim"],
-                    "external_input_size": gmlp_config["external_input_size"],
-                    "memory_dim": gmlp_config.get("memory_dim", 16),
-                    "target_params": gmlp_config[
-                        "target_params"
-                    ],  # НОВОЕ: Передаем биологически правильный target
-                    "use_memory": True,
-                    "activation": "gelu",
-                    "dropout": 0.1,
-                    "spatial_connections": True,
-                },
-                # Training параметры
-                learning_rate=training_config["learning_rate"],
-                batch_size=training_config["batch_size"],
-                epochs=training_config["epochs"],
-                # Оптимизации для больших размеров
-                mixed_precision=True,
-                gradient_checkpointing=True,
-                gradient_accumulation_steps=4,
-                # NCA конфигурация
-                enable_nca=True,
-                nca_config=create_nca_config(
-                    update_probability=0.7,
-                    residual_learning_rate=0.1,
-                    enable_pattern_detection=True,
-                ),
-            )
+                # Конфигурация EmergentTrainingConfig из emergent_training секции
+                trainer_config = EmergentTrainingConfig(
+                    teacher_model=emergent_config.get(
+                        "teacher_model", "distilbert-base-uncased"
+                    ),
+                    cube_dimensions=tuple(emergent_config["cube_dimensions"]),
+                    # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: используем spatial_propagation_depth из конфигурации
+                    spatial_propagation_depth=emergent_config[
+                        "spatial_propagation_depth"
+                    ],
+                    enable_full_cube_gradient=emergent_config.get(
+                        "enable_full_cube_gradient", True
+                    ),
+                    emergent_specialization=emergent_config.get(
+                        "emergent_specialization", True
+                    ),
+                    # gMLP конфигурация из динамической системы
+                    gmlp_config=emergent_config["gmlp_config"],
+                    # Loss weights
+                    loss_weights=emergent_config.get(
+                        "loss_weights",
+                        {
+                            "surface_reconstruction": 0.3,
+                            "internal_consistency": 0.3,
+                            "dialogue_similarity": 0.4,
+                        },
+                    ),
+                    # Training параметры
+                    learning_rate=emergent_config["learning_rate"],
+                    batch_size=emergent_config["batch_size"],
+                    epochs=emergent_config["epochs"],
+                    warmup_epochs=emergent_config.get("warmup_epochs", 3),
+                    # Optimization settings
+                    gradient_balancing=emergent_config.get("gradient_balancing", True),
+                    adaptive_loss_weighting=emergent_config.get(
+                        "adaptive_loss_weighting", True
+                    ),
+                    # Оптимизации для больших размеров
+                    mixed_precision=True,
+                    gradient_checkpointing=True,
+                    gradient_accumulation_steps=4,
+                    # NCA конфигурация
+                    enable_nca=True,
+                    nca_config=create_nca_config(
+                        update_probability=0.7,
+                        residual_learning_rate=0.1,
+                        enable_pattern_detection=True,
+                    ),
+                )
+
+                logger.info(
+                    f"[BRAIN] EmergentTrainingConfig from dynamic emergent_training:"
+                )
+                logger.info(f"   cube_dimensions: {trainer_config.cube_dimensions}")
+                logger.info(
+                    f"   spatial_propagation_depth: {trainer_config.spatial_propagation_depth}"
+                )
+                logger.info(
+                    f"   gmlp_config.state_size: {trainer_config.gmlp_config.get('state_size')}"
+                )
+                logger.info(
+                    f"   gmlp_config.target_params: {trainer_config.gmlp_config.get('target_params')}"
+                )
+
+            else:
+                # FALLBACK: Старый способ если emergent_training секции нет
+                logger.warning(
+                    f"[WARNING] emergent_training section not found, using fallback approach"
+                )
+
+                lattice_config = self.dynamic_config["lattice"]
+                gmlp_config = self.dynamic_config["gmlp"]
+                training_config = self.dynamic_config["training"]
+
+                # Логируем динамическую конфигурацию для отладки
+                logger.info(f"[MAGNIFY] Dynamic gMLP config from generator:")
+                logger.info(f"   target_params: {gmlp_config.get('target_params')}")
+                logger.info(f"   state_size: {gmlp_config.get('state_size')}")
+                logger.info(f"   hidden_dim: {gmlp_config.get('hidden_dim')}")
+                logger.info(
+                    f"   external_input_size: {gmlp_config.get('external_input_size')}"
+                )
+                logger.info(f"   memory_dim: {gmlp_config.get('memory_dim')}")
+
+                # Конфигурация EmergentTrainingConfig
+                trainer_config = EmergentTrainingConfig(
+                    teacher_model="distilbert-base-uncased",
+                    cube_dimensions=(
+                        lattice_config["xs"],
+                        lattice_config["ys"],
+                        lattice_config["zs"],
+                    ),
+                    # ВАЖНО: spatial_propagation_depth должен быть равен zs
+                    spatial_propagation_depth=lattice_config["zs"],
+                    # gMLP конфигурация из динамической системы
+                    gmlp_config={
+                        "state_size": gmlp_config["state_size"],
+                        "neighbor_count": gmlp_config["neighbor_count"],
+                        "hidden_dim": gmlp_config["hidden_dim"],
+                        "external_input_size": gmlp_config["external_input_size"],
+                        "memory_dim": gmlp_config.get("memory_dim", 16),
+                        "target_params": gmlp_config[
+                            "target_params"
+                        ],  # НОВОЕ: Передаем биологически правильный target
+                        "use_memory": True,
+                        "activation": "gelu",
+                        "dropout": 0.1,
+                        "spatial_connections": True,
+                    },
+                    # Training параметры
+                    learning_rate=training_config["learning_rate"],
+                    batch_size=training_config["batch_size"],
+                    epochs=training_config["epochs"],
+                    # Оптимизации для больших размеров
+                    mixed_precision=True,
+                    gradient_checkpointing=True,
+                    gradient_accumulation_steps=4,
+                    # NCA конфигурация
+                    enable_nca=True,
+                    nca_config=create_nca_config(
+                        update_probability=0.7,
+                        residual_learning_rate=0.1,
+                        enable_pattern_detection=True,
+                    ),
+                )
 
             # Создаем trainer
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -224,7 +348,9 @@ class DynamicTrainingManager:
             latest_dataset = datasets[0]
             embeddings_file = latest_dataset["file_path"]
 
-            logger.info(f"[FOLDER] Using precomputed dataset: {latest_dataset['filename']}")
+            logger.info(
+                f"[FOLDER] Using precomputed dataset: {latest_dataset['filename']}"
+            )
             logger.info(f"   Available size: {latest_dataset['size']} pairs")
             logger.info(f"   Teacher model: {latest_dataset['teacher_model']}")
 
@@ -499,7 +625,6 @@ class DynamicTrainingManager:
     ):
         """Сохранение результатов обучения с указанием scale в названии"""
         try:
-            from datetime import datetime
             from model_weights_manager import ModelWeightsManager
 
             # Получаем информацию о динамической конфигурации
