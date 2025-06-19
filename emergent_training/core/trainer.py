@@ -24,6 +24,16 @@ from training.embedding_trainer.neural_cellular_automata import (
     create_nca_config,
 )
 
+# Import NCA cell types
+from training.embedding_trainer.nca_adapter import (
+    EmergentNCACell,
+    create_emergent_nca_cell_from_config,
+)
+from core.cell_prototype.architectures.minimal_nca_cell import (
+    MinimalNCACell,
+    create_nca_cell_from_config,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,24 +59,119 @@ class EmergentCubeTrainer(nn.Module):
 
     def _initialize_components(self):
         """Initializes all sub-modules of the trainer."""
-        # Main cell
-        self.cell = EmergentGMLPCell(**self.config.gmlp_config).to(self.device)
+        # Choose cell architecture based on configuration
+        if self.config.enable_nca:
+            logger.info("🔬 Using NCA Cell Architecture")
+            if hasattr(self.config, "nca_config") and self.config.nca_config:
+                # Use EmergentNCACell for advanced features
+                self.cell = create_emergent_nca_cell_from_config(
+                    {
+                        "nca": (
+                            self.config.nca_config.__dict__
+                            if hasattr(self.config.nca_config, "__dict__")
+                            else self.config.nca_config
+                        ),
+                        "gmlp_config": self.config.gmlp_config,
+                    }
+                ).to(self.device)
+            else:
+                # Fallback to MinimalNCACell with gMLP config compatibility
+                self.cell = create_nca_cell_from_config(
+                    {"gmlp_config": self.config.gmlp_config}
+                ).to(self.device)
+        else:
+            logger.info("🧠 Using gMLP Cell Architecture")
+            self.cell = EmergentGMLPCell(**self.config.gmlp_config).to(self.device)
 
-        # 3D Lattice
+        # Get state size from the actual cell BEFORE using it
+        if hasattr(self.cell, "state_size"):
+            state_size = self.cell.state_size
+        elif hasattr(self.cell, "original_state_size"):
+            state_size = self.cell.original_state_size
+        else:
+            state_size = self.config.gmlp_config.get("state_size", 32)
+
+        # 3D Lattice with proper cell configuration
         lattice_config = LatticeConfig(dimensions=self.config.cube_dimensions)
-        self.lattice = Lattice3D(lattice_config, cell=self.cell, device=self.device)
+
+        # Pass cell configuration to lattice so it creates the right cell type
+        if self.config.enable_nca:
+            # Create cell_config for NCA
+            cell_config = {
+                "cell_type": "nca",
+                "state_size": state_size,
+                "neighbor_count": 6,
+                "hidden_dim": (
+                    self.config.nca_config.get("hidden_dim", 4)
+                    if self.config.nca_config
+                    else 4
+                ),
+                "external_input_size": (
+                    self.config.nca_config.get("external_input_size", 1)
+                    if self.config.nca_config
+                    else 1
+                ),
+                "activation": (
+                    self.config.nca_config.get("activation", "tanh")
+                    if self.config.nca_config
+                    else "tanh"
+                ),
+                "target_params": (
+                    self.config.nca_config.get("target_params", 150)
+                    if self.config.nca_config
+                    else 150
+                ),
+            }
+        else:
+            # Create cell_config for gMLP
+            cell_config = {"cell_type": "gmlp", **self.config.gmlp_config}
+
+        lattice_config.cell_config = cell_config
+        self.lattice = Lattice3D(lattice_config)
+
+        # Move lattice to device manually since it's not passed in constructor
+        self.lattice = self.lattice.to(self.device)
 
         # Loss function
         self.loss_fn = EmergentMultiObjectiveLoss(self.config).to(self.device)
 
         # Spatial propagation module
         self.propagation = EmergentSpatialPropagation(
-            self.config.cube_dimensions, self.config.gmlp_config.get("state_size", 32)
+            self.config.cube_dimensions, state_size
         ).to(self.device)
 
-        # NCA module
-        if self.config.enable_nca:
-            self.nca = NeuralCellularAutomata(self.config.nca_config).to(self.device)
+        # NCA module (separate from cell - this is for additional NCA processing)
+        if (
+            self.config.enable_nca
+            and hasattr(self.config, "nca_config")
+            and self.config.nca_config
+        ):
+            # Create proper NCAConfig from dict if needed
+            if isinstance(self.config.nca_config, dict):
+                # Extract only the parameters that create_nca_config accepts
+                nca_params = {}
+                if "update_probability" in self.config.nca_config:
+                    nca_params["update_probability"] = self.config.nca_config[
+                        "update_probability"
+                    ]
+                if "residual_learning_rate" in self.config.nca_config:
+                    nca_params["residual_learning_rate"] = self.config.nca_config[
+                        "residual_learning_rate"
+                    ]
+                if "pattern_detection_enabled" in self.config.nca_config:
+                    nca_params["enable_pattern_detection"] = self.config.nca_config[
+                        "pattern_detection_enabled"
+                    ]
+
+                nca_config_obj = create_nca_config(**nca_params)
+            else:
+                nca_config_obj = self.config.nca_config
+
+            self.nca = NeuralCellularAutomata(
+                nca_config_obj,
+                cube_dimensions=self.config.cube_dimensions,
+                state_size=state_size,
+            ).to(self.device)
         else:
             self.nca = None
 

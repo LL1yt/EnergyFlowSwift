@@ -29,20 +29,25 @@ class TrainingStageRunner:
         mode: str = "development",
         scale: Optional[float] = None,
         timeout_multiplier: float = 2.0,
+        verbose: bool = False,
     ):
         """
         Args:
             mode: Режим конфигурации (development, research, etc.)
             scale: Custom scale factor
             timeout_multiplier: Multiplier for the timeout
+            verbose: Enable verbose logging for subprocess operations
         """
         self.mode = mode
         self.scale = scale
         self.timeout_multiplier = timeout_multiplier
+        self.verbose = verbose
 
         # Минимальное логирование инициализации
         if timeout_multiplier > 2.0:  # Логируем только нестандартные значения
             logger.warning(f"[RUNNER] High timeout multiplier: {timeout_multiplier}")
+        if verbose:
+            logger.info(f"[RUNNER] Verbose mode enabled for subprocess logging")
 
     def run_stage(
         self, stage_config: StageConfig, estimated_time: float
@@ -67,12 +72,24 @@ class TrainingStageRunner:
             # Строим команду с путем к файлу результатов
             cmd = self._build_command(stage_config, output_json_path)
 
-            # Запускаем обучение с минимальным логированием
+            # Запускаем обучение с опциональным verbose логированием
             start_time = time.time()
             timeout_seconds = estimated_time * 60 * self.timeout_multiplier
 
+            if self.verbose:
+                logger.info(
+                    f"🔄 Starting Stage {stage_config.stage}: {stage_config.description}"
+                )
+                logger.info(
+                    f"   Dataset: {stage_config.dataset_limit:,} samples, {stage_config.epochs} epochs"
+                )
+                logger.info(f"   Timeout: {timeout_seconds/60:.1f} minutes")
+
             result = run_process(
-                cmd, timeout_seconds, process_id=f"Stage {stage_config.stage}"
+                cmd,
+                timeout_seconds,
+                process_id=f"Stage {stage_config.stage}",
+                verbose=self.verbose,
             )
 
             end_time = time.time()
@@ -117,6 +134,9 @@ class TrainingStageRunner:
 
         if self.scale:
             cmd.extend(["--scale", str(self.scale)])
+
+        if self.verbose:
+            cmd.append("--verbose")
 
         return cmd
 

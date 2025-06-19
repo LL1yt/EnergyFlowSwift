@@ -33,6 +33,7 @@ class AutomatedTrainer:
         dataset_limit_override: Optional[int] = None,
         batch_size_override: Optional[int] = None,
         timeout_multiplier: float = 2.0,
+        verbose: bool = False,
     ):
         """
         Args:
@@ -42,10 +43,12 @@ class AutomatedTrainer:
             dataset_limit_override: Переопределить dataset_limit для всех стадий (для тестирования)
             batch_size_override: Переопределить batch_size для всех стадий (для ускорения)
             timeout_multiplier: Multiplier for the timeout
+            verbose: Enable verbose logging for subprocess operations
         """
         self.mode = mode
         self.scale = scale
         self.max_total_time_hours = max_total_time_hours
+        self.verbose = verbose
 
         # Инициализация компонентов
         self.config_manager = ProgressiveConfigManager(
@@ -54,7 +57,10 @@ class AutomatedTrainer:
         )
 
         self.stage_runner = TrainingStageRunner(
-            mode=mode, scale=scale, timeout_multiplier=timeout_multiplier
+            mode=mode,
+            scale=scale,
+            timeout_multiplier=timeout_multiplier,
+            verbose=verbose,
         )
 
         self.session_manager = SessionManager(
@@ -68,6 +74,11 @@ class AutomatedTrainer:
                 logger.warning(f"   Dataset limit: {dataset_limit_override}")
             if batch_size_override:
                 logger.warning(f"   Batch size: {batch_size_override}")
+
+        if verbose:
+            logger.info(
+                f"[TRAINER] Verbose mode enabled - subprocess logs will be shown"
+            )
 
     def run_automated_training(self):
         """Запускает автоматизированное обучение"""

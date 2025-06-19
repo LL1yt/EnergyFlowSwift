@@ -101,8 +101,29 @@ class ProductionTrainingManager:
             logger.error("System validation failed. Aborting.")
             return {"status": "failed", "stage": "validation"}
 
+        # Load main config for proper NCA configuration
+        try:
+            import yaml
+            from pathlib import Path
+
+            main_config_path = Path("config/main_config.yaml")
+            if main_config_path.exists():
+                with open(main_config_path, "r") as f:
+                    main_config = yaml.safe_load(f)
+                # Use the new from_main_config method
+                config = EmergentTrainingConfig.from_main_config(main_config)
+                config.teacher_model = self.model_name  # Override with production model
+            else:
+                # Fallback to default config
+                config = EmergentTrainingConfig(teacher_model=self.model_name)
+                logger.warning(
+                    "Main config not found, using default EmergentTrainingConfig"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to load main config: {e}, using default")
+            config = EmergentTrainingConfig(teacher_model=self.model_name)
+
         # Initialize the trainer once
-        config = EmergentTrainingConfig(teacher_model=self.model_name)
         trainer = EmergentCubeTrainer(config, device=self.device)
 
         for stage in self.stages:

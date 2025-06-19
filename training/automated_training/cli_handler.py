@@ -30,6 +30,7 @@ def handle_show_config_test(args: argparse.Namespace):
             dataset_limit_override=args.dataset_limit,
             batch_size_override=args.batch_size,
             timeout_multiplier=args.timeout_multiplier,
+            verbose=args.verbose,
         )
 
         logger.warning("⚙️ Training Configuration Preview:")
@@ -72,6 +73,7 @@ def handle_run_automated_training(args: argparse.Namespace):
             dataset_limit_override=args.dataset_limit,
             batch_size_override=args.batch_size,
             timeout_multiplier=args.timeout_multiplier,
+            verbose=args.verbose,
         )
 
         trainer.run_automated_training()

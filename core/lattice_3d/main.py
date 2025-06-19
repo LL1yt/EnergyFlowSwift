@@ -1121,12 +1121,49 @@ class Lattice3D(nn.Module):
 
         # Создаем экземпляр клетки
         try:
-            cell = create_cell_from_config(cell_config)  # Передаем конфигурацию
-            cell = cell.to(self.config.device)
+            # Check if this is NCA or gMLP cell configuration
+            if isinstance(cell_config, dict) and cell_config.get("cell_type") == "nca":
+                # Create NCA cell
+                from core.cell_prototype.architectures.minimal_nca_cell import (
+                    MinimalNCACell,
+                )
 
-            logging.info(
-                f"Cell prototype created: input_size={cell.input_size}, state_size={cell.state_size}"
-            )
+                nca_params = {
+                    "state_size": cell_config.get("state_size", 8),
+                    "neighbor_count": cell_config.get("neighbor_count", 6),
+                    "hidden_dim": cell_config.get("hidden_dim", 4),
+                    "external_input_size": cell_config.get("external_input_size", 1),
+                    "activation": cell_config.get("activation", "tanh"),
+                    "target_params": cell_config.get("target_params", 150),
+                }
+
+                cell = MinimalNCACell(**nca_params)
+                cell = cell.to(self.config.device)
+
+                logging.info(
+                    f"NCA cell prototype created: input_size={cell.external_input_size}, state_size={cell.state_size}"
+                )
+
+            elif (
+                isinstance(cell_config, dict) and cell_config.get("cell_type") == "gmlp"
+            ):
+                # Create gMLP cell - fallback to existing logic
+                cell = create_cell_from_config(cell_config)  # Передаем конфигурацию
+                cell = cell.to(self.config.device)
+
+                logging.info(
+                    f"gMLP cell prototype created: input_size={cell.input_size}, state_size={cell.state_size}"
+                )
+
+            else:
+                # Fallback to standard cell_prototype creation
+                cell = create_cell_from_config(cell_config)  # Передаем конфигурацию
+                cell = cell.to(self.config.device)
+
+                logging.info(
+                    f"Default cell prototype created: input_size={cell.input_size}, state_size={cell.state_size}"
+                )
+
             return cell
 
         except Exception as e:
@@ -1377,49 +1414,53 @@ class Lattice3D(nn.Module):
         self, cell_idx: int, external_inputs: torch.Tensor
     ) -> torch.Tensor:
         """
-        Получение внешнего входа для конкретной клетки с использованием новой I/O стратегии.
+        Получение внешнего входа для конкретной клетки.
 
         Args:
             cell_idx: Индекс клетки
-            external_inputs: Внешние входы
+            external_inputs: Тензор всех внешних входов
 
         Returns:
-            torch.Tensor: Внешний вход для клетки [1, input_size]
+            torch.Tensor: Внешний вход для данной клетки [1, input_size]
         """
-        # НОВОЕ: Используем IOPointPlacer для определения точек ввода
+        # Determine input size based on cell type
+        if hasattr(self.cell_prototype, "external_input_size"):
+            # NCA cell
+            input_size = self.cell_prototype.external_input_size
+        else:
+            # gMLP or other cell
+            input_size = self.cell_prototype.input_size
+
+        # Проверяем, является ли клетка точкой ввода
         input_points_3d = self.io_placer.get_input_points(self.config.input_face)
+        input_point_indices = [
+            self.position_system.to_linear_index(point_3d)
+            for point_3d in input_points_3d
+        ]
 
-        # Конвертируем 3D координаты в линейные индексы
-        input_point_indices = []
-        for point_3d in input_points_3d:
-            linear_idx = self.position_system.to_linear_index(point_3d)
-            input_point_indices.append(linear_idx)
-
-        # Проверяем, находится ли текущая клетка среди точек ввода
         if cell_idx in input_point_indices:
-            # Находим позицию клетки в списке точек ввода
-            input_position = input_point_indices.index(cell_idx)
+            # Находим индекс этой точки в списке точек ввода
+            point_index = input_point_indices.index(cell_idx)
 
-            if input_position < external_inputs.shape[0]:
-                # Берем соответствующий внешний вход
-                ext_input = external_inputs[input_position].unsqueeze(
-                    0
-                )  # [1, input_size]
+            if point_index < external_inputs.shape[0]:
+                # Проверяем соответствие размеров
+                if external_inputs.shape[1] == input_size:
+                    return external_inputs[point_index].unsqueeze(0)
+                else:
+                    # Адаптируем размер входа (например, обрезаем или дополняем нулями)
+                    ext_input = external_inputs[point_index]
+                    if ext_input.size(0) > input_size:
+                        ext_input = ext_input[:input_size]
+                    elif ext_input.size(0) < input_size:
+                        padding = torch.zeros(
+                            input_size - ext_input.size(0), device=self.config.device
+                        )
+                        ext_input = torch.cat([ext_input, padding])
 
-                # Обрезаем или дополняем до нужного размера
-                target_size = self.cell_prototype.input_size
-                if ext_input.shape[1] > target_size:
-                    ext_input = ext_input[:, :target_size]
-                elif ext_input.shape[1] < target_size:
-                    padding = torch.zeros(
-                        1, target_size - ext_input.shape[1], device=self.config.device
-                    )
-                    ext_input = torch.cat([ext_input, padding], dim=1)
-
-                return ext_input
+                    return ext_input.unsqueeze(0)
 
         # Если клетка не является точкой ввода или нет соответствующего входа
-        return torch.zeros(1, self.cell_prototype.input_size, device=self.config.device)
+        return torch.zeros(1, input_size, device=self.config.device)
 
     def _update_performance_stats(self, step_time: float):
         """Обновление статистики производительности"""

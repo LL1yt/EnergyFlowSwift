@@ -39,7 +39,7 @@ class EmergentTrainingConfig:
     gradient_accumulation_steps: int = 4
 
     enable_nca: bool = True
-    nca_config: Optional[NCAConfig] = None
+    nca_config: Optional[Any] = None
 
     def __post_init__(self):
         if self.gmlp_config is None:
@@ -62,5 +62,55 @@ class EmergentTrainingConfig:
                 "dialogue_similarity": 0.4,
             }
 
-        if self.nca_config is None and self.enable_nca:
-            self.nca_config = create_nca_config()
+        # Create NCA config if NCA is enabled but config not provided
+        if self.enable_nca and self.nca_config is None:
+            # Create simple dict-based config compatible with create_emergent_nca_cell_from_config
+            self.nca_config = {
+                "state_size": self.gmlp_config.get("state_size", 8),
+                "neighbor_count": self.gmlp_config.get("neighbor_count", 6),
+                "hidden_dim": 4,  # Significantly smaller than gMLP
+                "external_input_size": min(
+                    self.gmlp_config.get("external_input_size", 12), 2
+                ),
+                "activation": "tanh",
+                "target_params": 150,
+                "use_memory": False,  # NCA has implicit memory
+                "dropout": 0.0,
+            }
+
+    @classmethod
+    def from_main_config(cls, main_config: Dict[str, Any]) -> "EmergentTrainingConfig":
+        """Create EmergentTrainingConfig from main_config.yaml structure"""
+
+        # Extract relevant sections
+        nca_config = main_config.get("nca", {})
+        gmlp_config = main_config.get("gmlp", {})
+        experimental = main_config.get("experimental", {})
+        training_config = main_config.get("training", {})
+        lattice_config = main_config.get("lattice", {})
+
+        # Determine if NCA should be enabled
+        enable_nca = nca_config.get("enabled", False) or experimental.get(
+            "enable_nca", False
+        )
+
+        # Create cube dimensions from lattice config
+        cube_dimensions = (
+            lattice_config.get("xs", 15),
+            lattice_config.get("ys", 15),
+            lattice_config.get("zs", 11),
+        )
+
+        config = cls(
+            enable_nca=enable_nca,
+            cube_dimensions=cube_dimensions,
+            learning_rate=training_config.get("learning_rate", 0.001),
+            batch_size=training_config.get("batch_size", 8),
+            gmlp_config=gmlp_config.copy() if gmlp_config else None,
+        )
+
+        # Override nca_config if provided in main config
+        if enable_nca and nca_config:
+            config.nca_config = nca_config.copy()
+
+        return config
