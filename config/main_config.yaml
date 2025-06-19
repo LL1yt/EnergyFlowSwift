@@ -51,6 +51,17 @@ gmlp:
   activation: "gelu"
   dropout: 0.1
 
+# === NCA CONFIGURATION (NEW) ===
+# Используется, если experimental.enable_nca=true в EmergentTraining
+# и nca.enabled=true в dynamic_training.py.
+nca:
+  enabled: true # Переключите на true для использования NCA вместо gMLP
+  state_size: 8 # Базовый размер состояния
+  hidden_dim: 4 # Скрытый слой, значительно меньше чем gMLP
+  external_input_size: 1 # Внешний вход
+  target_params: 150 # Целевое количество параметров для масштабирования
+  activation: "tanh"
+
 # === DEVICE CONFIGURATION ===
 device:
   use_gpu: true

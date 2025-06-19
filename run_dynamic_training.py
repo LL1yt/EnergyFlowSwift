@@ -127,6 +127,23 @@ class DynamicTrainingManager:
                 )
                 logger.warning(f"   Will use fallback approach in create_trainer()")
 
+            # НОВОЕ: Загружаем NCA конфигурацию, если она есть
+            try:
+                nca_config = self.config_manager.get_config("nca")
+                if nca_config:
+                    self.dynamic_config["nca"] = nca_config
+                    logger.info(f"[CONFIG] Added nca section to dynamic config")
+                    logger.info(
+                        f"   nca.enabled: {nca_config.get('enabled', 'Not set')}"
+                    )
+                else:
+                    logger.warning(
+                        f"[WARNING] nca section is empty in dynamic config, will use gMLP."
+                    )
+            except Exception as e:
+                logger.warning(f"[WARNING] Failed to load nca section: {e}")
+                logger.warning(f"   Defaulting to gMLP.")
+
             # Информация о режиме
             dynamic_info = self.config_manager.get_dynamic_config_info()
             if dynamic_info:
@@ -161,9 +178,17 @@ class DynamicTrainingManager:
                 EmergentCubeTrainer,
                 EmergentTrainingConfig,
             )
-            from training.embedding_trainer.neural_cellular_automata import (
-                create_nca_config,
-            )
+
+            # Определяем, использовать ли NCA на основе динамической конфигурации
+            use_nca = self.dynamic_config.get("nca", {}).get("enabled", False)
+            nca_params = self.dynamic_config.get("nca", {}) if use_nca else {}
+
+            if use_nca:
+                logger.info("✅ NCA cell type is enabled via dynamic config.")
+            else:
+                logger.info(
+                    "✅ gMLP cell type is enabled (NCA not configured or disabled)."
+                )
 
             # Используем emergent_training секцию если доступна, иначе fallback
             if "emergent_training" in self.dynamic_config:
@@ -219,13 +244,9 @@ class DynamicTrainingManager:
                     mixed_precision=True,
                     gradient_checkpointing=True,
                     gradient_accumulation_steps=4,
-                    # NCA конфигурация
-                    enable_nca=True,
-                    nca_config=create_nca_config(
-                        update_probability=0.7,
-                        residual_learning_rate=0.1,
-                        enable_pattern_detection=True,
-                    ),
+                    # NCA конфигурация (управляется динамически)
+                    enable_nca=use_nca,
+                    nca_config=nca_params,
                 )
 
                 logger.info(
@@ -295,13 +316,9 @@ class DynamicTrainingManager:
                     mixed_precision=True,
                     gradient_checkpointing=True,
                     gradient_accumulation_steps=4,
-                    # NCA конфигурация
-                    enable_nca=True,
-                    nca_config=create_nca_config(
-                        update_probability=0.7,
-                        residual_learning_rate=0.1,
-                        enable_pattern_detection=True,
-                    ),
+                    # NCA конфигурация (управляется динамически)
+                    enable_nca=use_nca,
+                    nca_config=nca_params,
                 )
 
             # Создаем trainer

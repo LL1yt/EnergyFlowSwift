@@ -235,7 +235,7 @@ def create_nca_cell_from_config(config: Dict[str, Any]) -> MinimalNCACell:
     gmlp_config = config.get("gmlp_config", {})
 
     # NCA specific config
-    nca_config = config.get("nca_config", {})
+    nca_config = config.get("nca", {})
 
     # Параметры с fallback на gMLP значения
     params = {
