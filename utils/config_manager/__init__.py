@@ -10,25 +10,26 @@
 """
 
 from .config_manager import (
-    ConfigManager, 
+    ConfigManager,
     ConfigManagerSettings,
     create_config_manager,
     get_global_config_manager,
-    set_global_config_manager
+    set_global_config_manager,
 )
 from .config_section import ConfigSection, TypedConfigSection
 from .config_validator import (
-    ConfigValidator, 
+    ConfigValidator,
     ConfigValidatorBuilder,
-    DEFAULT_VALIDATORS
+    DEFAULT_VALIDATORS,
 )
 from .config_schema import (
-    ConfigSchema, 
-    FieldSchema, 
+    ConfigSchema,
+    FieldSchema,
     FieldType,
     SchemaBuilder,
-    DEFAULT_SCHEMAS
+    DEFAULT_SCHEMAS,
 )
+
 # 🆕 Новые модули для версионирования и enhanced validation
 from .config_versioning import (
     ConfigVersionManager,
@@ -36,7 +37,7 @@ from .config_versioning import (
     ConfigVersion,
     ConfigMigration,
     ChangeType,
-    DEFAULT_MIGRATIONS
+    DEFAULT_MIGRATIONS,
 )
 from .enhanced_validator import (
     EnhancedConfigValidator,
@@ -48,48 +49,49 @@ from .enhanced_validator import (
     DependencyValidationRule,
     ConditionalValidationRule,
     StructureValidationRule,
-    ENHANCED_VALIDATORS
+    ENHANCED_VALIDATORS,
 )
+
+# Dynamic Config
+from .dynamic_config import DynamicConfigManager
 
 __all__ = [
     # Основные классы
-    'ConfigManager',
-    'ConfigManagerSettings',
-    'ConfigSection',
-    'TypedConfigSection',
-    'ConfigValidator',
-    'ConfigValidatorBuilder', 
-    'ConfigSchema',
-    'FieldSchema',
-    'FieldType',
-    'SchemaBuilder',
-    
+    "ConfigManager",
+    "ConfigManagerSettings",
+    "ConfigSection",
+    "TypedConfigSection",
+    "ConfigValidator",
+    "ConfigValidatorBuilder",
+    "ConfigSchema",
+    "FieldSchema",
+    "FieldType",
+    "SchemaBuilder",
     # 🆕 Версионирование
-    'ConfigVersionManager',
-    'ConfigChange',
-    'ConfigVersion',
-    'ConfigMigration',
-    'ChangeType',
-    
+    "ConfigVersionManager",
+    "ConfigChange",
+    "ConfigVersion",
+    "ConfigMigration",
+    "ChangeType",
     # 🆕 Enhanced Validation
-    'EnhancedConfigValidator',
-    'EnhancedFieldValidator',
-    'ValidationResult',
-    'ValidationSeverity',
-    'SchemaManager',
-    'SchemaValidationRule',
-    'DependencyValidationRule',
-    'ConditionalValidationRule',
-    'StructureValidationRule',
-    
+    "EnhancedConfigValidator",
+    "EnhancedFieldValidator",
+    "ValidationResult",
+    "ValidationSeverity",
+    "SchemaManager",
+    "SchemaValidationRule",
+    "DependencyValidationRule",
+    "ConditionalValidationRule",
+    "StructureValidationRule",
     # Helper функции
-    'create_config_manager',
-    'get_global_config_manager',
-    'set_global_config_manager',
-    
+    "create_config_manager",
+    "get_global_config_manager",
+    "set_global_config_manager",
     # Предустановленные валидаторы и схемы
-    'DEFAULT_VALIDATORS',
-    'DEFAULT_SCHEMAS',
-    'DEFAULT_MIGRATIONS',
-    'ENHANCED_VALIDATORS',
-] 
+    "DEFAULT_VALIDATORS",
+    "DEFAULT_SCHEMAS",
+    "DEFAULT_MIGRATIONS",
+    "ENHANCED_VALIDATORS",
+    # Dynamic Config
+    "DynamicConfigManager",
+]

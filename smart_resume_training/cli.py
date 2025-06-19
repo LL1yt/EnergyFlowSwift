@@ -17,6 +17,12 @@ def parse_args():
 
     # Configuration arguments
     parser.add_argument(
+        "--config-path",
+        type=str,
+        default=None,
+        help="Path to a specific YAML configuration file. If provided, overrides dynamic generation.",
+    )
+    parser.add_argument(
         "--mode",
         type=str,
         default=None,

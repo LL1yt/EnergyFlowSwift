@@ -46,7 +46,7 @@ def main():
     try:
         logger.info("Initializing configuration...")
         config_initializer = ConfigInitializer(
-            forced_mode=args.mode, custom_scale=args.scale
+            forced_mode=args.mode, custom_scale=args.scale, config_path=args.config_path
         )
         config = config_initializer.get_config()
         metadata = config_initializer.get_metadata()
