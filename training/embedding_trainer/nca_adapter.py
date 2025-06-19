@@ -126,7 +126,7 @@ def create_emergent_nca_cell_from_config(config: Dict[str, Any]) -> EmergentNCAC
     Drop-in replacement для create EmergentGMLPCell
     """
     # Извлекаем конфигурацию
-    nca_config = config.get("nca_config", {})
+    nca_config = config.get("nca", {})
     gmlp_config = config.get("gmlp_config", {})  # Fallback для совместимости
 
     # Параметры с приоритетом NCA конфигурации
