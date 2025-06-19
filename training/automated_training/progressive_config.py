@@ -14,20 +14,10 @@ Progressive Configuration Manager - Менеджер прогрессивных 
 
 import logging
 from typing import Dict, Any, Optional
-from dataclasses import dataclass
+
+from .types import StageConfig
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class StageConfig:
-    """Конфигурация для одной стадии обучения"""
-
-    dataset_limit: int
-    epochs: int
-    batch_size: int
-    description: str
-    stage: int
 
 
 class ProgressiveConfigManager:

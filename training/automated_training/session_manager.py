@@ -10,22 +10,12 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 
-from .stage_runner import StageResult
+from .types import StageResult, SessionSummary
+from . import session_persistence
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class SessionSummary:
-    """Сводка по сессии обучения"""
-
-    total_stages: int
-    total_time_minutes: float
-    best_similarity: Optional[float]
-    avg_similarity: Optional[float]
-    similarity_trend: List[float]
 
 
 class SessionManager:
@@ -64,12 +54,14 @@ class SessionManager:
 
         # Минимальное логирование инициализации
         if max_total_time_hours > 4:  # Логируем только длительные сессии
-            logger.warning(f"[SESSION] Long training session: {max_total_time_hours}h")
+            logger.warning(
+                f"[SESSION] Long training session: {self.max_total_time_hours}h"
+            )
 
     def add_stage_result(self, result: StageResult):
         """Добавляет результат стадии в историю"""
         self.training_history.append(result)
-        self._save_session_log()
+        self.save_session()
 
     def get_session_summary(self) -> SessionSummary:
         """Генерирует сводку по текущей сессии"""
@@ -162,46 +154,18 @@ class SessionManager:
             logger.warning(f"   Best similarity: {summary.best_similarity:.3f}")
         logger.warning(f"   Session log: {self.session_log}")
 
-    def _save_session_log(self):
+    def save_session(self):
         """Сохраняет лог сессии в JSON файл"""
-        session_data = {
-            "mode": self.mode,
-            "scale": self.scale,
-            "max_total_time_hours": self.max_total_time_hours,
-            "start_time": self.start_time.isoformat(),
-            "current_time": datetime.now().isoformat(),
-            "elapsed_hours": self.get_elapsed_time_hours(),
-            "training_history": [
-                self._serialize_stage_result(r) for r in self.training_history
-            ],
-            "summary": asdict(self.get_session_summary()),
-        }
-
-        try:
-            with open(self.session_log, "w", encoding="utf-8") as f:
-                json.dump(session_data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"[ERROR] Failed to save session log: {e}")
-
-    def _serialize_stage_result(self, result: StageResult) -> Dict[str, Any]:
-        """Сериализует StageResult для JSON"""
-        return {
-            "stage": result.stage,
-            "config": {
-                "dataset_limit": result.config.dataset_limit,
-                "epochs": result.config.epochs,
-                "batch_size": result.config.batch_size,
-                "description": result.config.description,
-                "stage": result.config.stage,
-            },
-            "success": result.success,
-            "actual_time_minutes": result.actual_time_minutes,
-            "estimated_time_minutes": result.estimated_time_minutes,
-            "final_similarity": result.final_similarity,
-            "error": result.error,
-            "timestamp": result.timestamp,
-            # stdout не сохраняем для экономии места
-        }
+        session_persistence.save_session_log(
+            session_log_file=self.session_log,
+            mode=self.mode,
+            scale=self.scale,
+            max_hours=self.max_total_time_hours,
+            start_time=self.start_time.isoformat(),
+            elapsed_hours=self.get_elapsed_time_hours(),
+            history=self.training_history,
+            summary=self.get_session_summary(),
+        )
 
     def load_session_history(self, session_file: Path) -> bool:
         """
@@ -213,16 +177,10 @@ class SessionManager:
         Returns:
             bool: True если загрузка успешна
         """
-        try:
-            with open(session_file, "r", encoding="utf-8") as f:
-                session_data = json.load(f)
-
-            # Восстанавливаем историю (упрощенно)
-            self.training_history = []
-
+        history = session_persistence.load_session_history(session_file)
+        if history:
+            self.training_history = history
+            # Potentially restore other state here if needed
             logger.info(f"[SESSION] Loaded session history from {session_file}")
             return True
-
-        except Exception as e:
-            logger.error(f"[ERROR] Failed to load session history: {e}")
-            return False
+        return False

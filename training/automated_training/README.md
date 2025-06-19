@@ -20,102 +20,84 @@
 training/automated_training/
 ├── __init__.py                 # Точка входа модуля
 ├── automated_trainer.py        # Главный класс-интегратор
+├── cli_argument_parser.py      # Логика парсинга CLI аргументов
+├── cli_handler.py              # Обработчики команд CLI
+├── cli_interface.py            # CLI интерфейс
+├── logging/                    # Модуль логирования
+│   ├── __init__.py
+│   ├── core.py
+│   ├── formatters.py
+│   ├── helpers.py
+│   └── metrics_logger.py
+├── logging_config.py           # Фасад для старого API логирования
+├── process_runner.py           # Утилита для запуска внешних процессов
 ├── progressive_config.py       # Управление конфигурациями стадий
-├── stage_runner.py            # Выполнение тренировочных процессов
-├── session_manager.py         # Управление сессиями и логированием
-├── cli_interface.py           # CLI интерфейс
-└── README.md                  # Документация (этот файл)
+├── session_manager.py          # Управление состоянием сессии
+├── session_persistence.py      # Сохранение и загрузка сессий
+├── stage_runner.py             # Выполнение тренировочных процессов
+├── types.py                    # Централизованные типы данных (dataclasses)
+└── README.md                   # Документация (этот файл)
 ```
 
-### Размеры файлов (до/после)
+### Размеры файлов (после рефакторинга)
 
-| Компонент               | До        | После      |
-| ----------------------- | --------- | ---------- |
-| Оригинальный файл       | 629 строк | -          |
-| `automated_trainer.py`  | -         | ~140 строк |
-| `progressive_config.py` | -         | ~180 строк |
-| `stage_runner.py`       | -         | ~250 строк |
-| `session_manager.py`    | -         | ~220 строк |
-| `cli_interface.py`      | -         | ~280 строк |
-| `__init__.py`           | -         | ~40 строк  |
-
-**Итого**: 629→1110 строк (включая документацию и улучшенную обработку ошибок)
+| Компонент                | Строк | Описание                                             |
+| ------------------------ | ----- | ---------------------------------------------------- |
+| `automated_trainer.py`   | ~170  | Главный класс-интегратор                             |
+| `cli_interface.py`       | ~100  | Структура CLI, валидация, запуск                     |
+| `cli_argument_parser.py` | ~90   | Определение аргументов CLI                           |
+| `cli_handler.py`         | ~80   | Логика выполнения команд CLI                         |
+| `progressive_config.py`  | ~180  | Управление конфигурациями стадий                     |
+| `stage_runner.py`        | ~150  | Выполнение одной стадии обучения                     |
+| `process_runner.py`      | ~70   | Утилита для запуска subprocess-ов                    |
+| `session_manager.py`     | ~180  | Управление состоянием сессии                         |
+| `session_persistence.py` | ~70   | Сохранение/загрузка сессии в JSON                    |
+| `types.py`               | ~50   | Общие типы данных (dataclasses)                      |
+| `logging/` (пакет)       | ~250  | Модульная система логирования                        |
+| **Итого**                | ~1390 | (было ~1110) - больше файлов, но меньше код в каждом |
 
 ## Описание компонентов
 
 ### 1. AutomatedTrainer
 
 **Файл**: `automated_trainer.py`
-**Назначение**: Главный класс-интегратор
+**Назначение**: Главный класс-интегратор. Связывает все компоненты вместе и содержит главный цикл обучения.
 
-Объединяет все компоненты и предоставляет простой API для запуска автоматизированного обучения.
+### 2. CLI (Интерфейс командной строки)
 
-```python
-from training.automated_training import AutomatedTrainer
+- **`cli_interface.py`**: Определяет `CLIInterface`, который парсит аргументы, настраивает логирование и вызывает обработчики.
+- **`cli_argument_parser.py`**: Содержит функции для создания и конфигурации `ArgumentParser`.
+- **`cli_handler.py`**: Содержит функции, которые выполняют основную логику, вызываемую из CLI (например, запуск обучения или показ конфигурации).
 
-trainer = AutomatedTrainer(
-    mode="development",
-    max_total_time_hours=8.0,
-    dataset_limit_override=1000  # для тестирования
-)
-trainer.run_automated_training()
-```
-
-### 2. ProgressiveConfigManager
+### 3. ProgressiveConfigManager
 
 **Файл**: `progressive_config.py`
-**Назначение**: Управление конфигурациями стадий
+**Назначение**: Управление конфигурациями стадий. Реализует стратегию прогрессивного увеличения сложности обучения.
 
-Реализует стратегию прогрессивного увеличения сложности обучения:
+### 4. StageRunner & ProcessRunner
 
-- Stage 1: Маленький датасет, много эпох (изучение основ)
-- Stage 2: Средний датасет, средние эпохи (консолидация)
-- Stage 3-5: Увеличение сложности
+- **`stage_runner.py`**: Отвечает за выполнение одной стадии обучения. Формирует команду и обрабатывает результат.
+- **`process_runner.py`**: Абстракция для запуска внешних процессов с таймаутами и захватом вывода.
 
-```python
-config_manager = ProgressiveConfigManager(dataset_limit_override=500)
-stage_config = config_manager.get_stage_config(1)
-estimated_time = config_manager.estimate_stage_time(stage_config, "development")
-```
+### 5. SessionManager & SessionPersistence
 
-### 3. TrainingStageRunner
+- **`session_manager.py`**: Управляет состоянием сессии: отслеживает время, историю результатов, генерирует сводки.
+- **`session_persistence.py`**: Отвечает за сериализацию, сохранение и загрузку состояния сессии в JSON-файлы.
 
-**Файл**: `stage_runner.py`
-**Назначение**: Выполнение тренировочных процессов
+### 6. Logging (пакет)
 
-Управляет subprocess-ами, мониторит выполнение в реальном времени и обрабатывает результаты.
+**Каталог**: `logging/`
+**Назначение**: Централизованная и модульная система логирования.
 
-```python
-stage_runner = TrainingStageRunner(mode="development", timeout_multiplier=2.0)
-result = stage_runner.run_stage(stage_config, estimated_time)
-```
+- **`core.py`**: Основная логика настройки логгеров.
+- **`formatters.py`**: Пользовательские форматтеры (`StructuredFormatter`).
+- **`helpers.py`**: Вспомогательные функции (`get_logger`, `log_stage_start`).
+- **`metrics_logger.py`**: Специализированный логгер для метрик.
 
-### 4. SessionManager
+### 7. Types
 
-**Файл**: `session_manager.py`
-**Назначение**: Управление сессиями и логированием
-
-Отвечает за логирование прогресса, сохранение истории результатов и генерацию сводок.
-
-```python
-session_manager = SessionManager(max_total_time_hours=8.0)
-session_manager.add_stage_result(result)
-summary = session_manager.get_session_summary()
-```
-
-### 5. CLIInterface
-
-**Файл**: `cli_interface.py`
-**Назначение**: Интерфейс командной строки
-
-Предоставляет расширенный CLI интерфейс с валидацией аргументов и подробной справкой.
-
-```python
-from training.automated_training import CLIInterface
-
-cli = CLIInterface()
-cli.main()  # или cli.main(["--mode", "research", "--max-hours", "12"])
-```
+**Файл**: `types.py`
+**Назначение**: Определяет общие структуры данных (`dataclasses`), используемые в разных модулях (`StageConfig`, `StageResult`, `SessionSummary`), для избежания циклических зависимостей.
 
 ## Использование
 

@@ -17,6 +17,7 @@ from typing import Optional
 from .progressive_config import ProgressiveConfigManager
 from .stage_runner import TrainingStageRunner
 from .session_manager import SessionManager
+from .logging_config import log_stage_start
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +101,6 @@ class AutomatedTrainer:
                 break
 
             # Используем глобальную функцию для логирования начала стадии
-            from .logging_config import log_stage_start
-
             log_stage_start(
                 stage,
                 {

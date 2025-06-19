@@ -10,33 +10,13 @@ import sys
 import time
 import logging
 import subprocess
-import threading
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from dataclasses import dataclass
 
-from .progressive_config import StageConfig
+from .types import StageConfig, StageResult
+from .process_runner import run_process
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class StageResult:
-    """Результат выполнения стадии обучения"""
-
-    stage: int
-    config: StageConfig
-    success: bool
-    actual_time_minutes: float
-    estimated_time_minutes: float
-    final_similarity: Optional[float] = None
-    error: Optional[str] = None
-    stdout: Optional[str] = None
-    timestamp: str = ""
-
-    def __post_init__(self):
-        if not self.timestamp:
-            self.timestamp = datetime.now().isoformat()
 
 
 class TrainingStageRunner:
@@ -85,7 +65,9 @@ class TrainingStageRunner:
         timeout_seconds = estimated_time * 60 * self.timeout_multiplier
 
         try:
-            result = self._run_subprocess(cmd, timeout_seconds, stage_config.stage)
+            result = run_process(
+                cmd, timeout_seconds, process_id=f"Stage {stage_config.stage}"
+            )
 
             end_time = time.time()
             actual_time = (end_time - start_time) / 60  # в минутах
@@ -123,82 +105,6 @@ class TrainingStageRunner:
             cmd.extend(["--scale", str(self.scale)])
 
         return cmd
-
-    def _run_subprocess(
-        self, cmd: List[str], timeout_seconds: float, stage: int
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Запускает subprocess с мониторингом в реальном времени
-
-        Returns:
-            Dict с результатами выполнения или None при ошибке
-        """
-        try:
-            # Запускаем процесс с захватом вывода (без логирования PID)
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                universal_newlines=True,
-                bufsize=1,  # Построчная буферизация
-            )
-
-            # Собираем весь вывод для последующего анализа
-            stdout_lines = []
-            stderr_lines = []
-
-            # Читаем вывод в реальном времени (без логирования каждой строки)
-            stdout_thread = threading.Thread(
-                target=self._read_output,
-                args=(process.stdout, stdout_lines, None),  # Убрали prefix
-            )
-            stderr_thread = threading.Thread(
-                target=self._read_output,
-                args=(process.stderr, stderr_lines, None),  # Убрали prefix
-            )
-
-            stdout_thread.daemon = True
-            stderr_thread.daemon = True
-            stdout_thread.start()
-            stderr_thread.start()
-
-            # Ожидаем завершения с таймаутом
-            try:
-                process.wait(timeout=timeout_seconds)
-                return_code = process.returncode
-            except subprocess.TimeoutExpired:
-                logger.error(
-                    f"⏰ Stage {stage} timeout after {timeout_seconds/60:.1f}min"
-                )
-                process.kill()
-                process.wait()
-                return_code = -1
-
-            # Ждем завершения потоков чтения
-            stdout_thread.join(timeout=5)
-            stderr_thread.join(timeout=5)
-
-            # Возвращаем результат без логирования completion
-            return {
-                "return_code": return_code,
-                "stdout": "\n".join(stdout_lines),
-                "stderr": "\n".join(stderr_lines),
-            }
-
-        except Exception as e:
-            logger.error(f"❌ Subprocess execution failed: {e}")
-            return None
-
-    def _read_output(self, pipe, output_list: List[str], prefix: str):
-        """Читает вывод из pipe без логирования каждой строки"""
-        try:
-            for line in iter(pipe.readline, ""):
-                if line:
-                    output_list.append(line.strip())
-        except Exception as e:
-            if prefix:  # Логируем ошибку только если prefix не None
-                logger.error(f"Reading error: {e}")
 
     def _process_result(
         self,
@@ -250,16 +156,19 @@ class TrainingStageRunner:
         )
 
     def _extract_similarity_from_output(self, output: str) -> Optional[float]:
-        """Извлекает final similarity из вывода обучения"""
+        """
+        Извлекает последнее значение 'final_similarity' из вывода скрипта.
+        Предполагается, что вывод содержит строки вида:
+        'final_similarity=0.123'
+        """
+        similarity = None
         try:
-            # Ищем строку с final_similarity
-            for line in output.split("\n"):
-                if "final_similarity:" in line:
-                    # Извлекаем число
-                    parts = line.split("final_similarity:")
-                    if len(parts) > 1:
-                        similarity_str = parts[1].strip()
-                        return float(similarity_str)
-        except:
-            pass
-        return None
+            for line in reversed(output.splitlines()):
+                if "final_similarity=" in line:
+                    similarity_str = line.split("=")[1].strip()
+                    similarity = float(similarity_str)
+                    break
+        except (ValueError, IndexError) as e:
+            logger.warning(f"Could not parse similarity from output: {e}")
+
+        return similarity
