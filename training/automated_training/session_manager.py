@@ -62,17 +62,14 @@ class SessionManager:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.session_log = self.log_dir / f"automated_session_{timestamp}.json"
 
-        logger.info("[SESSION] SessionManager initialized")
-        logger.info(f"   Mode: {mode}")
-        logger.info(f"   Scale: {scale}")
-        logger.info(f"   Max time: {max_total_time_hours} hours")
-        logger.info(f"   Session log: {self.session_log}")
+        # Минимальное логирование инициализации
+        if max_total_time_hours > 4:  # Логируем только длительные сессии
+            logger.warning(f"[SESSION] Long training session: {max_total_time_hours}h")
 
     def add_stage_result(self, result: StageResult):
         """Добавляет результат стадии в историю"""
         self.training_history.append(result)
         self._save_session_log()
-        logger.info(f"[SESSION] Added stage {result.stage} result to history")
 
     def get_session_summary(self) -> SessionSummary:
         """Генерирует сводку по текущей сессии"""
@@ -111,9 +108,7 @@ class SessionManager:
         elapsed_hours = (datetime.now() - self.start_time).total_seconds() / 3600
 
         if elapsed_hours >= self.max_total_time_hours:
-            logger.info(
-                f"[TIME] Time limit reached: {elapsed_hours:.1f}/{self.max_total_time_hours} hours"
-            )
+            logger.warning(f"⏰ Time limit reached: {elapsed_hours:.1f}h")
             return False
 
         return True
@@ -128,81 +123,44 @@ class SessionManager:
         return (datetime.now() - self.start_time).total_seconds() / 3600
 
     def log_session_start(self):
-        """Логирует начало сессии обучения"""
-        logger.info(f"🎯 ======== AUTOMATED TRAINING SESSION STARTED ========")
-        logger.info(f"[TARGET] Starting automated training session")
-        logger.info(f"   Start time: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"   Max duration: {self.max_total_time_hours} hours")
-        logger.info(
-            f"   Target end time: {(self.start_time + timedelta(hours=self.max_total_time_hours)).strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        logger.info(f"   Mode: {self.mode}")
+        """Логирует начало сессии обучения (минимально)"""
+        logger.warning(f"🎯 AUTOMATED TRAINING SESSION STARTED")
+        logger.warning(f"   Duration: {self.max_total_time_hours}h | Mode: {self.mode}")
         if self.scale:
-            logger.info(f"   Scale factor: {self.scale}")
-        logger.info(f"   Session log: {self.session_log}")
-        logger.info("=" * 60)
+            logger.warning(f"   Scale: {self.scale}")
 
     def log_stage_start(self, stage: int):
-        """Логирует начало стадии"""
-        logger.info(f"🚀 [STAGE-{stage}] ======== STARTING STAGE {stage} ========")
+        """Логирует начало стадии (убрано - используется глобальная функция)"""
+        pass
 
     def log_stage_completion(self, result: StageResult, stage_duration: float):
-        """Логирует завершение стадии с детальным прогрессом"""
+        """Логирует завершение стадии с критическим прогрессом"""
         summary = self.get_session_summary()
         elapsed_total = self.get_elapsed_time_hours()
         remaining_time = self.get_remaining_time_hours()
 
-        logger.info(
-            f"✅ [STAGE-{result.stage}] ======== STAGE {result.stage} COMPLETED ========"
-        )
-        logger.info(f"   Stage duration: {stage_duration:.1f} minutes")
-        logger.info(f"[DATA] Overall Progress:")
-        logger.info(f"   Stages completed: {summary.total_stages}")
-        logger.info(
-            f"   Session time: {elapsed_total:.1f}h / {self.max_total_time_hours}h"
-        )
-        logger.info(f"   Remaining time: {remaining_time:.1f}h")
-        logger.info(
-            f"   Best similarity: {summary.best_similarity:.4f}"
-            if summary.best_similarity
-            else "   Best similarity: N/A"
-        )
-        logger.info(f"   Total training time: {summary.total_time_minutes:.1f} minutes")
-
-        # Показываем тренд похожести
-        if summary.similarity_trend and len(summary.similarity_trend) > 1:
-            trend = summary.similarity_trend
-            logger.info(f"   Similarity trend: {[f'{s:.3f}' for s in trend]}")
-            if len(trend) >= 2:
-                improvement = trend[-1] - trend[-2]
-                logger.info(f"   Last improvement: {improvement:+.4f}")
+        # Логируем только каждую 3-ю стадию или важные моменты
+        if result.stage % 3 == 0 or not result.success or remaining_time < 1.0:
+            logger.warning(
+                f"📊 Progress: Stage {result.stage} | {elapsed_total:.1f}h/{self.max_total_time_hours}h"
+            )
+            if summary.best_similarity:
+                logger.warning(f"   Best similarity: {summary.best_similarity:.3f}")
+            if remaining_time < 1.0:
+                logger.warning(f"   ⚠️ Less than 1h remaining!")
 
     def log_final_summary(self):
         """Выводит финальную сводку по сессии"""
         summary = self.get_session_summary()
         elapsed_hours = self.get_elapsed_time_hours()
 
-        logger.info(f"\n[SUCCESS] Automated training session completed!")
-        logger.info(f"[DATA] Final Summary:")
-        logger.info(f"   Total duration: {elapsed_hours:.1f} hours")
-        logger.info(f"   Stages completed: {summary.total_stages}")
-        logger.info(f"   Total training time: {summary.total_time_minutes:.1f} minutes")
-        logger.info(
-            f"   Best similarity achieved: {summary.best_similarity:.4f}"
-            if summary.best_similarity
-            else "   Best similarity: N/A"
+        logger.warning(f"🏁 TRAINING SESSION COMPLETED")
+        logger.warning(
+            f"   Duration: {elapsed_hours:.1f}h | Stages: {summary.total_stages}"
         )
-        logger.info(
-            f"   Average similarity: {summary.avg_similarity:.4f}"
-            if summary.avg_similarity
-            else "   Average similarity: N/A"
-        )
-        logger.info(f"   Session log saved: {self.session_log}")
-
-        if summary.similarity_trend:
-            logger.info(
-                f"   Recent similarity trend: {[f'{s:.3f}' for s in summary.similarity_trend]}"
-            )
+        if summary.best_similarity:
+            logger.warning(f"   Best similarity: {summary.best_similarity:.3f}")
+        logger.warning(f"   Session log: {self.session_log}")
 
     def _save_session_log(self):
         """Сохраняет лог сессии в JSON файл"""

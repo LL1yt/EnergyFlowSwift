@@ -58,10 +58,9 @@ class TrainingStageRunner:
         self.scale = scale
         self.timeout_multiplier = timeout_multiplier
 
-        logger.info("[RUNNER] TrainingStageRunner initialized")
-        logger.info(f"   Mode: {mode}")
-        logger.info(f"   Scale: {scale}")
-        logger.info(f"   Timeout multiplier: {timeout_multiplier}")
+        # Минимальное логирование инициализации
+        if timeout_multiplier > 2.0:  # Логируем только нестандартные значения
+            logger.warning(f"[RUNNER] High timeout multiplier: {timeout_multiplier}")
 
     def run_stage(
         self, stage_config: StageConfig, estimated_time: float
@@ -76,25 +75,14 @@ class TrainingStageRunner:
         Returns:
             StageResult: Результат выполнения или None в случае ошибки
         """
-        logger.info(
-            f"[START] Starting Stage {stage_config.stage}: {stage_config.description}"
-        )
-        logger.info(f"   Dataset: {stage_config.dataset_limit:,} examples")
-        logger.info(f"   Epochs: {stage_config.epochs}")
-        logger.info(f"   Batch size: {stage_config.batch_size}")
-        logger.info(f"   Estimated time: {estimated_time:.1f} minutes")
+        # Убрали детальное логирование старта - используется глобальная функция
 
         # Строим команду
         cmd = self._build_command(stage_config)
-        logger.info(f"   Command: {' '.join(cmd)}")
 
-        # Запускаем обучение с real-time выводом
+        # Запускаем обучение с минимальным логированием
         start_time = time.time()
         timeout_seconds = estimated_time * 60 * self.timeout_multiplier
-
-        logger.info(
-            f"   [PROGRESS] Starting subprocess with timeout: {timeout_seconds/60:.1f} minutes"
-        )
 
         try:
             result = self._run_subprocess(cmd, timeout_seconds, stage_config.stage)
@@ -103,9 +91,8 @@ class TrainingStageRunner:
             actual_time = (end_time - start_time) / 60  # в минутах
 
             if result is None:
-                # Таймаут или ошибка запуска
                 logger.error(
-                    f"[ERROR] Stage {stage_config.stage} failed after {actual_time:.1f} minutes"
+                    f"❌ Stage {stage_config.stage} failed after {actual_time:.1f}min"
                 )
                 return None
 
@@ -114,9 +101,7 @@ class TrainingStageRunner:
             )
 
         except Exception as e:
-            logger.error(
-                f"[ERROR] Stage {stage_config.stage} failed with exception: {e}"
-            )
+            logger.error(f"❌ Stage {stage_config.stage} exception: {e}")
             return None
 
     def _build_command(self, config: StageConfig) -> List[str]:
@@ -149,7 +134,7 @@ class TrainingStageRunner:
             Dict с результатами выполнения или None при ошибке
         """
         try:
-            # Запускаем процесс с захватом вывода для real-time логов
+            # Запускаем процесс с захватом вывода (без логирования PID)
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -159,20 +144,18 @@ class TrainingStageRunner:
                 bufsize=1,  # Построчная буферизация
             )
 
-            logger.info(f"   [PROGRESS] Process started with PID: {process.pid}")
-
             # Собираем весь вывод для последующего анализа
             stdout_lines = []
             stderr_lines = []
 
-            # Читаем вывод в реальном времени
+            # Читаем вывод в реальном времени (без логирования каждой строки)
             stdout_thread = threading.Thread(
                 target=self._read_output,
-                args=(process.stdout, stdout_lines, "[SUBPROCESS]"),
+                args=(process.stdout, stdout_lines, None),  # Убрали prefix
             )
             stderr_thread = threading.Thread(
                 target=self._read_output,
-                args=(process.stderr, stderr_lines, "[SUBPROCESS-ERR]"),
+                args=(process.stderr, stderr_lines, None),  # Убрали prefix
             )
 
             stdout_thread.daemon = True
@@ -186,7 +169,7 @@ class TrainingStageRunner:
                 return_code = process.returncode
             except subprocess.TimeoutExpired:
                 logger.error(
-                    f"   [TIMEOUT] Process timed out after {timeout_seconds/60:.1f} minutes"
+                    f"⏰ Stage {stage} timeout after {timeout_seconds/60:.1f}min"
                 )
                 process.kill()
                 process.wait()
@@ -196,32 +179,26 @@ class TrainingStageRunner:
             stdout_thread.join(timeout=5)
             stderr_thread.join(timeout=5)
 
-            logger.info(
-                f"   [PROGRESS] Process completed with return code: {return_code}"
-            )
-
+            # Возвращаем результат без логирования completion
             return {
-                "returncode": return_code,
+                "return_code": return_code,
                 "stdout": "\n".join(stdout_lines),
                 "stderr": "\n".join(stderr_lines),
             }
 
         except Exception as e:
-            logger.error(f"   [ERROR] Subprocess execution failed: {e}")
+            logger.error(f"❌ Subprocess execution failed: {e}")
             return None
 
     def _read_output(self, pipe, output_list: List[str], prefix: str):
-        """Читает вывод из pipe и добавляет в список"""
+        """Читает вывод из pipe без логирования каждой строки"""
         try:
             for line in iter(pipe.readline, ""):
                 if line:
-                    line = line.rstrip()
-                    output_list.append(line)
-                    logger.info(f"   {prefix}: {line}")
+                    output_list.append(line.strip())
         except Exception as e:
-            logger.error(f"   [ERROR] Reading {prefix}: {e}")
-        finally:
-            pipe.close()
+            if prefix:  # Логируем ошибку только если prefix не None
+                logger.error(f"Reading error: {e}")
 
     def _process_result(
         self,
@@ -230,56 +207,16 @@ class TrainingStageRunner:
         actual_time: float,
         estimated_time: float,
     ) -> Optional[StageResult]:
-        """Обрабатывает результат выполнения стадии"""
+        """Обрабатывает результат выполнения subprocess (минимальное логирование)"""
 
-        if result["returncode"] == -1:
-            # Таймаут
+        if result["return_code"] != 0:
             logger.error(
-                f"[ERROR] Stage {config.stage} timed out after {actual_time:.1f} minutes"
+                f"❌ Stage {config.stage} failed (exit code: {result['return_code']})"
             )
-            return StageResult(
-                stage=config.stage,
-                config=config,
-                success=False,
-                actual_time_minutes=actual_time,
-                estimated_time_minutes=estimated_time,
-                error="Timeout",
-            )
-
-        elif result["returncode"] == 0:
-            # Успешное выполнение
-            logger.info(f"[OK] Stage {config.stage} completed successfully")
-            logger.info(f"   Actual time: {actual_time:.1f} minutes")
-
-            # Показываем последние строки вывода для контекста
-            stdout_lines = result["stdout"].strip().split("\n")
-            logger.info(f"   Last few lines of output:")
-            for line in stdout_lines[-5:]:
-                if line.strip():
-                    logger.info(f"      {line}")
-
-            # Извлекаем метрики из вывода
-            similarity = self._extract_similarity_from_output(result["stdout"])
-
-            return StageResult(
-                stage=config.stage,
-                config=config,
-                success=True,
-                actual_time_minutes=actual_time,
-                estimated_time_minutes=estimated_time,
-                final_similarity=similarity,
-                stdout=result["stdout"],
-            )
-
-        else:
-            # Ошибка выполнения
-            logger.error(
-                f"[ERROR] Stage {config.stage} failed with return code {result['returncode']}"
-            )
-            logger.error(f"   STDOUT output:")
-            logger.error(result["stdout"])
-            logger.error(f"   STDERR output:")
-            logger.error(result["stderr"])
+            # Показываем только последние строки stderr при ошибке
+            stderr_lines = result["stderr"].split("\n")
+            if stderr_lines:
+                logger.error(f"   Last error: {stderr_lines[-1][:100]}...")
 
             return StageResult(
                 stage=config.stage,
@@ -287,9 +224,30 @@ class TrainingStageRunner:
                 success=False,
                 actual_time_minutes=actual_time,
                 estimated_time_minutes=estimated_time,
-                error=result["stderr"],
-                stdout=result["stdout"],
+                error=result["stderr"][-500:] if result["stderr"] else "Unknown error",
+                stdout=None,
             )
+
+        # Успешное завершение - минимальное логирование
+        final_similarity = self._extract_similarity_from_output(result["stdout"])
+
+        # Логируем только если есть similarity или время превысило оценку
+        if final_similarity or actual_time > estimated_time * 1.5:
+            logger.warning(f"✅ Stage {config.stage}: {actual_time:.1f}min")
+            if final_similarity:
+                logger.warning(f"   Similarity: {final_similarity:.3f}")
+
+        return StageResult(
+            stage=config.stage,
+            config=config,
+            success=True,
+            actual_time_minutes=actual_time,
+            estimated_time_minutes=estimated_time,
+            final_similarity=final_similarity,
+            stdout=(
+                result["stdout"][-1000:] if result["stdout"] else None
+            ),  # Только last 1000 chars
+        )
 
     def _extract_similarity_from_output(self, output: str) -> Optional[float]:
         """Извлекает final similarity из вывода обучения"""

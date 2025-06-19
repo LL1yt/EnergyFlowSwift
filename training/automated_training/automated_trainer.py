@@ -60,15 +60,13 @@ class AutomatedTrainer:
             mode=mode, scale=scale, max_total_time_hours=max_total_time_hours
         )
 
-        logger.info(f"[BOT] AutomatedTrainer initialized")
-        logger.info(f"   Mode: {mode}")
-        logger.info(f"   Scale: {scale}")
-        logger.info(f"   Max time: {max_total_time_hours} hours")
-        if dataset_limit_override:
-            logger.info(f"   Dataset limit override: {dataset_limit_override}")
-        if batch_size_override:
-            logger.info(f"   Batch size override: {batch_size_override}")
-        logger.info(f"   Timeout multiplier: {timeout_multiplier}")
+        # Минимальное логирование инициализации
+        if max_total_time_hours > 8 or dataset_limit_override or batch_size_override:
+            logger.warning(f"[TRAINER] Custom config: {max_total_time_hours}h")
+            if dataset_limit_override:
+                logger.warning(f"   Dataset limit: {dataset_limit_override}")
+            if batch_size_override:
+                logger.warning(f"   Batch size: {batch_size_override}")
 
     def run_automated_training(self):
         """Запускает автоматизированное обучение"""
@@ -83,7 +81,7 @@ class AutomatedTrainer:
 
             # Валидируем конфигурацию
             if not self.config_manager.validate_stage_config(stage_config):
-                logger.error(f"[ERROR] Invalid configuration for stage {stage}")
+                logger.error(f"❌ Invalid configuration for stage {stage}")
                 break
 
             # Оцениваем время выполнения
@@ -96,14 +94,24 @@ class AutomatedTrainer:
             estimated_time_hours = estimated_time / 60
 
             if estimated_time_hours > remaining_hours:
-                logger.info(f"[TIME] Not enough time for stage {stage}")
-                logger.info(
-                    f"   Estimated: {estimated_time_hours:.1f}h, Remaining: {remaining_hours:.1f}h"
+                logger.warning(
+                    f"⏰ Not enough time for stage {stage}: {estimated_time_hours:.1f}h needed, {remaining_hours:.1f}h left"
                 )
                 break
 
-            # Логируем начало стадии
-            self.session_manager.log_stage_start(stage)
+            # Используем глобальную функцию для логирования начала стадии
+            from .logging_config import log_stage_start
+
+            log_stage_start(
+                stage,
+                {
+                    "description": stage_config.description,
+                    "dataset_limit": stage_config.dataset_limit,
+                    "epochs": stage_config.epochs,
+                    "batch_size": stage_config.batch_size,
+                },
+            )
+
             stage_start_time = time.time()
 
             # Запускаем стадию
@@ -114,23 +122,20 @@ class AutomatedTrainer:
 
             if result is None or not result.success:
                 logger.error(
-                    f"[ERROR] Stage {stage} failed after {stage_duration:.1f} minutes, stopping automated training"
+                    f"❌ Stage {stage} failed after {stage_duration:.1f}min - stopping"
                 )
                 break
 
             # Добавляем результат в сессию
             self.session_manager.add_stage_result(result)
 
-            # Логируем завершение стадии
+            # Логируем завершение стадии (используется в session_manager)
             self.session_manager.log_stage_completion(result, stage_duration)
 
             stage += 1
 
-            logger.info(f"[NEXT] Preparing for stage {stage}...")
-
-            # Небольшая пауза между стадиями
-            logger.info("   [PAUSE] 10 second break between stages...")
-            time.sleep(10)
+            # Пауза между стадиями (без логирования)
+            time.sleep(5)  # Уменьшили с 10 секунд
 
         # Финальная сводка
         self.session_manager.log_final_summary()

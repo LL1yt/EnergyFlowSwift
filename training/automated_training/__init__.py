@@ -26,6 +26,13 @@ try:
     from .stage_runner import TrainingStageRunner
     from .session_manager import SessionManager
     from .cli_interface import CLIInterface
+    from .logging_config import (
+        setup_automated_training_logging,
+        get_training_logger,
+        get_metrics_logger,
+        log_stage_start,
+        log_stage_complete,
+    )
 
     AUTOMATED_TRAINING_AVAILABLE = True
 except ImportError as e:
@@ -39,5 +46,10 @@ __all__ = [
     "TrainingStageRunner",
     "SessionManager",
     "CLIInterface",
+    "setup_automated_training_logging",
+    "get_training_logger",
+    "get_metrics_logger",
+    "log_stage_start",
+    "log_stage_complete",
     "AUTOMATED_TRAINING_AVAILABLE",
 ]

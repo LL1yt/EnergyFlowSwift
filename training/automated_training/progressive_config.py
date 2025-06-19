@@ -80,11 +80,11 @@ class ProgressiveConfigManager:
             },
         }
 
-        logger.info("[CONFIG] ProgressiveConfigManager initialized")
-        if dataset_limit_override:
-            logger.info(f"   Dataset limit override: {dataset_limit_override}")
-        if batch_size_override:
-            logger.info(f"   Batch size override: {batch_size_override}")
+        # Минимальное логирование инициализации
+        if dataset_limit_override or batch_size_override:
+            logger.warning(
+                f"[CONFIG] Overrides: dataset={dataset_limit_override}, batch={batch_size_override}"
+            )
 
     def get_stage_config(self, stage: int) -> StageConfig:
         """
@@ -182,25 +182,17 @@ class ProgressiveConfigManager:
         return max(estimated_minutes, min_time_minutes)
 
     def validate_stage_config(self, config: StageConfig) -> bool:
-        """
-        Валидирует конфигурацию стадии
-
-        Args:
-            config: Конфигурация стадии
-
-        Returns:
-            bool: True если конфигурация валидна
-        """
+        """Валидирует конфигурацию стадии (с минимальным логированием)"""
         if config.dataset_limit <= 0:
-            logger.error(f"Invalid dataset_limit: {config.dataset_limit}")
+            logger.error(f"❌ Invalid dataset_limit: {config.dataset_limit}")
             return False
 
         if config.epochs <= 0:
-            logger.error(f"Invalid epochs: {config.epochs}")
+            logger.error(f"❌ Invalid epochs: {config.epochs}")
             return False
 
         if config.batch_size <= 0:
-            logger.error(f"Invalid batch_size: {config.batch_size}")
+            logger.error(f"❌ Invalid batch_size: {config.batch_size}")
             return False
 
         return True

@@ -11,6 +11,7 @@ import logging
 from typing import Optional
 
 from .automated_trainer import AutomatedTrainer
+from .logging_config import setup_automated_training_logging, get_training_logger
 
 logger = logging.getLogger(__name__)
 
@@ -129,24 +130,8 @@ class CLIInterface:
         Args:
             args: Parsed CLI arguments
         """
-        if args.quiet:
-            level = logging.WARNING
-        elif args.verbose:
-            level = logging.DEBUG
-        else:
-            level = logging.INFO
-
-        # Настройка логирования
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            handlers=[
-                logging.StreamHandler(),  # Консоль
-                logging.FileHandler(
-                    "logs/automated_training.log", encoding="utf-8"
-                ),  # Файл
-            ],
-        )
+        # Используем новую централизованную систему логирования
+        setup_automated_training_logging(verbose=args.verbose, quiet=args.quiet)
 
     def validate_args(self, args: argparse.Namespace) -> bool:
         """
@@ -211,8 +196,8 @@ class CLIInterface:
                 timeout_multiplier=args.timeout_multiplier,
             )
 
-            # Показываем конфигурацию стадий
-            logger.info(f"\n[INFO] Training stages configuration:")
+            # Показываем конфигурацию стадий (компактно)
+            logger.warning(f"⚙️ Training Configuration Preview:")
             stages_info = trainer.config_manager.get_all_stages_info()
 
             total_estimated_time = 0
@@ -221,24 +206,19 @@ class CLIInterface:
                 estimated_time = info["estimated_time_minutes"]
                 total_estimated_time += estimated_time
 
-                logger.info(f"   Stage {stage}: {config.description}")
-                logger.info(
-                    f"      Dataset: {config.dataset_limit:,}, "
-                    f"Epochs: {config.epochs}, "
-                    f"Batch: {config.batch_size}"
+                logger.warning(
+                    f"   Stage {stage}: {config.dataset_limit:,} samples, {config.epochs}e, {estimated_time:.0f}min"
                 )
-                logger.info(f"      Estimated time: {estimated_time:.1f} minutes")
-                logger.info("")
 
-            logger.info(
-                f"Total estimated time: {total_estimated_time:.1f} minutes ({total_estimated_time/60:.1f} hours)"
+            logger.warning(
+                f"Total: {total_estimated_time:.0f}min ({total_estimated_time/60:.1f}h)"
             )
-            logger.info(
-                f"Fits in {args.max_hours}h limit: {'✅ Yes' if total_estimated_time/60 <= args.max_hours else '❌ No'}"
-            )
+
+            fits = total_estimated_time / 60 <= args.max_hours
+            logger.warning(f"Fits in {args.max_hours}h: {'✅' if fits else '❌'}")
 
         except Exception as e:
-            logger.error(f"[ERROR] Failed to show config: {e}")
+            logger.error(f"❌ Failed to show config: {e}")
             sys.exit(1)
 
     def run_automated_training(self, args: argparse.Namespace):
@@ -262,9 +242,9 @@ class CLIInterface:
             trainer.run_automated_training()
 
         except KeyboardInterrupt:
-            logger.info("[STOP] Automated training interrupted by user")
+            logger.warning("⏹️ Training interrupted by user")
         except Exception as e:
-            logger.error(f"[ERROR] Automated training failed: {e}")
+            logger.error(f"❌ Training failed: {e}")
             import traceback
 
             traceback.print_exc()
