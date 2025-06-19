@@ -219,8 +219,15 @@ class AdapterCubeTrainer:
             f"[CONFIG] Setting up adapter: {self.config.teacher_model} → surface..."
         )
 
+        # ДИАГНОСТИКА: Логируем детали конфигурации
+        self.logger.info(f"[DIAGNOSTIC] Teacher model: {self.config.teacher_model}")
+        self.logger.info(
+            f"[DIAGNOSTIC] Teacher embedding dim: {self.config.teacher_embedding_dim}"
+        )
+
         # Вычисляем surface размер в зависимости от стратегии
         surface_size = self._calculate_surface_size()
+        self.logger.info(f"[DIAGNOSTIC] Surface size: {surface_size}")
 
         # Создаем адаптер
         self.adapter = UniversalEmbeddingAdapter(
@@ -314,7 +321,9 @@ class AdapterCubeTrainer:
             )
         else:
             self.processor_optimizer = None
-            self.logger.info("[WARNING] Processor optimizer skipped (no trainable parameters)")
+            self.logger.info(
+                "[WARNING] Processor optimizer skipped (no trainable parameters)"
+            )
 
         if self.config.joint_training:
             # Joint optimizer для обоих компонентов
@@ -331,7 +340,9 @@ class AdapterCubeTrainer:
                 )
             else:
                 self.joint_optimizer = None
-                self.logger.warning("[WARNING] Joint optimizer creation failed: no parameters")
+                self.logger.warning(
+                    "[WARNING] Joint optimizer creation failed: no parameters"
+                )
         else:
             self.joint_optimizer = None
 

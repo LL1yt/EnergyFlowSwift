@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import gc
 from datetime import datetime
+from dataclasses import fields
+
+# Импортируем NCAConfig для явного создания объекта
+from training.embedding_trainer.neural_cellular_automata import NCAConfig
 
 # Настройка логирования
 logging.basicConfig(
@@ -168,8 +172,22 @@ class DynamicTrainingManager:
             logger.error(f"[ERROR] Failed to load dynamic config: {e}")
             raise
 
-    # Метод _apply_custom_scale() удален - теперь custom scale
-    # передается через ConfigManagerSettings.custom_scale_factor
+    def _get_device(self) -> str:
+        """Определение устройства для обучения на основе конфигурации"""
+        try:
+            device_config = self.config_manager.get_config("device")
+            if device_config.get("use_gpu") and torch.cuda.is_available():
+                logger.info(f"Выбрано устройство: {device_config['gpu_device']}")
+                return device_config["gpu_device"]
+            if device_config.get("fallback_to_cpu"):
+                logger.warning("GPU не найден или отключен, используется CPU")
+                return "cpu"
+            raise RuntimeError("GPU не доступен, и fallback_to_cpu отключен.")
+        except Exception as e:
+            logger.error(
+                f"Не удалось определить устройство, используется CPU по-умолчанию. Ошибка: {e}"
+            )
+            return "cpu"
 
     def create_trainer(self):
         """Создание trainer с динамической конфигурацией"""
@@ -183,6 +201,34 @@ class DynamicTrainingManager:
             use_nca = self.dynamic_config.get("nca", {}).get("enabled", False)
             nca_params = self.dynamic_config.get("nca", {}) if use_nca else {}
 
+            # HOTFIX: Убираем `enabled` ключ из gmlp_config, чтобы избежать ошибки
+            gmlp_params = self.dynamic_config.get("gmlp", {})
+            if "enabled" in gmlp_params:
+                del gmlp_params["enabled"]
+
+            # HOTFIX: Убираем `enabled` и другие нерелевантные ключи из nca_config
+            if "enabled" in nca_params:
+                del nca_params["enabled"]
+            # Также убираем параметры, которые не принимает NCAConfig
+            nca_params_filtered = {
+                k: v
+                for k, v in nca_params.items()
+                if k
+                not in [
+                    "enabled",
+                    "target_params",
+                    "neighbor_count",
+                    "state_size",
+                    "hidden_dim",
+                    "external_input_size",
+                    "activation",
+                    "dropout",
+                    "use_memory",
+                    "alpha_init",
+                    "beta_init",
+                ]
+            }
+
             if use_nca:
                 logger.info("✅ NCA cell type is enabled via dynamic config.")
             else:
@@ -193,149 +239,81 @@ class DynamicTrainingManager:
             # Используем emergent_training секцию если доступна, иначе fallback
             if "emergent_training" in self.dynamic_config:
                 emergent_config = self.dynamic_config["emergent_training"]
-
-                # Логируем использование emergent_training конфигурации
                 logger.info(
                     f"[CONFIG] Using emergent_training section from dynamic config"
                 )
-                logger.info(f"   cube_dimensions: {emergent_config['cube_dimensions']}")
-                logger.info(
-                    f"   spatial_propagation_depth: {emergent_config['spatial_propagation_depth']}"
-                )
 
-                # Конфигурация EmergentTrainingConfig из emergent_training секции
-                trainer_config = EmergentTrainingConfig(
-                    teacher_model=emergent_config.get(
-                        "teacher_model", "distilbert-base-uncased"
-                    ),
-                    cube_dimensions=tuple(emergent_config["cube_dimensions"]),
-                    # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: используем spatial_propagation_depth из конфигурации
-                    spatial_propagation_depth=emergent_config[
-                        "spatial_propagation_depth"
-                    ],
-                    enable_full_cube_gradient=emergent_config.get(
-                        "enable_full_cube_gradient", True
-                    ),
-                    emergent_specialization=emergent_config.get(
-                        "emergent_specialization", True
-                    ),
-                    # gMLP конфигурация из динамической системы
-                    gmlp_config=emergent_config["gmlp_config"],
-                    # Loss weights
-                    loss_weights=emergent_config.get(
-                        "loss_weights",
-                        {
-                            "surface_reconstruction": 0.3,
-                            "internal_consistency": 0.3,
-                            "dialogue_similarity": 0.4,
-                        },
-                    ),
-                    # Training параметры
-                    learning_rate=emergent_config["learning_rate"],
-                    batch_size=emergent_config["batch_size"],
-                    epochs=emergent_config["epochs"],
-                    warmup_epochs=emergent_config.get("warmup_epochs", 3),
-                    # Optimization settings
-                    gradient_balancing=emergent_config.get("gradient_balancing", True),
-                    adaptive_loss_weighting=emergent_config.get(
-                        "adaptive_loss_weighting", True
-                    ),
-                    # Оптимизации для больших размеров
-                    mixed_precision=True,
-                    gradient_checkpointing=True,
-                    gradient_accumulation_steps=4,
-                    # NCA конфигурация (управляется динамически)
-                    enable_nca=use_nca,
-                    nca_config=nca_params,
-                )
+                # РЕШЕНИЕ: Фильтруем конфиг, чтобы передавать только ожидаемые аргументы
+                config_fields = {f.name for f in fields(EmergentTrainingConfig)}
+                filtered_config = {
+                    k: v for k, v in emergent_config.items() if k in config_fields
+                }
 
-                logger.info(
-                    f"[BRAIN] EmergentTrainingConfig from dynamic emergent_training:"
-                )
-                logger.info(f"   cube_dimensions: {trainer_config.cube_dimensions}")
-                logger.info(
-                    f"   spatial_propagation_depth: {trainer_config.spatial_propagation_depth}"
-                )
-                logger.info(
-                    f"   gmlp_config.state_size: {trainer_config.gmlp_config.get('state_size')}"
-                )
-                logger.info(
-                    f"   gmlp_config.target_params: {trainer_config.gmlp_config.get('target_params')}"
-                )
+                # Добавляем/обновляем параметры
+                filtered_config["gmlp_config"] = gmlp_params
+                filtered_config["enable_nca"] = use_nca
+                # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Создаем объект NCAConfig из отфильтрованного словаря
+                if use_nca and nca_params_filtered:
+                    filtered_config["nca_config"] = NCAConfig(**nca_params_filtered)
+                else:
+                    filtered_config["nca_config"] = None
 
+                trainer_config = EmergentTrainingConfig(**filtered_config)
             else:
-                # FALLBACK: Старый способ если emergent_training секции нет
+                # Fallback, если emergent_training секция отсутствует
                 logger.warning(
-                    f"[WARNING] emergent_training section not found, using fallback approach"
+                    f"[WARNING] Using fallback to create EmergentTrainingConfig"
                 )
-
-                lattice_config = self.dynamic_config["lattice"]
-                gmlp_config = self.dynamic_config["gmlp"]
-                training_config = self.dynamic_config["training"]
-
-                # Логируем динамическую конфигурацию для отладки
-                logger.info(f"[MAGNIFY] Dynamic gMLP config from generator:")
-                logger.info(f"   target_params: {gmlp_config.get('target_params')}")
-                logger.info(f"   state_size: {gmlp_config.get('state_size')}")
-                logger.info(f"   hidden_dim: {gmlp_config.get('hidden_dim')}")
-                logger.info(
-                    f"   external_input_size: {gmlp_config.get('external_input_size')}"
-                )
-                logger.info(f"   memory_dim: {gmlp_config.get('memory_dim')}")
-
-                # Конфигурация EmergentTrainingConfig
                 trainer_config = EmergentTrainingConfig(
-                    teacher_model="distilbert-base-uncased",
+                    teacher_model=self.dynamic_config["embeddings"]["teacher_model"],
                     cube_dimensions=(
-                        lattice_config["xs"],
-                        lattice_config["ys"],
-                        lattice_config["zs"],
+                        self.dynamic_config["lattice"]["xs"],
+                        self.dynamic_config["lattice"]["ys"],
+                        self.dynamic_config["lattice"]["zs"],
                     ),
-                    # ВАЖНО: spatial_propagation_depth должен быть равен zs
-                    spatial_propagation_depth=lattice_config["zs"],
-                    # gMLP конфигурация из динамической системы
-                    gmlp_config={
-                        "state_size": gmlp_config["state_size"],
-                        "neighbor_count": gmlp_config["neighbor_count"],
-                        "hidden_dim": gmlp_config["hidden_dim"],
-                        "external_input_size": gmlp_config["external_input_size"],
-                        "memory_dim": gmlp_config.get("memory_dim", 16),
-                        "target_params": gmlp_config[
-                            "target_params"
-                        ],  # НОВОЕ: Передаем биологически правильный target
-                        "use_memory": True,
-                        "activation": "gelu",
-                        "dropout": 0.1,
-                        "spatial_connections": True,
+                    spatial_propagation_depth=10,
+                    enable_full_cube_gradient=True,
+                    emergent_specialization=True,
+                    gmlp_config=gmlp_params,  # Используем очищенные параметры
+                    loss_weights={
+                        "surface_reconstruction": 0.3,
+                        "internal_consistency": 0.3,
+                        "dialogue_similarity": 0.4,
                     },
-                    # Training параметры
-                    learning_rate=training_config["learning_rate"],
-                    batch_size=training_config["batch_size"],
-                    epochs=training_config["epochs"],
-                    # Оптимизации для больших размеров
+                    learning_rate=self.dynamic_config["training"]["learning_rate"],
+                    batch_size=self.dynamic_config["training"]["batch_size"],
+                    epochs=self.dynamic_config["training"]["epochs"],
+                    warmup_epochs=3,
+                    gradient_balancing=True,
+                    adaptive_loss_weighting=True,
                     mixed_precision=True,
                     gradient_checkpointing=True,
                     gradient_accumulation_steps=4,
-                    # NCA конфигурация (управляется динамически)
                     enable_nca=use_nca,
-                    nca_config=nca_params,
+                    # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Создаем объект NCAConfig из отфильтрованного словаря
+                    nca_config=(
+                        NCAConfig(**nca_params_filtered)
+                        if use_nca and nca_params_filtered
+                        else None
+                    ),
                 )
 
-            # Создаем trainer
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            # Создание trainer
+            device = self._get_device()
             self.trainer = EmergentCubeTrainer(trainer_config, device=device)
+            logger.info(f"[OK] Trainer created successfully on device: {device}")
 
-            logger.info(f"[OK] Trainer created successfully")
-            logger.info(f"   Device: {device}")
-            logger.info(f"   Mixed precision: {trainer_config.mixed_precision}")
-            logger.info(
-                f"   Gradient checkpointing: {trainer_config.gradient_checkpointing}"
-            )
-
+            # ИСПРАВЛЕНИЕ: Возвращаем trainer
             return self.trainer
 
+        except ImportError as e:
+            logger.error(f"[ERROR] Failed to import necessary modules: {e}")
+            raise
+        except KeyError as e:
+            logger.error(f"[ERROR] Missing key in configuration: {e}")
+            raise
         except Exception as e:
-            logger.error(f"[ERROR] Failed to create trainer: {e}")
+            logger.error(f"[ERROR] Failed to create trainer: {e}", exc_info=True)
             raise
 
     def prepare_dataset(

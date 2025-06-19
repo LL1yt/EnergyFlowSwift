@@ -153,7 +153,8 @@ def create_emergent_nca_cell_from_config(config: Dict[str, Any]) -> EmergentNCAC
         ),
     }
 
-    logger.info(f"🔬 Создание EmergentNCACell с параметрами: {params}")
+    # Убираем спам логирования для каждой клетки
+    logger.debug(f"🔬 Создание EmergentNCACell с параметрами: {params}")
 
     return EmergentNCACell(**params)
 

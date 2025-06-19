@@ -379,7 +379,9 @@ class EmergentSpatialPropagation(nn.Module):
 
         self.propagation_count += 1
 
-        logger.debug(f"[MAGNIFY] [SpatialPropagation] Propagation #{self.propagation_count}")
+        logger.debug(
+            f"[MAGNIFY] [SpatialPropagation] Propagation #{self.propagation_count}"
+        )
         logger.debug(
             f"[MAGNIFY] [SpatialPropagation] Input cube state: shape={cube_states.shape}, requires_grad={cube_states.requires_grad}"
         )
@@ -737,7 +739,7 @@ class EmergentCubeTrainer(nn.Module):
         self._ensure_device_consistency()
 
     def _setup_enhanced_lattice(self):
-        """Setup enhanced lattice с gMLP cells + RESEARCH INTEGRATION: Channels-last memory format"""
+        """Setup enhanced lattice с gMLP или NCA cells + RESEARCH INTEGRATION: Channels-last memory format"""
 
         # Create enhanced lattice config
         lattice_config = LatticeConfig(
@@ -747,16 +749,47 @@ class EmergentCubeTrainer(nn.Module):
         # Create lattice с enhanced cells
         self.enhanced_lattice = Lattice3D(lattice_config).to(self._device)
 
-        # Replace cells с gMLP neurons
+        # Replace cells с gMLP или NCA neurons в зависимости от config.enable_nca
         total_cells = (
             self.config.cube_dimensions[0]
             * self.config.cube_dimensions[1]
             * self.config.cube_dimensions[2]
         )
 
-        self.gmlp_cells = nn.ModuleList(
-            [EmergentGMLPCell(**self.config.gmlp_config) for _ in range(total_cells)]
-        ).to(self._device)
+        # PHASE 3: Выбор архитектуры клеток на основе enable_nca
+        if self.config.enable_nca:
+            # Импорт NCA cell adapter
+            from .nca_adapter import create_emergent_nca_cell_from_config
+
+            # Создаем NCA клетки
+            config_dict = {
+                "nca": (
+                    self.config.nca_config.__dict__ if self.config.nca_config else {}
+                ),
+                "gmlp_config": self.config.gmlp_config,  # For fallback compatibility
+            }
+
+            self.gmlp_cells = nn.ModuleList(
+                [
+                    create_emergent_nca_cell_from_config(config_dict)
+                    for _ in range(total_cells)
+                ]
+            ).to(self._device)
+
+            self.logger.info(
+                f"[BRAIN] Enhanced lattice created: {total_cells} NCA cells (PHASE 3)"
+            )
+
+        else:
+            # Стандартные gMLP клетки
+            self.gmlp_cells = nn.ModuleList(
+                [
+                    EmergentGMLPCell(**self.config.gmlp_config)
+                    for _ in range(total_cells)
+                ]
+            ).to(self._device)
+
+            self.logger.info(f"[OK] Enhanced lattice created: {total_cells} gMLP cells")
 
         # RESEARCH INTEGRATION: Initialize cube states template for memory optimization
         # Note: channels_last_3d format requires specific conditions
@@ -789,17 +822,19 @@ class EmergentCubeTrainer(nn.Module):
             self.logger.warning(f"[WARNING] Channels-last 3D format not applied: {e}")
             # Continue with standard format
 
-        self.logger.info(f"[OK] Enhanced lattice created: {total_cells} gMLP cells")
         self.logger.info(
             f"[DATA] RESEARCH INTEGRATION: Channels-last 3D memory format enabled"
         )
 
-        # Log parameter count
+        # Log parameter count (works for both gMLP and NCA cells)
         total_params = sum(
             sum(p.numel() for p in cell.parameters()) for cell in self.gmlp_cells
         )
         avg_params = total_params / total_cells
-        self.logger.info(f"   Average parameters per cell: {avg_params:.0f}")
+        cell_type = "NCA" if self.config.enable_nca else "gMLP"
+        self.logger.info(
+            f"   Average parameters per {cell_type} cell: {avg_params:.0f}"
+        )
         self.logger.info(f"   Total lattice parameters: {total_params:,}")
 
     def _setup_optimizer(self):
@@ -874,7 +909,9 @@ class EmergentCubeTrainer(nn.Module):
                 self.scaler = GradScaler("cuda")
             else:
                 self.scaler = GradScaler("cpu")
-                self.logger.warning("[WARNING] Mixed precision on CPU may not provide benefits")
+                self.logger.warning(
+                    "[WARNING] Mixed precision on CPU may not provide benefits"
+                )
         else:
             self.scaler = None
 
@@ -999,7 +1036,9 @@ class EmergentCubeTrainer(nn.Module):
                         logger.error("[ERROR] [NCA] nca_results is None!")
                         final_processed_cube = processed_cube
                     elif "updated_states" not in nca_results:
-                        logger.error("[ERROR] [NCA] No 'updated_states' in nca_results!")
+                        logger.error(
+                            "[ERROR] [NCA] No 'updated_states' in nca_results!"
+                        )
                         final_processed_cube = processed_cube
                     elif nca_results["updated_states"] is None:
                         logger.error("[ERROR] [NCA] updated_states is None!")
@@ -1007,7 +1046,9 @@ class EmergentCubeTrainer(nn.Module):
                     else:
                         # Use NCA-refined states
                         final_processed_cube = nca_results["updated_states"]
-                        logger.debug(f"[OK] [NCA] Success: {final_processed_cube.shape}")
+                        logger.debug(
+                            f"[OK] [NCA] Success: {final_processed_cube.shape}"
+                        )
 
                         # Store NCA metrics for monitoring (if tracking)
                         if hasattr(self, "_nca_metrics_cache"):
@@ -1552,10 +1593,14 @@ class EmergentCubeTrainer(nn.Module):
                 else:
                     scaled_loss.backward()
 
-                logger.debug(f"[OK] [HIERARCHICAL] Backward completed for step {step+1}")
+                logger.debug(
+                    f"[OK] [HIERARCHICAL] Backward completed for step {step+1}"
+                )
 
             except RuntimeError as e:
-                logger.error(f"[ERROR] [HIERARCHICAL] Backward failed at step {step}: {e}")
+                logger.error(
+                    f"[ERROR] [HIERARCHICAL] Backward failed at step {step}: {e}"
+                )
                 raise
 
             # Accumulate losses for reporting
@@ -1721,12 +1766,18 @@ class EmergentCubeTrainer(nn.Module):
             if self.config.mixed_precision and self.scaler is not None:
                 with autocast("cpu"):  # Specify device type
                     losses = self.compute_loss(question_outputs, targets)
-                logger.debug("[MAGNIFY] [TRAIN_STEP] Loss computed with mixed precision")
+                logger.debug(
+                    "[MAGNIFY] [TRAIN_STEP] Loss computed with mixed precision"
+                )
             else:
                 losses = self.compute_loss(question_outputs, targets)
-                logger.debug("[MAGNIFY] [TRAIN_STEP] Loss computed without mixed precision")
+                logger.debug(
+                    "[MAGNIFY] [TRAIN_STEP] Loss computed without mixed precision"
+                )
 
-            logger.debug(f"[MAGNIFY] [TRAIN_STEP] Loss components: {list(losses.keys())}")
+            logger.debug(
+                f"[MAGNIFY] [TRAIN_STEP] Loss components: {list(losses.keys())}"
+            )
 
             # Check loss computational graph
             for key, loss_tensor in losses.items():
@@ -1765,7 +1816,9 @@ class EmergentCubeTrainer(nn.Module):
             # RESEARCH INTEGRATION: Mixed precision backward pass
             if self.config.mixed_precision and self.scaler is not None:
                 self.scaler.scale(total_loss).backward(retain_graph=retain_graph)
-                logger.debug("[MAGNIFY] [TRAIN_STEP] Backward completed with mixed precision")
+                logger.debug(
+                    "[MAGNIFY] [TRAIN_STEP] Backward completed with mixed precision"
+                )
             else:
                 total_loss.backward(retain_graph=retain_graph)
                 logger.debug(
