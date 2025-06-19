@@ -39,7 +39,9 @@ try:
     )
 
     if not AUTOMATED_TRAINING_AVAILABLE:
-        raise ImportError("Automated training components not available")
+        raise ImportError(
+            "Automated training components not available - check training.automated_training.__init__.py"
+        )
 
     # Создаем алиасы для обратной совместимости
     # Если кто-то импортировал классы напрямую из automated_training.py
@@ -52,19 +54,78 @@ try:
     ]
 
 except ImportError as e:
-    # Fallback: если новые модули недоступны, показываем ошибку
+    # Fallback: если новые модули недоступны, показываем детальную диагностику
     print(f"[ERROR] Failed to import refactored automated training modules: {e}")
-    print("[INFO] Make sure all components are properly implemented:")
-    print("   - training/automated_training/__init__.py")
-    print("   - training/automated_training/automated_trainer.py")
-    print("   - training/automated_training/progressive_config.py")
-    print("   - training/automated_training/stage_runner.py")
-    print("   - training/automated_training/session_manager.py")
-    print("   - training/automated_training/cli_interface.py")
-    print("[FALLBACK] Using original implementation...")
+    print("\n[DIAGNOSTIC] Checking component availability:")
+
+    # Проверяем каждый компонент отдельно
+    missing_components = []
+    try:
+        from training.automated_training.automated_trainer import AutomatedTrainer
+
+        print("   ✅ AutomatedTrainer - OK")
+    except ImportError as comp_e:
+        print(f"   ❌ AutomatedTrainer - FAILED: {comp_e}")
+        missing_components.append("AutomatedTrainer")
+
+    try:
+        from training.automated_training.progressive_config import (
+            ProgressiveConfigManager,
+        )
+
+        print("   ✅ ProgressiveConfigManager - OK")
+    except ImportError as comp_e:
+        print(f"   ❌ ProgressiveConfigManager - FAILED: {comp_e}")
+        missing_components.append("ProgressiveConfigManager")
+
+    try:
+        from training.automated_training.stage_runner import TrainingStageRunner
+
+        print("   ✅ TrainingStageRunner - OK")
+    except ImportError as comp_e:
+        print(f"   ❌ TrainingStageRunner - FAILED: {comp_e}")
+        missing_components.append("TrainingStageRunner")
+
+    try:
+        from training.automated_training.session_manager import SessionManager
+
+        print("   ✅ SessionManager - OK")
+    except ImportError as comp_e:
+        print(f"   ❌ SessionManager - FAILED: {comp_e}")
+        missing_components.append("SessionManager")
+
+    try:
+        from training.automated_training.cli_interface import CLIInterface
+
+        print("   ✅ CLIInterface - OK")
+    except ImportError as comp_e:
+        print(f"   ❌ CLIInterface - FAILED: {comp_e}")
+        missing_components.append("CLIInterface")
+
+    print(f"\n[INFO] Missing components: {missing_components}")
+    print("[INFO] Проверьте наличие всех файлов в training/automated_training/:")
+    print("   - __init__.py")
+    print("   - automated_trainer.py")
+    print("   - progressive_config.py")
+    print("   - stage_runner.py")
+    print("   - session_manager.py")
+    print("   - cli_interface.py")
+    print("   - logging_config.py")
+    print("   - process_runner.py")
+    print("   - types.py")
+
+    print("\n[FALLBACK] Проверьте также зависимости subprocess модулей:")
+    print("   - smart_resume_training.py должен существовать")
+    print("   - real_llama_training_production.py должен поддерживать CLI")
+    print("   - production_training/ модули должны быть доступны")
 
     # Здесь можно добавить fallback на оригинальную реализацию
     # Но для демонстрации рефакторинга показываем ошибку
+    print(f"\n[CRITICAL] Cannot proceed without automated training components.")
+    print(
+        f"[SUGGESTION] Run: python -m training.automated_training.cli_interface --help"
+    )
+    print(f"             Or: python smart_resume_training.py --help")
     sys.exit(1)
 
 

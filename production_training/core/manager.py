@@ -33,7 +33,18 @@ MODEL_CONFIG = {
 class ProductionTrainingManager:
     """Orchestrates the full training pipeline."""
 
-    def __init__(self, use_lightweight_model: bool = True):
+    def __init__(
+        self,
+        config: Dict[str, Any] = None,
+        metadata: Dict[str, Any] = None,
+        training_args: Dict[str, Any] = None,
+        use_lightweight_model: bool = True,
+    ):
+        # Store the passed parameters
+        self.config = config or {}
+        self.metadata = metadata or {}
+        self.training_args = training_args or {}
+
         self.training_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.checkpoint_dir = Path(f"checkpoints/prod_{self.training_id}")
         self.results_dir = Path(f"results/prod_{self.training_id}")
@@ -44,6 +55,11 @@ class ProductionTrainingManager:
         )
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.stages = get_default_training_stages()
+
+        # Apply training_args overrides to stages if provided
+        if self.training_args:
+            self._apply_training_args_to_stages()
+
         self.history = {
             "stages": [],
             "best_metrics": {"loss": float("inf"), "similarity": 0.0},
@@ -57,6 +73,25 @@ class ProductionTrainingManager:
         logger.info(
             f"Manager initialized for training ID {self.training_id} on device {self.device}"
         )
+
+    def _apply_training_args_to_stages(self):
+        """Apply training_args overrides to stages configuration"""
+        if (
+            "dataset_limit" in self.training_args
+            and self.training_args["dataset_limit"]
+        ):
+            for stage in self.stages:
+                stage.dataset_limit = min(
+                    stage.dataset_limit, self.training_args["dataset_limit"]
+                )
+
+        if "epochs" in self.training_args and self.training_args["epochs"]:
+            for stage in self.stages:
+                stage.epochs = self.training_args["epochs"]
+
+        if "batch_size" in self.training_args and self.training_args["batch_size"]:
+            for stage in self.stages:
+                stage.batch_size = self.training_args["batch_size"]
 
     def run_full_training_pipeline(self) -> Dict[str, Any]:
         """Runs the entire pipeline from validation to final analysis."""
