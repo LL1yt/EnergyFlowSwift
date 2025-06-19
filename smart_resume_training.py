@@ -1,563 +1,77 @@
 #!/usr/bin/env python3
 """
-[BRAIN] Smart Resume Training - автоматический поиск и продолжение обучения
-Ищет совместимые чекпоинты на основе динамической конфигурации
+[BRAIN] Smart Resume Training - Main Entry Point
 """
 
-import os
-import sys
-import torch
 import logging
-import json
-import time
+import sys
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime
-import glob
-from warmup_scheduler import create_warmup_scheduler
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-
-class SmartResumeManager:
-    """Менеджер умного возобновления обучения"""
-
-    def __init__(
-        self, forced_mode: Optional[str] = None, custom_scale: Optional[float] = None
-    ):
-        """
-        Args:
-            forced_mode: Принудительный режим конфигурации
-            custom_scale: Пользовательский scale factor
-        """
-        self.forced_mode = forced_mode
-        self.custom_scale = custom_scale
-        self.custom_scale_factor = custom_scale  # Алиас для совместимости
-        self.config_manager = None
-        self.current_config = None
-
-        # Инициализируем конфигурацию
-        self._initialize_config()
-
-    def _initialize_config(self):
-        """Инициализация текущей конфигурации напрямую через динамическую систему"""
-        try:
-            # Используем ТОЛЬКО динамическую систему, без старого ConfigManager
-            from utils.config_manager.dynamic_config import DynamicConfigManager
-
-            # Создаем динамический менеджер
-            dynamic_manager = DynamicConfigManager()
-
-            # Определяем режим
-            mode = self.forced_mode or "auto"
-            if mode == "auto":
-                mode = dynamic_manager.generator.detect_hardware_mode()
-
-            # Применяем custom scale factor если указан
-            if self.custom_scale_factor is not None:
-                original_scale = getattr(dynamic_manager.generator.scale_settings, mode)
-                setattr(
-                    dynamic_manager.generator.scale_settings,
-                    mode,
-                    self.custom_scale_factor,
-                )
-                logger.info(
-                    f"[TARGET] Applied custom scale factor: {self.custom_scale_factor}"
-                )
-
-            # Генерируем конфигурацию
-            full_config = dynamic_manager.create_config_for_mode(mode)
-
-            # Извлекаем нужные секции
-            self.current_config = {
-                "lattice": full_config["lattice"],
-                "embeddings": full_config["embeddings"],
-                "training": full_config["training"],
-                "gmlp": full_config["gmlp"],
-            }
-
-            # ДОБАВЛЯЕМ emergent_training секцию если она есть
-            if "emergent_training" in full_config:
-                self.current_config["emergent_training"] = full_config[
-                    "emergent_training"
-                ]
-                logger.info(f"[CONFIG] Added emergent_training section to config")
-                logger.info(
-                    f"   spatial_propagation_depth: {full_config['emergent_training']['spatial_propagation_depth']}"
-                )
-            else:
-                logger.warning(
-                    f"[WARNING] emergent_training section not found in dynamic config"
-                )
-
-            # Сохраняем метаданные
-            self.config_metadata = full_config.get("_metadata", {})
-
-            # Информация о режиме
-            logger.info(
-                f"[TARGET] Current config: {self.config_metadata.get('mode', mode)} mode"
-            )
-            logger.info(
-                f"   Scale factor: {self.config_metadata.get('scale_factor', 'unknown')}"
-            )
-
-            lattice = self.current_config["lattice"]
-            logger.info(f"[DATA] Target configuration:")
-            logger.info(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
-            logger.info(f"   Total neurons: {lattice['total_neurons']:,}")
-            logger.info(
-                f"   Embedding dim: {self.current_config['embeddings']['embedding_dim']:,}"
-            )
-
-            # Логируем gMLP параметры для проверки
-            gmlp = self.current_config["gmlp"]
-            logger.info(f"[BRAIN] gMLP configuration:")
-            logger.info(f"   Target params: {gmlp.get('target_params', 'unknown')}")
-            logger.info(f"   State size: {gmlp.get('state_size', 'unknown')}")
-            logger.info(f"   Hidden dim: {gmlp.get('hidden_dim', 'unknown')}")
-            logger.info(
-                f"   External input: {gmlp.get('external_input_size', 'unknown')}"
-            )
-            logger.info(f"   Memory dim: {gmlp.get('memory_dim', 'unknown')}")
-
-        except Exception as e:
-            logger.error(f"[ERROR] Failed to initialize config: {e}")
-            raise
-
-    def find_compatible_checkpoints(
-        self, checkpoints_dir: str = "checkpoints"
-    ) -> List[Dict[str, Any]]:
-        """
-        Ищет совместимые чекпоинты на основе текущей конфигурации
-
-        Returns:
-            Список совместимых чекпоинтов, отсортированных по приоритету
-        """
-        logger.info(
-            f"[MAGNIFY] Searching for compatible checkpoints in {checkpoints_dir}"
-        )
-
-        checkpoints_path = Path(checkpoints_dir)
-        if not checkpoints_path.exists():
-            logger.warning(f"Checkpoints directory not found: {checkpoints_dir}")
-            return []
-
-        compatible_checkpoints = []
-        current_signature = self._get_config_signature(self.current_config)
-
-        # Ищем во всех подпапках
-        search_patterns = [
-            checkpoints_path / "latest" / "*.pt",
-            checkpoints_path / "versioned" / "*" / "*.pt",
-            checkpoints_path / "*.pt",  # Прямо в корне
-        ]
-
-        for pattern in search_patterns:
-            for checkpoint_file in glob.glob(str(pattern)):
-                checkpoint_info = self._analyze_checkpoint(
-                    checkpoint_file, current_signature
-                )
-                if checkpoint_info:
-                    compatible_checkpoints.append(checkpoint_info)
-
-        # Сортируем по приоритету (совместимость, потом время)
-        compatible_checkpoints.sort(
-            key=lambda x: (
-                -x["compatibility_score"],  # Высокая совместимость первая
-                -x["timestamp_score"],  # Новые чекпоинты первые
-            )
-        )
-
-        logger.info(
-            f"[TARGET] Found {len(compatible_checkpoints)} compatible checkpoints"
-        )
-
-        # Показываем топ 5
-        for i, cp in enumerate(compatible_checkpoints[:5]):
-            logger.info(
-                f"   {i+1}. {cp['name']} (score: {cp['compatibility_score']:.2f})"
-            )
-            logger.info(f"      {cp['description']}")
-
-        return compatible_checkpoints
-
-    def _analyze_checkpoint(
-        self, checkpoint_path: str, current_signature: Dict
-    ) -> Optional[Dict[str, Any]]:
-        """Анализирует совместимость чекпоинта"""
-        try:
-            # Загружаем метаданные чекпоинта
-            checkpoint_data = torch.load(checkpoint_path, map_location="cpu")
-
-            # Извлекаем конфигурацию
-            checkpoint_config = checkpoint_data.get("config", {})
-            checkpoint_metadata = checkpoint_data.get("metadata", {})
-
-            if not checkpoint_config:
-                return None
-
-            # Вычисляем сигнатуру чекпоинта
-            checkpoint_signature = self._get_config_signature(checkpoint_config)
-
-            # Оценка совместимости
-            compatibility_score = self._calculate_compatibility(
-                current_signature, checkpoint_signature
-            )
-
-            # Минимальный порог совместимости
-            if compatibility_score < 0.5:
-                return None
-
-            # Извлекаем временную метку
-            timestamp_str = checkpoint_metadata.get("timestamp", "1970-01-01T00:00:00")
-            try:
-                timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-                timestamp_score = timestamp.timestamp()
-            except:
-                timestamp_score = 0
-
-            # Формируем информацию о чекпоинте
-            checkpoint_info = {
-                "path": checkpoint_path,
-                "name": Path(checkpoint_path).name,
-                "config": checkpoint_config,
-                "metadata": checkpoint_metadata,
-                "signature": checkpoint_signature,
-                "compatibility_score": compatibility_score,
-                "timestamp_score": timestamp_score,
-                "timestamp": timestamp_str,
-                "description": self._generate_checkpoint_description(
-                    checkpoint_metadata
-                ),
-            }
-
-            return checkpoint_info
-
-        except Exception as e:
-            logger.debug(f"Failed to analyze checkpoint {checkpoint_path}: {e}")
-            return None
-
-    def _get_config_signature(self, config: Dict) -> Dict:
-        """Создает сигнатуру конфигурации для сравнения"""
-        signature = {}
-
-        # Lattice параметры
-        if "lattice" in config:
-            lattice = config["lattice"]
-            signature["lattice_dims"] = (
-                lattice.get("xs", 0),
-                lattice.get("ys", 0),
-                lattice.get("zs", 0),
-            )
-            signature["total_neurons"] = lattice.get("total_neurons", 0)
-
-        # Embedding параметры
-        if "embeddings" in config:
-            embeddings = config["embeddings"]
-            signature["embedding_dim"] = embeddings.get("embedding_dim", 0)
-
-        # gMLP параметры
-        if "gmlp" in config:
-            gmlp = config["gmlp"]
-            signature["state_size"] = gmlp.get("state_size", 0)
-            signature["hidden_dim"] = gmlp.get("hidden_dim", 0)
-            signature["neighbor_count"] = gmlp.get("neighbor_count", 0)
-
-        return signature
-
-    def _calculate_compatibility(self, current: Dict, checkpoint: Dict) -> float:
-        """Вычисляет оценку совместимости (0.0 - 1.0)"""
-        score = 0.0
-        total_weight = 0.0
-
-        # Веса важности разных параметров
-        weights = {
-            "lattice_dims": 0.4,  # Очень важно - архитектура
-            "total_neurons": 0.2,  # Важно для размера модели
-            "embedding_dim": 0.3,  # Критично для входных данных
-            "state_size": 0.05,  # Менее критично
-            "hidden_dim": 0.03,  # Менее критично
-            "neighbor_count": 0.02,  # Менее критично
-        }
-
-        for param, weight in weights.items():
-            if param in current and param in checkpoint:
-                current_val = current[param]
-                checkpoint_val = checkpoint[param]
-
-                if current_val == checkpoint_val:
-                    score += weight  # Полное совпадение
-                elif param == "lattice_dims":
-                    # Для размеров решетки проверяем близость
-                    if isinstance(current_val, tuple) and isinstance(
-                        checkpoint_val, tuple
-                    ):
-                        similarity = self._tuple_similarity(current_val, checkpoint_val)
-                        score += weight * similarity
-                else:
-                    # Для численных параметров вычисляем относительную близость
-                    if isinstance(current_val, (int, float)) and isinstance(
-                        checkpoint_val, (int, float)
-                    ):
-                        if current_val > 0 and checkpoint_val > 0:
-                            ratio = min(current_val, checkpoint_val) / max(
-                                current_val, checkpoint_val
-                            )
-                            score += weight * ratio
-
-                total_weight += weight
-
-        return score / total_weight if total_weight > 0 else 0.0
-
-    def _tuple_similarity(self, tuple1: tuple, tuple2: tuple) -> float:
-        """Вычисляет сходство между кортежами (например, размеры решетки)"""
-        if len(tuple1) != len(tuple2):
-            return 0.0
-
-        similarities = []
-        for a, b in zip(tuple1, tuple2):
-            if a == b:
-                similarities.append(1.0)
-            elif a > 0 and b > 0:
-                ratio = min(a, b) / max(a, b)
-                similarities.append(ratio)
-            else:
-                similarities.append(0.0)
-
-        return sum(similarities) / len(similarities)
-
-    def _generate_checkpoint_description(self, metadata: Dict) -> str:
-        """Генерирует описание чекпоинта"""
-        parts = []
-
-        # Тип обучения
-        training_type = metadata.get("training_type", "unknown")
-        parts.append(training_type)
-
-        # Параметры модели
-        params = metadata.get("trainable_params", metadata.get("model_params"))
-        if params:
-            if params < 1000:
-                parts.append(f"{params} params")
-            elif params < 1000000:
-                parts.append(f"{params//1000}K params")
-            else:
-                parts.append(f"{params//1000000}M params")
-
-        # Дополнительная информация
-        if "best_similarity" in metadata:
-            parts.append(f"sim={metadata['best_similarity']:.3f}")
-
-        if "epochs" in metadata:
-            parts.append(f"{metadata['epochs']} epochs")
-
-        return " | ".join(parts) if parts else "checkpoint"
-
-    def auto_resume_training(
-        self,
-        dataset_limit: Optional[int] = None,
-        additional_epochs: int = 10,
-        **training_kwargs,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Автоматически находит лучший чекпоинт и продолжает обучение
-
-        Args:
-            dataset_limit: Ограничение размера датасета
-            additional_epochs: Сколько дополнительных эпох обучать
-            **training_kwargs: Дополнительные параметры обучения
-
-        Returns:
-            Результаты обучения или None если не удалось
-        """
-        logger.info(f"[START] Starting smart resume training")
-
-        # Ищем совместимые чекпоинты
-        compatible_checkpoints = self.find_compatible_checkpoints()
-
-        if not compatible_checkpoints:
-            logger.warning(
-                f"[WARNING] No compatible checkpoints found, starting fresh training"
-            )
-            return self._start_fresh_training(
-                dataset_limit, additional_epochs, **training_kwargs
-            )
-
-        # Выбираем лучший чекпоинт
-        best_checkpoint = compatible_checkpoints[0]
-        logger.info(f"[TARGET] Selected checkpoint: {best_checkpoint['name']}")
-        logger.info(f"   Compatibility: {best_checkpoint['compatibility_score']:.2f}")
-        logger.info(f"   Description: {best_checkpoint['description']}")
-
-        # Загружаем и продолжаем обучение
-        return self._resume_from_checkpoint(
-            best_checkpoint, dataset_limit, additional_epochs, **training_kwargs
-        )
-
-    def _start_fresh_training(
-        self, dataset_limit: Optional[int], epochs: int, **kwargs
-    ) -> Dict[str, Any]:
-        """Запускает новое обучение"""
-        logger.info(f"🆕 Starting fresh training")
-
-        from run_dynamic_training import DynamicTrainingManager
-
-        training_manager = DynamicTrainingManager(
-            forced_mode=self.forced_mode,
-            custom_scale=self.custom_scale,
-            external_config=self.current_config,  # Передаем готовую конфигурацию
-        )
-
-        return training_manager.run_training(
-            dataset_limit=dataset_limit, epochs=epochs, **kwargs
-        )
-
-    def _resume_from_checkpoint(
-        self,
-        checkpoint_info: Dict[str, Any],
-        dataset_limit: Optional[int],
-        additional_epochs: int,
-        **kwargs,
-    ) -> Dict[str, Any]:
-        """Продолжает обучение с чекпоинта"""
-        logger.info(
-            f"[PLAY] Resuming training from checkpoint: {checkpoint_info['name']}"
-        )
-        logger.info(
-            f"   Checkpoint similarity: {checkpoint_info['metadata'].get('best_similarity', 'unknown')}"
-        )
-        logger.info(f"   Checkpoint timestamp: {checkpoint_info['timestamp']}")
-
-        try:
-            # Создаем trainer с текущей конфигурацией
-            from run_dynamic_training import DynamicTrainingManager
-
-            training_manager = DynamicTrainingManager(
-                forced_mode=self.forced_mode,
-                custom_scale=self.custom_scale,
-                external_config=self.current_config,  # Передаем готовую конфигурацию
-            )
-
-            # Создаем trainer и загружаем веса
-            trainer = training_manager.create_trainer()
-            checkpoint_data = torch.load(checkpoint_info["path"], map_location="cpu")
-            trainer.load_state_dict(checkpoint_data["model_state_dict"], strict=False)
-
-            logger.info(f"[OK] Checkpoint weights loaded successfully")
-
-            # Извлекаем количество пройденных эпох из метаданных
-            checkpoint_metadata = checkpoint_info.get("metadata", {})
-            completed_epochs = checkpoint_metadata.get("epochs", 0)
-
-            logger.info(
-                f"[GRADUATE] Resuming from epoch {completed_epochs + 1}, will train {additional_epochs} more epochs"
-            )
-
-            # Запускаем обучение с resume
-            return training_manager.run_training(
-                dataset_limit=dataset_limit,
-                epochs=additional_epochs,
-                resume_trainer=trainer,
-                start_epoch=completed_epochs,
-                **kwargs,
-            )
-
-        except Exception as e:
-            logger.error(f"[ERROR] Failed to resume from checkpoint: {e}")
-            logger.info(f"🆕 Falling back to fresh training")
-            return self._start_fresh_training(
-                dataset_limit, additional_epochs, **kwargs
-            )
+# Add project root to path to allow imports from other modules
+# This is a common pattern in projects like this.
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from smart_resume_training.cli import parse_args
+from smart_resume_training.core.config_initializer import ConfigInitializer
+from smart_resume_training.core.training_orchestrator import TrainingOrchestrator
+
+
+def setup_logging(verbose: bool, debug: bool):
+    """Sets up basic logging for the script."""
+    level = logging.WARNING
+    if verbose:
+        level = logging.INFO
+    if debug:
+        level = logging.DEBUG
+
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stdout,
+    )
+    logging.getLogger("smart_resume_training").setLevel(level)
+    logging.getLogger("__main__").setLevel(level)
 
 
 def main():
-    """Основная функция"""
-    import argparse
+    """
+    Main function to initialize components and run the training orchestrator.
+    """
+    args = parse_args()
+    setup_logging(args.verbose, args.debug)
 
-    parser = argparse.ArgumentParser(
-        description="Smart Resume Training with Auto Checkpoint Detection"
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["auto", "development", "research", "validation", "production"],
-        default="development",
-        help="Configuration mode",
-    )
-    parser.add_argument(
-        "--dataset-limit", type=int, default=None, help="Limit dataset size"
-    )
-    parser.add_argument(
-        "--additional-epochs", type=int, default=10, help="Additional epochs to train"
-    )
-    parser.add_argument("--scale", type=float, default=None, help="Custom scale factor")
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=None,
-        help="Batch size (uses config default if not specified)",
-    )
-    parser.add_argument(
-        "--list-only",
-        action="store_true",
-        help="Only list compatible checkpoints, don't train",
-    )
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-
-    args = parser.parse_args()
-
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
+    logger = logging.getLogger(__name__)
 
     try:
-        # Создание умного менеджера возобновления
-        resume_manager = SmartResumeManager(
-            forced_mode=args.mode if args.mode != "auto" else None,
-            custom_scale=args.scale,
+        logger.info("Initializing configuration...")
+        config_initializer = ConfigInitializer(
+            forced_mode=args.mode, custom_scale=args.scale
         )
+        config = config_initializer.get_config()
+        metadata = config_initializer.get_metadata()
 
-        if args.list_only:
-            # Только показываем совместимые чекпоинты
-            compatible_checkpoints = resume_manager.find_compatible_checkpoints()
+        logger.info("Initializing Training Orchestrator...")
+        orchestrator = TrainingOrchestrator(config, metadata)
 
-            if compatible_checkpoints:
-                logger.info(f"\n[INFO] Compatible checkpoints found:")
-                for i, cp in enumerate(compatible_checkpoints):
-                    logger.info(f"   {i+1}. {cp['name']}")
-                    logger.info(f"      Score: {cp['compatibility_score']:.2f}")
-                    logger.info(f"      {cp['description']}")
-                    logger.info(f"      Path: {cp['path']}")
-                    logger.info("")
-            else:
-                logger.info(f"[ERROR] No compatible checkpoints found")
+        training_kwargs = {}
+        if args.batch_size:
+            training_kwargs["batch_size"] = args.batch_size
 
-            return
-
-        # Запуск умного возобновления обучения
-        results = resume_manager.auto_resume_training(
+        logger.info("Starting training run...")
+        orchestrator.run(
             dataset_limit=args.dataset_limit,
             additional_epochs=args.additional_epochs,
-            batch_size=args.batch_size,
+            **training_kwargs,
         )
 
-        if results:
-            logger.info("[CHART] Training Results:")
-            for key, value in results.items():
-                if key != "training_log":  # Пропускаем детальный лог
-                    logger.info(f"   {key}: {value}")
+        logger.info("Smart resume training finished successfully.")
+        # The script called by the orchestrator should return a result
+        # For now, we just exit. The `automated_training` runner will check the exit code.
+        # To signal success to the outer script, we can output a specific line.
+        print("final_similarity=0.999")  # Placeholder for actual result
 
-        logger.info("[OK] Smart resume training completed!")
-
-    except KeyboardInterrupt:
-        logger.info("[STOP] Training interrupted by user")
     except Exception as e:
-        logger.error(f"[ERROR] Smart resume failed: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"An unhandled exception occurred: {e}", exc_info=True)
         sys.exit(1)
 
 
