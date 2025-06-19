@@ -48,6 +48,11 @@ def parse_args():
         default=None,
         help="Override the batch size from the configuration.",
     )
+    parser.add_argument(
+        "--output-json-path",
+        type=str,
+        help="Path to write the final training metrics as a JSON file.",
+    )
 
     # Logging arguments
     parser.add_argument(

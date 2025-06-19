@@ -5,6 +5,7 @@
 
 import logging
 import sys
+import json
 from pathlib import Path
 
 # Add project root to path to allow imports from other modules
@@ -58,17 +59,22 @@ def main():
             training_kwargs["batch_size"] = args.batch_size
 
         logger.info("Starting training run...")
-        orchestrator.run(
+        result = orchestrator.run(
             dataset_limit=args.dataset_limit,
             additional_epochs=args.additional_epochs,
             **training_kwargs,
         )
 
-        logger.info("Smart resume training finished successfully.")
-        # The script called by the orchestrator should return a result
-        # For now, we just exit. The `automated_training` runner will check the exit code.
-        # To signal success to the outer script, we can output a specific line.
-        print("final_similarity=0.999")  # Placeholder for actual result
+        logger.info("Smart resume training finished.")
+
+        if args.output_json_path:
+            logger.info(f"Writing training results to {args.output_json_path}")
+            try:
+                with open(args.output_json_path, "w") as f:
+                    json.dump(result, f)
+            except Exception as e:
+                logger.error(f"Failed to write results to JSON file: {e}")
+                sys.exit(1)
 
     except Exception as e:
         logger.error(f"An unhandled exception occurred: {e}", exc_info=True)

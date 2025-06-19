@@ -30,16 +30,34 @@ except ImportError as e:
     sys.exit(1)
 
 
-def main():
-    """Main entry point for production training."""
+def main(config: dict, metadata: dict, training_args: dict):
+    """
+    Main entry point for production training.
+
+    Args:
+        config (dict): The main configuration dictionary.
+        metadata (dict): The metadata dictionary for the training run.
+        training_args (dict): Dictionary with runtime training arguments like
+                              'dataset_limit', 'epochs', 'resume_from_checkpoint'.
+
+    Returns:
+        dict: A dictionary containing the final training metrics.
+    """
     logger.info("--- Production Training Launcher ---")
 
-    use_lightweight = "--distilbert" in sys.argv or "--llama" not in sys.argv
-    model_type = "DistilBERT" if use_lightweight else "LLaMA"
+    # The model type can be determined from the config in a more robust way,
+    # but for now we can assume the manager handles it.
+    model_type = (
+        config.get("emergent_training", {}).get("cell_architecture", "gmlp").upper()
+    )
     logger.info(f"Launcher mode: Using {model_type}")
+    final_metrics = {}
 
     try:
-        manager = ProductionTrainingManager(use_lightweight_model=use_lightweight)
+        # Pass the arguments to the manager
+        manager = ProductionTrainingManager(
+            config=config, metadata=metadata, training_args=training_args
+        )
         results = manager.run_full_training_pipeline()
 
         logger.info("--- Training Run Summary ---")
@@ -51,9 +69,10 @@ def main():
             logger.info(
                 f"Final Similarity: {final_metrics.get('final_similarity', 'N/A'):.4f}"
             )
-            logger.info("Recommendations:")
-            for rec in recommendations:
-                logger.info(f"  - {rec}")
+            if recommendations:
+                logger.info("Recommendations:")
+                for rec in recommendations:
+                    logger.info(f"  - {rec}")
             logger.info("[SUCCESS] Pipeline completed successfully.")
         else:
             logger.error(
@@ -64,8 +83,18 @@ def main():
         logger.critical(
             f"A critical error occurred in the training pipeline: {e}", exc_info=True
         )
-        sys.exit(1)
+        # In case of error, we should still return something
+        return {"status": "error", "message": str(e)}
+
+    return final_metrics
 
 
 if __name__ == "__main__":
-    main()
+    # This part is for direct execution and will need a way to load mock/default configs.
+    # For now, it's primarily designed to be called by the orchestrator.
+    logger.warning(
+        "This script is not meant to be run directly without a proper config."
+    )
+    logger.warning("It's designed to be launched by 'smart_resume_training.py'.")
+    # You could add a simple test run here if needed, e.g.:
+    # main({}, {}, {'dataset_limit': 100, 'epochs': 1})

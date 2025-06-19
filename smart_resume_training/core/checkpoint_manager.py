@@ -116,15 +116,31 @@ class CheckpointManager:
                 gmlp.get("memory_dim"),
             )
         if "emergent_training" in config:
-            sig["spatial_depth"] = config["emergent_training"].get(
-                "spatial_propagation_depth"
-            )
+            et_config = config["emergent_training"]
+            sig["spatial_depth"] = et_config.get("spatial_propagation_depth")
+            sig["cell_architecture"] = et_config.get("cell_architecture", "gmlp")
         return sig
 
     def _calculate_compatibility(self, current: Dict, checkpoint: Dict) -> float:
         """Calculates a compatibility score between two configuration signatures."""
         score = 0.0
         total_possible_score = 0.0
+
+        # Критическая проверка: архитектура ячеек ДОЛЖНА совпадать.
+        if "cell_architecture" in current and "cell_architecture" in checkpoint:
+            total_possible_score += 1.0
+            if current["cell_architecture"] == checkpoint["cell_architecture"]:
+                score += 1.0
+            else:
+                # Если архитектуры не совпадают, чекпоинт несовместим.
+                logger.warning(
+                    f"Incompatible cell architecture. Current: '{current['cell_architecture']}', "
+                    f"Checkpoint: '{checkpoint['cell_architecture']}'"
+                )
+                return 0.0
+        elif "cell_architecture" in current or "cell_architecture" in checkpoint:
+            # Если ключ есть только в одной конфигурации, они несовместимы.
+            return 0.0
 
         if "lattice_shape" in current and "lattice_shape" in checkpoint:
             total_possible_score += 1.0

@@ -10,6 +10,8 @@ import sys
 import time
 import logging
 import subprocess
+import json
+import tempfile
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -55,16 +57,20 @@ class TrainingStageRunner:
         Returns:
             StageResult: Результат выполнения или None в случае ошибки
         """
-        # Убрали детальное логирование старта - используется глобальная функция
-
-        # Строим команду
-        cmd = self._build_command(stage_config)
-
-        # Запускаем обучение с минимальным логированием
-        start_time = time.time()
-        timeout_seconds = estimated_time * 60 * self.timeout_multiplier
+        # Создаем временный файл для результатов
+        with tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json"
+        ) as tmp_file:
+            output_json_path = tmp_file.name
 
         try:
+            # Строим команду с путем к файлу результатов
+            cmd = self._build_command(stage_config, output_json_path)
+
+            # Запускаем обучение с минимальным логированием
+            start_time = time.time()
+            timeout_seconds = estimated_time * 60 * self.timeout_multiplier
+
             result = run_process(
                 cmd, timeout_seconds, process_id=f"Stage {stage_config.stage}"
             )
@@ -79,14 +85,20 @@ class TrainingStageRunner:
                 return None
 
             return self._process_result(
-                result, stage_config, actual_time, estimated_time
+                result, output_json_path, stage_config, actual_time, estimated_time
             )
 
         except Exception as e:
             logger.error(f"❌ Stage {stage_config.stage} exception: {e}")
             return None
+        finally:
+            # Очищаем временный файл
+            import os
 
-    def _build_command(self, config: StageConfig) -> List[str]:
+            if os.path.exists(output_json_path):
+                os.remove(output_json_path)
+
+    def _build_command(self, config: StageConfig, output_json_path: str) -> List[str]:
         """Строит команду для запуска обучения"""
         cmd = [
             sys.executable,  # Используем текущий Python интерпретатор
@@ -99,6 +111,8 @@ class TrainingStageRunner:
             str(config.epochs),
             "--batch-size",
             str(config.batch_size),
+            "--output-json-path",  # Новый аргумент для JSON-результата
+            output_json_path,
         ]
 
         if self.scale:
@@ -108,19 +122,19 @@ class TrainingStageRunner:
 
     def _process_result(
         self,
-        result: Dict[str, Any],
+        process_result: Dict[str, Any],
+        output_json_path: str,
         config: StageConfig,
         actual_time: float,
         estimated_time: float,
     ) -> Optional[StageResult]:
-        """Обрабатывает результат выполнения subprocess (минимальное логирование)"""
+        """Обрабатывает результат выполнения, читая JSON-файл."""
 
-        if result["return_code"] != 0:
+        if process_result["return_code"] != 0:
             logger.error(
-                f"❌ Stage {config.stage} failed (exit code: {result['return_code']})"
+                f"❌ Stage {config.stage} failed (exit code: {process_result['return_code']})"
             )
-            # Показываем только последние строки stderr при ошибке
-            stderr_lines = result["stderr"].split("\n")
+            stderr_lines = process_result["stderr"].split("\n")
             if stderr_lines:
                 logger.error(f"   Last error: {stderr_lines[-1][:100]}...")
 
@@ -130,14 +144,25 @@ class TrainingStageRunner:
                 success=False,
                 actual_time_minutes=actual_time,
                 estimated_time_minutes=estimated_time,
-                error=result["stderr"][-500:] if result["stderr"] else "Unknown error",
+                error=(
+                    process_result["stderr"][-500:]
+                    if process_result["stderr"]
+                    else "Unknown error"
+                ),
                 stdout=None,
             )
 
-        # Успешное завершение - минимальное логирование
-        final_similarity = self._extract_similarity_from_output(result["stdout"])
+        # Успешное завершение - читаем JSON-результат
+        try:
+            with open(output_json_path, "r") as f:
+                training_results = json.load(f)
+            final_similarity = training_results.get("final_similarity")
+        except (FileNotFoundError, json.JSONDecodeError, TypeError) as e:
+            logger.error(
+                f"Failed to read or parse results from {output_json_path}: {e}"
+            )
+            final_similarity = None
 
-        # Логируем только если есть similarity или время превысило оценку
         if final_similarity or actual_time > estimated_time * 1.5:
             logger.warning(f"✅ Stage {config.stage}: {actual_time:.1f}min")
             if final_similarity:
@@ -151,8 +176,8 @@ class TrainingStageRunner:
             estimated_time_minutes=estimated_time,
             final_similarity=final_similarity,
             stdout=(
-                result["stdout"][-1000:] if result["stdout"] else None
-            ),  # Только last 1000 chars
+                process_result["stdout"][-1000:] if process_result["stdout"] else None
+            ),
         )
 
     def _extract_similarity_from_output(self, output: str) -> Optional[float]:
