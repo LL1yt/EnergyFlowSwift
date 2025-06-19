@@ -62,6 +62,7 @@ class EmergentTrainingConfig:
     teacher_model: str = (
         "distilbert-base-uncased"  # Default to DistilBERT for resource efficiency
     )
+    teacher_embedding_dim: int = 768  # Default to DistilBERT
     cube_dimensions: Tuple[int, int, int] = (15, 15, 11)
 
     # Emergent processing settings
@@ -184,16 +185,8 @@ class EmergentMultiObjectiveLoss(nn.Module):
         cube_dims = config.cube_dimensions
         surface_size = cube_dims[0] * cube_dims[1]  # width × height
 
-        # Определяем размерность эмбеддингов на основе teacher_model
-        if "distilbert" in config.teacher_model.lower():
-            embedding_dim = 768
-        elif "roberta" in config.teacher_model.lower():
-            embedding_dim = 768
-        elif "gpt2" in config.teacher_model.lower():
-            embedding_dim = 768
-        else:
-            # Default для LLaMA и других больших моделей
-            embedding_dim = 4096
+        # Используем teacher_embedding_dim напрямую из конфигурации
+        embedding_dim = self.config.teacher_embedding_dim
 
         self.embedding_dim = embedding_dim
         self.surface_to_embedding = nn.Linear(
@@ -698,6 +691,7 @@ class EmergentCubeTrainer(nn.Module):
         # 1. Base adapter integration (existing working component)
         adapter_config = AdapterIntegrationConfig(
             teacher_model=self.config.teacher_model,
+            teacher_embedding_dim=self.config.teacher_embedding_dim,
             cube_dimensions=self.config.cube_dimensions,
             adapter_strategy="hierarchical",  # Optimal from Stage 3.1.3
             joint_training=True,

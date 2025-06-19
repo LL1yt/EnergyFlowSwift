@@ -164,6 +164,7 @@ class DynamicTrainingManager:
             logger.info(f"[DATA] Configuration loaded:")
             logger.info(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
             logger.info(f"   Total neurons: {lattice['total_neurons']:,}")
+            logger.info(f"   Teacher model: {embeddings['teacher_model']}")
             logger.info(f"   Embedding dim: {embeddings['embedding_dim']:,}")
             logger.info(f"   Batch size: {training['batch_size']}")
             logger.info(f"   Learning rate: {training['learning_rate']}")
@@ -317,37 +318,49 @@ class DynamicTrainingManager:
             raise
 
     def prepare_dataset(
-        self, limit: Optional[int] = None, fixed_sampling: bool = False
+        self,
+        teacher_model: str,
+        limit: Optional[int] = None,
+        fixed_sampling: bool = False,
     ):
         """Подготовка датасета для обучения с использованием precomputed embeddings"""
         try:
-            # Используем существующую систему PrecomputedEmbeddingLoader
-            import sys
-            from pathlib import Path
-
-            sys.path.append(str(Path(__file__).parent))
-
             from precomputed_embedding_loader import PrecomputedEmbeddingLoader
 
-            # Создаем загрузчик
             loader = PrecomputedEmbeddingLoader()
-
-            # Находим доступные датасеты
             datasets = loader.list_available_datasets()
             if not datasets:
                 raise FileNotFoundError(
                     "No precomputed datasets found! Run generate_large_embedding_dataset.py first."
                 )
 
-            # Выбираем самый новый и большой датасет
-            latest_dataset = datasets[0]
-            embeddings_file = latest_dataset["file_path"]
+            # Ищем подходящий датасет
+            logger.info(
+                f"   [SEARCH] Looking for dataset from teacher_model: '{teacher_model}'"
+            )
+
+            matching_dataset = None
+            for ds in datasets:
+                # Простое сравнение, можно улучшить для псевдонимов
+                if teacher_model.lower() in ds["teacher_model"].lower():
+                    matching_dataset = ds
+                    break
+
+            if not matching_dataset:
+                available_models = list(set(d["teacher_model"] for d in datasets))
+                raise FileNotFoundError(
+                    f"No precomputed dataset found for model '{teacher_model}'. "
+                    f"Available datasets are for models: {available_models}. "
+                    "Please run generate_large_embedding_dataset.py with the correct model."
+                )
+
+            embeddings_file = matching_dataset["file_path"]
 
             logger.info(
-                f"[FOLDER] Using precomputed dataset: {latest_dataset['filename']}"
+                f"[FOLDER] Using precomputed dataset: {matching_dataset['filename']}"
             )
-            logger.info(f"   Available size: {latest_dataset['size']} pairs")
-            logger.info(f"   Teacher model: {latest_dataset['teacher_model']}")
+            logger.info(f"   Available size: {matching_dataset['size']} pairs")
+            logger.info(f"   Teacher model: {matching_dataset['teacher_model']}")
 
             # Загружаем датасет
             dataset = loader.load_dataset(embeddings_file)
@@ -412,8 +425,13 @@ class DynamicTrainingManager:
                 logger.info(f"🆕 Created fresh trainer")
 
             # Подготовка данных
+            teacher_model_from_config = self.dynamic_config.get("embeddings", {}).get(
+                "teacher_model", "distilbert-base-uncased"
+            )
             dataset = self.prepare_dataset(
-                limit=dataset_limit, fixed_sampling=fixed_sampling
+                teacher_model=teacher_model_from_config,
+                limit=dataset_limit,
+                fixed_sampling=fixed_sampling,
             )
 
             # Используем параметры из конфигурации если не указано
