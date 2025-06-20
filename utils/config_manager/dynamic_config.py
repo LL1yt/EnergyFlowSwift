@@ -356,7 +356,7 @@ class DynamicConfigGenerator:
                 # Биологически правильное масштабирование
                 # При scale=1.0 → ~10,000 параметров, при scale=0.06 → ~600 параметров
                 "target_params": "{smart_round(10000 * scale_factor)}",  # Биологическое количество синапсов
-                "neighbor_count": 6,  # Всегда 6 для 3D решетки
+                "neighbor_count": 26,  # ИСПРАВЛЕНО: 26 для 3D Moore neighborhood
                 # Биологически правильные размеры на основе scale_factor:
                 "state_size": "{smart_round(max(8, min(32, target_params ** 0.5 / 3)))}",  # Масштабируемый state
                 "hidden_dim": "{smart_round(max(8, min(128, target_params ** 0.5 / 4)))}",  # Масштабируемый hidden
@@ -375,19 +375,19 @@ class DynamicConfigGenerator:
                 "connection_architecture": "gated_mlp",  # Архитектура связей
                 "disable_nca_scaling": True,  # Отключение масштабирования NCA
             },
-            # НОВАЯ СЕКЦИЯ: Minimal NCA Configuration (ФИКСИРОВАННАЯ для нейронов)
+            # НОВАЯ СЕКЦИЯ: Minimal NCA Configuration (настраиваемая из центрального конфига)
             "minimal_nca_cell": {
-                # ФИКСИРОВАННЫЕ параметры для нейронов (НЕ масштабируются)
-                "state_size": 4,  # PHASE 4 FIX: Правильный размер состояния для minimal NCA
+                # НАСТРАИВАЕМЫЕ параметры для нейронов (из центрального конфига)
+                "state_size": "{smart_round(max(4, min(8, scale_factor * 10 + 4)))}",  # 4-8 в зависимости от scale
                 "neighbor_count": 26,  # Синхронизируется с lattice.neighbors
-                "hidden_dim": 3,  # Очень маленький hidden для минимизации параметров
-                "external_input_size": 1,  # Минимальный внешний вход
+                "hidden_dim": "{smart_round(max(3, min(6, scale_factor * 8 + 3)))}",  # 3-6 в зависимости от scale
+                "external_input_size": "{smart_round(max(1, min(3, scale_factor * 4 + 1)))}",  # 1-3 в зависимости от scale
                 # NCA специфичные параметры
                 "activation": "tanh",  # Bounded activation для stability
                 "dropout": 0.0,  # NCA обычно без dropout
                 "use_memory": False,  # NCA имеет implicit memory
                 "enable_lattice_scaling": False,  # КРИТИЧНО: отключение масштабирования
-                "target_params": 362,  # PHASE 4 FIX: Правильное количество параметров для state_size=4, hidden_dim=3
+                "target_params": "{smart_round((state_size + external_input_size) * hidden_dim + hidden_dim * state_size + neighbor_count + 2)}",  # Расчет параметров
                 # NCA dynamics parameters
                 "alpha": 0.1,  # Update strength
                 "beta": 0.05,  # Neighbor influence
@@ -651,7 +651,7 @@ if __name__ == "__main__":
     hidden_dim = gmlp_006["hidden_dim"]
     ext_input = gmlp_006["external_input_size"]
     memory_dim = gmlp_006["memory_dim"]
-    neighbor_count = 6
+    neighbor_count = 26
 
     # Примерный расчет (упрощенный для gMLP)
     input_size = neighbor_count * state_size + state_size + ext_input

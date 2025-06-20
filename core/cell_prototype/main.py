@@ -47,7 +47,7 @@ class CellPrototype(nn.Module):
     def __init__(
         self,
         input_size: int = 12,
-        state_size: int = 8,
+        state_size: int = 4,
         hidden_size: int = 16,
         num_neighbors: int = 6,
         activation: str = "tanh",

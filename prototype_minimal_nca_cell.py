@@ -28,11 +28,11 @@ class MinimalNCACell(nn.Module):
 
     def __init__(
         self,
-        state_size: int = 8,
-        neighbor_count: int = 6,
-        hidden_channels: int = 4,
+        state_size: int = 4,
+        neighbor_count: int = 26,
+        hidden_channels: int = 3,
         external_input_size: int = 1,
-        target_params: int = 150,
+        target_params: int = 69,
     ):
 
         super().__init__()
@@ -161,7 +161,7 @@ class UltraMinimalNCACell(nn.Module):
     """
 
     def __init__(
-        self, state_size: int = 8, neighbor_count: int = 6, target_params: int = 68
+        self, state_size: int = 4, neighbor_count: int = 26, target_params: int = 69
     ):
 
         super().__init__()
@@ -226,8 +226,8 @@ def test_nca_cells():
 
     # Test data
     batch_size = 4
-    state_size = 8
-    neighbor_count = 6
+    state_size = 4
+    neighbor_count = 26
 
     neighbor_states = torch.randn(batch_size, neighbor_count, state_size)
     own_state = torch.randn(batch_size, state_size)

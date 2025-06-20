@@ -11,9 +11,9 @@ def analyze_parameter_breakdown():
     print()
 
     # Текущие размеры из логов
-    state_size = 8
+    state_size = 4
     neighbor_count = 6
-    hidden_dim = 2  # МИНИМУМ
+    hidden_dim = 3  # МИНИМУМ
     external_input_size = 1  # МИНИМУМ
 
     # Вычисляем входной размер

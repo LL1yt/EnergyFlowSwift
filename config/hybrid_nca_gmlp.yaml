@@ -76,9 +76,9 @@ cell_prototype:
 
   minimal_nca_cell:
     # ФИКСИРОВАННЫЕ параметры (НЕ масштабируются)
-    state_size: 36 # Биологически правдоподобный размер
+    state_size: 4 # Биологически правдоподобный размер
     neighbor_count: 26 # Синхронизируется с lattice.neighbors
-    hidden_dim: 6 # Минимальный для NCA правил
+    hidden_dim: 3 # Минимальный для NCA правил
     external_input_size: 2 # Минимальный внешний вход
 
     # NCA specific parameters

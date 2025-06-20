@@ -100,7 +100,7 @@ class EmergentCubeTrainer(nn.Module):
             cell_config = {
                 "cell_type": "nca",
                 "state_size": state_size,
-                "neighbor_count": 6,
+                "neighbor_count": 26,
                 "hidden_dim": (
                     self.config.nca_config.get("hidden_dim", 4)
                     if self.config.nca_config

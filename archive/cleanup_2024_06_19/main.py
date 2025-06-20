@@ -1318,12 +1318,12 @@ class Lattice3D(nn.Module):
                 )
 
                 nca_params = {
-                    "state_size": cell_config.get("state_size", 8),
-                    "neighbor_count": cell_config.get("neighbor_count", 6),
-                    "hidden_dim": cell_config.get("hidden_dim", 4),
+                    "state_size": cell_config.get("state_size", 4),
+                    "neighbor_count": cell_config.get("neighbor_count", 26),
+                    "hidden_dim": cell_config.get("hidden_dim", 3),
                     "external_input_size": cell_config.get("external_input_size", 1),
                     "activation": cell_config.get("activation", "tanh"),
-                    "target_params": cell_config.get("target_params", 150),
+                    "target_params": cell_config.get("target_params", 69),
                 }
 
                 cell = MinimalNCACell(**nca_params)

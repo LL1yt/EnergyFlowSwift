@@ -46,7 +46,7 @@ class EmergentTrainingConfig:
             self.gmlp_config = {}  # Start with empty and fill safe defaults
 
         safe_defaults = {
-            "neighbor_count": 6,
+            "neighbor_count": 26,
             "use_memory": True,
             "activation": "gelu",
             "dropout": 0.1,
@@ -66,12 +66,10 @@ class EmergentTrainingConfig:
         if self.enable_nca and self.nca_config is None:
             # Create simple dict-based config compatible with create_emergent_nca_cell_from_config
             self.nca_config = {
-                "state_size": self.gmlp_config.get("state_size", 8),
-                "neighbor_count": self.gmlp_config.get("neighbor_count", 6),
-                "hidden_dim": 4,  # Significantly smaller than gMLP
-                "external_input_size": min(
-                    self.gmlp_config.get("external_input_size", 12), 2
-                ),
+                "state_size": self.gmlp_config.get("state_size", 4),
+                "neighbor_count": self.gmlp_config.get("neighbor_count", 26),
+                "hidden_dim": 3,  # Significantly smaller than gMLP
+                "external_input_size": 2,
                 "activation": "tanh",
                 "dropout": 0.0,
                 "use_memory": False,  # NCA has implicit memory

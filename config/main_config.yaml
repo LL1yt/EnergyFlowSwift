@@ -51,15 +51,16 @@ gmlp:
   activation: "gelu"
   dropout: 0.1
 
-# === NCA CONFIGURATION (NEW) ===
-# PHASE 4: Используется в hybrid режиме с gMLP
+# === NCA CONFIGURATION (ЦЕНТРАЛИЗОВАННАЯ) ===
+# PHASE 4: Единый источник истины для всех NCA параметров
 nca:
   enabled: true # PHASE 4: Включено для hybrid архитектуры
-  state_size: 4 # PHASE 4: 4 для NCA части
-  hidden_dim: 4 # Скрытый слой для NCA
-  external_input_size: 1 # Внешний вход для NCA
-  target_params: 362 # PHASE 4: Целевое количество параметров
-  activation: "tanh"
+  state_size: 4 # ЦЕНТРАЛИЗОВАННО: 4 для минимальной NCA
+  hidden_dim: 3 # ЦЕНТРАЛИЗОВАННО: 3 для минимальной NCA
+  external_input_size: 1 # ЦЕНТРАЛИЗОВАННО: 1 для минимальной NCA
+  neighbor_count: 26 # ЦЕНТРАЛИЗОВАННО: 26 для 3D Moore neighborhood
+  target_params: 69 # ЦЕНТРАЛИЗОВАННО: Целевое количество параметров
+  activation: "tanh" # ЦЕНТРАЛИЗОВАННО: tanh для стабильности NCA
 
 # === DEVICE CONFIGURATION ===
 device:

@@ -19,46 +19,46 @@ class MinimalNCACell(nn.Module):
 
     Drop-in replacement для GatedMLPCell с:
     - Совместимым интерфейсом
-    - 68-300 параметров вместо 1,888
+    - Настраиваемой архитектурой через конфиг
     - μNCA принципами
-    - Масштабируемостью через конфигурацию
+    - Биологической корректностью
     """
 
     def __init__(
         self,
-        state_size: int = 4,  # Фиксированный размер для NCA
+        state_size: int = 4,  # Настраиваемый из конфига
         neighbor_count: int = 26,  # 3D Moore neighborhood
-        hidden_dim: int = 3,  # Минимальный hidden layer
-        external_input_size: int = 1,  # Минимальный внешний вход
+        hidden_dim: int = 3,  # Настраиваемый из конфига
+        external_input_size: int = 1,  # Настраиваемый из конфига
         activation: str = "tanh",
         dropout: float = 0.0,
         use_memory: bool = False,  # Не используется в NCA
         memory_dim: int = 4,  # Не используется в NCA
-        target_params: int = None,  # Теперь только для логирования
+        target_params: int = None,  # Только для логирования
         enable_lattice_scaling: bool = False,  # Отключено по умолчанию
     ):
         """
-        Минимальная NCA клетка с фиксированной архитектурой
+        Минимальная NCA клетка с настраиваемой архитектурой
 
         Args:
-            state_size: Размер состояния клетки (фиксированный 4)
-            neighbor_count: Количество соседей (26 для 3D)
-            hidden_dim: Размер скрытого слоя (фиксированный 3)
-            external_input_size: Размер внешнего входа (фиксированный 1)
+            state_size: Размер состояния клетки (настраивается через конфиг)
+            neighbor_count: Количество соседей (26 для 3D Moore)
+            hidden_dim: Размер скрытого слоя (настраивается через конфиг)
+            external_input_size: Размер внешнего входа (настраивается через конфиг)
             activation: Функция активации
             dropout: Не используется в NCA
             use_memory: Не используется в NCA
             memory_dim: Не используется в NCA
             target_params: Только для логирования (не влияет на архитектуру)
-            enable_lattice_scaling: Отключено - используем фиксированные размеры
+            enable_lattice_scaling: Отключено - используем конфигурацию
         """
         super().__init__()
 
-        # Фиксированные размеры для NCA (без масштабирования)
-        self.state_size = 4  # Всегда фиксированный
-        self.hidden_dim = 3  # Всегда фиксированный
-        self.external_input_size = 1  # Всегда фиксированный
-        self.neighbor_count = neighbor_count  # Единственный параметр масштабирования
+        # Настраиваемые размеры из конфигурации
+        self.state_size = state_size
+        self.hidden_dim = hidden_dim
+        self.external_input_size = external_input_size
+        self.neighbor_count = neighbor_count
 
         # Сохраняем target_params только для логирования
         self.target_params = target_params if target_params is not None else 100
@@ -67,7 +67,8 @@ class MinimalNCACell(nn.Module):
         self.enable_lattice_scaling = False
 
         logger.info(
-            f"[NCA-FIXED] Создание MinimalNCA: state=4, hidden=3, input=1, neighbors={neighbor_count}"
+            f"[NCA-CONFIG] Создание MinimalNCA: state={state_size}, hidden={hidden_dim}, "
+            f"input={external_input_size}, neighbors={neighbor_count}"
         )
 
         # 1. Neighbor weights (learnable aggregation)
@@ -75,10 +76,10 @@ class MinimalNCACell(nn.Module):
             torch.ones(neighbor_count) / neighbor_count
         )
 
-        # 2. Простая архитектура без сложного масштабирования
-        perception_input_size = self.state_size + self.external_input_size  # 4 + 1 = 5
+        # 2. Простая архитектура с настраиваемыми размерами
+        perception_input_size = self.state_size + self.external_input_size
 
-        # 3. Perception layer (минимальный)
+        # 3. Perception layer
         self.perception = nn.Linear(perception_input_size, self.hidden_dim, bias=False)
 
         # 4. Activation function
@@ -89,7 +90,7 @@ class MinimalNCACell(nn.Module):
         else:
             self.activation = nn.ReLU()
 
-        # 5. Update rule (минимальная NCA архитектура)
+        # 5. Update rule
         self.update_rule = nn.Linear(self.hidden_dim, self.state_size, bias=False)
 
         # 6. NCA update parameters (learnable)
@@ -202,21 +203,35 @@ class MinimalNCACell(nn.Module):
 def create_nca_cell_from_config(config: Dict[str, Any]) -> MinimalNCACell:
     """
     Создание NCA клетки из конфигурации
-    Теперь без сложного масштабирования и хардкодов
+    Теперь с настраиваемыми размерами из центрального конфига
 
     Args:
         config: Конфигурация
 
     Returns:
-        MinimalNCACell: Настроенная клетка с фиксированными размерами
+        MinimalNCACell: Настроенная клетка
     """
     # Извлекаем конфигурации
     gmlp_config = config.get("gmlp_config", {})
     nca_config = config.get("nca", {})
     minimal_nca_config = config.get("minimal_nca_cell", {})
 
-    # Простые параметры без сложной логики
+    # Настраиваемые параметры из центрального конфига
     params = {
+        "state_size": minimal_nca_config.get(
+            "state_size",
+            gmlp_config.get("state_size", nca_config.get("state_size", 4)),
+        ),
+        "hidden_dim": minimal_nca_config.get(
+            "hidden_dim",
+            gmlp_config.get("hidden_dim", nca_config.get("hidden_dim", 3)),
+        ),
+        "external_input_size": minimal_nca_config.get(
+            "external_input_size",
+            gmlp_config.get(
+                "external_input_size", nca_config.get("external_input_size", 1)
+            ),
+        ),
         "neighbor_count": minimal_nca_config.get(
             "neighbor_count",
             gmlp_config.get("neighbor_count", nca_config.get("neighbor_count", 26)),
@@ -229,14 +244,13 @@ def create_nca_cell_from_config(config: Dict[str, Any]) -> MinimalNCACell:
             "target_params",
             gmlp_config.get("target_params", nca_config.get("target_params")),
         ),
-        # Фиксированные размеры (игнорируем конфигурацию)
-        "state_size": 4,
-        "hidden_dim": 3,
-        "external_input_size": 1,
         "enable_lattice_scaling": False,
     }
 
-    logger.info(f"🔬 Создание MinimalNCACell: neighbors={params['neighbor_count']}")
+    logger.info(
+        f"🔬 Создание MinimalNCACell: state={params['state_size']}, "
+        f"hidden={params['hidden_dim']}, neighbors={params['neighbor_count']}"
+    )
 
     return MinimalNCACell(**params)
 
@@ -251,13 +265,17 @@ def test_nca_cell_basic() -> bool:
     logger.info("🧪 Тестирование MinimalNCACell...")
 
     try:
-        # Создание клетки с новой архитектурой
-        cell = MinimalNCACell(neighbor_count=26)
+        # Создание клетки с настраиваемыми размерами
+        cell = MinimalNCACell(
+            state_size=4, hidden_dim=3, external_input_size=1, neighbor_count=26
+        )
 
         # Тестовые данные
         batch_size = 4
-        neighbor_states = torch.randn(batch_size, 26, 4)  # state_size=4
-        own_state = torch.randn(batch_size, 4)
+        neighbor_states = torch.randn(
+            batch_size, 26, 4
+        )  # neighbor_count=26, state_size=4
+        own_state = torch.randn(batch_size, 4)  # state_size=4
         external_input = torch.randn(batch_size, 1)  # external_input_size=1
 
         # Forward pass
@@ -288,11 +306,14 @@ def test_nca_cell_basic() -> bool:
 # Convenience function для создания NCA
 def create_compatible_nca_cell(**kwargs) -> MinimalNCACell:
     """
-    Создает NCA клетку с фиксированной архитектурой
-    Игнорирует большинство параметров, использует только neighbor_count
+    Создает NCA клетку с настраиваемыми параметрами
+    Использует все переданные параметры
     """
-    # Используем только neighbor_count, остальное фиксированно
+    # Используем все переданные параметры
     nca_params = {
+        "state_size": kwargs.get("state_size", 4),
+        "hidden_dim": kwargs.get("hidden_dim", 3),
+        "external_input_size": kwargs.get("external_input_size", 1),
         "neighbor_count": kwargs.get("neighbor_count", 26),
         "activation": kwargs.get("activation", "tanh"),
         "target_params": kwargs.get("target_params"),  # Только для логирования
