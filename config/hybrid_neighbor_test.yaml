@@ -1,5 +1,5 @@
-# Тестовая конфигурация для демонстрации гибридной стратегии поиска соседей.
-# Использует 6 локальных соседей и 20 случайных.
+# Тестовая конфигурация для демонстрации трехуровневой (tiered) стратегии поиска соседей.
+# Использует трехуровневую архитектуру: локальные + функциональные + дальние связи.
 
 # ==================================
 # Секция Решетки (Lattice)
@@ -9,11 +9,15 @@ lattice:
   boundary_conditions: "periodic" # Тороидальная решетка, чтобы у всех было одинаковое число локальных соседей
 
   # --- Новая конфигурация топологии ---
-  neighbors: 26 # Общее число соседей = 6 (local) + 20 (random)
-  neighbor_finding_strategy: "hybrid" # Используем новую гибридную стратегию
+  neighbors: 26 # Общее число соседей для трехуровневой стратегии
+  neighbor_finding_strategy: "tiered" # Используем трехуровневую стратегию
   neighbor_strategy_config:
-    local_count: 6
-    random_count: 20
+    local_tier:
+      radius: 3.0
+      ratio: 0.5
+    functional_tier:
+      ratio: 0.3
+    local_grid_cell_size: 3
 
   cache_neighbors: true # Кэшируем соседей для производительности
   seed: 42 # Для воспроизводимости случайной выборки
@@ -23,13 +27,14 @@ lattice:
 # ==================================
 cell:
   # Используем gMLP, так как он лучше всего подходит для обработки большого числа соседей
-  prototype_name: "gmlp"
+  prototype_name: "gmlp_cell"
 
   # --- Параметры gMLP клетки ---
   gmlp_cell:
-    state_size: 32
+    state_size: 8 # Уменьшаем для совместимости с тестом
     neighbor_count: 26 # ВАЖНО: должно совпадать с lattice.neighbors
-    hidden_dim: 128
+    hidden_dim: 64 # Уменьшаем для теста
+    external_input_size: 12
     use_memory: true
     target_params: 25000
 

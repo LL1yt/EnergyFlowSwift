@@ -37,3 +37,12 @@ class PlacementStrategy(Enum):
     CORNERS = "corners"  # Размещение в углах
     CORNERS_CENTER = "corners_center"  # Углы + центр
     FULL_FACE = "full_face"  # Полное покрытие грани (текущая реализация)
+
+
+class NeighborStrategy(Enum):
+    """Стратегии поиска соседей"""
+
+    LOCAL = "local"
+    RANDOM_SAMPLE = "random_sample"
+    HYBRID = "hybrid"
+    TIERED = "tiered"

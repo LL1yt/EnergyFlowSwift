@@ -19,9 +19,10 @@ from .config import LatticeConfig, load_lattice_config
 from .lattice import Lattice3D, create_lattice_from_config
 from .topology import NeighborTopology
 from .io import IOPointPlacer
-from .position import Position3D
-from .enums import Face, BoundaryCondition, PlacementStrategy
+from .position import Position3D, Coordinates3D, Dimensions3D
+from .enums import Face, BoundaryCondition, PlacementStrategy, NeighborStrategy
 from .spatial_hashing import SpatialHashGrid, MortonEncoder
+from .validators import validate_lattice_config
 
 # Определяем, что будет импортировано при `from . import *`
 __all__ = [
@@ -31,16 +32,21 @@ __all__ = [
     # Из config.py
     "LatticeConfig",
     "load_lattice_config",
+    # Из validators.py
+    "validate_lattice_config",
     # Из topology.py
     "NeighborTopology",
     # Из io.py
     "IOPointPlacer",
     # Из position.py
     "Position3D",
+    "Coordinates3D",
+    "Dimensions3D",
     # Из enums.py
     "Face",
     "BoundaryCondition",
     "PlacementStrategy",
+    "NeighborStrategy",
     # Из spatial_hashing.py
     "SpatialHashGrid",
     "MortonEncoder",

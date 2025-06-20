@@ -29,7 +29,8 @@ logging.basicConfig(
 )
 
 try:
-    from core.lattice_3d import create_lattice_from_config, Lattice3D
+    # from core.lattice_3d import create_lattice_from_config, Lattice3D
+    from core.lattice_3d import Lattice3D, load_lattice_config
 except ImportError as e:
     logging.error(f"Не удалось импортировать компоненты из core.lattice_3d: {e}")
     logging.error("Убедитесь, что __init__.py в core/lattice_3d настроен правильно.")
@@ -49,7 +50,9 @@ def run_test(config_path: str):
     try:
         # 1. Создание решетки из конфигурации
         logging.info("1. Создание Lattice3D из файла конфигурации...")
-        lattice = create_lattice_from_config(config_path)
+        # lattice = create_lattice_from_config(config_path)
+        config = load_lattice_config(config_path)
+        lattice = Lattice3D(config)
         logging.info("   ✅ Lattice3D успешно создан.")
         logging.info(f"   - Класс решетки: {type(lattice)}")
         logging.info(f"   - Устройство: {lattice.device}")
