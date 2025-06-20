@@ -46,7 +46,7 @@ class LatticeConfig:
     seed: int = 42
 
     # Топология
-    neighbors: int = 6
+    neighbors: int = 26  # 3D Moore neighborhood (26 соседей)
     validate_connections: bool = True
     cache_neighbors: bool = True
     neighbor_finding_strategy: str = "local"
@@ -485,8 +485,12 @@ def load_lattice_config(config_path: str) -> LatticeConfig:
 def _build_lattice_config_from_data(config_data: Dict[str, Any]) -> LatticeConfig:
     """
     Собирает объект LatticeConfig из словаря, извлекая данные из
-    вложенных секций 'lattice', 'cell', 'io' и прямых полей.
+    вложенных секций 'lattice_3d', 'lattice', 'cell', 'io' и прямых полей.
+
+    PHASE 4 UPDATE: Поддержка новой структуры конфигурации с lattice_3d секцией
     """
+    # PHASE 4: Поддержка новой структуры с lattice_3d
+    lattice_3d_data = config_data.get("lattice_3d", {})
     lattice_data = config_data.get("lattice", {})
     io_data = config_data.get("io", {})
     cell_data = config_data.get("cell", {})
@@ -495,9 +499,57 @@ def _build_lattice_config_from_data(config_data: Dict[str, Any]) -> LatticeConfi
     # Начинаем с основных данных config_data (верхний уровень)
     combined_data = config_data.copy()
 
-    # Объединяем данные, lattice имеет самый высокий приоритет
+    # Объединяем данные, lattice_3d имеет самый высокий приоритет
     combined_data.update(io_data)
     combined_data.update(lattice_data)
+    combined_data.update(lattice_3d_data)  # PHASE 4: Новая секция
+
+    # PHASE 4: Обработка пластичности из lattice_3d
+    if "plasticity" in lattice_3d_data:
+        plasticity_config = lattice_3d_data["plasticity"]
+
+        # Включаем пластичность если есть конфигурация
+        if plasticity_config.get("enable_plasticity"):
+            combined_data["enable_plasticity"] = True
+            combined_data["plasticity_rule"] = plasticity_config.get(
+                "plasticity_rule", "stdp"
+            )
+
+            # STDP конфигурация
+            if "stdp_config" in plasticity_config:
+                combined_data["stdp_config"] = plasticity_config["stdp_config"]
+
+            # Конкурентное обучение
+            if "competitive_learning" in plasticity_config:
+                combined_data["enable_competitive_learning"] = plasticity_config[
+                    "competitive_learning"
+                ].get("enable", False)
+                combined_data["competitive_config"] = plasticity_config[
+                    "competitive_learning"
+                ]
+
+            # BCM метапластичность
+            if "bcm_metaplasticity" in plasticity_config:
+                combined_data["enable_metaplasticity"] = plasticity_config[
+                    "bcm_metaplasticity"
+                ].get("enable", False)
+                combined_data["bcm_config"] = plasticity_config["bcm_metaplasticity"]
+
+            # Функциональная кластеризация
+            if "functional_clustering" in plasticity_config:
+                combined_data["enable_clustering"] = plasticity_config[
+                    "functional_clustering"
+                ].get("enable", False)
+                combined_data["clustering_config"] = plasticity_config[
+                    "functional_clustering"
+                ]
+
+    # PHASE 4: Обработка оптимизации из lattice_3d
+    if "optimization" in lattice_3d_data:
+        opt_config = lattice_3d_data["optimization"]
+        combined_data["memory_efficient"] = opt_config.get("memory_efficient", True)
+        combined_data["use_checkpointing"] = opt_config.get("use_checkpointing", False)
+        combined_data["mixed_precision"] = opt_config.get("mixed_precision", False)
 
     # Используем cell_prototype если есть, иначе cell для совместимости
     if cell_prototype_data:
@@ -505,8 +557,36 @@ def _build_lattice_config_from_data(config_data: Dict[str, Any]) -> LatticeConfi
     elif cell_data:
         combined_data["cell_config"] = cell_data
 
-    # Специальная обработка гибридной архитектуры
-    if (
+    # PHASE 4: Специальная обработка гибридной архитектуры
+    architecture_data = config_data.get("architecture", {})
+    if architecture_data.get("hybrid_mode"):
+        # Создаем гибридную конфигурацию клеток
+        cell_config = {"cell_prototype": {}}
+
+        # Обрабатываем MinimalNCACell
+        if architecture_data.get("neuron_architecture") == "minimal_nca":
+            if "minimal_nca_cell" in config_data:
+                cell_config["cell_prototype"]["minimal_nca_cell"] = config_data[
+                    "minimal_nca_cell"
+                ]
+
+        # Обрабатываем GatedMLPCell
+        if architecture_data.get("connection_architecture") == "gated_mlp":
+            if "gmlp_cell" in config_data:
+                cell_config["cell_prototype"]["gmlp_cell"] = config_data["gmlp_cell"]
+            elif "gmlp" in config_data:  # Fallback для совместимости
+                cell_config["cell_prototype"]["gmlp_cell"] = config_data["gmlp"]
+
+        # Добавляем дополнительные параметры архитектуры
+        if "disable_nca_scaling" in architecture_data:
+            cell_config["cell_prototype"]["disable_nca_scaling"] = architecture_data[
+                "disable_nca_scaling"
+            ]
+
+        combined_data["cell_config"] = cell_config
+
+    # Обработка старой структуры гибридной архитектуры (для совместимости)
+    elif (
         "neuron_architecture" in config_data
         and "connection_architecture" in config_data
     ):
@@ -555,6 +635,14 @@ def _build_lattice_config_from_data(config_data: Dict[str, Any]) -> LatticeConfi
             dims_dict.get("height", 8),
             dims_dict.get("depth", 8),
         )
+
+    # PHASE 4: Специальная обработка I/O стратегии
+    if "io_strategy" in lattice_3d_data:
+        io_strategy = lattice_3d_data["io_strategy"]
+        combined_data["placement_strategy"] = PlacementStrategy(
+            io_strategy.get("placement_method", "proportional")
+        )
+        combined_data["io_strategy_config"] = io_strategy
 
     # Получаем все известные поля dataclass
     known_fields = {f.name for f in LatticeConfig.__dataclass_fields__.values()}

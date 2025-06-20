@@ -1,0 +1,129 @@
+# Конфигурация Cell Prototype для гибридного NCA+gMLP подхода
+# Phase 4 - Production Ready Configuration
+
+# === ГИБРИДНАЯ АРХИТЕКТУРА ===
+architecture:
+  hybrid_mode: true
+  neuron_architecture: "minimal_nca" # Нейроны = NCA
+  connection_architecture: "gated_mlp" # Связи = gMLP
+  disable_nca_scaling: true # Отключаем автоскалирование NCA
+
+# === КОНФИГУРАЦИЯ NCA НЕЙРОНОВ ===
+minimal_nca_cell:
+  # Базовые параметры NCA
+  state_size: 4 # Размер состояния нейрона
+  neighbor_count: 26 # 3D Moore neighborhood (26 соседей)
+  hidden_dim: 3 # Минимальный hidden для эффективности
+  external_input_size: 1 # Минимальный внешний вход
+
+  # NCA специфичные параметры
+  activation: "tanh" # Bounded activation для стабильности
+  dropout: 0.0 # NCA обычно без dropout
+  use_memory: false # NCA имеет implicit memory через состояние
+
+  # Динамика NCA
+  alpha: 0.1 # Update strength (сила обновления)
+  beta: 0.05 # Neighbor influence (влияние соседей)
+
+  # Параметры и оптимизация
+  target_params: 362 # Точное количество параметров для state_size=4
+  enable_lattice_scaling: false # Отключаем масштабирование
+
+  # Биологические параметры
+  refractory_period: 0 # Рефрактерный период (0 = отключен)
+  threshold_adaptation: false # Адаптация порога активации
+
+# === КОНФИГУРАЦИЯ gMLP СВЯЗЕЙ ===
+gmlp_cell:
+  # Базовые параметры gMLP
+  state_size: 8 # Совместимость с существующей системой
+  neighbor_count: 26 # Синхронизировано с NCA
+  hidden_dim: 32 # Больше чем у NCA для обработки связей
+  external_input_size: 6 # Больше входов для связей
+
+  # gMLP специфичные параметры
+  activation: "gelu" # Современная активация для gMLP
+  dropout: 0.1 # Регуляризация для gMLP
+  use_memory: false # Memory mechanism отключен (не нужен)
+  memory_dim: 0 # Размер памяти (отключено)
+
+  # Gating механизм
+  use_gating: true # Включить gating
+  gate_activation: "sigmoid" # Активация для gates
+
+  # Параметры и оптимизация
+  weight_sharing: false # Отключаем разделение весов для связей
+  gradient_checkpointing: true # Включаем для экономии памяти
+
+# === ИНТЕГРАЦИЯ АРХИТЕКТУР ===
+integration:
+  # Синхронизация между NCA и gMLP
+  state_synchronization: true # Синхронизация состояний
+  sync_frequency: 1 # Частота синхронизации (каждый шаг)
+
+  # Передача информации
+  nca_to_gmlp_mapping: "linear" # Как передавать состояние NCA в gMLP
+  gmlp_to_nca_mapping: "pooling" # Как передавать результат gMLP в NCA
+
+  # Балансировка влияния
+  nca_weight: 0.6 # Вес влияния NCA (60%)
+  gmlp_weight: 0.4 # Вес влияния gMLP (40%)
+
+  # Режим интеграции
+  integration_mode: "additive" # Режим объединения результатов
+
+# === ПРОИЗВОДИТЕЛЬНОСТЬ ===
+performance:
+  # Оптимизация памяти
+  mixed_precision: true # FP16 для экономии памяти
+  gradient_checkpointing: true # Trade compute за memory
+
+  # Параллелизация
+  parallel_nca: true # Параллельные вычисления NCA
+  parallel_gmlp: true # Параллельные вычисления gMLP
+
+  # Кэширование
+  cache_neighbors: true # Кэширование топологии соседей
+  cache_activations: false # Отключено для экономии памяти
+
+# === ИНИЦИАЛИЗАЦИЯ ===
+initialization:
+  # NCA инициализация
+  nca_init_method: "xavier_uniform"
+  nca_init_gain: 1.0
+
+  # gMLP инициализация
+  gmlp_init_method: "kaiming_normal"
+  gmlp_init_gain: 0.02
+
+  # Синхронизация инициализации
+  seed: 42 # Фиксированный seed для воспроизводимости
+  sync_initialization: true # Синхронизированная инициализация
+
+# === ДИАГНОСТИКА ===
+diagnostics:
+  enable_logging: true
+  log_level: "INFO"
+
+  # Мониторинг архитектур
+  track_nca_dynamics: true # Отслеживание динамики NCA
+  track_gmlp_performance: true # Отслеживание производительности gMLP
+  track_integration: true # Отслеживание интеграции
+
+  # Метрики
+  compute_parameter_count: true # Подсчет параметров
+  compute_memory_usage: true # Подсчет использования памяти
+
+  # Отладка
+  debug_state_flow: false # Отладка потока состояний (только для разработки)
+  save_intermediate_states: false # Сохранение промежуточных состояний
+
+# === СОВМЕСТИМОСТЬ ===
+compatibility:
+  # Обратная совместимость
+  legacy_gmlp_mode: false # Режим совместимости со старым gMLP
+  legacy_state_mapping: false # Старое отображение состояний
+
+  # Интеграция с системой
+  auto_detect_lattice_size: true # Автоопределение размера решетки
+  adapt_to_neighbor_topology: true # Адаптация к топологии соседей

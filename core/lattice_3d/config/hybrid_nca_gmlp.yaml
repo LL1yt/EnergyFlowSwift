@@ -1,0 +1,131 @@
+# Конфигурация Lattice 3D для гибридного NCA+gMLP подхода
+# Phase 4 - Production Ready Configuration
+
+lattice_3d:
+  # Размеры решетки (X, Y, Z) - будут переопределены dynamic config
+  dimensions:
+    width: 16
+    height: 16
+    depth: 16
+
+  # Граничные условия
+  boundary_conditions: "walls"
+
+  # Производительность - PHASE 4 GPU OPTIMIZED
+  parallel_processing: true
+  gpu_enabled: true # Всегда включено для production
+  batch_size: 1
+
+  # Инициализация состояний
+  initialization:
+    method: "normal"
+    std: 0.1
+    mean: 0.0
+
+  # Топология соседства
+  topology:
+    neighbors: 26 # 3D Moore neighborhood для NCA
+    validate_connections: true
+    cache_neighbors: true
+
+  # Интерфейсы ввода/вывода
+  io_interfaces:
+    input_face: "front"
+    output_face: "back"
+    embedding_mapping: "linear"
+
+  # Стратегия размещения I/O точек
+  io_strategy:
+    placement_method: "proportional"
+    coverage_ratio:
+      min_percentage: 8.0
+      max_percentage: 12.0
+    absolute_limits:
+      min_points: 5
+      max_points: 0 # Без ограничений
+    seed: 42
+
+  # Диагностика
+  diagnostics:
+    enable_logging: true
+    log_level: "INFO"
+    track_performance: true
+    validate_states: true
+
+  # Оптимизация памяти - PHASE 4 MEMORY OPTIMIZATIONS
+  optimization:
+    memory_efficient: true
+    use_checkpointing: true # Gradient checkpointing для больших решеток
+    mixed_precision: true # FP16 для экономии памяти
+
+  # === PHASE 4: ПЛАСТИЧНОСТЬ ===
+  plasticity:
+    enable_plasticity: true
+    plasticity_rule: "combined" # STDP + BCM + competitive
+
+    # STDP конфигурация
+    stdp_config:
+      activity_threshold: 0.02 # Будет переопределено по стадиям
+      learning_rate: 0.01
+      A_plus: 0.01
+      A_minus: 0.01
+      tau_plus: 20
+      tau_minus: 20
+      weight_bounds: [0.1, 2.0]
+
+    # Конкурентное обучение
+    competitive_learning:
+      enable: true
+      winner_boost_factor: 1.05
+      lateral_inhibition_factor: 0.98
+      update_frequency: 1
+
+    # BCM метапластичность
+    bcm_metaplasticity:
+      enable: true
+      tau_theta: 1000.0
+      min_threshold: 0.001
+      max_threshold: 0.5
+
+    # Функциональная кластеризация
+    functional_clustering:
+      enable: false # Будет включена на стадии 3+
+      similarity_threshold: 0.7
+      max_clusters: 8
+      update_frequency: 100
+
+# === PHASE 4: ГИБРИДНАЯ АРХИТЕКТУРА ===
+architecture:
+  hybrid_mode: true
+  neuron_architecture: "minimal_nca" # Нейроны = NCA
+  connection_architecture: "gated_mlp" # Связи = gMLP
+
+# Конфигурация NCA нейронов
+minimal_nca_cell:
+  state_size: 4 # PHASE 4 FIX: Правильный размер
+  neighbor_count: 26 # 3D Moore neighborhood
+  hidden_dim: 3 # Минимальный hidden для эффективности
+  external_input_size: 1 # Минимальный внешний вход
+  activation: "tanh" # Bounded activation для стабильности
+  target_params: 362 # PHASE 4 FIX: Правильное количество параметров
+  alpha: 0.1 # Update strength
+  beta: 0.05 # Neighbor influence
+
+# Конфигурация gMLP связей
+gmlp:
+  state_size: 8 # Совместимость с существующей системой
+  neighbor_count: 26 # Синхронизировано с NCA
+  hidden_dim: 32 # Больше чем у NCA для обработки связей
+  external_input_size: 6 # Больше входов для связей
+  activation: "gelu" # Современная активация для gMLP
+  dropout: 0.1 # Регуляризация для gMLP
+  use_memory: true # Memory mechanism для связей
+
+# Интеграция с другими модулями
+integration:
+  cell_prototype:
+    auto_sync: false # Отключаем автосинхронизацию - используем hybrid
+
+  signal_propagation:
+    temporal_interface: true
+    state_history: false
