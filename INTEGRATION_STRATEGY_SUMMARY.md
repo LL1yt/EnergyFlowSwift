@@ -92,7 +92,7 @@
 
 #### Дни 8-10: Scaling Infrastructure
 
-- [ ] **Progressive Scaling Manager:** 16×16×16 → 24×24×24 → 32×32×24
+- [ ] **Progressive Scaling Manager:** 16×16×16 → 24×24×24 → 32×32×24 ... → 666×666×333
 - [ ] **Memory Budget Management:** Автоматический расчет под VRAM
 - [ ] **Transfer Learning:** Веса между стадиями
 
@@ -255,6 +255,8 @@ dimensions_by_stage = {
 **Status:** 🎯 READY FOR IMMEDIATE EXECUTION  
 **Confidence Level:** 🔥 HIGH (building on proven Phase 3 success)  
 **Timeline:** 2-3 weeks to production-ready emergent AI system
+
+подробности можно посмотреть в AUTOMATED_TRAINING_IMPROVEMENT_PLAN.md
 
 _Created: 2025-01-27 - The moment of transition from research to production_
 

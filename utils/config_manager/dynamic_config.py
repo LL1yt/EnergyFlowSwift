@@ -181,6 +181,126 @@ class DynamicConfigGenerator:
         self.scale_settings = ScaleSettings()
         self.evaluator = ExpressionEvaluator()
 
+    # === PHASE 4 INTEGRATION: Plasticity Configuration Generation ===
+
+    def generate_plasticity_section(
+        self, stage_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Генерация секции пластичности для YAML на основе stage context"""
+        plasticity_profile = stage_context.get("plasticity_profile", "balanced")
+        activity_threshold = stage_context.get("activity_threshold", 0.05)
+        clustering_enabled = stage_context.get("clustering_enabled", False)
+        emergence_tracking = stage_context.get("emergence_tracking", False)
+
+        # Базовая пластичность
+        plasticity_config = {
+            "enable_plasticity": True,
+            "plasticity_rule": "combined",  # STDP + BCM + competitive (из Фазы 3)
+            "activity_threshold": activity_threshold,
+            "profile": plasticity_profile,
+        }
+
+        # Профиль-специфичные параметры
+        if plasticity_profile == "discovery":
+            plasticity_config.update(
+                {
+                    "stdp_learning_rate": 0.01,
+                    "bcm_threshold_adjustment": 1.5,
+                    "competitive_strength": 0.8,
+                    "adaptation_speed": "high",
+                }
+            )
+        elif plasticity_profile == "learning":
+            plasticity_config.update(
+                {
+                    "stdp_learning_rate": 0.005,
+                    "bcm_threshold_adjustment": 1.2,
+                    "competitive_strength": 1.0,
+                    "adaptation_speed": "medium",
+                }
+            )
+        elif plasticity_profile == "consolidation":
+            plasticity_config.update(
+                {
+                    "stdp_learning_rate": 0.002,
+                    "bcm_threshold_adjustment": 1.0,
+                    "competitive_strength": 1.2,
+                    "adaptation_speed": "low",
+                }
+            )
+        else:  # freeze
+            plasticity_config.update(
+                {
+                    "stdp_learning_rate": 0.0,
+                    "bcm_threshold_adjustment": 0.8,
+                    "competitive_strength": 1.5,
+                    "adaptation_speed": "minimal",
+                }
+            )
+
+        # Кластеризация
+        if clustering_enabled:
+            plasticity_config["functional_clustering"] = {
+                "enable": True,
+                "method": "cosine_kmeans",  # Из Фазы 3
+                "n_clusters": "{smart_round(lattice_width * lattice_height * lattice_depth / 2000)}",
+                "update_frequency": 100,
+                "min_cluster_size": 5,
+            }
+
+        # Эмерджентное отслеживание
+        if emergence_tracking:
+            plasticity_config["emergence_detection"] = {
+                "enable": True,
+                "methods": ["fft_analysis", "pattern_amplification"],
+                "tracking_frequency": 50,
+                "morphology_threshold": 0.3,
+            }
+
+        return plasticity_config
+
+    def generate_optimization_section(
+        self, stage_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Генерация секции оптимизации памяти для stage context"""
+        memory_opts = stage_context.get("memory_optimizations", False)
+        sparse_ratio = stage_context.get("sparse_connection_ratio", 0.0)
+
+        optimization_config = {}
+
+        if memory_opts:
+            optimization_config.update(
+                {
+                    "mixed_precision": {
+                        "enable": True,
+                        "loss_scale": "dynamic",
+                        "fp16_inference": True,
+                        "fp32_compute": [
+                            "plasticity",
+                            "clustering",
+                        ],  # Критичные вычисления
+                    },
+                    "gradient_checkpointing": {
+                        "enable": True,
+                        "checkpoint_ratio": 0.5,  # Каждый второй слой
+                    },
+                    "memory_management": {
+                        "auto_batch_sizing": True,
+                        "garbage_collection_frequency": 100,
+                    },
+                }
+            )
+
+        if sparse_ratio > 0.0:
+            optimization_config["sparse_connections"] = {
+                "enable": True,
+                "sparsity_ratio": sparse_ratio,
+                "pruning_strategy": "emergence_aware",  # Сохраняем важные паттерны
+                "update_frequency": 500,
+            }
+
+        return optimization_config
+
     def detect_hardware_mode(self) -> str:
         """Автоматическое определение оптимального режима на основе GPU памяти"""
         try:

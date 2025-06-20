@@ -43,30 +43,64 @@ class ProgressiveConfigManager:
                 "epochs": 20,
                 "batch_size": 32,
                 "description": "Foundation Learning (small data, many epochs)",
+                # === PHASE 4: Discovery Phase ===
+                "plasticity_profile": "discovery",
+                "clustering_enabled": False,
+                "activity_threshold": 0.01,  # Высокая пластичность
+                "memory_optimizations": True,  # Всегда включено для эффективности
+                "emergence_tracking": False,
             },
             2: {
                 "dataset_limit": 5000,
                 "epochs": 15,
                 "batch_size": 64,
                 "description": "Consolidation (medium data, medium epochs)",
+                # === PHASE 4: Learning Phase ===
+                "plasticity_profile": "learning",
+                "clustering_enabled": False,
+                "activity_threshold": 0.02,  # Умеренная пластичность
+                "memory_optimizations": True,
+                "emergence_tracking": True,  # Начинаем отслеживать паттерны
             },
             3: {
                 "dataset_limit": 10000,
                 "epochs": 12,
                 "batch_size": 64,
                 "description": "Refinement (large data, fewer epochs)",
+                # === PHASE 4: Learning + Clustering ===
+                "plasticity_profile": "learning",
+                "clustering_enabled": True,  # Включаем функциональную кластеризацию
+                "activity_threshold": 0.03,
+                "memory_optimizations": True,
+                "emergence_tracking": True,
             },
             4: {
                 "dataset_limit": 20000,
                 "epochs": 8,
                 "batch_size": 128,
                 "description": "Mastery (very large data, few epochs)",
+                # === PHASE 4: Consolidation Phase ===
+                "plasticity_profile": "consolidation",
+                "clustering_enabled": True,
+                "activity_threshold": 0.05,  # Стабилизация
+                "memory_optimizations": True,
+                "emergence_tracking": True,
+                "sparse_connection_ratio": 0.2,  # 20% pruning для оптимизации
             },
             5: {
                 "dataset_limit": 50000,
                 "epochs": 5,
                 "batch_size": 128,
                 "description": "Perfection (massive data, minimal epochs)",
+                # === PHASE 4: Consolidation + Advanced Features ===
+                "plasticity_profile": "consolidation",
+                "clustering_enabled": True,
+                "activity_threshold": 0.05,
+                "memory_optimizations": True,
+                "emergence_tracking": True,
+                "sparse_connection_ratio": 0.3,  # 30% pruning для больших решеток
+                "progressive_scaling": True,  # Включаем прогрессивное масштабирование
+                "decoder_monitoring": True,  # Real-time monitoring
             },
         }
 
@@ -106,6 +140,16 @@ class ProgressiveConfigManager:
             batch_size=config["batch_size"],
             description=config["description"],
             stage=stage,
+            # === PHASE 4 INTEGRATION: Plasticity Configuration ===
+            plasticity_profile=config.get("plasticity_profile", "balanced"),
+            clustering_enabled=config.get("clustering_enabled", False),
+            activity_threshold=config.get("activity_threshold", 0.05),
+            memory_optimizations=config.get("memory_optimizations", False),
+            emergence_tracking=config.get("emergence_tracking", False),
+            sparse_connection_ratio=config.get("sparse_connection_ratio", 0.0),
+            progressive_scaling=config.get("progressive_scaling", False),
+            decoder_monitoring=config.get("decoder_monitoring", False),
+            transfer_learning=config.get("transfer_learning", False),
         )
 
     def get_all_stages_info(self) -> Dict[int, Dict[str, Any]]:

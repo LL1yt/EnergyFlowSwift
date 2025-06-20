@@ -74,7 +74,7 @@ class TrainingStageRunner:
                 output_json_path = tmp_json_file.name
 
             # Генерируем временный файл конфигурации
-            temp_config_path = self._generate_temp_config()
+            temp_config_path = self._generate_temp_config(stage_config)
             if not temp_config_path:
                 logger.error(
                     f"❌ Stage {stage_config.stage} failed: Could not generate temp config."
@@ -130,7 +130,9 @@ class TrainingStageRunner:
             if temp_config_path and os.path.exists(temp_config_path):
                 os.remove(temp_config_path)
 
-    def _generate_temp_config(self) -> Optional[str]:
+    def _generate_temp_config(
+        self, stage_config: Optional[StageConfig] = None
+    ) -> Optional[str]:
         """Генерирует временный YAML файл с динамической конфигурацией."""
         try:
             logger.info(
@@ -150,6 +152,12 @@ class TrainingStageRunner:
             # 3. Генерируем конфигурацию для нужного режима
             config_data = dynamic_manager.create_config_for_mode(self.mode)
 
+            # === PHASE 4 INTEGRATION: Plasticity & Optimization ===
+            if stage_config is not None:
+                config_data = self._prepare_config_with_optimizations(
+                    config_data, stage_config
+                )
+
             with tempfile.NamedTemporaryFile(
                 mode="w", delete=False, suffix=".yaml", encoding="utf-8"
             ) as tmp_file:
@@ -163,6 +171,87 @@ class TrainingStageRunner:
                 f"Failed to generate temporary config file: {e}", exc_info=True
             )
             return None
+
+    def _prepare_config_with_optimizations(
+        self, config: Dict[str, Any], stage_config: StageConfig
+    ) -> Dict[str, Any]:
+        """
+        === PHASE 4 INTEGRATION ===
+        Подготавливает конфигурацию с оптимизациями пластичности и памяти
+        """
+        try:
+            # Получаем генератор для создания секций
+            dynamic_manager = DynamicConfigManager()
+            generator = dynamic_manager.generator
+
+            # Создаем контекст стадии
+            stage_context = {
+                "plasticity_profile": stage_config.plasticity_profile,
+                "clustering_enabled": stage_config.clustering_enabled,
+                "activity_threshold": stage_config.activity_threshold,
+                "memory_optimizations": stage_config.memory_optimizations,
+                "emergence_tracking": stage_config.emergence_tracking,
+                "sparse_connection_ratio": stage_config.sparse_connection_ratio,
+                "progressive_scaling": stage_config.progressive_scaling,
+                "decoder_monitoring": stage_config.decoder_monitoring,
+                "stage_number": stage_config.stage,
+            }
+
+            # Генерируем секции пластичности и оптимизации
+            plasticity_section = generator.generate_plasticity_section(stage_context)
+            optimization_section = generator.generate_optimization_section(
+                stage_context
+            )
+
+            # Интегрируем в основную конфигурацию
+            if plasticity_section:
+                config["plasticity"] = plasticity_section
+                logger.info(
+                    f"🧠 Applied plasticity profile: {stage_config.plasticity_profile}"
+                )
+
+            if optimization_section:
+                config["optimization"] = optimization_section
+                logger.info(
+                    f"🔧 Applied memory optimizations: {stage_config.memory_optimizations}"
+                )
+
+            # Адаптивные размеры решетки для прогрессивного масштабирования
+            if stage_config.progressive_scaling:
+                adaptive_dims = self._get_adaptive_dimensions(stage_config.stage)
+                if adaptive_dims:
+                    config["lattice"]["lattice_width"] = adaptive_dims[0]
+                    config["lattice"]["lattice_height"] = adaptive_dims[1]
+                    config["lattice"]["lattice_depth"] = adaptive_dims[2]
+                    logger.info(
+                        f"📐 Progressive scaling: {adaptive_dims[0]}×{adaptive_dims[1]}×{adaptive_dims[2]}"
+                    )
+
+            return config
+
+        except Exception as e:
+            logger.error(f"Failed to prepare config with optimizations: {e}")
+            return config  # Возвращаем оригинальную конфигурацию при ошибке
+
+    def _get_adaptive_dimensions(self, stage: int) -> Optional[tuple]:
+        """
+        Получает адаптивные размеры решетки для прогрессивного масштабирования
+        """
+        # Прогрессия размеров по стадиям (TIER 2 scaling)
+        SCALING_PROGRESSION = {
+            1: (16, 16, 16),  # Baseline testing
+            2: (20, 20, 20),  # Small growth
+            3: (24, 24, 24),  # Medium scale + clustering
+            4: (32, 32, 24),  # Large scale + consolidation
+            5: (40, 40, 30),  # Production scale
+            6: (48, 48, 36),  # Advanced scale
+            7: (64, 64, 48),  # Large production
+            8: (80, 80, 60),  # Ultra scale
+        }
+
+        return SCALING_PROGRESSION.get(
+            stage, SCALING_PROGRESSION[5]
+        )  # Default to stage 5
 
     def _build_command(
         self, config: StageConfig, output_json_path: str, temp_config_path: str
