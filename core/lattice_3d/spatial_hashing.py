@@ -42,12 +42,13 @@ class MortonEncoder:
         """Вставляет биты координат для создания Z-order кода."""
         code = 0
         for i in range(self.bits):
-            mask = 1 << i
-            code |= (
-                ((x & mask) << (2 * i))
-                | ((y & mask) << (2 * i - 1))
-                | ((z & mask) << (2 * i - 2))
-            )
+            # Извлекаем i-й бит из каждой координаты
+            x_bit = (x >> i) & 1
+            y_bit = (y >> i) & 1
+            z_bit = (z >> i) & 1
+
+            # Размещаем биты в правильных позициях: x, y, z чередуются
+            code |= (z_bit << (3 * i)) | (y_bit << (3 * i + 1)) | (x_bit << (3 * i + 2))
         return code
 
     def encode(self, coords: Coordinates3D) -> int:
