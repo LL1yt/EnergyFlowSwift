@@ -1,0 +1,115 @@
+# Тестовая конфигурация для BCM метапластичности (Шаг 3.2)
+# ВНИМАНИЕ: Параметры настроены для демонстрации BCM механизмов
+
+lattice:
+  # Малая решетка для быстрого тестирования
+  dimensions: [12, 12, 12] # 1728 клеток
+  boundary_conditions: "walls"
+
+  # Топология соседства
+  neighbors: 26 # 3D соседство (биологически правдоподобно)
+  neighbor_finding_strategy: "tiered"
+  neighbor_strategy_config:
+    local_tier: 0.7 # 70% локальные соседи
+    functional_tier: 0.2 # 20% функциональные (spatial hashing)
+    random_tier: 0.1 # 10% дальние стохастические
+    local_grid_cell_size: 6 # Размер spatial hash bins (меньше для тестирования)
+
+  # Инициализация и производительность
+  initialization_method: "normal"
+  initialization_std: 0.15 # Повышено для больших флуктуаций активности
+  seed: 42
+  gpu_enabled: true
+  parallel_processing: true
+
+  # === STDP МЕХАНИЗМ (базовые параметры) ===
+  enable_plasticity: true
+  plasticity_rule: "stdp"
+  activity_history_size: 20 # Увеличено для BCM адаптации
+
+  stdp_config:
+    # Пороги и скорости (тестовые значения)
+    activity_threshold: 0.03 # Понижен для получения активных клеток
+    learning_rate: 0.015 # Средняя скорость адаптации
+
+    # Биологически правдоподобные STDP параметры
+    A_plus: 0.015 # LTP амплитуда (повышено для видимости)
+    A_minus: 0.012 # LTD амплитуда (чуть меньше LTP)
+    tau_plus: 20 # LTP временная константа (ms)
+    tau_minus: 25 # LTD временная константа (ms, больше)
+
+    # Ограничения весов (предотвращение насыщения)
+    weight_bounds: [0.05, 2.5] # Расширенный диапазон для BCM
+
+  # === КОНКУРЕНТНОЕ ОБУЧЕНИЕ (умеренные параметры) ===
+  enable_competitive_learning: true
+  competitive_config:
+    # Winner-Take-All параметры (умеренные для BCM)
+    winner_boost_factor: 1.03 # 3% усиление (консервативно)
+    lateral_inhibition_factor: 0.99 # 1% ослабление (мягко)
+
+    # Нормализация весов
+    enable_weight_normalization: true
+    normalization_method: "proportional" # сохраняем пропорции
+
+    # Частота применения (реже для стабильности с BCM)
+    update_frequency: 2 # Применять каждые 2 шага
+
+    # Биологическая правдоподобность
+    max_winner_connections: 6 # Меньше для тестирования
+    lateral_inhibition_radius: 2.5 # Локальное торможение
+
+  # === BCM МЕТАПЛАСТИЧНОСТЬ (Шаг 3.2) ===
+  enable_metaplasticity: true
+  bcm_config:
+    # Адаптивные пороги
+    tau_theta: 500.0 # Быстрая адаптация для тестирования (production: 1000-2000)
+    initial_threshold: 0.03 # Начальный порог (совпадает с activity_threshold)
+    min_threshold: 0.005 # Минимальный порог
+    max_threshold: 0.2 # Максимальный порог
+
+    # BCM пластичность
+    bcm_learning_rate_factor: 0.3 # 30% от основного learning_rate
+    enable_threshold_adaptation: true # Включить адаптацию
+    adaptation_frequency: 1 # Адаптировать каждый шаг
+
+  # Мониторинг и диагностика
+  enable_logging: true
+  log_level: "INFO"
+  track_performance: true
+  validate_states: true
+
+# === ГИБРИДНАЯ АРХИТЕКТУРА (NCA + GatedMLP) ===
+cell_prototype:
+  prototype_name: "minimal_nca_cell"
+
+  minimal_nca_cell:
+    # ОПТИМИЗИРОВАННЫЕ параметры для BCM тестирования
+    state_size: 4 # Небольшой размер состояния
+    neighbor_count: 26 # Синхронизируется с lattice.neighbors
+    hidden_dim: 3 # Уменьшено пропорционально state_size
+    external_input_size: 2 # Минимальный внешний вход
+
+    # NCA specific parameters
+    activation: "tanh" # Стабильная активация для NCA
+    dropout: 0.0 # NCA не нуждается в dropout
+    use_memory: false # NCA имеет implicit memory
+
+    # КРИТИЧНО: отключение масштабирования
+    enable_lattice_scaling: false
+    target_params: 69 # Фиксированный target
+
+    # NCA dynamics parameters (настроено для BCM)
+    alpha: 0.15 # Повышен update strength для флуктуаций
+    beta: 0.08 # Повышен neighbor influence
+
+# I/O настройки
+io:
+  # Пропорциональное размещение I/O
+  input_face: "front"
+  output_face: "back"
+  placement_strategy: "proportional"
+  io_strategy_config:
+    min_percentage: 10.0 # 10% клеток грани для тестирования
+    max_percentage: 15.0 # 15% клеток грани
+    seed: 42

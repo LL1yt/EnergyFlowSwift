@@ -106,12 +106,27 @@ class LatticeConfig:
         }
     )
 
+    # === НОВОЕ: Метапластичность - BCM правило (Шаг 3.2) ===
+    enable_metaplasticity: bool = False
+    bcm_config: Optional[Dict[str, Any]] = field(
+        default_factory=lambda: {
+            "tau_theta": 1000.0,  # Временная константа для адаптивных порогов
+            "initial_threshold": None,  # Начальный порог (None = наследует activity_threshold)
+            "min_threshold": 0.001,  # Минимальный порог активности
+            "max_threshold": 0.5,  # Максимальный порог активности
+            "bcm_learning_rate_factor": 0.5,  # Коэффициент для BCM относительно основного learning_rate
+            "enable_threshold_adaptation": True,  # Включить адаптацию порогов
+            "adaptation_frequency": 1,  # Частота адаптации порогов (каждые N шагов)
+        }
+    )
+
     def __post_init__(self):
         """Валидация и нормализация конфигурации после создания"""
         self._validate_dimensions()
         self._normalize_enums()
         self._validate_stdp_config()
         self._validate_competitive_config()
+        self._validate_bcm_config()
         self._setup_logging()
 
     def _validate_dimensions(self):
@@ -225,6 +240,65 @@ class LatticeConfig:
                 logging.warning(
                     "Competitive learning works best with STDP enabled. "
                     "Consider setting enable_plasticity=True"
+                )
+
+    def _validate_bcm_config(self):
+        """Проверка корректности конфигурации BCM метапластичности"""
+        if self.enable_metaplasticity and not self.bcm_config:
+            raise ValueError(
+                "BCM configuration is required when enable_metaplasticity is True"
+            )
+
+        if self.enable_metaplasticity:
+            # Валидация параметров BCM
+            required_keys = [
+                "tau_theta",
+                "min_threshold",
+                "max_threshold",
+            ]
+            for key in required_keys:
+                if key not in self.bcm_config:
+                    logging.warning(f"Missing BCM parameter: {key}, using default")
+
+            # Валидация диапазонов
+            config = self.bcm_config
+
+            if "tau_theta" in config:
+                if config["tau_theta"] <= 0:
+                    raise ValueError("tau_theta must be positive")
+                if config["tau_theta"] < 10:
+                    logging.warning(
+                        f"Very small tau_theta ({config['tau_theta']}) may cause instability"
+                    )
+
+            if "min_threshold" in config and "max_threshold" in config:
+                if config["min_threshold"] >= config["max_threshold"]:
+                    raise ValueError("min_threshold must be less than max_threshold")
+                if config["min_threshold"] <= 0:
+                    raise ValueError("min_threshold must be positive")
+
+            if "bcm_learning_rate_factor" in config:
+                if not (0.0 < config["bcm_learning_rate_factor"] <= 1.0):
+                    raise ValueError(
+                        "bcm_learning_rate_factor must be between 0.0 and 1.0"
+                    )
+
+            if "adaptation_frequency" in config:
+                if config["adaptation_frequency"] < 1:
+                    raise ValueError("adaptation_frequency must be at least 1")
+
+            # Требуется STDP для BCM метапластичности
+            if not self.enable_plasticity:
+                raise ValueError(
+                    "BCM metaplasticity requires STDP to be enabled. "
+                    "Set enable_plasticity=True"
+                )
+
+            # Проверка совместимости с competitive learning
+            if self.enable_competitive_learning:
+                logging.info(
+                    "BCM metaplasticity will work together with competitive learning. "
+                    "This is a powerful combination for stable learning."
                 )
 
     def _setup_logging(self):
