@@ -120,6 +120,35 @@ class LatticeConfig:
         }
     )
 
+    # === НОВОЕ: Функциональная кластеризация (Шаг 3.3) ===
+    enable_clustering: bool = False
+    clustering_config: Optional[Dict[str, Any]] = field(
+        default_factory=lambda: {
+            # Базовая кластеризация
+            "enable_clustering": True,
+            "similarity_threshold": 0.7,  # Порог сходства для кластеризации
+            "max_clusters": 8,  # Максимальное количество кластеров
+            "update_frequency": 100,  # Частота обновления кластеров (в шагах)
+            "min_cluster_size": 5,  # Минимальный размер кластера
+            "stability_threshold": 0.8,  # Порог стабильности кластеров
+            # Модификация весов связей
+            "intra_cluster_boost": 1.2,  # Усиление связей внутри кластера
+            "inter_cluster_dampening": 0.8,  # Ослабление связей между кластерами
+            # Интеграция с существующими механизмами
+            "priority": 0.5,  # Приоритет кластеризации vs пластичности [0.0-1.0]
+            "integration_mode": "additive",  # Режим интеграции весов
+            # Координационный интерфейс (готов к расширению)
+            "coordination": {
+                "coordination_mode": "basic",  # Режим координации
+                "enable_user_guidance": False,  # Пользовательское управление
+                "enable_learned_coordination": False,  # Обученная координация
+                "coordination_strength": 0.5,  # Сила координации
+                "adaptation_rate": 0.1,  # Скорость адаптации
+                "memory_decay": 0.95,  # Затухание памяти
+            },
+        }
+    )
+
     def __post_init__(self):
         """Валидация и нормализация конфигурации после создания"""
         self._validate_dimensions()
@@ -127,6 +156,7 @@ class LatticeConfig:
         self._validate_stdp_config()
         self._validate_competitive_config()
         self._validate_bcm_config()
+        self._validate_clustering_config()
         self._setup_logging()
 
     def _validate_dimensions(self):
@@ -301,6 +331,116 @@ class LatticeConfig:
                     "This is a powerful combination for stable learning."
                 )
 
+    def _validate_clustering_config(self):
+        """Проверка корректности конфигурации функциональной кластеризации"""
+        if self.enable_clustering and not self.clustering_config:
+            raise ValueError(
+                "Clustering configuration is required when enable_clustering is True"
+            )
+
+        if self.enable_clustering:
+            # Валидация параметров кластеризации
+            required_keys = [
+                "similarity_threshold",
+                "max_clusters",
+                "update_frequency",
+                "intra_cluster_boost",
+                "inter_cluster_dampening",
+                "priority",
+                "integration_mode",
+            ]
+            for key in required_keys:
+                if key not in self.clustering_config:
+                    logging.warning(
+                        f"Missing clustering parameter: {key}, using default"
+                    )
+
+            # Валидация диапазонов
+            config = self.clustering_config
+
+            if "similarity_threshold" in config:
+                if not (0.0 <= config["similarity_threshold"] <= 1.0):
+                    raise ValueError("similarity_threshold must be between 0.0 and 1.0")
+
+            if "max_clusters" in config:
+                if config["max_clusters"] < 2:
+                    raise ValueError("max_clusters must be at least 2")
+                if config["max_clusters"] > 50:
+                    logging.warning(
+                        f"Large max_clusters ({config['max_clusters']}) may cause performance issues"
+                    )
+
+            if "update_frequency" in config:
+                if config["update_frequency"] < 1:
+                    raise ValueError("update_frequency must be at least 1")
+                if config["update_frequency"] > 10000:
+                    logging.warning(
+                        f"Very high update_frequency ({config['update_frequency']}) "
+                        "may reduce clustering effectiveness"
+                    )
+
+            if "min_cluster_size" in config:
+                if config["min_cluster_size"] < 1:
+                    raise ValueError("min_cluster_size must be at least 1")
+
+            if "intra_cluster_boost" in config:
+                if not (1.0 <= config["intra_cluster_boost"] <= 5.0):
+                    raise ValueError("intra_cluster_boost must be between 1.0 and 5.0")
+
+            if "inter_cluster_dampening" in config:
+                if not (0.1 <= config["inter_cluster_dampening"] <= 1.0):
+                    raise ValueError(
+                        "inter_cluster_dampening must be between 0.1 and 1.0"
+                    )
+
+            if "priority" in config:
+                if not (0.0 <= config["priority"] <= 1.0):
+                    raise ValueError("priority must be between 0.0 and 1.0")
+
+            if "integration_mode" in config:
+                valid_modes = ["replace", "additive", "multiplicative", "selective"]
+                if config["integration_mode"] not in valid_modes:
+                    raise ValueError(f"integration_mode must be one of {valid_modes}")
+
+            # Валидация координационной конфигурации
+            if "coordination" in config:
+                coord_config = config["coordination"]
+
+                if "coordination_mode" in coord_config:
+                    valid_coord_modes = ["basic", "user_guided", "learned", "hybrid"]
+                    if coord_config["coordination_mode"] not in valid_coord_modes:
+                        raise ValueError(
+                            f"coordination_mode must be one of {valid_coord_modes}"
+                        )
+
+                if "coordination_strength" in coord_config:
+                    if not (0.0 <= coord_config["coordination_strength"] <= 1.0):
+                        raise ValueError(
+                            "coordination_strength must be between 0.0 and 1.0"
+                        )
+
+                if "adaptation_rate" in coord_config:
+                    if not (0.0 < coord_config["adaptation_rate"] <= 1.0):
+                        raise ValueError("adaptation_rate must be between 0.0 and 1.0")
+
+                if "memory_decay" in coord_config:
+                    if not (0.0 <= coord_config["memory_decay"] <= 1.0):
+                        raise ValueError("memory_decay must be between 0.0 and 1.0")
+
+            # Проверка совместимости с другими механизмами
+            if self.enable_plasticity:
+                logging.info(
+                    "Clustering will work together with plasticity mechanisms. "
+                    f"Priority split: clustering={config.get('priority', 0.5):.1f}, "
+                    f"plasticity={1-config.get('priority', 0.5):.1f}"
+                )
+
+            if self.enable_competitive_learning and self.enable_plasticity:
+                logging.info(
+                    "Triple integration: clustering + competitive learning + STDP/BCM. "
+                    "This is an advanced configuration for emergent behavior."
+                )
+
     def _setup_logging(self):
         """Настройка логирования для модуля"""
         if self.enable_logging:
@@ -312,6 +452,12 @@ class LatticeConfig:
     def total_cells(self) -> int:
         """Общее количество клеток в решетке"""
         return self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Преобразует конфигурацию в словарь."""
+        from dataclasses import asdict
+
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> LatticeConfig:
@@ -339,21 +485,76 @@ def load_lattice_config(config_path: str) -> LatticeConfig:
 def _build_lattice_config_from_data(config_data: Dict[str, Any]) -> LatticeConfig:
     """
     Собирает объект LatticeConfig из словаря, извлекая данные из
-    вложенных секций 'lattice', 'cell', 'io'.
+    вложенных секций 'lattice', 'cell', 'io' и прямых полей.
     """
     lattice_data = config_data.get("lattice", {})
     io_data = config_data.get("io", {})
     cell_data = config_data.get("cell", {})
     cell_prototype_data = config_data.get("cell_prototype", {})
 
+    # Начинаем с основных данных config_data (верхний уровень)
+    combined_data = config_data.copy()
+
     # Объединяем данные, lattice имеет самый высокий приоритет
-    combined_data = {**io_data, **lattice_data}
+    combined_data.update(io_data)
+    combined_data.update(lattice_data)
 
     # Используем cell_prototype если есть, иначе cell для совместимости
     if cell_prototype_data:
         combined_data["cell_config"] = {"cell_prototype": cell_prototype_data}
-    else:
+    elif cell_data:
         combined_data["cell_config"] = cell_data
+
+    # Специальная обработка гибридной архитектуры
+    if (
+        "neuron_architecture" in config_data
+        and "connection_architecture" in config_data
+    ):
+        # Создаем гибридную конфигурацию клеток
+        cell_config = {"cell_prototype": {}}
+
+        # Обрабатываем MinimalNCACell
+        if config_data.get("neuron_architecture") == "minimal_nca":
+            if "minimal_nca_cell" in config_data:
+                cell_config["cell_prototype"]["minimal_nca_cell"] = config_data[
+                    "minimal_nca_cell"
+                ]
+
+        # Обрабатываем GatedMLPCell
+        if config_data.get("connection_architecture") == "gated_mlp":
+            if "gmlp_cell" in config_data:
+                cell_config["cell_prototype"]["gmlp_cell"] = config_data["gmlp_cell"]
+
+        # Добавляем дополнительные параметры
+        if "disable_nca_scaling" in config_data:
+            cell_config["cell_prototype"]["disable_nca_scaling"] = config_data[
+                "disable_nca_scaling"
+            ]
+
+        combined_data["cell_config"] = cell_config
+
+    # Специальная обработка neighbor_strategy
+    if "neighbor_strategy" in config_data:
+        combined_data["neighbor_finding_strategy"] = config_data["neighbor_strategy"]
+
+    # Обработка num_neighbors
+    if "num_neighbors" in config_data:
+        combined_data["neighbors"] = config_data["num_neighbors"]
+
+    # Обработка tiered_neighbor_config
+    if "tiered_neighbor_config" in config_data:
+        combined_data["neighbor_strategy_config"] = config_data[
+            "tiered_neighbor_config"
+        ]
+
+    # Специальная обработка dimensions (словарь -> кортеж)
+    if "dimensions" in combined_data and isinstance(combined_data["dimensions"], dict):
+        dims_dict = combined_data["dimensions"]
+        combined_data["dimensions"] = (
+            dims_dict.get("width", 8),
+            dims_dict.get("height", 8),
+            dims_dict.get("depth", 8),
+        )
 
     # Получаем все известные поля dataclass
     known_fields = {f.name for f in LatticeConfig.__dataclass_fields__.values()}

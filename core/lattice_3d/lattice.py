@@ -25,16 +25,19 @@ from .io import IOPointPlacer
 from .position import Position3D
 from .topology import NeighborTopology
 from .plasticity import PlasticityMixin
+from .clustering import ClusteringMixin
 
 # Добавляем импорт для коллекций
 from collections import deque
 
 
-class Lattice3D(nn.Module, PlasticityMixin):
+class Lattice3D(nn.Module, PlasticityMixin, ClusteringMixin):
     """
     Трёхмерная решётка клеток (нейронов).
 
-    Теперь наследует от PlasticityMixin для механизмов пластичности.
+    Наследует от:
+    - PlasticityMixin: механизмы пластичности (STDP, конкурентное обучение, BCM)
+    - ClusteringMixin: функциональная кластеризация с координацией
     """
 
     def __init__(self, config: LatticeConfig):
@@ -102,6 +105,9 @@ class Lattice3D(nn.Module, PlasticityMixin):
 
         # === Инициализация пластичности (через mixin) ===
         self._init_plasticity()
+
+        # === Инициализация кластеризации (через mixin) ===
+        self._init_clustering(config.to_dict())
 
         # Инициализация состояний клеток
         self.states = self._initialize_states()

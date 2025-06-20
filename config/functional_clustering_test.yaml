@@ -1,0 +1,126 @@
+# Конфигурация для тестирования функциональной кластеризации
+# Шаг 3.3: Базовая функциональная кластеризация с готовностью к расширению
+
+lattice:
+  # Размеры решетки для тестирования
+  dimensions: [8, 8, 8] # 512 клеток для быстрого тестирования
+  boundary_conditions: "walls"
+
+  # Стратегия соседства
+  neighbors: 26 # 3D соседство
+  neighbor_finding_strategy: "tiered"
+  neighbor_strategy_config:
+    local_tier: 0.70
+    functional_tier: 0.20
+    distant_tier: 0.10
+    local_grid_cell_size: 4.0
+
+  # Инициализация
+  initialization_method: "normal"
+  initialization_std: 0.1
+  seed: 42
+  gpu_enabled: true
+
+  # Пластичность
+  enable_plasticity: true
+  plasticity_rule: "combined"
+  activity_history_size: 10
+
+  # STDP параметры
+  stdp_config:
+    activity_threshold: 0.05
+    learning_rate: 0.01
+    A_plus: 0.01
+    A_minus: 0.012
+    tau_plus: 20.0
+    tau_minus: 20.0
+    weight_bounds: [0.1, 2.0]
+
+  # BCM метапластичность
+  enable_metaplasticity: true
+  bcm_config:
+    tau_theta: 1000.0
+    min_threshold: 0.001
+    max_threshold: 0.1
+    initial_threshold: 0.03
+    bcm_learning_rate_factor: 0.5
+    enable_threshold_adaptation: true
+    adaptation_frequency: 1
+
+  # Конкурентное обучение
+  enable_competitive_learning: true
+  competitive_config:
+    winner_boost_factor: 1.05
+    lateral_inhibition_factor: 0.98
+    enable_weight_normalization: true
+    normalization_method: "proportional"
+    update_frequency: 1
+    max_winner_connections: 6
+    lateral_inhibition_radius: 3.0
+
+  # ===== НОВАЯ ФУНКЦИОНАЛЬНАЯ КЛАСТЕРИЗАЦИЯ =====
+  enable_clustering: true
+  clustering_config:
+    # Базовая кластеризация
+    similarity_threshold: 0.7
+    max_clusters: 8
+    update_frequency: 1 # Обновление каждый шаг для тестирования
+    min_cluster_size: 8
+    stability_threshold: 0.8
+
+    # Модификация весов связей
+    intra_cluster_boost: 1.3 # Усиление связей внутри кластера
+    inter_cluster_dampening: 0.7 # Ослабление связей между кластерами
+
+    # Интеграция с существующей пластичностью
+    priority: 0.3 # Кластеризация 30%, пластичность 70%
+    integration_mode: "additive" # Аддитивная интеграция весов
+
+    # Координационный интерфейс (готов к расширению)
+    coordination:
+      coordination_mode: "basic" # Пока базовый режим
+      enable_user_guidance: false # Готов к включению
+      enable_learned_coordination: false # Готов к включению
+      coordination_strength: 0.5
+      adaptation_rate: 0.1
+      memory_decay: 0.95
+
+  # Логирование
+  enable_logging: true
+  log_level: "INFO"
+  track_performance: true
+  validate_states: true
+
+# === ГИБРИДНАЯ АРХИТЕКТУРА (NCA) ===
+cell_prototype:
+  prototype_name: "minimal_nca_cell"
+
+  minimal_nca_cell:
+    # Параметры для функциональной кластеризации
+    state_size: 6 # Размер состояния для кластеризации
+    neighbor_count: 26 # Синхронизируется с lattice.neighbors
+    hidden_dim: 4 # Пропорционально state_size
+    external_input_size: 2 # Внешний вход
+
+    # NCA параметры
+    activation: "tanh"
+    dropout: 0.0
+    use_memory: false
+
+    # КРИТИЧНО: отключение масштабирования
+    enable_lattice_scaling: false
+    target_params: 69 # Фиксированный target
+
+    # NCA dynamics
+    alpha: 0.1
+    beta: 0.05
+
+# I/O настройки
+io:
+  input_face: "front"
+  output_face: "back"
+  placement_strategy: "proportional"
+  io_strategy_config:
+    min_percentage: 8.0 # 8% клеток грани
+    max_percentage: 12.0 # 12% клеток грани
+    seed: 42

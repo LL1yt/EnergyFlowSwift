@@ -1,115 +1,197 @@
-# PHASE 4 PLAN: Cognitive Inference System
+# ФАЗА 4: Production масштабирование и интеграция декодера
 
-**Дата создания:** 6 июня 2025  
-**Статус:** 💡 **ГОТОВА К РЕАЛИЗАЦИИ** (после Phase 3)  
-**Продолжительность:** 2-3 недели  
-**Приоритет:** 🧠 **ФРАЗОВЫЙ ИНТЕЛЛЕКТ**
+**Дата начала:** 2025-01-27 | **Статус:** 🚀 ГОТОВА К ЗАПУСКУ
 
 ---
 
-## 🎯 ЦЕЛЬ PHASE 4
+## 🎯 ЦЕЛИ ФАЗЫ 4
 
-Создать **полную когнитивную систему вывода** с фразовым интеллектом, внутренним диалогом и биологически правдоподобным reasoning, готовую для реальных NLP задач.
+**Главная задача:** Масштабирование на 300×300×150 решетку + интеграция интерпретируемого декодера
 
----
+### Ключевые достижения:
 
-## 🧠 КОГНИТИВНАЯ АРХИТЕКТУРА
-
-### Принципы Фразового Интеллекта
-
-- **Phrase-Level Reasoning** - мышление семантическими единицами
-- **Self-Reflection System** - внутренний диалог для глубокого понимания
-- **Bidirectional Processing** - encoder↔decoder cooperation
-- **Context-Aware Generation** - учет контекста на уровне концептов
-- **Biologically-Inspired Cognition** - имитация человеческого мышления
+- 🎯 **Большая решетка:** 300×300×150 = 13.5M клеток в рамках 24-48GB VRAM
+- 🔧 **Memory optimization:** Оптимизация memory footprint для больших решеток
+- 🎭 **Интерпретируемость:** Декодер эмбедингов для мониторинга процесса обучения
+- 🔄 **Production интеграция:** automated_training_refactored.py + динамическая конфигурация
+- 📊 **Обучаемый декодер:** Декодер обучается параллельно с основной сетью
 
 ---
 
-## 📦 МОДУЛИ РЕАЛИЗАЦИИ
+## 📋 ПЛАН ДЕЙСТВИЙ
 
-### 1. 🆕 `inference/phrase_decoder/` - Фразовое декодирование
+### Шаг 4.1: Memory Optimization [КРИТИЧНЫЙ]
 
-**Компоненты:**
+**Цель:** Подготовить архитектуру для больших решеток
 
-- **PhraseIntelligence** - core phrase-level reasoning
-- **SemanticDecoder** - conversion от cube outputs к phrases
-- **ContextProcessor** - context-aware phrase selection
-- **QualityEvaluator** - natural language quality assessment
+**Задачи:**
 
-### 2. 🆕 `inference/internal_dialogue/` - Внутренний диалог
+- [ ] Профилирование памяти для baseline решетки 16×16×16
+- [ ] Memory footprint analysis для 300×300×150 (13.5M клеток)
+- [ ] Sparse connection weights для дальних связей
+- [ ] Mixed precision (FP16) optimization
+- [ ] Gradient checkpointing implementation
 
-**Компоненты:**
+**Estimate:** ~21-24 GB VRAM для 300×300×150 (в пределах RTX 4090/5090!)
 
-- **DialogueSimulator** - simulation внутреннего диалога
-- **ReflectionEngine** - self-reflection mechanisms
-- **ThoughtChain** - coherent thought progression
-- **MetaCognition** - awareness of thinking process
+### Шаг 4.2: Production Integration [ВЫСОКИЙ]
 
-### 3. 🆕 `inference/cognitive_system/` - Полная интеграция
+**Цель:** Интеграция с automated_training_refactored.py
 
-**Компоненты:**
+**Задачи:**
 
-- **CognitiveOrchestrator** - coordination всех subsystems
-- **TaskProcessor** - real-world NLP task handling
-- **ResponseGenerator** - final response generation
-- **ProductionInterface** - API для real-world usage
+- [ ] Поддержка clustering_config в TrainingStageRunner
+- [ ] Progressive scaling: 50×50×25 → 150×150×75 → 300×300×150
+- [ ] Dynamic config update для больших решеток
+- [ ] Memory-aware batch size selection
+- [ ] Stage-specific plasticity profiles
 
----
+### Шаг 4.3: Decoder Integration [ВЫСОКИЙ]
 
-## 📋 ПЛАН РЕАЛИЗАЦИИ (2-3 недели)
+**Цель:** Real-time мониторинг через декодер эмбедингов
 
-### НЕДЕЛЯ 1: Phrase Intelligence Foundation
+**Философия:**
 
-#### День 1-4: PhraseDecoder System ✅ READY
+- 🎯 **Real-time мониторинг:** Декодирование во время обучения
+- 🧠 **Обучаемый компонент:** Декодер улучшается параллельно
+- 📊 **Quality metrics:** Логичность как метрика качества
+- 🔄 **Feedback loop:** Качество влияет на параметры обучения
 
-- [ ] PhraseIntelligence core reasoning engine
-- [ ] SemanticDecoder для natural language generation
-- [ ] Integration с trained dual-cube system
-- [ ] Quality metrics и evaluation
+**Задачи:**
 
-#### День 5-7: Internal Dialogue System ✅ READY
+- [ ] Выбор декодера: ResourceEfficientDecoderV21 (800K params)
+- [ ] Periodic sampling: декодирование каждые N шагов
+- [ ] Quality assessment: BLEU score, coherence metrics
+- [ ] Training loop integration
+- [ ] Performance overhead < 10%
 
-- [ ] DialogueSimulator для внутреннего диалога
-- [ ] ReflectionEngine mechanisms
-- [ ] Coherent thought progression
-- [ ] Meta-cognitive awareness
+### Шаг 4.4: Production Testing [СРЕДНИЙ]
 
-### НЕДЕЛЯ 2: Production Integration
+**Цель:** Comprehensive testing и benchmarking
 
-#### День 8-10: Cognitive Integration ✅ READY
+**Задачи:**
 
-- [ ] CognitiveOrchestrator coordination
-- [ ] TaskProcessor для real-world NLP
-- [ ] ResponseGenerator optimization
-- [ ] Performance benchmarking
-
-#### День 11-14: Production Readiness ✅ READY
-
-- [ ] ProductionInterface API design
-- [ ] Real-world testing scenarios
-- [ ] Performance optimization
-- [ ] **COMPLETE COGNITIVE SYSTEM**
+- [ ] Memory profiling тесты
+- [ ] Long-term stability testing (24+ hours)
+- [ ] Decoder quality assessment
+- [ ] Production pipeline end-to-end тесты
 
 ---
 
-## 🎯 ОЖИДАЕМЫЕ РЕЗУЛЬТАТЫ
+## 🔧 ТЕХНИЧЕСКИЕ ДЕТАЛИ
 
-### Cognitive Capabilities
+### Memory Footprint Breakdown (300×300×150)
 
-- **Phrase-Level Intelligence** operational
-- **Self-Reflection System** functional
-- **Biologically-Inspired Reasoning** demonstrated
-- **Production-Ready Inference** complete
+| Компонент             | Размер        | Оптимизация             |
+| --------------------- | ------------- | ----------------------- |
+| Cell parameters       | 4.54 GB       | Mixed precision         |
+| States                | 324 MB        | FP16                    |
+| Connection weights    | 1.40 GB       | Sparse tensors          |
+| Plasticity buffers    | 3.24 GB       | Gradient checkpointing  |
+| Clustering data       | 500 MB        | Efficient indexing      |
+| Gradients + optimizer | 9.08 GB       | Memory pooling          |
+| Temporary tensors     | 2 GB          | Reuse buffers           |
+| **TOTAL**             | **~21-24 GB** | **Fits RTX 4090/5090!** |
 
-### Real-World Integration
+### Decoder Integration Strategy
 
-- **NLP Task Performance** competitive
-- **Natural Language Quality** human-like
-- **Context Understanding** superior
-- **Scalable Deployment** ready
+**Выбранный декодер:** ResourceEfficientDecoderV21
+
+- **Параметры:** 800K (компактный)
+- **Overhead:** <2GB memory
+- **Performance:** <10% slowdown
+- **Quality:** BLEU >0.4 target
+
+**Integration points:**
+
+1. **TrainingStageRunner:** Periodic decoding every N steps
+2. **Logging system:** Decoded texts в training logs
+3. **Quality metrics:** BLEU score tracking
+4. **Early stopping:** Quality degradation detection
 
 ---
 
-**🎯 PHASE 4 MOTTO: "Мышление фразами, рефлексия концептами - искусственное сознание"**
+## 🎯 КРИТЕРИИ УСПЕХА
 
-_Завершаем создание системы, которая мыслит как человек - семантическими единицами с внутренним диалогом._
+### Memory Efficiency
+
+- [ ] 300×300×150 решетка в 24GB VRAM
+- [ ] Decoder overhead <2GB
+- [ ] Sparse connection efficiency >70%
+
+### Performance
+
+- [ ] Forward pass <2s для 13.5M клеток
+- [ ] Training step <5s включая пластичность
+- [ ] Decoder overhead <10%
+
+### Quality
+
+- [ ] Decoder BLEU score >0.4
+- [ ] Coherent text generation
+- [ ] Quality correlation с training progress
+
+### Production Readiness
+
+- [ ] Seamless automated_training integration
+- [ ] Dynamic config support
+- [ ] 24+ hours stability
+- [ ] Memory leak prevention
+
+---
+
+## 🧪 ПЛАН ТЕСТИРОВАНИЯ
+
+### Memory Tests
+
+- `test_memory_profiling_large_lattice.py`
+- `test_sparse_connections_efficiency.py`
+- `test_progressive_scaling.py`
+
+### Integration Tests
+
+- `test_automated_training_large_integration.py`
+- `test_dynamic_config_large_lattice.py`
+- `test_production_pipeline_end_to_end.py`
+
+### Decoder Tests
+
+- `test_decoder_training_integration.py`
+- `test_real_time_decoding_performance.py`
+- `test_decoder_quality_assessment.py`
+
+### Stability Tests
+
+- `test_long_term_stability.py`
+- `test_memory_leak_detection.py`
+- `test_gpu_memory_management.py`
+
+---
+
+## 🚀 IMMEDIATE NEXT STEPS
+
+**Сегодня (2025-01-27):**
+
+1. ✅ Завершить Шаг 3.3: Запустить `test_functional_clustering_basic.py`
+2. 🔍 Memory profiling: Baseline analysis для 16×16×16
+3. 🎭 Decoder analysis: Выбрать optimal decoder для integration
+
+**Эта неделя:**
+
+1. Memory optimization strategies
+2. Automated training integration planning
+3. Decoder integration prototype
+
+**Следующая неделя:**
+
+1. Large lattice testing
+2. Production pipeline integration
+3. Comprehensive testing
+
+---
+
+**Статус:** 🎉 АРХИТЕКТУРНЫЙ ПРОРЫВ ЗАВЕРШЕН - Фаза 3 готова!  
+**Цель:** 🚀 Production-ready система с интерпретируемостью  
+**Timeline:** 1-2 недели (опережаем план!)
+
+_Создано: 2025-01-27_
