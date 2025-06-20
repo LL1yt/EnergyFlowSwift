@@ -377,11 +377,14 @@ class LatticeConfig:
     initialization_method: str = "normal"
     initialization_std: float = 0.1
     initialization_mean: float = 0.0
+    seed: int = 42
 
     # Топология
     neighbors: int = 6
     validate_connections: bool = True
     cache_neighbors: bool = True
+    neighbor_finding_strategy: str = "local"
+    neighbor_strategy_config: Optional[Dict[str, Any]] = None
 
     # Интерфейсы ввода/вывода
     input_face: Face = Face.FRONT
@@ -851,78 +854,138 @@ class NeighborTopology:
 
     Реализует различные типы граничных условий и предоставляет
     эффективные методы для получения соседей каждой клетки.
+
+    Поддерживает разные стратегии поиска соседей:
+    - local: стандартные 6 соседей (фон Нейман)
+    - random_sample: случайная выборка N соседей со всей решетки
+    - hybrid: комбинация локальных и случайных соседей
     """
 
-    # Направления к 6 соседям в 3D пространстве
-    NEIGHBOR_DIRECTIONS = [
-        (-1, 0, 0),  # Влево
-        (1, 0, 0),  # Вправо
-        (0, -1, 0),  # Вниз
-        (0, 1, 0),  # Вверх
-        (0, 0, -1),  # Назад
-        (0, 0, 1),  # Вперед
+    # Направления к 6 локальным соседям в 3D пространстве
+    _LOCAL_NEIGHBOR_DIRECTIONS = [
+        (1, 0, 0),
+        (-1, 0, 0),
+        (0, 1, 0),
+        (0, -1, 0),
+        (0, 0, 1),
+        (0, 0, -1),
     ]
 
-    def __init__(self, config: LatticeConfig):
+    def __init__(self, config: LatticeConfig, all_coords: List[Coordinates3D]):
         """
         Инициализация системы соседства.
 
         Args:
-            config: Конфигурация решетки
+            config: Конфигурация решетки.
+            all_coords: Полный список всех координат в решетке.
         """
         self.config = config
         self.dimensions = config.dimensions
         self.boundary_conditions = config.boundary_conditions
-        self.position_system = Position3D(self.dimensions)
+        self.pos_helper = Position3D(self.dimensions)
 
-        # Кэш для карты соседства
-        self._neighbor_cache: Dict[int, List[int]] = {}
-        self._cache_initialized = False
+        self.strategy = getattr(config, "neighbor_finding_strategy", "local")
+        self.num_neighbors = config.neighbors
+        self.strategy_config = getattr(config, "neighbor_strategy_config", {})
 
+        self._all_coords_list = all_coords
+        self._all_coords_set = set(all_coords)
+
+        self.neighbor_cache: Optional[Dict[int, List[int]]] = (
+            {} if config.cache_neighbors else None
+        )
         if config.cache_neighbors:
             self._build_neighbor_cache()
 
     def get_neighbors(self, coords: Coordinates3D) -> List[Coordinates3D]:
         """
-        Получение соседей для заданных координат.
+        Получает список координат соседей для заданной клетки в зависимости от стратегии.
+        Этот метод не использует кэш и вычисляет соседей "на лету".
 
         Args:
-            coords: 3D координаты клетки
+            coords: Координаты клетки.
 
         Returns:
-            List[Coordinates3D]: Список координат соседних клеток
+            Список координат соседей.
         """
-        x, y, z = coords
+        if self.strategy == "local":
+            return self._get_local_neighbors(coords)
+        elif self.strategy == "random_sample":
+            return self._get_random_sample_neighbors(coords)
+        elif self.strategy == "hybrid":
+            return self._get_hybrid_neighbors(coords)
+        else:
+            raise ValueError(f"Unknown neighbor finding strategy: {self.strategy}")
+
+    def _get_local_neighbors(self, coords: Coordinates3D) -> List[Coordinates3D]:
+        """Возвращает до 6 локальных соседей."""
         neighbors = []
-
-        for dx, dy, dz in self.NEIGHBOR_DIRECTIONS:
-            neighbor_coords = (x + dx, y + dy, z + dz)
-
-            # Применяем граничные условия
-            processed_coords = self._apply_boundary_conditions(neighbor_coords)
-
-            if processed_coords is not None:
-                neighbors.append(processed_coords)
-
+        for direction in self._LOCAL_NEIGHBOR_DIRECTIONS:
+            neighbor_coords = (
+                coords[0] + direction[0],
+                coords[1] + direction[1],
+                coords[2] + direction[2],
+            )
+            valid_coords = self._apply_boundary_conditions(neighbor_coords)
+            if valid_coords:
+                neighbors.append(valid_coords)
         return neighbors
+
+    def _get_random_sample_neighbors(
+        self, coords: Coordinates3D
+    ) -> List[Coordinates3D]:
+        """Возвращает случайную выборку N соседей со всей решетки."""
+        # Исключаем сами себя из выборки
+        possible_neighbors = list(self._all_coords_set - {coords})
+        num_to_sample = min(self.num_neighbors, len(possible_neighbors))
+        if num_to_sample == 0:
+            return []
+
+        indices = np.random.choice(
+            len(possible_neighbors), num_to_sample, replace=False
+        )
+        return [possible_neighbors[i] for i in indices]
+
+    def _get_hybrid_neighbors(self, coords: Coordinates3D) -> List[Coordinates3D]:
+        """Комбинирует локальных и случайных соседей."""
+        local_count = self.strategy_config.get("local_count", 6)
+        # Убедимся, что random_count не отрицательный
+        random_count = max(0, self.num_neighbors - local_count)
+
+        # 1. Получаем локальных соседей
+        local_neighbors = self._get_local_neighbors(coords)
+        if len(local_neighbors) > local_count:
+            local_neighbors = local_neighbors[:local_count]
+
+        # 2. Получаем случайных соседей
+        # Исключаем себя и уже выбранных локальных соседей
+        exclude_set = {coords}.union(local_neighbors)
+        possible_random = list(self._all_coords_set - exclude_set)
+
+        num_to_sample = min(random_count, len(possible_random))
+
+        if num_to_sample > 0:
+            indices = np.random.choice(
+                len(possible_random), num_to_sample, replace=False
+            )
+            random_neighbors = [possible_random[i] for i in indices]
+        else:
+            random_neighbors = []
+
+        return local_neighbors + random_neighbors
 
     def get_neighbor_indices(self, linear_index: int) -> List[int]:
         """
-        Получение индексов соседей для линейного индекса.
-
-        Args:
-            linear_index: Линейный индекс клетки
-
-        Returns:
-            List[int]: Список линейных индексов соседних клеток
+        Получает список линейных индексов соседей.
+        Использует кэш, если он доступен и был построен.
         """
-        if self.config.cache_neighbors and self._cache_initialized:
-            return self._neighbor_cache.get(linear_index, [])
+        if self.neighbor_cache is not None:
+            return self.neighbor_cache.get(linear_index, [])
 
-        coords = self.position_system.to_3d_coordinates(linear_index)
+        # Если кэша нет, вычисляем на лету
+        coords = self.pos_helper.to_3d_coordinates(linear_index)
         neighbor_coords = self.get_neighbors(coords)
-
-        return [self.position_system.to_linear_index(nc) for nc in neighbor_coords]
+        return [self.pos_helper.to_linear_index(nc) for nc in neighbor_coords]
 
     def _apply_boundary_conditions(
         self, coords: Coordinates3D
@@ -981,23 +1044,18 @@ class NeighborTopology:
             raise ValueError(f"Unknown boundary condition: {self.boundary_conditions}")
 
     def _build_neighbor_cache(self):
-        """
-        Предварительное построение кэша соседства для всех клеток.
+        """Кэширует списки соседей (в виде линейных индексов) для каждой клетки."""
+        logging.info(f"Building neighbor cache with strategy '{self.strategy}'...")
+        if self.neighbor_cache is None:
+            return
 
-        Повышает производительность при частых запросах соседей.
-        """
-        logging.info("Building neighbor cache for lattice...")
-
-        for linear_index in range(self.position_system.total_positions):
-            coords = self.position_system.to_3d_coordinates(linear_index)
-            neighbor_coords = self.get_neighbors(coords)
-            neighbor_indices = [
-                self.position_system.to_linear_index(nc) for nc in neighbor_coords
+        for i, coords in enumerate(self._all_coords_list):
+            # Всегда вычисляем соседей заново для кэширования
+            neighbors_coords = self.get_neighbors(coords)
+            self.neighbor_cache[i] = [
+                self.pos_helper.to_linear_index(nc) for nc in neighbors_coords
             ]
-            self._neighbor_cache[linear_index] = neighbor_indices
-
-        self._cache_initialized = True
-        logging.info(f"Neighbor cache built: {len(self._neighbor_cache)} entries")
+        logging.info(f"Neighbor cache built: {len(self.neighbor_cache)} entries")
 
     def validate_topology(self) -> Dict[str, Any]:
         """
@@ -1007,7 +1065,7 @@ class NeighborTopology:
             Dict[str, Any]: Статистика топологии
         """
         stats = {
-            "total_cells": self.position_system.total_positions,
+            "total_cells": self.pos_helper.total_positions,
             "boundary_conditions": self.boundary_conditions.value,
             "neighbor_counts": {},
             "symmetry_check": True,
@@ -1016,7 +1074,7 @@ class NeighborTopology:
 
         # Подсчет количества соседей для каждой клетки
         neighbor_counts = []
-        for i in range(self.position_system.total_positions):
+        for i in range(self.pos_helper.total_positions):
             neighbors = self.get_neighbor_indices(i)
             neighbor_counts.append(len(neighbors))
 
@@ -1026,7 +1084,7 @@ class NeighborTopology:
             stats["neighbor_counts"][str(count)] = neighbor_counts.count(count)
 
         # Проверка симметрии соседства
-        for i in range(self.position_system.total_positions):
+        for i in range(self.pos_helper.total_positions):
             neighbors = self.get_neighbor_indices(i)
             for neighbor_idx in neighbors:
                 neighbor_neighbors = self.get_neighbor_indices(neighbor_idx)
@@ -1047,63 +1105,75 @@ class NeighborTopology:
 
 class Lattice3D(nn.Module):
     """
-    Основной класс трехмерной решетки клеток.
-
-    Управляет сеткой клеток cell_prototype, их состояниями и взаимодействием.
-    Реализует синхронное обновление всех клеток и интерфейсы ввода/вывода.
-
-    Биологическая аналогия: кора головного мозга - 3D ткань из одинаковых
-    нейронов, где каждый нейрон обрабатывает сигналы от соседей.
+    Главный класс, реализующий 3D решетку клеток.
     """
 
     def __init__(self, config: LatticeConfig):
         """
-        Инициализация трехмерной решетки клеток.
+        Инициализация решетки.
 
         Args:
-            config: Конфигурация решетки
+            config: Объект конфигурации LatticeConfig.
         """
         super().__init__()
         self.config = config
+        self.device = config.device
+        self.pos_helper = Position3D(config.dimensions)
+        self.logger = logging.getLogger(__name__)
 
-        # Основные компоненты
-        self.position_system = Position3D(config.dimensions)
-        self.topology = NeighborTopology(config)
+        if config.enable_logging:
+            self.logger.info(f"Initializing Lattice3D on device: {self.device}")
+            self.logger.info(
+                f"Dimensions: {config.dimensions}, Total cells: {config.total_cells}"
+            )
+            self.logger.info(
+                f"Neighbor strategy: {getattr(config, 'neighbor_finding_strategy', 'local')}"
+            )
 
-        # НОВОЕ: Инициализация системы размещения I/O точек
-        self.io_placer = IOPointPlacer(
-            lattice_dimensions=config.dimensions,
-            strategy=config.placement_strategy,
-            config=config.io_strategy_config or {},
-            seed=(
-                config.io_strategy_config.get("seed", 42)
-                if config.io_strategy_config
-                else 42
-            ),
-        )
-
-        # Создание прототипа клетки (один для всех позиций)
+        # Создаем прототип клетки
         self.cell_prototype = self._create_cell_prototype()
+        self.state_size = self.cell_prototype.state_size
 
-        # Состояния всех клеток решетки
+        # Размещение I/O точек
+        io_seed = 42
+        if config.io_strategy_config and "seed" in config.io_strategy_config:
+            io_seed = config.io_strategy_config["seed"]
+
+        self.io_placer = IOPointPlacer(
+            config.dimensions,
+            config.placement_strategy,
+            config.io_strategy_config or {},
+            seed=io_seed,
+        )
+        self.input_points = self.io_placer.get_input_points(config.input_face)
+        self.output_points = self.io_placer.get_output_points(config.output_face)
+        self.input_indices = [
+            self.pos_helper.to_linear_index(p) for p in self.input_points
+        ]
+        self.output_indices = [
+            self.pos_helper.to_linear_index(p) for p in self.output_points
+        ]
+
+        # Инициализация топологии соседства
+        # Передаем полный список координат для продвинутых стратегий
+        all_coords = self.pos_helper.get_all_coordinates()
+        self.topology = NeighborTopology(config, all_coords=all_coords)
+
+        # Инициализация состояний клеток
         self.states = self._initialize_states()
 
-        # Кэширование для производительности
-        self._face_indices = self._compute_face_indices()
+        # Кэш для индексов граней
+        self._face_indices_cache = self._compute_face_indices()
 
-        # Статистика и диагностика
-        self.step_count = 0
-        self.performance_stats = {
-            "forward_calls": 0,
+        # Отслеживание производительности
+        self.perf_stats = {
+            "total_steps": 0,
             "total_time": 0.0,
             "avg_time_per_step": 0.0,
         }
 
-        logging.info(
-            f"Lattice3D initialized: {config.dimensions} = {config.total_cells} cells"
-        )
-        if config.track_performance:
-            logging.info(f"Performance tracking enabled, device: {config.device}")
+        if self.config.validate_states:
+            self._validate_initial_setup()
 
     def _create_cell_prototype(self) -> CellPrototype:
         """
@@ -1222,42 +1292,42 @@ class Lattice3D(nn.Module):
 
         # FRONT face (Z = 0)
         face_indices[Face.FRONT] = [
-            self.position_system.to_linear_index((x, y, 0))
+            self.pos_helper.to_linear_index((x, y, 0))
             for x in range(x_size)
             for y in range(y_size)
         ]
 
         # BACK face (Z = max)
         face_indices[Face.BACK] = [
-            self.position_system.to_linear_index((x, y, z_size - 1))
+            self.pos_helper.to_linear_index((x, y, z_size - 1))
             for x in range(x_size)
             for y in range(y_size)
         ]
 
         # LEFT face (X = 0)
         face_indices[Face.LEFT] = [
-            self.position_system.to_linear_index((0, y, z))
+            self.pos_helper.to_linear_index((0, y, z))
             for y in range(y_size)
             for z in range(z_size)
         ]
 
         # RIGHT face (X = max)
         face_indices[Face.RIGHT] = [
-            self.position_system.to_linear_index((x_size - 1, y, z))
+            self.pos_helper.to_linear_index((x_size - 1, y, z))
             for y in range(y_size)
             for z in range(z_size)
         ]
 
         # TOP face (Y = max)
         face_indices[Face.TOP] = [
-            self.position_system.to_linear_index((x, y_size - 1, z))
+            self.pos_helper.to_linear_index((x, y_size - 1, z))
             for x in range(x_size)
             for z in range(z_size)
         ]
 
         # BOTTOM face (Y = 0)
         face_indices[Face.BOTTOM] = [
-            self.position_system.to_linear_index((x, 0, z))
+            self.pos_helper.to_linear_index((x, 0, z))
             for x in range(x_size)
             for z in range(z_size)
         ]
@@ -1289,7 +1359,7 @@ class Lattice3D(nn.Module):
 
         # Обновляем состояния (синхронно)
         self._states = new_states
-        self.step_count += 1
+        self.perf_stats["total_steps"] += 1
 
         # Обновляем статистику производительности
         if self.config.track_performance:
@@ -1434,8 +1504,7 @@ class Lattice3D(nn.Module):
         # Проверяем, является ли клетка точкой ввода
         input_points_3d = self.io_placer.get_input_points(self.config.input_face)
         input_point_indices = [
-            self.position_system.to_linear_index(point_3d)
-            for point_3d in input_points_3d
+            self.pos_helper.to_linear_index(point_3d) for point_3d in input_points_3d
         ]
 
         if cell_idx in input_point_indices:
@@ -1464,11 +1533,9 @@ class Lattice3D(nn.Module):
 
     def _update_performance_stats(self, step_time: float):
         """Обновление статистики производительности"""
-        self.performance_stats["forward_calls"] += 1
-        self.performance_stats["total_time"] += step_time
-        self.performance_stats["avg_time_per_step"] = (
-            self.performance_stats["total_time"]
-            / self.performance_stats["forward_calls"]
+        self.perf_stats["total_time"] += step_time
+        self.perf_stats["avg_time_per_step"] = (
+            self.perf_stats["total_time"] / self.perf_stats["total_steps"]
         )
 
     # Дополнительные методы для управления решеткой (будут добавлены в следующих шагах)
@@ -1487,7 +1554,7 @@ class Lattice3D(nn.Module):
 
     def get_face_states(self, face: Face) -> torch.Tensor:
         """Получение состояний клеток на указанной грани"""
-        face_indices = self._face_indices[face]
+        face_indices = self._face_indices_cache.get(face, [])
         return self._states[face_indices]
 
     def get_output_states(self) -> torch.Tensor:
@@ -1503,7 +1570,7 @@ class Lattice3D(nn.Module):
         # Конвертируем 3D координаты в линейные индексы
         output_point_indices = []
         for point_3d in output_points_3d:
-            linear_idx = self.position_system.to_linear_index(point_3d)
+            linear_idx = self.pos_helper.to_linear_index(point_3d)
             output_point_indices.append(linear_idx)
 
         # Возвращаем состояния только выходных точек
@@ -1547,11 +1614,16 @@ class Lattice3D(nn.Module):
     def reset_states(self):
         """Сброс состояний к начальным значениям"""
         self._states = self._initialize_states()
-        self.step_count = 0
+        self.perf_stats["total_steps"] = 0
 
     def get_performance_stats(self) -> Dict[str, Any]:
         """Получение статистики производительности"""
-        return self.performance_stats.copy()
+        return self.perf_stats.copy()
+
+    def _validate_initial_setup(self):
+        """Валидация начальной настройки решетки"""
+        # Добавьте необходимые проверки для начальной настройки
+        pass
 
 
 # =============================================================================
