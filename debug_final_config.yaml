@@ -1,0 +1,121 @@
+_metadata:
+  bio_constants_version: '1.0'
+  generated_by: DynamicConfigGenerator
+  mode: development
+  scale_factor: 0.01
+architecture:
+  connection_architecture: gated_mlp
+  disable_nca_scaling: true
+  hybrid_mode: true
+  neuron_architecture: minimal_nca
+embeddings:
+  embedding_dim: 49
+  teacher_embedding_dim: 768
+emergent_training:
+  adaptive_loss_weighting: true
+  batch_size: 16
+  cell_architecture: gmlp
+  cube_dimensions:
+  - 7
+  - 7
+  - 3
+  emergent_specialization: true
+  enable_full_cube_gradient: true
+  epochs: 100
+  gmlp_config:
+    activation: gelu
+    dropout: 0.1
+    external_input_size: 4
+    hidden_dim: 8
+    memory_dim: 4
+    neighbor_count: 6
+    state_size: 8
+    target_params: 100
+    use_memory: true
+  gradient_balancing: true
+  gradient_clip_norm: 1.0
+  learning_rate: 0.001
+  loss_weights:
+    dialogue_similarity: 0.4
+    internal_consistency: 0.3
+    surface_reconstruction: 0.3
+  spatial_propagation_depth: 3
+  teacher_model: Meta-Llama-3-8B
+  warmup_epochs: 3
+  weight_decay: 0.01
+gmlp:
+  activation: gelu
+  dropout: 0.1
+  external_input_size: 4
+  hidden_dim: 8
+  memory_dim: 4
+  neighbor_count: 6
+  state_size: 8
+  target_params: 100
+  use_memory: true
+lattice:
+  lattice_depth: 20
+  lattice_height: 20
+  lattice_width: 20
+  scale_factor: 0.01
+  surface_size: 49
+  total_neurons: 147
+  volume: 147
+  x: 666
+  xs: 7
+  y: 666
+  ys: 7
+  z: 333
+  zs: 3
+minimal_nca_cell:
+  activation: tanh
+  alpha: 0.1
+  beta: 0.05
+  dropout: 0.0
+  enable_lattice_scaling: false
+  external_input_size: 1
+  hidden_dim: 3
+  neighbor_count: 26
+  state_size: 8
+  target_params: 69
+  use_memory: false
+optimization:
+  gradient_checkpointing:
+    checkpoint_ratio: 0.5
+    enable: true
+  memory_management:
+    auto_batch_sizing: true
+    garbage_collection_frequency: 100
+  mixed_precision:
+    enable: true
+    fp16_inference: true
+    fp32_compute:
+    - plasticity
+    - clustering
+    loss_scale: dynamic
+plasticity:
+  activity_threshold: 0.025
+  adaptation_speed: medium
+  bcm_threshold_adjustment: 1.2
+  competitive_strength: 1.0
+  emergence_detection:
+    enable: true
+    methods:
+    - fft_analysis
+    - pattern_amplification
+    morphology_threshold: 0.3
+    tracking_frequency: 50
+  enable_plasticity: true
+  functional_clustering:
+    enable: true
+    method: cosine_kmeans
+    min_cluster_size: 5
+    n_clusters: '{smart_round(lattice_width * lattice_height * lattice_depth / 2000)}'
+    update_frequency: 100
+  plasticity_rule: combined
+  profile: learning
+  stdp_learning_rate: 0.005
+training:
+  batch_size: 16
+  epochs: 100
+  learning_rate: 0.001

@@ -227,6 +227,36 @@ class TrainingStageRunner:
                         f"📐 Progressive scaling: {adaptive_dims[0]}×{adaptive_dims[1]}×{adaptive_dims[2]}"
                     )
 
+            # === PHASE 4 FIX: Explicit GPU device configuration ===
+            import torch
+
+            if torch.cuda.is_available():
+                # Убеждаемся что GPU включен в настройках
+                if "lattice_3d" not in config:
+                    config["lattice_3d"] = {}
+                config["lattice_3d"]["gpu_enabled"] = True
+                config["lattice_3d"]["parallel_processing"] = True
+
+                # Добавляем device в training секцию
+                if "training" not in config:
+                    config["training"] = {}
+                config["training"]["device"] = "cuda"
+                config["training"]["pin_memory"] = True
+
+                # GPU optimizations для memory efficiency
+                if stage_config.memory_optimizations:
+                    config["training"]["mixed_precision"] = True
+                    config["training"]["gradient_checkpointing"] = True
+
+                logger.info(
+                    f"🚀 GPU configuration enabled: {torch.cuda.get_device_name(0)}"
+                )
+            else:
+                logger.warning("⚠️  CUDA not available - using CPU")
+                if "training" not in config:
+                    config["training"] = {}
+                config["training"]["device"] = "cpu"
+
             return config
 
         except Exception as e:

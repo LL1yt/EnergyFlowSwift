@@ -378,7 +378,7 @@ class DynamicConfigGenerator:
             # НОВАЯ СЕКЦИЯ: Minimal NCA Configuration (ФИКСИРОВАННАЯ для нейронов)
             "minimal_nca_cell": {
                 # ФИКСИРОВАННЫЕ параметры для нейронов (НЕ масштабируются)
-                "state_size": 8,  # Маленький размер состояния для <100 params
+                "state_size": 4,  # PHASE 4 FIX: Правильный размер состояния для minimal NCA
                 "neighbor_count": 26,  # Синхронизируется с lattice.neighbors
                 "hidden_dim": 3,  # Очень маленький hidden для минимизации параметров
                 "external_input_size": 1,  # Минимальный внешний вход
@@ -387,7 +387,7 @@ class DynamicConfigGenerator:
                 "dropout": 0.0,  # NCA обычно без dropout
                 "use_memory": False,  # NCA имеет implicit memory
                 "enable_lattice_scaling": False,  # КРИТИЧНО: отключение масштабирования
-                "target_params": 69,  # Фиксированный target
+                "target_params": 362,  # PHASE 4 FIX: Правильное количество параметров для state_size=4, hidden_dim=3
                 # NCA dynamics parameters
                 "alpha": 0.1,  # Update strength
                 "beta": 0.05,  # Neighbor influence
@@ -434,6 +434,8 @@ class DynamicConfigGenerator:
         # Корректируем batch_size в зависимости от режима
         if mode == "development":
             config["training"]["batch_size"] = 16
+            # PHASE 4 FIX: Включаем hybrid режим для development
+            config["architecture"]["hybrid_mode"] = True
         elif mode == "research":
             config["training"]["batch_size"] = 32
         elif mode == "validation":
@@ -473,32 +475,57 @@ class DynamicConfigGenerator:
 
         # POST-PROCESSING: Специальная обработка для emergent_training
         if "emergent_training" in processed_config:
-            # Проверяем какую архитектуру использовать
-            use_nca = processed_config.get("nca", {}).get("enabled", False)
+            # === PHASE 4 FIX: Правильная архитектура в hybrid режиме ===
+            architecture = processed_config.get("architecture", {})
+            hybrid_mode = architecture.get("hybrid_mode", False)
+            neuron_arch = architecture.get("neuron_architecture", "gmlp")
 
-            if use_nca and "nca" in processed_config:
-                # Используем NCA архитектуру
+            if hybrid_mode and neuron_arch == "minimal_nca":
+                # HYBRID РЕЖИМ: используем NCA архитектуру для нейронов
                 processed_config["emergent_training"]["cell_architecture"] = "nca"
-                processed_config["emergent_training"]["gmlp_config"] = processed_config[
-                    "nca"
-                ].copy()
-                processed_config["emergent_training"]["nca_config"] = processed_config[
-                    "nca"
-                ].copy()
+
+                # Настраиваем NCA конфигурацию
+                if "minimal_nca_cell" in processed_config:
+                    processed_config["emergent_training"]["nca_config"] = (
+                        processed_config["minimal_nca_cell"].copy()
+                    )
+
+                # Оставляем gmlp_config для связей (в hybrid режиме)
+                if "gmlp" in processed_config:
+                    processed_config["emergent_training"]["gmlp_config"] = (
+                        processed_config["gmlp"].copy()
+                    )
+
                 logger.info(
-                    "[POST-PROCESS] Using NCA architecture for emergent training"
-                )
-            elif "gmlp" in processed_config:
-                # Fallback на gMLP архитектуру
-                processed_config["emergent_training"]["cell_architecture"] = "gmlp"
-                processed_config["emergent_training"]["gmlp_config"] = processed_config[
-                    "gmlp"
-                ].copy()
-                logger.debug(
-                    "[POST-PROCESS] Using gMLP architecture for emergent training"
+                    "[POST-PROCESS] HYBRID MODE: Using NCA architecture for neurons"
                 )
             else:
-                logger.warning("[POST-PROCESS] No valid cell architecture found!")
+                # Проверяем какую архитектуру использовать (старая логика)
+                use_nca = processed_config.get("nca", {}).get("enabled", False)
+
+                if use_nca and "nca" in processed_config:
+                    # Используем NCA архитектуру
+                    processed_config["emergent_training"]["cell_architecture"] = "nca"
+                    processed_config["emergent_training"]["gmlp_config"] = (
+                        processed_config["nca"].copy()
+                    )
+                    processed_config["emergent_training"]["nca_config"] = (
+                        processed_config["nca"].copy()
+                    )
+                    logger.info(
+                        "[POST-PROCESS] Using NCA architecture for emergent training"
+                    )
+                elif "gmlp" in processed_config:
+                    # Fallback на gMLP архитектуру
+                    processed_config["emergent_training"]["cell_architecture"] = "gmlp"
+                    processed_config["emergent_training"]["gmlp_config"] = (
+                        processed_config["gmlp"].copy()
+                    )
+                    logger.debug(
+                        "[POST-PROCESS] Using gMLP architecture for emergent training"
+                    )
+                else:
+                    logger.warning("[POST-PROCESS] No valid cell architecture found!")
 
         # Добавляем метаданные
         processed_config["_metadata"] = {

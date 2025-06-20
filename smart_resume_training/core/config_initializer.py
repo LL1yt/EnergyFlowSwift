@@ -86,6 +86,9 @@ class ConfigInitializer:
             "nca": full_config.get("nca", {}),
             "biological": full_config.get("biological", {}),
             "experimental": full_config.get("experimental", {}),
+            # PHASE 4 FIX: Добавляем отсутствующие секции
+            "architecture": full_config.get("architecture", {}),
+            "minimal_nca_cell": full_config.get("minimal_nca_cell", {}),
         }
 
         if "emergent_training" in full_config:
@@ -105,17 +108,70 @@ class ConfigInitializer:
         scale = self.metadata.get("scale_factor", "unknown")
         logger.info(f"Initialized config in '{mode}' mode with scale factor {scale}.")
 
+        # === PHASE 4 FIX: Support both old and new lattice field names ===
         lattice = self.config.get("lattice", {})
         if lattice:
-            logger.info(
-                f"Target Lattice: {lattice.get('xs')}x{lattice.get('ys')}x{lattice.get('zs')}"
-            )
+            # Try new field names first (Phase 4 integration)
+            width = lattice.get("lattice_width") or lattice.get("xs")
+            height = lattice.get("lattice_height") or lattice.get("ys")
+            depth = lattice.get("lattice_depth") or lattice.get("zs")
 
-        gmlp = self.config.get("gmlp", {})
-        if gmlp:
-            logger.info(
-                f"gMLP state size: {gmlp.get('state_size')}, hidden_dim: {gmlp.get('hidden_dim')}"
-            )
+            # Fallback to cube_dimensions if available
+            if not all([width, height, depth]):
+                emergent = self.config.get("emergent_training", {})
+                cube_dims = emergent.get("cube_dimensions", [])
+                if len(cube_dims) >= 3:
+                    width, height, depth = cube_dims[0], cube_dims[1], cube_dims[2]
+                    logger.warning(
+                        "Using fallback cube_dimensions - this may indicate a configuration issue"
+                    )
+
+            logger.info(f"Target Lattice: {width}x{height}x{depth}")
+
+            # Log field source for debugging
+            if lattice.get("lattice_width"):
+                logger.info(
+                    "Using Phase 4 lattice field names (lattice_width/height/depth)"
+                )
+            elif lattice.get("xs"):
+                logger.info("Using legacy lattice field names (xs/ys/zs)")
+            else:
+                logger.info("Using cube_dimensions fallback")
+
+        # === PHASE 4 FIX: Log correct architecture in hybrid mode ===
+        architecture = self.config.get("architecture", {})
+        emergent_training = self.config.get("emergent_training", {})
+
+        hybrid_mode = architecture.get("hybrid_mode", False)
+        cell_architecture = emergent_training.get("cell_architecture", "gmlp")
+
+        if hybrid_mode and cell_architecture == "nca":
+            # HYBRID MODE: Log NCA parameters
+            nca_config = emergent_training.get("nca_config", {})
+            if nca_config:
+                logger.info(
+                    f"NCA (hybrid) state size: {nca_config.get('state_size')}, hidden_dim: {nca_config.get('hidden_dim')}"
+                )
+                logger.info(f"Architecture: Hybrid NCA+gMLP mode")
+            else:
+                # Fallback к minimal_nca_cell секции
+                minimal_nca = self.config.get("minimal_nca_cell", {})
+                if minimal_nca:
+                    logger.info(
+                        f"NCA (hybrid) state size: {minimal_nca.get('state_size')}, hidden_dim: {minimal_nca.get('hidden_dim')}"
+                    )
+                    logger.info(f"Architecture: Hybrid NCA+gMLP mode")
+        else:
+            # Обычный режим или gMLP: log gMLP parameters
+            gmlp = self.config.get("gmlp", {})
+            if gmlp:
+                logger.info(
+                    f"gMLP state size: {gmlp.get('state_size')}, hidden_dim: {gmlp.get('hidden_dim')}"
+                )
+                if hybrid_mode:
+                    logger.info(f"Architecture: Hybrid mode (gMLP primary)")
+                else:
+                    logger.info(f"Architecture: Standard gMLP mode")
 
     def get_config(self) -> Dict:
         """Returns the generated configuration."""
