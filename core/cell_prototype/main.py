@@ -233,10 +233,9 @@ def create_cell_from_config(config: Dict[str, Any]):
     """
     Создает экземпляр клетки из конфигурации
 
-    Поддерживает различные архитектуры:
-    - gmlp_cell: GatedMLPCell
-    - minimal_nca_cell: MinimalNCACell
-    - cell_prototype: Простой CellPrototype (fallback)
+    PHASE 4: Поддерживает только hybrid архитектуры:
+    - minimal_nca_cell: MinimalNCACell (default для hybrid)
+    - gmlp_cell: GatedMLPCell (альтернатива)
 
     Параметры:
         config (Dict[str, Any]): Словарь с параметрами конфигурации
@@ -244,7 +243,8 @@ def create_cell_from_config(config: Dict[str, Any]):
     Возвращает:
         nn.Module: Настроенный экземпляр клетки
     """
-    prototype_name = config.get("prototype_name", "cell_prototype")
+    # PHASE 4: Default на hybrid NCA архитектуру вместо legacy cell_prototype
+    prototype_name = config.get("prototype_name", "minimal_nca_cell")
 
     logger.info(f"Создание клетки архитектуры: {prototype_name}")
 
@@ -260,13 +260,22 @@ def create_cell_from_config(config: Dict[str, Any]):
             cell_proto_config = config.get("cell_prototype", {})
             gmlp_config = cell_proto_config.get("gmlp_cell", {})
 
+        # PHASE 4: ВСЕ ЗНАЧЕНИЯ ДОЛЖНЫ БРАТЬСЯ ИЗ КОНФИГУРАЦИИ!
+        # Если конфигурация пустая - это ошибка конфигурации, а не место для fallback
+        if not gmlp_config:
+            raise ValueError(
+                "gmlp_cell configuration is missing! Check your central configuration."
+            )
+
         params = {
-            "state_size": gmlp_config.get("state_size", 32),
-            "neighbor_count": gmlp_config.get("neighbor_count", 6),
-            "hidden_dim": gmlp_config.get("hidden_dim", 128),
-            "external_input_size": gmlp_config.get("external_input_size", 12),
-            "use_memory": gmlp_config.get("use_memory", True),
-            "target_params": gmlp_config.get("target_params", 25000),
+            "state_size": gmlp_config["state_size"],
+            "neighbor_count": gmlp_config["neighbor_count"],
+            "hidden_dim": gmlp_config["hidden_dim"],
+            "external_input_size": gmlp_config["external_input_size"],
+            "use_memory": gmlp_config.get(
+                "use_memory", False
+            ),  # Только этот default оставляем
+            "target_params": gmlp_config["target_params"],
         }
 
         logger.info(f"Создаем GatedMLPCell с параметрами: {params}")
@@ -284,37 +293,36 @@ def create_cell_from_config(config: Dict[str, Any]):
             cell_proto_config = config.get("cell_prototype", {})
             nca_config = cell_proto_config.get("minimal_nca_cell", {})
 
+        # PHASE 4: ВСЕ ЗНАЧЕНИЯ ДОЛЖНЫ БРАТЬСЯ ИЗ КОНФИГУРАЦИИ!
+        if not nca_config:
+            raise ValueError(
+                "minimal_nca_cell configuration is missing! Check your central configuration."
+            )
+
         params = {
-            "state_size": nca_config.get("state_size", 32),
-            "neighbor_count": nca_config.get("neighbor_count", 6),
-            "hidden_dim": nca_config.get("hidden_dim", 64),
-            "external_input_size": nca_config.get("external_input_size", 2),
-            "activation": nca_config.get("activation", "tanh"),
+            "state_size": nca_config["state_size"],
+            "neighbor_count": nca_config["neighbor_count"],
+            "hidden_dim": nca_config["hidden_dim"],
+            "external_input_size": nca_config["external_input_size"],
+            "activation": nca_config.get(
+                "activation", "tanh"
+            ),  # Только безопасные defaults
             "dropout": nca_config.get("dropout", 0.0),
             "use_memory": nca_config.get("use_memory", False),
             "enable_lattice_scaling": nca_config.get("enable_lattice_scaling", False),
-            "target_params": nca_config.get("target_params", 69),
-            # alpha и beta не передаются в конструктор - они создаются как nn.Parameter внутри
+            "target_params": nca_config["target_params"],
         }
 
         logger.info(f"Создаем MinimalNCACell с параметрами: {params}")
         return MinimalNCACell(**params)
 
     else:
-        # Fallback к простому CellPrototype
-        cell_config = config.get("cell_prototype", {})
-
-        params = {
-            "input_size": cell_config.get("input_size", 12),
-            "state_size": cell_config.get("state_size", 8),
-            "hidden_size": cell_config.get("architecture", {}).get("hidden_size", 16),
-            "num_neighbors": cell_config.get("num_neighbors", 6),
-            "activation": cell_config.get("architecture", {}).get("activation", "tanh"),
-            "use_bias": cell_config.get("architecture", {}).get("use_bias", True),
-        }
-
-        logger.info(f"Создаем CellPrototype из конфигурации: {params}")
-        return CellPrototype(**params)
+        # PHASE 4: УБИРАЕМ FALLBACK! Если архитектура неизвестна - это ошибка!
+        raise ValueError(
+            f"Unknown architecture '{prototype_name}'! "
+            f"Supported: 'minimal_nca_cell', 'gmlp_cell'. "
+            f"Legacy 'cell_prototype' is no longer supported in Phase 4."
+        )
 
 
 # Простая функция для тестирования

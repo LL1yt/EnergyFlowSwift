@@ -57,7 +57,12 @@ def smart_state_reset(trainer_instance):
     trainer_instance.optimizer.zero_grad(set_to_none=True)
 
     if trainer_instance.nca:
-        trainer_instance.nca.reset_history()  # A less drastic reset
+        if hasattr(trainer_instance.nca, "reset_tracking"):
+            trainer_instance.nca.reset_tracking()
+        elif hasattr(trainer_instance.nca, "reset"):
+            trainer_instance.nca.reset()
+        else:
+            logger.warning("NCA object has no reset method available")
 
     if hasattr(trainer_instance.cell, "reset_memory"):
         trainer_instance.cell.reset_memory()

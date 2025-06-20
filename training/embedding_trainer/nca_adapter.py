@@ -40,7 +40,7 @@ class EmergentNCACell(MinimalNCACell):
         activation: str = "tanh",
         dropout: float = 0.0,
         spatial_connections: bool = True,
-        target_params: int = 150,
+        target_params: int = None,
     ):
 
         # Инициализируем базовую NCA клетку
@@ -149,7 +149,7 @@ def create_emergent_nca_cell_from_config(config: Dict[str, Any]) -> EmergentNCAC
         "dropout": nca_config.get("dropout", 0.0),
         "spatial_connections": True,  # Всегда включено для emergent training
         "target_params": nca_config.get(
-            "target_params", gmlp_config.get("target_params", 150)
+            "target_params", gmlp_config.get("target_params", None)
         ),
     }
 
@@ -172,7 +172,7 @@ def test_nca_adapter():
             "neighbor_count": 6,
             "hidden_dim": 4,
             "external_input_size": 1,
-            "target_params": 150,
+            "target_params": None,
             "activation": "tanh",
         }
     }

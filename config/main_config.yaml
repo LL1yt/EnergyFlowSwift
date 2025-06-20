@@ -17,13 +17,13 @@ dynamic_config:
   auto_hardware_detection: true
 
 # === BASIC LATTICE CONFIGURATION (FALLBACK) ===
-# Динамическая система переопределит эти значения
+# PHASE 4 UPDATE: Обновлены fallback значения для соответствия clean конфигурациям
 lattice:
-  xs: 20
-  ys: 20
-  zs: 10
-  total_neurons: 4000
-  connectivity: "6-neighbors"
+  xs: 16 # PHASE 4: 16×16×16 вместо 20×20×10
+  ys: 16
+  zs: 16
+  total_neurons: 4096 # 16×16×16 = 4096
+  connectivity: "26-neighbors" # PHASE 4: 26 neighbors вместо 6
 
 # === EMBEDDING CONFIGURATION ===
 embeddings:
@@ -40,26 +40,25 @@ training:
   scheduler: "ReduceLROnPlateau"
 
 # === GMLP CONFIGURATION (FALLBACK) ===
-# Динамическая система создает правильные значения в зависимости от scale
+# PHASE 4 UPDATE: Обновлены для hybrid NCA+gMLP архитектуры
 gmlp:
-  state_size: 32
-  neighbor_count: 6
+  state_size: 8 # PHASE 4: 8 для совместимости с NCA
+  neighbor_count: 26 # PHASE 4: 26 neighbors (3D Moore neighborhood)
   hidden_dim: 32 # Динамически: 32-332 в зависимости от scale
   external_input_size: 12 # Динамически: 12-62 в зависимости от scale
   memory_dim: 16 # Динамически: 16-116 в зависимости от scale
-  use_memory: true
+  use_memory: false # PHASE 4: false для экономии памяти
   activation: "gelu"
   dropout: 0.1
 
 # === NCA CONFIGURATION (NEW) ===
-# Используется, если experimental.enable_nca=true в EmergentTraining
-# и nca.enabled=true в dynamic_training.py.
+# PHASE 4: Используется в hybrid режиме с gMLP
 nca:
-  enabled: true # Переключите на true для использования NCA вместо gMLP
-  state_size: 8 # Базовый размер состояния
-  hidden_dim: 4 # Скрытый слой, значительно меньше чем gMLP
-  external_input_size: 1 # Внешний вход
-  target_params: 150 # Целевое количество параметров для масштабирования
+  enabled: true # PHASE 4: Включено для hybrid архитектуры
+  state_size: 4 # PHASE 4: 4 для NCA части
+  hidden_dim: 4 # Скрытый слой для NCA
+  external_input_size: 1 # Внешний вход для NCA
+  target_params: 362 # PHASE 4: Целевое количество параметров
   activation: "tanh"
 
 # === DEVICE CONFIGURATION ===
@@ -110,3 +109,20 @@ experimental:
   enable_spatial_attention: false
   enable_multi_teacher: false
   debug_mode: false
+
+# === PHASE 4 ADDITIONS ===
+# Новые секции для поддержки clean конфигураций
+
+# Пластичность (из clean конфигураций)
+plasticity:
+  enable_plasticity: true
+  plasticity_rule: "combined" # STDP + BCM + competitive
+  enable_competitive_learning: true
+  enable_metaplasticity: true
+  enable_clustering: false # Пока отключено
+
+# Оптимизация памяти
+optimization:
+  memory_efficient: true
+  use_checkpointing: true
+  mixed_precision: true

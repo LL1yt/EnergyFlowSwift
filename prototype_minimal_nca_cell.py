@@ -240,7 +240,7 @@ def test_nca_cells():
         neighbor_count=neighbor_count,
         hidden_channels=4,
         external_input_size=1,
-        target_params=150,
+        target_params=None,  # Убираем хардкод 150
     )
 
     output1 = minimal_cell(neighbor_states, own_state, external_input)
@@ -301,6 +301,74 @@ def calculate_theoretical_performance():
     print(f"\nBiological plausibility:")
     print(f"  ✅ NCA: Based on cellular automata (biological)")
     print(f"  ⚠️  gMLP: Complex internal gating (less biological)")
+
+
+def test_minimal_nca_cell(
+    state_size: int = 4,
+    neighbor_count: int = 26,
+    hidden_dim: int = 3,
+    external_input_size: int = 1,
+    target_params: int = None,  # Убираем хардкод 150
+    batch_size: int = 4,
+    device: str = "cpu",
+) -> bool:
+
+    print("🧪 TESTING NCA CELLS vs gMLP")
+    print("=" * 50)
+
+    # Test data
+    neighbor_states = torch.randn(batch_size, neighbor_count, state_size)
+    own_state = torch.randn(batch_size, state_size)
+    external_input = torch.randn(batch_size, external_input_size)
+
+    # Test 1: Minimal NCA (target ~150 params)
+    print("\n1. MINIMAL NCA CELL:")
+    minimal_cell = MinimalNCACell(
+        state_size=state_size,
+        neighbor_count=neighbor_count,
+        hidden_channels=hidden_dim,
+        external_input_size=external_input_size,
+        target_params=target_params,
+    )
+
+    output1 = minimal_cell(neighbor_states, own_state, external_input)
+    print(f"   Forward pass: {own_state.shape} → {output1.shape}")
+    print(f"   Output range: [{output1.min():.3f}, {output1.max():.3f}]")
+
+    # Test 2: Ultra-minimal NCA (target ~68 params)
+    print("\n2. ULTRA-MINIMAL NCA CELL:")
+    ultra_cell = UltraMinimalNCACell(
+        state_size=state_size, neighbor_count=neighbor_count, target_params=68
+    )
+
+    output2 = ultra_cell(neighbor_states, own_state)
+    print(f"   Forward pass: {own_state.shape} → {output2.shape}")
+    print(f"   Output range: [{output2.min():.3f}, {output2.max():.3f}]")
+
+    # Comparison
+    print(f"\n📊 PARAMETER COMPARISON:")
+    print(f"   gMLP (current):     1,888 parameters")
+    print(
+        f"   Minimal NCA:       {sum(p.numel() for p in minimal_cell.parameters())} parameters"
+    )
+    print(
+        f"   Ultra-minimal NCA: {sum(p.numel() for p in ultra_cell.parameters())} parameters"
+    )
+    print(f"   Target:            300 parameters")
+
+    # Parameter reduction
+    minimal_params = sum(p.numel() for p in minimal_cell.parameters())
+    ultra_params = sum(p.numel() for p in ultra_cell.parameters())
+
+    print(f"\n🎯 PARAMETER REDUCTION vs gMLP:")
+    print(
+        f"   Minimal NCA:       {((1888 - minimal_params) / 1888 * 100):.1f}% reduction"
+    )
+    print(
+        f"   Ultra-minimal NCA: {((1888 - ultra_params) / 1888 * 100):.1f}% reduction"
+    )
+
+    return minimal_cell, ultra_cell
 
 
 if __name__ == "__main__":

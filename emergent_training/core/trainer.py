@@ -117,9 +117,9 @@ class EmergentCubeTrainer(nn.Module):
                     else "tanh"
                 ),
                 "target_params": (
-                    self.config.nca_config.get("target_params", 150)
-                    if self.config.nca_config
-                    else 150
+                    self.config.nca_config.get("target_params")
+                    if hasattr(self.config, "nca_config") and self.config.nca_config
+                    else None
                 ),
             }
         else:

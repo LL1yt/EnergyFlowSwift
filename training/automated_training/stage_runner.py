@@ -173,95 +173,246 @@ class TrainingStageRunner:
             return None
 
     def _prepare_config_with_optimizations(
-        self, config: Dict[str, Any], stage_config: StageConfig
+        self, config_data: Dict[str, Any], stage_config: StageConfig
     ) -> Dict[str, Any]:
         """
-        === PHASE 4 INTEGRATION ===
-        Подготавливает конфигурацию с оптимизациями пластичности и памяти
+        Применяет оптимизации Phase 4 к конфигурации стадии обучения
+
+        Args:
+            config_data: Базовая конфигурация
+            stage_config: Параметры стадии обучения
+
+        Returns:
+            Оптимизированная конфигурация
         """
-        try:
-            # Получаем генератор для создания секций
-            dynamic_manager = DynamicConfigManager()
-            generator = dynamic_manager.generator
+        # PHASE 4 CRITICAL FIX: Принудительно используем hybrid архитектуру
+        self._apply_hybrid_architecture(config_data)
 
-            # Создаем контекст стадии
-            stage_context = {
-                "plasticity_profile": stage_config.plasticity_profile,
-                "clustering_enabled": stage_config.clustering_enabled,
-                "activity_threshold": stage_config.activity_threshold,
-                "memory_optimizations": stage_config.memory_optimizations,
-                "emergence_tracking": stage_config.emergence_tracking,
-                "sparse_connection_ratio": stage_config.sparse_connection_ratio,
-                "progressive_scaling": stage_config.progressive_scaling,
-                "decoder_monitoring": stage_config.decoder_monitoring,
-                "stage_number": stage_config.stage,
+        # Применяем пластичность по профилю
+        self._apply_plasticity_profile(config_data, stage_config)
+
+        # Применяем progressive scaling
+        if getattr(stage_config, "progressive_scaling", False):
+            self._apply_progressive_scaling(config_data, stage_config)
+
+        # Применяем memory optimizations
+        if getattr(stage_config, "memory_optimizations", False):
+            self._apply_memory_optimizations(config_data, stage_config)
+
+        # Применяем emergence tracking
+        if getattr(stage_config, "emergence_tracking", False):
+            self._apply_emergence_tracking(config_data, stage_config)
+
+        return config_data
+
+    def _apply_hybrid_architecture(self, config_data: Dict[str, Any]):
+        """
+        PHASE 4 CRITICAL: Принудительно применяет hybrid NCA+gMLP архитектуру
+        """
+        logger.info("🔧 PHASE 4: Applying hybrid NCA+gMLP architecture...")
+
+        # 1. Устанавливаем hybrid mode
+        config_data["architecture"] = {
+            "hybrid_mode": True,
+            "neuron_architecture": "minimal_nca",
+            "connection_architecture": "gated_mlp",
+            "disable_nca_scaling": True,
+        }
+
+        # 2. Конфигурация lattice для hybrid режима
+        if "lattice_3d" not in config_data:
+            config_data["lattice_3d"] = {}
+
+        # Обновляем lattice конфигурацию на правильные значения
+        config_data["lattice_3d"].update(
+            {
+                "dimensions": [16, 16, 16],  # PHASE 4: 16×16×16 вместо старых размеров
+                "total_cells": 4096,  # 16×16×16 = 4096
+                "neighbors": 26,  # PHASE 4: 26 neighbors вместо 6
+                "neighbor_finding_strategy": "local",
             }
+        )
 
-            # Генерируем секции пластичности и оптимизации
-            plasticity_section = generator.generate_plasticity_section(stage_context)
-            optimization_section = generator.generate_optimization_section(
-                stage_context
+        # 3. Конфигурация NCA нейронов
+        config_data["minimal_nca_cell"] = {
+            "state_size": 4,
+            "neighbor_count": 26,  # Синхронизировать с lattice
+            "hidden_dim": 3,
+            "external_input_size": 1,
+            "activation": "tanh",
+            "target_params": 362,
+            "alpha": 0.1,
+            "beta": 0.05,
+            "enable_lattice_scaling": False,
+        }
+
+        # 4. Конфигурация gMLP связей
+        config_data["gmlp_cell"] = {
+            "state_size": 8,
+            "neighbor_count": 26,  # Синхронизировать с lattice
+            "hidden_dim": 16,
+            "external_input_size": 4,
+            "use_memory": False,  # PHASE 4 FIX: отключаем memory
+            "target_params": 2000,
+            "activation": "gelu",
+        }
+
+        # 5. Cell prototype configuration
+        config_data["cell_prototype"] = {
+            "prototype_name": "minimal_nca_cell",  # Принудительно устанавливаем NCA
+            "minimal_nca_cell": config_data["minimal_nca_cell"],
+            "gmlp_cell": config_data["gmlp_cell"],
+        }
+
+        # 6. Обновляем fallback значения
+        if "lattice" not in config_data:
+            config_data["lattice"] = {}
+
+        config_data["lattice"].update(
+            {
+                "xs": 16,
+                "ys": 16,
+                "zs": 16,
+                "total_neurons": 4096,
+                "connectivity": "26-neighbors",
+            }
+        )
+
+        logger.info("✅ PHASE 4: Hybrid architecture configuration applied!")
+        logger.info(f"   - Architecture: hybrid NCA+gMLP")
+        logger.info(f"   - Lattice: 16×16×16 = 4096 cells")
+        logger.info(f"   - Neighbors: 26 (3D Moore)")
+        logger.info(
+            f"   - NCA params: {config_data['minimal_nca_cell']['target_params']}"
+        )
+        logger.info(f"   - gMLP params: {config_data['gmlp_cell']['target_params']}")
+
+    def _apply_plasticity_profile(
+        self, config_data: Dict[str, Any], stage_config: StageConfig
+    ):
+        """
+        Применяет пластичность по профилю
+        """
+        # Получаем генератор для создания секций
+        dynamic_manager = DynamicConfigManager()
+        generator = dynamic_manager.generator
+
+        # Создаем контекст стадии
+        stage_context = {
+            "plasticity_profile": stage_config.plasticity_profile,
+            "clustering_enabled": stage_config.clustering_enabled,
+            "activity_threshold": stage_config.activity_threshold,
+            "memory_optimizations": stage_config.memory_optimizations,
+            "emergence_tracking": stage_config.emergence_tracking,
+            "sparse_connection_ratio": stage_config.sparse_connection_ratio,
+            "progressive_scaling": stage_config.progressive_scaling,
+            "decoder_monitoring": stage_config.decoder_monitoring,
+            "stage_number": stage_config.stage,
+        }
+
+        # Генерируем секции пластичности и оптимизации
+        plasticity_section = generator.generate_plasticity_section(stage_context)
+        optimization_section = generator.generate_optimization_section(stage_context)
+
+        # Интегрируем в основную конфигурацию
+        if plasticity_section:
+            config_data["plasticity"] = plasticity_section
+            logger.info(
+                f"🧠 Applied plasticity profile: {stage_config.plasticity_profile}"
             )
 
-            # Интегрируем в основную конфигурацию
-            if plasticity_section:
-                config["plasticity"] = plasticity_section
-                logger.info(
-                    f"🧠 Applied plasticity profile: {stage_config.plasticity_profile}"
-                )
+        if optimization_section:
+            config_data["optimization"] = optimization_section
+            logger.info(
+                f"🔧 Applied memory optimizations: {stage_config.memory_optimizations}"
+            )
 
-            if optimization_section:
-                config["optimization"] = optimization_section
-                logger.info(
-                    f"🔧 Applied memory optimizations: {stage_config.memory_optimizations}"
-                )
+    def _apply_progressive_scaling(
+        self, config_data: Dict[str, Any], stage_config: StageConfig
+    ):
+        """
+        Применяет progressive scaling
+        """
+        adaptive_dims = self._get_adaptive_dimensions(stage_config.stage)
+        if adaptive_dims:
+            config_data["lattice"]["lattice_width"] = adaptive_dims[0]
+            config_data["lattice"]["lattice_height"] = adaptive_dims[1]
+            config_data["lattice"]["lattice_depth"] = adaptive_dims[2]
+            logger.info(
+                f"📐 Progressive scaling: {adaptive_dims[0]}×{adaptive_dims[1]}×{adaptive_dims[2]}"
+            )
 
-            # Адаптивные размеры решетки для прогрессивного масштабирования
-            if stage_config.progressive_scaling:
-                adaptive_dims = self._get_adaptive_dimensions(stage_config.stage)
-                if adaptive_dims:
-                    config["lattice"]["lattice_width"] = adaptive_dims[0]
-                    config["lattice"]["lattice_height"] = adaptive_dims[1]
-                    config["lattice"]["lattice_depth"] = adaptive_dims[2]
-                    logger.info(
-                        f"📐 Progressive scaling: {adaptive_dims[0]}×{adaptive_dims[1]}×{adaptive_dims[2]}"
-                    )
+    def _apply_memory_optimizations(
+        self, config_data: Dict[str, Any], stage_config: StageConfig
+    ):
+        """
+        Применяет memory optimizations
+        """
+        # === PHASE 4 FIX: Explicit GPU device configuration ===
+        import torch
 
-            # === PHASE 4 FIX: Explicit GPU device configuration ===
-            import torch
+        if torch.cuda.is_available():
+            # Убеждаемся что GPU включен в настройках
+            if "lattice_3d" not in config_data:
+                config_data["lattice_3d"] = {}
+            config_data["lattice_3d"]["gpu_enabled"] = True
+            config_data["lattice_3d"]["parallel_processing"] = True
 
-            if torch.cuda.is_available():
-                # Убеждаемся что GPU включен в настройках
-                if "lattice_3d" not in config:
-                    config["lattice_3d"] = {}
-                config["lattice_3d"]["gpu_enabled"] = True
-                config["lattice_3d"]["parallel_processing"] = True
+            # Добавляем device в training секцию
+            if "training" not in config_data:
+                config_data["training"] = {}
+            config_data["training"]["device"] = "cuda"
+            config_data["training"]["pin_memory"] = True
 
-                # Добавляем device в training секцию
-                if "training" not in config:
-                    config["training"] = {}
-                config["training"]["device"] = "cuda"
-                config["training"]["pin_memory"] = True
+            # GPU optimizations для memory efficiency
+            if stage_config.memory_optimizations:
+                config_data["training"]["mixed_precision"] = True
+                config_data["training"]["gradient_checkpointing"] = True
 
-                # GPU optimizations для memory efficiency
-                if stage_config.memory_optimizations:
-                    config["training"]["mixed_precision"] = True
-                    config["training"]["gradient_checkpointing"] = True
+            logger.info(
+                f"🚀 GPU configuration enabled: {torch.cuda.get_device_name(0)}"
+            )
+        else:
+            logger.warning("⚠️  CUDA not available - using CPU")
+            if "training" not in config_data:
+                config_data["training"] = {}
+            config_data["training"]["device"] = "cpu"
 
-                logger.info(
-                    f"🚀 GPU configuration enabled: {torch.cuda.get_device_name(0)}"
-                )
-            else:
-                logger.warning("⚠️  CUDA not available - using CPU")
-                if "training" not in config:
-                    config["training"] = {}
-                config["training"]["device"] = "cpu"
+    def _apply_emergence_tracking(
+        self, config_data: Dict[str, Any], stage_config: StageConfig
+    ):
+        """
+        Применяет emergence tracking
+        """
+        # === PHASE 4 FIX: Explicit GPU device configuration ===
+        import torch
 
-            return config
+        if torch.cuda.is_available():
+            # Убеждаемся что GPU включен в настройках
+            if "lattice_3d" not in config_data:
+                config_data["lattice_3d"] = {}
+            config_data["lattice_3d"]["gpu_enabled"] = True
+            config_data["lattice_3d"]["parallel_processing"] = True
 
-        except Exception as e:
-            logger.error(f"Failed to prepare config with optimizations: {e}")
-            return config  # Возвращаем оригинальную конфигурацию при ошибке
+            # Добавляем device в training секцию
+            if "training" not in config_data:
+                config_data["training"] = {}
+            config_data["training"]["device"] = "cuda"
+            config_data["training"]["pin_memory"] = True
+
+            # GPU optimizations для memory efficiency
+            if stage_config.memory_optimizations:
+                config_data["training"]["mixed_precision"] = True
+                config_data["training"]["gradient_checkpointing"] = True
+
+            logger.info(
+                f"🚀 GPU configuration enabled: {torch.cuda.get_device_name(0)}"
+            )
+        else:
+            logger.warning("⚠️  CUDA not available - using CPU")
+            if "training" not in config_data:
+                config_data["training"] = {}
+            config_data["training"]["device"] = "cpu"
 
     def _get_adaptive_dimensions(self, stage: int) -> Optional[tuple]:
         """
@@ -304,8 +455,9 @@ class TrainingStageRunner:
             output_json_path,
         ]
 
-        if self.scale:
-            cmd.extend(["--scale", str(self.scale)])
+        # PHASE 4: Убираем scale параметр - используем прогрессивное масштабирование
+        # if self.scale:
+        #     cmd.extend(["--scale", str(self.scale)])
 
         if self.verbose:
             cmd.append("--verbose")

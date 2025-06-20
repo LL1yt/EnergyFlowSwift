@@ -29,9 +29,12 @@ class ConfigInitializer:
 
     def _initialize(self):
         """Initializes the configuration using DynamicConfigManager or from a file."""
+        # PHASE 4 CRITICAL FIX: Приоритетно используем config_path если он передан
         if self.config_path:
+            logger.info(f"🔧 PHASE 4: Using config_path: {self.config_path}")
             self._load_from_file()
         else:
+            logger.info("🔧 PHASE 4: No config_path provided, generating dynamically")
             self._generate_dynamically()
 
     def _load_from_file(self):
@@ -42,6 +45,32 @@ class ConfigInitializer:
 
             with open(self.config_path, "r", encoding="utf-8") as f:
                 full_config = yaml.safe_load(f)
+
+            # PHASE 4 DEBUG: Логируем что именно загрузили
+            logger.info("🔧 PHASE 4: Successfully loaded config from file")
+
+            # Логируем размеры решетки из файла
+            lattice_from_file = full_config.get("lattice", {})
+            if lattice_from_file:
+                xs = lattice_from_file.get("xs", "N/A")
+                ys = lattice_from_file.get("ys", "N/A")
+                zs = lattice_from_file.get("zs", "N/A")
+                logger.info(f"🔧 PHASE 4: Lattice from file: {xs}×{ys}×{zs}")
+
+                # Проверяем новые поля
+                width = lattice_from_file.get("lattice_width", "N/A")
+                height = lattice_from_file.get("lattice_height", "N/A")
+                depth = lattice_from_file.get("lattice_depth", "N/A")
+                logger.info(f"🔧 PHASE 4: New lattice fields: {width}×{height}×{depth}")
+
+            # Проверяем архитектуру
+            architecture = full_config.get("architecture", {})
+            hybrid_mode = architecture.get("hybrid_mode", False)
+            logger.info(f"🔧 PHASE 4: Hybrid mode from file: {hybrid_mode}")
+
+            emergent_training = full_config.get("emergent_training", {})
+            cell_architecture = emergent_training.get("cell_architecture", "N/A")
+            logger.info(f"🔧 PHASE 4: Cell architecture from file: {cell_architecture}")
 
             self._process_loaded_config(full_config)
             logger.info("Successfully loaded configuration from file.")
@@ -78,6 +107,16 @@ class ConfigInitializer:
 
     def _process_loaded_config(self, full_config: Dict):
         """Processes the loaded or generated config dictionary."""
+        # PHASE 4 DEBUG: Логируем что получили на вход
+        logger.info("🔧 PHASE 4: Processing loaded config...")
+
+        lattice_input = full_config.get("lattice", {})
+        if lattice_input:
+            xs_input = lattice_input.get("xs", "N/A")
+            ys_input = lattice_input.get("ys", "N/A")
+            zs_input = lattice_input.get("zs", "N/A")
+            logger.info(f"🔧 PHASE 4: Input lattice: {xs_input}×{ys_input}×{zs_input}")
+
         self.config = {
             "lattice": full_config.get("lattice", {}),
             "embeddings": full_config.get("embeddings", {}),
@@ -96,6 +135,21 @@ class ConfigInitializer:
             logger.info("Added emergent_training section to config.")
 
         self.metadata = full_config.get("_metadata", {})
+
+        # PHASE 4 DEBUG: Логируем что сохранили в self.config
+        lattice_output = self.config.get("lattice", {})
+        if lattice_output:
+            xs_output = lattice_output.get("xs", "N/A")
+            ys_output = lattice_output.get("ys", "N/A")
+            zs_output = lattice_output.get("zs", "N/A")
+            logger.info(
+                f"🔧 PHASE 4: Output lattice: {xs_output}×{ys_output}×{zs_output}"
+            )
+
+        architecture_output = self.config.get("architecture", {})
+        hybrid_mode_output = architecture_output.get("hybrid_mode", False)
+        logger.info(f"🔧 PHASE 4: Output hybrid mode: {hybrid_mode_output}")
+
         self._log_config_details()
 
     def _log_config_details(self):

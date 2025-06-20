@@ -18,7 +18,7 @@ class EmergentTrainingConfig:
 
     teacher_model: str = "distilbert-base-uncased"
     teacher_embedding_dim: int = 768
-    cube_dimensions: Tuple[int, int, int] = (15, 15, 11)
+    cube_dimensions: Tuple[int, int, int] = (16, 16, 16)
 
     enable_full_cube_gradient: bool = True
     spatial_propagation_depth: int = 11
@@ -73,9 +73,9 @@ class EmergentTrainingConfig:
                     self.gmlp_config.get("external_input_size", 12), 2
                 ),
                 "activation": "tanh",
-                "target_params": 150,
-                "use_memory": False,  # NCA has implicit memory
                 "dropout": 0.0,
+                "use_memory": False,  # NCA has implicit memory
+                "enable_lattice_scaling": False,
             }
 
     @classmethod

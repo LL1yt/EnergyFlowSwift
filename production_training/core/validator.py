@@ -38,17 +38,17 @@ def validate_system(model_name: str, device: str) -> bool:
         logger.info("2️⃣ Testing Universal Adapter...")
         test_embedding = torch.randn(1, 768)  # DistilBERT-like embedding
         adapter = UniversalEmbeddingAdapter(
-            input_dim=768, output_dim=225, strategy="hierarchical"
+            input_dim=768, output_dim=256, strategy="hierarchical"
         )
         test_surface = adapter.forward(test_embedding)
-        assert test_surface.shape == (1, 225), "Adapter output shape is incorrect."
+        assert test_surface.shape == (1, 256), "Adapter output shape is incorrect."
         logger.info("[OK] Universal Adapter works as expected.")
 
         # 3. Test EmergentCubeTrainer initialization
         logger.info("3️⃣ Testing EmergentCubeTrainer initialization...")
         config = EmergentTrainingConfig(
             teacher_model=model_name,
-            cube_dimensions=(15, 15, 1),  # Minimal for validation
+            cube_dimensions=(16, 16, 16),  # PHASE 4: 16x16x16 вместо 15x15x1
             batch_size=1,
             epochs=1,
         )

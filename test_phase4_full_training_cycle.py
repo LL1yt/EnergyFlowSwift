@@ -183,7 +183,6 @@ def run_training_stage_with_monitoring(
     # Создаем runner
     runner = TrainingStageRunner(
         mode="development",
-        scale=0.01,  # Очень маленький масштаб для быстрого тестирования
         timeout_multiplier=1.5,
         verbose=True,
     )
