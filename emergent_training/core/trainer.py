@@ -96,15 +96,14 @@ class EmergentCubeTrainer(nn.Module):
 
         # Pass cell configuration to lattice so it creates the right cell type
         if self.config.enable_nca:
-            # Create cell_config for NCA
-            cell_config = {
-                "cell_type": "nca",
+            # ИСПРАВЛЕНО: Создаем правильную структуру конфигурации для minimal_nca_cell
+            nca_cell_config = {
                 "state_size": state_size,
                 "neighbor_count": 26,
                 "hidden_dim": (
-                    self.config.nca_config.get("hidden_dim", 4)
+                    self.config.nca_config.get("hidden_dim", 3)
                     if self.config.nca_config
-                    else 4
+                    else 3
                 ),
                 "external_input_size": (
                     self.config.nca_config.get("external_input_size", 1)
@@ -121,10 +120,20 @@ class EmergentCubeTrainer(nn.Module):
                     if hasattr(self.config, "nca_config") and self.config.nca_config
                     else None
                 ),
+                "dropout": 0.0,
+                "use_memory": False,
+                "enable_lattice_scaling": False,
+            }
+
+            # Create cell_config для NCA в правильном формате
+            cell_config = {
+                "prototype_name": "minimal_nca_cell",  # Указываем архитектуру
+                "minimal_nca_cell": nca_cell_config,  # Конфигурация для архитектуры
             }
         else:
             # Create cell_config for gMLP
-            cell_config = {"cell_type": "gmlp", **self.config.gmlp_config}
+            gmlp_cell_config = {**self.config.gmlp_config}
+            cell_config = {"prototype_name": "gmlp_cell", "gmlp_cell": gmlp_cell_config}
 
         lattice_config.cell_config = cell_config
         self.lattice = Lattice3D(lattice_config)

@@ -62,6 +62,19 @@ nca:
   target_params: 69 # ЦЕНТРАЛИЗОВАННО: Целевое количество параметров
   activation: "tanh" # ЦЕНТРАЛИЗОВАННО: tanh для стабильности NCA
 
+# === MINIMAL NCA CELL CONFIGURATION (ДЛЯ СОВМЕСТИМОСТИ) ===
+# Дублируем NCA параметры в формате ожидаемом lattice и другими модулями
+minimal_nca_cell:
+  state_size: 3
+  neighbor_count: 26
+  hidden_dim: 4
+  external_input_size: 1
+  activation: "tanh"
+  dropout: 0.0
+  use_memory: false
+  enable_lattice_scaling: false
+  target_params: 69
+
 # === DEVICE CONFIGURATION ===
 device:
   use_gpu: true

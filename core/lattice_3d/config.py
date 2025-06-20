@@ -49,7 +49,7 @@ class LatticeConfig:
     neighbors: int = 26  # 3D Moore neighborhood (26 соседей)
     validate_connections: bool = True
     cache_neighbors: bool = True
-    neighbor_finding_strategy: str = "local"
+    neighbor_finding_strategy: str = "tiered"
     neighbor_strategy_config: Optional[Dict[str, Any]] = None
 
     # Интерфейсы ввода/вывода

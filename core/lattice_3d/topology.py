@@ -58,7 +58,7 @@ class NeighborTopology:
         self.pos_helper = Position3D(self.dimensions)
 
         strategy_value = getattr(
-            config, "neighbor_finding_strategy", NeighborStrategy.LOCAL
+            config, "neighbor_finding_strategy", NeighborStrategy.HYBRID
         )
         # Преобразуем строку в enum, если необходимо
         if isinstance(strategy_value, str):

@@ -61,7 +61,7 @@ class Lattice3D(nn.Module, PlasticityMixin, ClusteringMixin):
                 f"Dimensions: {config.dimensions}, Total cells: {config.total_cells}"
             )
             self.logger.info(
-                f"Neighbor strategy: {getattr(config, 'neighbor_finding_strategy', 'local')}"
+                f"Neighbor strategy: {getattr(config, 'neighbor_finding_strategy', 'tiered')}"
             )
 
         # Создаем прототип клетки

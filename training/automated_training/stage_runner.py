@@ -229,7 +229,7 @@ class TrainingStageRunner:
                 "dimensions": [16, 16, 16],  # PHASE 4: 16×16×16 вместо старых размеров
                 "total_cells": 4096,  # 16×16×16 = 4096
                 "neighbors": 26,  # PHASE 4: 26 neighbors вместо 6
-                "neighbor_finding_strategy": "local",
+                "neighbor_finding_strategy": "tiered",
             }
         )
 

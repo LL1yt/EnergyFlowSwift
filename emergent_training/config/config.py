@@ -5,6 +5,13 @@ Configuration for Emergent Training
 from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 
+# НОВОЕ: Импорт централизованной конфигурации
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from utils.centralized_config import get_centralized_config
+
 # Assuming NCAConfig is in this path
 from training.embedding_trainer.neural_cellular_automata import (
     NCAConfig,
@@ -42,11 +49,15 @@ class EmergentTrainingConfig:
     nca_config: Optional[Any] = None
 
     def __post_init__(self):
+        # НОВОЕ: Получаем централизованную конфигурацию
+        central_config = get_centralized_config()
+
         if self.gmlp_config is None:
             self.gmlp_config = {}  # Start with empty and fill safe defaults
 
+        # НОВОЕ: Используем централизованные значения по умолчанию
         safe_defaults = {
-            "neighbor_count": 26,
+            "neighbor_count": central_config.default_neighbor_count,  # 26 из центральной конфигурации
             "use_memory": True,
             "activation": "gelu",
             "dropout": 0.1,
@@ -64,13 +75,26 @@ class EmergentTrainingConfig:
 
         # Create NCA config if NCA is enabled but config not provided
         if self.enable_nca and self.nca_config is None:
+            # НОВОЕ: Используем централизованную NCA конфигурацию
+            nca_defaults = central_config.get_nca_config()
+
             # Create simple dict-based config compatible with create_emergent_nca_cell_from_config
             self.nca_config = {
-                "state_size": self.gmlp_config.get("state_size", 4),
-                "neighbor_count": self.gmlp_config.get("neighbor_count", 26),
-                "hidden_dim": 3,  # Significantly smaller than gMLP
-                "external_input_size": 2,
-                "activation": "tanh",
+                "state_size": nca_defaults[
+                    "state_size"
+                ],  # 4 из центральной конфигурации
+                "neighbor_count": nca_defaults[
+                    "neighbor_count"
+                ],  # 26 из центральной конфигурации
+                "hidden_dim": nca_defaults[
+                    "hidden_dim"
+                ],  # 3 из центральной конфигурации
+                "external_input_size": nca_defaults[
+                    "external_input_size"
+                ],  # 1 из центральной конфигурации
+                "activation": nca_defaults[
+                    "activation"
+                ],  # tanh из центральной конфигурации
                 "dropout": 0.0,
                 "use_memory": False,  # NCA has implicit memory
                 "enable_lattice_scaling": False,

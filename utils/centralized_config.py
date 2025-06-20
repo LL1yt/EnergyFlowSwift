@@ -180,6 +180,32 @@ class CentralizedConfig:
             "enable_nca": True,
         }
 
+    def get_minimal_nca_cell_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию для minimal_nca_cell (для lattice и других модулей)"""
+        return {
+            "state_size": self.nca_state_size,
+            "neighbor_count": self.nca_neighbor_count,
+            "hidden_dim": self.nca_hidden_dim,
+            "external_input_size": self.nca_external_input_size,
+            "activation": self.nca_activation,
+            "dropout": 0.0,
+            "use_memory": False,
+            "enable_lattice_scaling": False,
+            "target_params": self.nca_target_params,
+        }
+
+    def get_full_config_dict(self) -> Dict[str, Any]:
+        """Получить полную конфигурацию в формате, совместимом с существующими модулями"""
+        return {
+            "nca": self.get_nca_config(),
+            "gmlp": self.get_gmlp_config(),
+            "minimal_nca_cell": self.get_minimal_nca_cell_config(),
+            "gmlp_config": self.get_gmlp_config(),  # Дублируем для совместимости
+            "lattice": self._config.get("lattice", {}),
+            "embeddings": self._config.get("embeddings", {}),
+            "training": self._config.get("training", {}),
+        }
+
     def update_config(self, section: str, key: str, value: Any):
         """Обновить параметр конфигурации"""
         if section not in self._config:
