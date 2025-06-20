@@ -1,0 +1,83 @@
+# Конфигурация для тестирования STDP (Шаг 2.3)
+# Adaptive Connectivity - биологически правдоподобная пластичность
+
+lattice:
+  # Малая решетка для быстрого тестирования
+  dimensions: [16, 16, 16] # 4096 клеток
+  boundary_conditions: "walls"
+
+  # Топология соседства
+  neighbors: 26 # 3D соседство (биологически правдоподобно)
+  neighbor_finding_strategy: "tiered"
+  neighbor_strategy_config:
+    local_tier: 0.7 # 70% локальные соседи
+    functional_tier: 0.2 # 20% функциональные (spatial hashing)
+    random_tier: 0.1 # 10% дальние стохастические
+    local_grid_cell_size: 8 # Размер spatial hash bins
+
+  # Инициализация и производительность
+  initialization_method: "normal"
+  initialization_std: 0.1
+  seed: 42
+  gpu_enabled: true
+  parallel_processing: true
+
+  # === STDP МЕХАНИЗМ ===
+  enable_plasticity: true
+  plasticity_rule: "stdp"
+  activity_history_size: 10 # Консервативная история (memory efficient)
+
+  stdp_config:
+    # Пороги и скорости (консервативные значения)
+    activity_threshold: 0.1 # Порог для определения "активности"
+    learning_rate: 0.01 # Медленная адаптация
+
+    # Биологически правдоподобные STDP параметры
+    A_plus: 0.01 # LTP амплитуда (потенциация)
+    A_minus: 0.01 # LTD амплитуда (депрессия)
+    tau_plus: 20 # LTP временная константа (ms)
+    tau_minus: 20 # LTD временная константа (ms)
+
+    # Ограничения весов (предотвращение насыщения)
+    weight_bounds: [0.1, 2.0] # [min, max] - веса остаются положительными
+
+  # Мониторинг и диагностика
+  enable_logging: true
+  log_level: "INFO"
+  track_performance: true
+  validate_states: true
+
+# === ГИБРИДНАЯ АРХИТЕКТУРА (NCA + GatedMLP) ===
+cell_prototype:
+  prototype_name: "minimal_nca_cell"
+
+  minimal_nca_cell:
+    # ОПТИМИЗИРОВАННЫЕ параметры для target_params=69
+    state_size: 4 # Уменьшено для соответствия target (26 + 6×3 + 3×4 + 2 = 65 ≈ 69)
+    neighbor_count: 26 # Синхронизируется с lattice.neighbors
+    hidden_dim: 3 # Уменьшено пропорционально state_size
+    external_input_size: 2 # Минимальный внешний вход
+
+    # NCA specific parameters
+    activation: "tanh" # Стабильная активация для NCA
+    dropout: 0.0 # NCA не нуждается в dropout
+    use_memory: false # NCA имеет implicit memory
+
+    # КРИТИЧНО: отключение масштабирования
+    enable_lattice_scaling: false
+    target_params: 69 # Фиксированный target
+
+    # NCA dynamics parameters
+    alpha: 0.1 # Update strength
+    beta: 0.05 # Neighbor influence
+
+# I/O настройки
+io:
+  # Пропорциональное размещение I/O (как в биологии - 8-12% покрытия)
+  input_face: "front"
+  output_face: "back"
+  placement_strategy: "proportional"
+  io_strategy_config:
+    min_percentage: 8.0 # Минимум 8% клеток грани
+    max_percentage: 12.0 # Максимум 12% клеток грани
+    seed: 42

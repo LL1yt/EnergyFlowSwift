@@ -252,7 +252,14 @@ def create_cell_from_config(config: Dict[str, Any]):
         # Импорт GatedMLPCell
         from .architectures.gmlp_cell import GatedMLPCell
 
+        # Извлекаем конфигурацию из правильного места
         gmlp_config = config.get("gmlp_cell", {})
+
+        # Поддержка новой структуры с cell_prototype
+        if not gmlp_config and "cell_prototype" in config:
+            cell_proto_config = config.get("cell_prototype", {})
+            gmlp_config = cell_proto_config.get("gmlp_cell", {})
+
         params = {
             "state_size": gmlp_config.get("state_size", 32),
             "neighbor_count": gmlp_config.get("neighbor_count", 6),
@@ -269,11 +276,25 @@ def create_cell_from_config(config: Dict[str, Any]):
         # Импорт MinimalNCACell
         from .architectures.minimal_nca_cell import MinimalNCACell
 
+        # Извлекаем конфигурацию из правильного места
         nca_config = config.get("minimal_nca_cell", {})
+
+        # Поддержка новой структуры с cell_prototype
+        if not nca_config and "cell_prototype" in config:
+            cell_proto_config = config.get("cell_prototype", {})
+            nca_config = cell_proto_config.get("minimal_nca_cell", {})
+
         params = {
             "state_size": nca_config.get("state_size", 32),
             "neighbor_count": nca_config.get("neighbor_count", 6),
             "hidden_dim": nca_config.get("hidden_dim", 64),
+            "external_input_size": nca_config.get("external_input_size", 2),
+            "activation": nca_config.get("activation", "tanh"),
+            "dropout": nca_config.get("dropout", 0.0),
+            "use_memory": nca_config.get("use_memory", False),
+            "enable_lattice_scaling": nca_config.get("enable_lattice_scaling", False),
+            "target_params": nca_config.get("target_params", 69),
+            # alpha и beta не передаются в конструктор - они создаются как nn.Parameter внутри
         }
 
         logger.info(f"Создаем MinimalNCACell с параметрами: {params}")
