@@ -35,6 +35,7 @@ class MinimalNCACell(nn.Module):
         use_memory: bool = False,  # NCA имеет implicit memory
         memory_dim: int = 4,  # Не используется, для совместимости
         target_params: int = 150,
+        enable_lattice_scaling: bool = True,  # НОВЫЙ: контроль масштабирования
     ):
 
         super().__init__()
@@ -47,9 +48,10 @@ class MinimalNCACell(nn.Module):
         self.use_memory = use_memory
         self.memory_dim = memory_dim
         self.target_params = target_params
+        self.enable_lattice_scaling = enable_lattice_scaling
 
         # === ДИНАМИЧЕСКАЯ NCA АРХИТЕКТУРА ===
-        # Адаптируем архитектуру под target_params
+        # Адаптируем архитектуру под target_params ТОЛЬКО если включено масштабирование
 
         # 1. Neighbor weighting (learnable)
         self.neighbor_weights = nn.Parameter(
@@ -58,27 +60,39 @@ class MinimalNCACell(nn.Module):
 
         # 2. Динамическое масштабирование ВСЕЙ архитектуры под target_params
 
-        # Масштабируем все размерности на основе target_params
-        if target_params >= 1000:
-            # Большие модели: увеличиваем все размерности пропорционально
-            scale_factor = (
-                target_params / 150
-            ) ** 0.5  # Квадратный корень для сбалансированного роста
-            self.state_size = max(state_size, int(state_size * scale_factor * 0.3))
-            self.hidden_dim = max(hidden_dim, int(hidden_dim * scale_factor * 0.6))
-            self.external_input_size = max(
-                external_input_size, int(external_input_size * scale_factor * 0.2)
-            )
-        elif target_params <= 100:
-            # Маленькие модели: уменьшаем размерности
-            self.state_size = max(4, state_size)
-            self.hidden_dim = max(2, hidden_dim)
-            self.external_input_size = max(1, external_input_size)
+        if enable_lattice_scaling:
+            # ОРИГИНАЛЬНАЯ логика масштабирования (для обратной совместимости)
+            if target_params >= 1000:
+                # Большие модели: увеличиваем все размерности пропорционально
+                scale_factor = (
+                    target_params / 150
+                ) ** 0.5  # Квадратный корень для сбалансированного роста
+                self.state_size = max(state_size, int(state_size * scale_factor * 0.3))
+                self.hidden_dim = max(hidden_dim, int(hidden_dim * scale_factor * 0.6))
+                self.external_input_size = max(
+                    external_input_size, int(external_input_size * scale_factor * 0.2)
+                )
+            elif target_params <= 100:
+                # Маленькие модели: уменьшаем размерности
+                self.state_size = max(4, state_size)
+                self.hidden_dim = max(2, hidden_dim)
+                self.external_input_size = max(1, external_input_size)
+            else:
+                # Средние модели: используем config значения
+                self.state_size = state_size
+                self.hidden_dim = hidden_dim
+                self.external_input_size = external_input_size
         else:
-            # Средние модели: используем config значения
+            # НОВАЯ логика: ФИКСИРОВАННЫЕ размеры из конфигурации
+            # Игнорируем target_params и используем только config значения
             self.state_size = state_size
             self.hidden_dim = hidden_dim
             self.external_input_size = external_input_size
+
+            logger.info(
+                f"[NCA-FIXED] Scaling disabled, using fixed dimensions: "
+                f"state={self.state_size}, hidden={self.hidden_dim}, input={self.external_input_size}"
+            )
 
         perception_input_size = self.state_size + self.external_input_size
 
@@ -87,10 +101,10 @@ class MinimalNCACell(nn.Module):
             f"state={self.state_size}, hidden={self.hidden_dim}, input={self.external_input_size}"
         )
 
-        # 3. Perception layer (оптимизированный)
+        # 3. Perception layer (максимально минимизированный)
         self.perception = nn.Linear(perception_input_size, self.hidden_dim, bias=False)
 
-        # 4. Update rule (core NCA component)
+        # 4. Update rule (минимальная NCA архитектура для <100 параметров)
         if activation == "tanh":
             self.activation = nn.Tanh()
         elif activation == "gelu":
@@ -98,11 +112,8 @@ class MinimalNCACell(nn.Module):
         else:
             self.activation = nn.ReLU()
 
-        self.update_rule = nn.Sequential(
-            nn.Linear(self.hidden_dim, self.hidden_dim, bias=False),
-            self.activation,
-            nn.Linear(self.hidden_dim, state_size, bias=False),
-        )
+        # МИНИМАЛЬНАЯ архитектура: только одна линейная трансформация
+        self.update_rule = nn.Linear(self.hidden_dim, state_size, bias=False)
 
         # 5. NCA update parameters (learnable)
         self.alpha = nn.Parameter(torch.tensor(0.1))  # Update strength
@@ -175,7 +186,9 @@ class MinimalNCACell(nn.Module):
         perceived = self.perception(perception_input)
 
         # === STEP 4: UPDATE RULE ===
-        delta = self.update_rule(perceived)
+        # Применяем активацию ПЕРЕД update rule для стабильности NCA
+        activated = self.activation(perceived)
+        delta = self.update_rule(activated)
 
         # === STEP 5: NCA STATE UPDATE ===
         # Core NCA principle: gradual state evolution
@@ -213,6 +226,8 @@ class MinimalNCACell(nn.Module):
             "nca_alpha": float(self.alpha.item()),
             "nca_beta": float(self.beta.item()),
             "architecture_optimized": architecture_optimized,
+            "lattice_scaling_enabled": self.enable_lattice_scaling,  # НОВОЕ поле
+            "scaling_mode": "fixed" if not self.enable_lattice_scaling else "dynamic",
             "original_dimensions": {
                 "state_size": self.original_state_size,
                 "hidden_dim": self.original_hidden_dim,
@@ -234,26 +249,42 @@ def create_nca_cell_from_config(config: Dict[str, Any]) -> MinimalNCACell:
     # Извлекаем из gmlp_config (для обратной совместимости)
     gmlp_config = config.get("gmlp_config", {})
 
-    # NCA specific config
+    # NCA specific config - поддерживаем оба формата
     nca_config = config.get("nca", {})
+    minimal_nca_config = config.get("minimal_nca_cell", {})
 
-    # Параметры с fallback на gMLP значения
+    # Параметры с приоритетом: minimal_nca_cell > nca > gmlp_config
     params = {
-        "state_size": gmlp_config.get("state_size", nca_config.get("state_size", 8)),
-        "neighbor_count": gmlp_config.get(
-            "neighbor_count", nca_config.get("neighbor_count", 6)
+        "state_size": minimal_nca_config.get(
+            "state_size", gmlp_config.get("state_size", nca_config.get("state_size", 8))
         ),
-        "hidden_dim": nca_config.get("hidden_dim", 4),  # Значительно меньше чем gMLP
-        "external_input_size": gmlp_config.get(
-            "external_input_size", nca_config.get("external_input_size", 1)
+        "neighbor_count": minimal_nca_config.get(
+            "neighbor_count",
+            gmlp_config.get("neighbor_count", nca_config.get("neighbor_count", 6)),
         ),
-        "activation": gmlp_config.get(
-            "activation", nca_config.get("activation", "tanh")
+        "hidden_dim": minimal_nca_config.get(
+            "hidden_dim", nca_config.get("hidden_dim", 4)
+        ),  # Значительно меньше чем gMLP
+        "external_input_size": minimal_nca_config.get(
+            "external_input_size",
+            gmlp_config.get(
+                "external_input_size", nca_config.get("external_input_size", 1)
+            ),
         ),
-        "dropout": nca_config.get("dropout", 0.0),  # NCA обычно без dropout
-        "target_params": gmlp_config.get(
-            "target_params", nca_config.get("target_params", 150)
+        "activation": minimal_nca_config.get(
+            "activation",
+            gmlp_config.get("activation", nca_config.get("activation", "tanh")),
         ),
+        "dropout": minimal_nca_config.get(
+            "dropout", nca_config.get("dropout", 0.0)
+        ),  # NCA обычно без dropout
+        "target_params": minimal_nca_config.get(
+            "target_params",
+            gmlp_config.get("target_params", nca_config.get("target_params", 150)),
+        ),
+        "enable_lattice_scaling": minimal_nca_config.get(
+            "enable_lattice_scaling", nca_config.get("enable_lattice_scaling", True)
+        ),  # НОВЫЙ параметр с поддержкой обоих форматов
     }
 
     logger.info(f"🔬 Создание MinimalNCACell с параметрами: {params}")

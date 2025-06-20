@@ -1,0 +1,183 @@
+# 🧬 HYBRID NCA + GatedMLP ARCHITECTURE CONFIGURATION
+# ==================================================
+#
+# Революционная гибридная архитектура:
+# - MinimalNCACell для нейронов (state processing)
+# - GatedMLPCell для связей с соседями (connectivity)
+# - Раздельное масштабирование и оптимизация
+
+# === PROJECT METADATA ===
+project:
+  name: "3D Cellular Neural Network - Hybrid NCA+GatedMLP"
+  version: "2.1.0-hybrid"
+  description: "Биологически правдоподобная гибридная архитектура с MinimalNCA нейронами и GatedMLP связями"
+  architecture_type: "hybrid_nca_gmlp"
+
+# === ARCHITECTURE SELECTION ===
+architecture:
+  # Гибридный режим активирован
+  hybrid_mode: true
+
+  # Архитектура для нейронов (state processing)
+  neuron_architecture: "minimal_nca"
+
+  # Архитектура для связей с соседями (connectivity processing)
+  connection_architecture: "gated_mlp"
+
+  # Отключение автомасштабирования NCA
+  disable_nca_scaling: true
+
+  # Раздельные target_params
+  neuron_target_params: 69 # Фиксированный для MinimalNCA
+  connection_target_params: 10000 # Масштабируемый для GatedMLP
+
+# === LATTICE CONFIGURATION ===
+lattice_3d:
+  # Тестовая решетка для начала
+  dimensions: [20, 20, 10] # 4,000 клеток для тестирования
+  total_cells: 4000
+
+  # Масштабирование до production: [300, 300, 150] = 13.5M клеток
+  # production_dimensions: [300, 300, 150]
+  # production_total_cells: 13500000
+
+  # Соседство
+  neighbors: 26 # 3D Moore neighborhood для полной связности
+  neighbor_finding_strategy: "tiered"
+
+  # Граничные условия
+  boundary_conditions: "walls"
+
+  # GPU optimization
+  parallel_processing: true
+  gpu_enabled: true
+  batch_size: 4 # Adjusted for hybrid processing
+
+  # Инициализация
+  initialization:
+    method: "xavier_uniform"
+    std: 0.02 # Conservative для NCA stability
+    mean: 0.0
+
+  # Соседство конфигурация
+  neighbor_strategy_config:
+    local_tier:
+      radius: 3.0
+      ratio: 0.7 # 70% локальные связи
+    functional_tier:
+      ratio: 0.2 # 20% функциональные
+    distant_tier:
+      ratio: 0.1 # 10% дальние стохастические
+    local_grid_cell_size: 3
+
+# === NEURON ARCHITECTURE (MinimalNCA) ===
+cell_prototype:
+  prototype_name: "minimal_nca_cell"
+
+  minimal_nca_cell:
+    # ФИКСИРОВАННЫЕ параметры (НЕ масштабируются)
+    state_size: 36 # Биологически правдоподобный размер
+    neighbor_count: 26 # Синхронизируется с lattice.neighbors
+    hidden_dim: 6 # Минимальный для NCA правил
+    external_input_size: 2 # Минимальный внешний вход
+
+    # NCA specific parameters
+    activation: "tanh" # Стабильная активация для NCA
+    dropout: 0.0 # NCA не нуждается в dropout
+    use_memory: false # NCA имеет implicit memory
+
+    # КРИТИЧНО: отключение масштабирования
+    enable_lattice_scaling: false
+    target_params: 69 # Фиксированный target
+
+    # NCA dynamics parameters
+    alpha: 0.1 # Update strength
+    beta: 0.05 # Neighbor influence
+
+# === CONNECTION ARCHITECTURE (GatedMLP) ===
+connection_config:
+  architecture: "gated_mlp"
+
+  gmlp_cell:
+    # МАСШТАБИРУЕМЫЕ параметры
+    state_size: 36 # Совпадает с NCA state_size
+    neighbor_count: 26 # Синхронизируется с lattice.neighbors
+
+    # ОПТИМИЗИРОВАННЫЕ размеры (54,892 → 25,000 parameters)
+    hidden_dim: 32 # Уменьшено с 64 для оптимизации
+    external_input_size: 8 # Уменьшено с 12
+    memory_dim: 16 # Уменьшено с 32
+
+    # Architecture features
+    use_memory: true # GatedMLP needs explicit memory
+    activation: "gelu" # Modern activation
+    dropout: 0.05 # Light regularization
+
+    # Масштабирование
+    enable_lattice_scaling: true
+    target_params: 10000 # Масштабируется с решеткой
+
+# === I/O CONFIGURATION ===
+io:
+  input_face: "front"
+  output_face: "back"
+  placement_strategy: "proportional"
+
+  io_strategy_config:
+    coverage_ratio:
+      min_percentage: 8.0 # Биологически реалистично
+      max_percentage: 12.0 # Как в коре мозга
+    seed: 42
+
+# === TRAINING CONFIGURATION ===
+training:
+  # Гибридная оптимизация
+  learning_rate: 0.0005 # Conservative для NCA stability
+
+  # Раздельные learning rates (будущая фича)
+  # nca_learning_rate: 0.0001    # Медленнее для NCA
+  # gmlp_learning_rate: 0.001    # Быстрее для GatedMLP
+
+  batch_size: 2 # Memory constraints
+  epochs: 100
+  optimizer: "AdamW"
+  scheduler: "ReduceLROnPlateau"
+
+  # Гибридные loss weights
+  loss_weights:
+    nca_dynamics: 0.3 # NCA state evolution
+    connection_learning: 0.4 # GatedMLP connectivity
+    output_reconstruction: 0.3 # Final output quality
+
+# === VALIDATION PARAMETERS ===
+validation:
+  # Parameter count validation
+  max_nca_params: 69
+  max_gmlp_params: 25000
+
+  # Performance benchmarks
+  max_forward_time_ms: 250 # Total hybrid forward pass
+  max_memory_gb: 20 # VRAM usage limit
+
+  # Architecture separation validation
+  validate_nca_no_scaling: true
+  validate_gmlp_scaling: true
+  validate_parameter_efficiency: true
+
+# === DEBUGGING ===
+debug:
+  enable_parameter_logging: true
+  log_architecture_decisions: true
+  validate_hybrid_integration: true
+  performance_profiling: true
+
+# === EXPERIMENTAL FEATURES ===
+experimental:
+  # Future: different architectures for different cell types
+  enable_mixed_architectures: false
+
+  # Future: adaptive parameter allocation
+  dynamic_parameter_distribution: false
+
+  # Future: NCA-GatedMLP communication protocols
+  enable_cross_architecture_communication: false

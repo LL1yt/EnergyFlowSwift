@@ -50,6 +50,9 @@ class ScaleSettings:
     research: float = 0.1  # 10% - исследования
     validation: float = 0.3  # 30% - валидация
     production: float = 1.0  # 100% - продакшен
+    testing: float = (
+        0.005  # 0.5% - тестирование архитектуры с фиксированными параметрами
+    )
 
     def get_scale(self, mode: str) -> float:
         """Получить коэффициент масштабирования для режима"""
@@ -244,22 +247,30 @@ class DynamicConfigGenerator:
                 "activation": "gelu",
                 "dropout": 0.1,
             },
-            # НОВАЯ СЕКЦИЯ: Minimal NCA Configuration
-            "nca": {
-                # NCA параметрическая эффективность: target 68-10000 параметров
-                "enabled": True,  # Флаг для переключения gMLP → NCA
-                "target_params": "{smart_round(max(68, min(10000, 10000 * scale_factor)))}",  # Масштабируется как gMLP
-                "neighbor_count": 6,  # Совместимо с 3D решеткой
-                # Масштабируемые размеры для NCA (формулы оптимизированы для NCA архитектуры):
-                "state_size": "{smart_round(max(4, min(20, (target_params / 8) ** 0.6)))}",  # Оптимизированное масштабирование
-                "hidden_dim": "{smart_round(max(2, min(12, (target_params / 12) ** 0.5)))}",  # Меньше чем gMLP
-                "external_input_size": "{smart_round(max(1, min(6, target_params / 50)))}",  # Линейное масштабирование
+            # НОВАЯ СЕКЦИЯ: Hybrid NCA+GatedMLP Architecture
+            "architecture": {
+                # Гибридный режим (NCA для нейронов + GatedMLP для связей)
+                "hybrid_mode": True,  # Включение гибридной архитектуры
+                "neuron_architecture": "minimal_nca",  # Архитектура нейронов
+                "connection_architecture": "gated_mlp",  # Архитектура связей
+                "disable_nca_scaling": True,  # Отключение масштабирования NCA
+            },
+            # НОВАЯ СЕКЦИЯ: Minimal NCA Configuration (ФИКСИРОВАННАЯ для нейронов)
+            "minimal_nca_cell": {
+                # ФИКСИРОВАННЫЕ параметры для нейронов (НЕ масштабируются)
+                "state_size": 8,  # Маленький размер состояния для <100 params
+                "neighbor_count": 26,  # Синхронизируется с lattice.neighbors
+                "hidden_dim": 3,  # Очень маленький hidden для минимизации параметров
+                "external_input_size": 1,  # Минимальный внешний вход
                 # NCA специфичные параметры
                 "activation": "tanh",  # Bounded activation для stability
                 "dropout": 0.0,  # NCA обычно без dropout
                 "use_memory": False,  # NCA имеет implicit memory
-                "alpha_init": 0.1,  # Начальное значение update strength
-                "beta_init": 0.05,  # Начальное значение neighbor influence
+                "enable_lattice_scaling": False,  # КРИТИЧНО: отключение масштабирования
+                "target_params": 69,  # Фиксированный target
+                # NCA dynamics parameters
+                "alpha": 0.1,  # Update strength
+                "beta": 0.05,  # Neighbor influence
             },
             # НОВАЯ СЕКЦИЯ: Emergent Training Configuration
             "emergent_training": {
@@ -309,6 +320,17 @@ class DynamicConfigGenerator:
             config["training"]["batch_size"] = 64
         elif mode == "production":
             config["training"]["batch_size"] = 128
+        elif mode == "testing":
+            # РЕЖИМ ТЕСТИРОВАНИЯ: минимальные размеры для проверки архитектуры
+            config["training"]["batch_size"] = 4
+            # Переопределяем размеры решетки для быстрого тестирования
+            config["lattice"]["x"] = 20
+            config["lattice"]["y"] = 20
+            # Отключаем масштабирование для testing режима
+            config["lattice"]["scale_factor"] = 1.0  # Фиксированное значение
+            # Принудительно включаем гибридную архитектуру
+            config["architecture"]["hybrid_mode"] = True
+            config["architecture"]["disable_nca_scaling"] = True
 
         logger.info(f"[TARGET] Configured for {mode} mode (scale={scale_factor})")
         return config
