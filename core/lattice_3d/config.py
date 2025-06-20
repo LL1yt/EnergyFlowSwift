@@ -92,11 +92,26 @@ class LatticeConfig:
         }
     )
 
+    # === НОВОЕ: Конкурентное обучение (Шаг 3.1) ===
+    enable_competitive_learning: bool = False
+    competitive_config: Optional[Dict[str, Any]] = field(
+        default_factory=lambda: {
+            "winner_boost_factor": 1.05,  # Усиление связи с победителем
+            "lateral_inhibition_factor": 0.98,  # Ослабление неактивных связей
+            "enable_weight_normalization": True,  # Нормализация весов
+            "normalization_method": "proportional",  # Метод нормализации
+            "update_frequency": 1,  # Частота применения (каждые N шагов)
+            "max_winner_connections": 8,  # Максимум усиленных связей
+            "lateral_inhibition_radius": 3.0,  # Радиус латерального торможения
+        }
+    )
+
     def __post_init__(self):
         """Валидация и нормализация конфигурации после создания"""
         self._validate_dimensions()
         self._normalize_enums()
         self._validate_stdp_config()
+        self._validate_competitive_config()
         self._setup_logging()
 
     def _validate_dimensions(self):
@@ -157,6 +172,59 @@ class LatticeConfig:
             if self.activity_history_size > 1000:
                 logging.warning(
                     f"Large activity_history_size ({self.activity_history_size}) may use excessive memory"
+                )
+
+    def _validate_competitive_config(self):
+        """Проверка корректности конфигурации конкурентного обучения"""
+        if self.enable_competitive_learning and not self.competitive_config:
+            raise ValueError(
+                "Competitive learning configuration is required when enable_competitive_learning is True"
+            )
+
+        if self.enable_competitive_learning:
+            # Валидация параметров конкурентного обучения
+            required_keys = [
+                "winner_boost_factor",
+                "lateral_inhibition_factor",
+                "update_frequency",
+            ]
+            for key in required_keys:
+                if key not in self.competitive_config:
+                    logging.warning(
+                        f"Missing competitive learning parameter: {key}, using default"
+                    )
+
+            # Валидация диапазонов
+            config = self.competitive_config
+
+            if "winner_boost_factor" in config:
+                if not (1.0 <= config["winner_boost_factor"] <= 2.0):
+                    raise ValueError("winner_boost_factor must be between 1.0 and 2.0")
+
+            if "lateral_inhibition_factor" in config:
+                if not (0.5 <= config["lateral_inhibition_factor"] <= 1.0):
+                    raise ValueError(
+                        "lateral_inhibition_factor must be between 0.5 and 1.0"
+                    )
+
+            if "update_frequency" in config:
+                if config["update_frequency"] < 1:
+                    raise ValueError("update_frequency must be at least 1")
+
+            if "max_winner_connections" in config:
+                if config["max_winner_connections"] < 1:
+                    raise ValueError("max_winner_connections must be at least 1")
+                if config["max_winner_connections"] > self.neighbors:
+                    logging.warning(
+                        f"max_winner_connections ({config['max_winner_connections']}) "
+                        f"exceeds total neighbors ({self.neighbors})"
+                    )
+
+            # Требуется STDP для конкурентного обучения
+            if not self.enable_plasticity:
+                logging.warning(
+                    "Competitive learning works best with STDP enabled. "
+                    "Consider setting enable_plasticity=True"
                 )
 
     def _setup_logging(self):

@@ -1,5 +1,5 @@
-# Конфигурация для тестирования STDP (Шаг 2.3)
-# Adaptive Connectivity - биологически правдоподобная пластичность
+# Тестовая конфигурация для конкурентного обучения (Шаг 3.1)
+# ВНИМАНИЕ: Параметры настроены для демонстрации механизмов, НЕ для production!
 
 lattice:
   # Малая решетка для быстрого тестирования
@@ -22,38 +22,38 @@ lattice:
   gpu_enabled: true
   parallel_processing: true
 
-  # === STDP МЕХАНИЗМ ===
+  # === STDP МЕХАНИЗМ (ТЕСТОВЫЕ ПАРАМЕТРЫ) ===
   enable_plasticity: true
   plasticity_rule: "stdp"
   activity_history_size: 10 # Консервативная история (memory efficient)
 
   stdp_config:
-    # Пороги и скорости (консервативные значения)
-    activity_threshold: 0.05 # Понижен для получения активных клеток (было 0.1)
-    learning_rate: 0.01 # Медленная адаптация
+    # ТЕСТОВЫЕ пороги и скорости (повышенная чувствительность)
+    activity_threshold: 0.02 # ПОНИЖЕН для тестирования (production: 0.05-0.1)
+    learning_rate: 0.02 # УВЕЛИЧЕН для быстрых изменений (production: 0.001-0.01)
 
     # Биологически правдоподобные STDP параметры
-    A_plus: 0.01 # LTP амплитуда (потенциация)
-    A_minus: 0.01 # LTD амплитуда (депрессия)
+    A_plus: 0.02 # LTP амплитуда (увеличена для тестов)
+    A_minus: 0.02 # LTD амплитуда (увеличена для тестов)
     tau_plus: 20 # LTP временная константа (ms)
     tau_minus: 20 # LTD временная константа (ms)
 
     # Ограничения весов (предотвращение насыщения)
     weight_bounds: [0.1, 2.0] # [min, max] - веса остаются положительными
 
-  # === КОНКУРЕНТНОЕ ОБУЧЕНИЕ (Шаг 3.1) ===
+  # === КОНКУРЕНТНОЕ ОБУЧЕНИЕ (ТЕСТОВЫЕ ПАРАМЕТРЫ) ===
   enable_competitive_learning: true
   competitive_config:
-    # Winner-Take-All параметры
-    winner_boost_factor: 1.05 # 5% усиление связи с победителем
-    lateral_inhibition_factor: 0.98 # 2% ослабление неактивных связей
+    # Winner-Take-All параметры (усиленные для демонстрации)
+    winner_boost_factor: 1.1 # 10% усиление (production: 1.05)
+    lateral_inhibition_factor: 0.95 # 5% ослабление (production: 0.98)
 
     # Нормализация весов
     enable_weight_normalization: true
     normalization_method: "proportional" # сохраняем пропорции
 
     # Частота применения (каждые N шагов)
-    update_frequency: 1 # Применять каждый шаг (агрессивное обучение)
+    update_frequency: 1 # Применять каждый шаг (агрессивное тестирование)
 
     # Биологическая правдоподобность
     max_winner_connections: 8 # Максимум 8 усиленных связей на клетку
@@ -71,7 +71,7 @@ cell_prototype:
 
   minimal_nca_cell:
     # ОПТИМИЗИРОВАННЫЕ параметры для target_params=69
-    state_size: 4 # Уменьшено для соответствия target (26 + 6×3 + 3×4 + 2 = 65 ≈ 69)
+    state_size: 4 # Уменьшено для соответствия target
     neighbor_count: 26 # Синхронизируется с lattice.neighbors
     hidden_dim: 3 # Уменьшено пропорционально state_size
     external_input_size: 2 # Минимальный внешний вход
@@ -99,3 +99,11 @@ io:
     min_percentage: 8.0 # Минимум 8% клеток грани
     max_percentage: 12.0 # Максимум 12% клеток грани
     seed: 42
+
+# === МЕТАИНФОРМАЦИЯ ===
+meta:
+  config_type: "test"
+  purpose: "Demonstration of competitive learning mechanisms"
+  warning: "NOT FOR PRODUCTION - parameters tuned for visibility, not biological accuracy"
+  production_config: "config/adaptive_connectivity.yaml"
+  created_for: "Step 3.1 - Competitive Learning"

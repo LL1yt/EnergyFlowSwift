@@ -1,9 +1,11 @@
 """
-Основной модуль 3D Решетки
-==========================
+Модуль 3D Решетка клеток
+========================
 
-Содержит главный класс `Lattice3D`, который объединяет все компоненты:
-конфигурацию, топологию, I/O, состояния клеток и логику их обновления.
+Основной класс для создания и управления трёхмерной решеткой клеток.
+Содержит базовую функциональность forward pass'а и управления состояниями.
+
+Пластичность (STDP, конкурентное обучение) вынесена в отдельный модуль.
 """
 
 import torch
@@ -11,6 +13,7 @@ import torch.nn as nn
 from typing import List, Dict, Optional, Any
 import logging
 import time
+import collections
 
 # Импорты из других модулей проекта
 from core.cell_prototype import CellPrototype, create_cell_from_config
@@ -21,14 +24,17 @@ from .enums import Face
 from .io import IOPointPlacer
 from .position import Position3D
 from .topology import NeighborTopology
+from .plasticity import PlasticityMixin
 
 # Добавляем импорт для коллекций
 from collections import deque
 
 
-class Lattice3D(nn.Module):
+class Lattice3D(nn.Module, PlasticityMixin):
     """
-    Главный класс, реализующий 3D решетку клеток.
+    Трёхмерная решётка клеток (нейронов).
+
+    Теперь наследует от PlasticityMixin для механизмов пластичности.
     """
 
     def __init__(self, config: LatticeConfig):
@@ -84,49 +90,21 @@ class Lattice3D(nn.Module):
         self.topology = NeighborTopology(config, all_coords=all_coords)
 
         # Веса соединений
-        self.register_buffer(
-            "connection_weights",
-            torch.ones(
-                self.config.total_cells, self.config.neighbors, device=self.device
-            ),
+        self.connection_weights = torch.ones(
+            self.config.total_cells,
+            self.config.neighbors,
+            dtype=torch.float32,
+            device=self.device,
         )
         self.logger.info(
             f"Connection weights tensor created with shape: {self.connection_weights.shape}"
         )
 
-        # === НОВОЕ: STDP механизм ===
-        # Отслеживание активности для STDP
-        self.enable_stdp = getattr(config, "enable_plasticity", False)
-        if self.enable_stdp:
-
-            # Circular buffer для истории активности (memory efficient)
-            self.activity_history_size = getattr(config, "activity_history_size", 10)
-            self.activity_history = deque(maxlen=self.activity_history_size)
-
-            # STDP параметры
-            self.stdp_config = getattr(config, "stdp_config", {})
-            self.activity_threshold = self.stdp_config.get("activity_threshold", 0.1)
-            self.learning_rate = self.stdp_config.get("learning_rate", 0.01)
-            self.A_plus = self.stdp_config.get("A_plus", 0.01)  # LTP амплитуда
-            self.A_minus = self.stdp_config.get("A_minus", 0.01)  # LTD амплитуда
-            self.tau_plus = self.stdp_config.get("tau_plus", 20)  # LTP time constant
-            self.tau_minus = self.stdp_config.get("tau_minus", 20)  # LTD time constant
-            self.weight_bounds = self.stdp_config.get("weight_bounds", [0.1, 2.0])
-
-            self.logger.info("STDP mechanism enabled with parameters:")
-            self.logger.info(f"  Activity threshold: {self.activity_threshold}")
-            self.logger.info(f"  Learning rate: {self.learning_rate}")
-            self.logger.info(f"  Weight bounds: {self.weight_bounds}")
-        else:
-            self.previous_states = None
-            self.activity_history = None
+        # === Инициализация пластичности (через mixin) ===
+        self._init_plasticity()
 
         # Инициализация состояний клеток
         self.states = self._initialize_states()
-
-        # Инициализируем previous_states после создания self.states
-        if self.enable_stdp:
-            self.previous_states = torch.zeros_like(self.states)
 
         # Кэш для индексов граней
         self._face_indices_cache = self._compute_face_indices()
@@ -248,31 +226,13 @@ class Lattice3D(nn.Module):
         """
         start_time = time.time()
 
-        # === НОВОЕ: Сохраняем предыдущие состояния для STDP ===
-        if self.enable_stdp:
-            self.previous_states = self.states.clone()
-
         # Принудительно используем векторизованный метод
         new_states = self._parallel_forward(external_inputs)
 
         self.states = new_states
 
-        # === НОВОЕ: Отслеживание активности для STDP ===
-        if self.enable_stdp:
-            # Вычисляем активность как норму изменения состояния
-            state_change = torch.norm(new_states - self.previous_states, dim=1)
-            active_cells = (
-                (state_change > self.activity_threshold).detach().cpu().numpy()
-            )
-
-            # Добавляем в circular buffer
-            self.activity_history.append(
-                {
-                    "step": self.perf_stats["total_steps"],
-                    "active_cells": active_cells,
-                    "state_change": state_change.detach().cpu().numpy(),
-                }
-            )
+        # === Отслеживание активности для STDP (через mixin) ===
+        self._track_activity_for_stdp(new_states)
 
         if self.config.track_performance:
             self._update_performance_stats(time.time() - start_time)
@@ -382,98 +342,6 @@ class Lattice3D(nn.Module):
         self.perf_stats["total_steps"] = 0
         self.perf_stats["total_time"] = 0.0
         self.perf_stats["avg_time_per_step"] = 0.0
-
-    def apply_stdp_update(self) -> Dict[str, Any]:
-        """
-        Применяет STDP правило для обновления весов связей.
-
-        Основано на биологическом правиле:
-        - LTP (Long Term Potentiation): если сосед активен ДО текущей клетки → вес++
-        - LTD (Long Term Depression): если сосед активен ПОСЛЕ текущей клетки → вес--
-
-        Returns:
-            Dict с статистикой STDP обновления
-        """
-        if not self.enable_stdp or len(self.activity_history) < 2:
-            return {"message": "STDP not enabled or insufficient history"}
-
-        # Получаем два последних временных шага
-        current_activity = self.activity_history[-1]
-        previous_activity = self.activity_history[-2]
-
-        current_active = current_activity["active_cells"]
-        previous_active = previous_activity["active_cells"]
-
-        # Статистика для отчета
-        ltp_updates = 0
-        ltd_updates = 0
-        total_weight_change = 0.0
-
-        # Batch processing для эффективности
-        with torch.no_grad():
-            # Получаем индексы всех соседей
-            neighbor_indices = self.topology.get_all_neighbor_indices_batched()
-
-            # Vectorized STDP update для всех клеток
-            for cell_idx in range(self.config.total_cells):
-                if not current_active[cell_idx]:
-                    continue  # Клетка не активна - не обновляем веса
-
-                # Получаем соседей этой клетки
-                cell_neighbors = neighbor_indices[cell_idx]
-
-                for neighbor_idx, neighbor_cell_idx in enumerate(cell_neighbors):
-                    if neighbor_cell_idx == cell_idx:
-                        continue  # Пропускаем self-connections
-
-                    # STDP правило
-                    delta_w = 0.0
-
-                    if previous_active[neighbor_cell_idx] and current_active[cell_idx]:
-                        # LTP: сосед был активен на предыдущем шаге, текущая клетка активна сейчас
-                        delta_w = self.A_plus * self.learning_rate
-                        ltp_updates += 1
-                    elif (
-                        current_active[cell_idx]
-                        and not previous_active[neighbor_cell_idx]
-                    ):
-                        # LTD: текущая клетка активна, но сосед НЕ был активен ранее
-                        delta_w = -self.A_minus * self.learning_rate
-                        ltd_updates += 1
-
-                    if delta_w != 0.0:
-                        # Обновляем вес связи
-                        old_weight = self.connection_weights[
-                            cell_idx, neighbor_idx
-                        ].item()
-                        new_weight = old_weight + delta_w
-
-                        # Применяем bounds checking
-                        new_weight = max(
-                            self.weight_bounds[0],
-                            min(self.weight_bounds[1], new_weight),
-                        )
-
-                        self.connection_weights[cell_idx, neighbor_idx] = new_weight
-                        total_weight_change += abs(new_weight - old_weight)
-
-        # Статистика для мониторинга
-        active_cells_count = int(current_active.sum())
-
-        return {
-            "active_cells": active_cells_count,
-            "ltp_updates": ltp_updates,
-            "ltd_updates": ltd_updates,
-            "total_weight_change": total_weight_change,
-            "avg_weight_change": total_weight_change
-            / max(1, ltp_updates + ltd_updates),
-            "connection_weights_stats": {
-                "min": float(self.connection_weights.min().item()),
-                "max": float(self.connection_weights.max().item()),
-                "mean": float(self.connection_weights.mean().item()),
-                "std": float(self.connection_weights.std().item()),
-            },
-        }
 
     def get_performance_stats(self) -> Dict[str, Any]:
         return self.perf_stats.copy()
