@@ -1,75 +1,244 @@
 """
-Модуль Lattice 3D - Трехмерная Решетка Клеток
+Основной модуль 3D Решетки
+==========================
 
-Этот модуль реализует трехмерную решетку "умных клеток" для нейронной сети
-клеточного типа. Основные компоненты:
-
-- LatticeConfig: Конфигурация решетки
-- Position3D: Работа с 3D координатами
-- NeighborTopology: Система соседства и граничные условия
-- Lattice3D: Главный класс решетки
-
-Биологическая аналогия: кора головного мозга как 3D ткань из взаимосвязанных
-нейронов, где каждый нейрон связан с ближайшими соседями.
+Содержит главный класс `Lattice3D`, который объединяет все компоненты:
+конфигурацию, топологию, I/O, состояния клеток и логику их обновления.
 """
 
 import torch
 import torch.nn as nn
 import numpy as np
-import yaml
-from typing import Tuple, List, Dict, Optional, Union, Any
-from pathlib import Path
+from typing import List, Dict, Optional, Any
 import logging
-from dataclasses import dataclass
-from enum import Enum
+import time
 
 # Импорты из других модулей проекта
 from core.cell_prototype import CellPrototype, create_cell_from_config
 
-
-# =============================================================================
-# БАЗОВЫЕ ТИПЫ И КОНСТАНТЫ
-# =============================================================================
-
-
-class BoundaryCondition(Enum):
-    """Типы граничных условий для решетки"""
-
-    WALLS = "walls"  # Границы блокируют сигналы
-    PERIODIC = "periodic"  # Решетка замыкается в тор
-    ABSORBING = "absorbing"  # Сигналы затухают на границах
-    REFLECTING = "reflecting"  # Сигналы отражаются от границ
+# Локальные импорты из этого же модуля
+from .config import LatticeConfig, load_lattice_config
+from .enums import Face
+from .io import IOPointPlacer
+from .position import Position3D
+from .topology import NeighborTopology
 
 
-class Face(Enum):
-    """Грани решетки для ввода/вывода"""
+class Lattice3D(nn.Module):
+    """
+    Главный класс, реализующий 3D решетку клеток.
+    """
 
-    FRONT = "front"  # Z = 0
-    BACK = "back"  # Z = max
-    LEFT = "left"  # X = 0
-    RIGHT = "right"  # X = max
-    TOP = "top"  # Y = max
-    BOTTOM = "bottom"  # Y = 0
+    def __init__(self, config: LatticeConfig):
+        """
+        Инициализация решетки.
 
+        Args:
+            config: Объект конфигурации LatticeConfig.
+        """
+        super().__init__()
+        self.config = config
+        self.device = torch.device(
+            "cuda" if config.gpu_enabled and torch.cuda.is_available() else "cpu"
+        )
+        self.pos_helper = Position3D(config.dimensions)
+        self.logger = logging.getLogger(__name__)
 
-class PlacementStrategy(Enum):
-    """Стратегии размещения точек ввода/вывода"""
+        if config.enable_logging:
+            self.logger.info(f"Initializing Lattice3D on device: {self.device}")
+            self.logger.info(
+                f"Dimensions: {config.dimensions}, Total cells: {config.total_cells}"
+            )
+            self.logger.info(
+                f"Neighbor strategy: {getattr(config, 'neighbor_finding_strategy', 'local')}"
+            )
 
-    PROPORTIONAL = "proportional"  # Пропорциональное автоматическое масштабирование
-    RANDOM = "random"  # Случайное размещение
-    CORNERS = "corners"  # Размещение в углах
-    CORNERS_CENTER = "corners_center"  # Углы + центр
-    FULL_FACE = "full_face"  # Полное покрытие грани (текущая реализация)
+        # Создаем прототип клетки
+        self.cell_prototype = self._create_cell_prototype()
+        self.state_size = self.cell_prototype.state_size
 
+        # Размещение I/O точек
+        io_seed = 42
+        if config.io_strategy_config and "seed" in config.io_strategy_config:
+            io_seed = config.io_strategy_config["seed"]
 
-# Типы для координат и размеров
-Coordinates3D = Tuple[int, int, int]
-Dimensions3D = Tuple[int, int, int]
+        self.io_placer = IOPointPlacer(
+            config.dimensions,
+            config.placement_strategy,
+            config.io_strategy_config or {},
+            seed=io_seed,
+        )
+        self.input_points = self.io_placer.get_input_points(config.input_face)
+        self.output_points = self.io_placer.get_output_points(config.output_face)
+        self.input_indices = [
+            self.pos_helper.to_linear_index(p) for p in self.input_points
+        ]
+        self.output_indices = [
+            self.pos_helper.to_linear_index(p) for p in self.output_points
+        ]
 
+        # Инициализация топологии соседства
+        all_coords = self.pos_helper.get_all_coordinates()
+        self.topology = NeighborTopology(config, all_coords=all_coords)
 
-# =============================================================================
-# РАЗМЕЩЕНИЕ I/O ТОЧЕК
-# =============================================================================
+        # Веса соединений
+        self.register_buffer(
+            "connection_weights",
+            torch.ones(
+                self.config.total_cells, self.config.neighbors, device=self.device
+            ),
+        )
+        self.logger.info(
+            f"Connection weights tensor created with shape: {self.connection_weights.shape}"
+        )
+
+        # Инициализация состояний клеток
+        self.states = self._initialize_states()
+
+        # Кэш для индексов граней
+        self._face_indices_cache = self._compute_face_indices()
+
+        # Отслеживание производительности
+        self.perf_stats = {
+            "total_steps": 0,
+            "total_time": 0.0,
+            "avg_time_per_step": 0.0,
+        }
+
+        if self.config.validate_states:
+            self._validate_initial_setup()
+
+    def _create_cell_prototype(self) -> CellPrototype:
+        """
+        Создает экземпляр прототипа клетки на основе конфигурации.
+        """
+        if self.config.auto_sync_cell_config:
+            # Обновляем cell_config из lattice_config
+            if self.config.cell_config.get("gmlp_cell"):
+                self.config.cell_config["gmlp_cell"][
+                    "neighbor_count"
+                ] = self.config.neighbors
+            elif self.config.cell_config.get("minimal_nca_cell"):
+                self.config.cell_config["minimal_nca_cell"][
+                    "neighbor_count"
+                ] = self.config.neighbors
+
+        return create_cell_from_config(self.config.cell_config, self.device)
+
+    def _initialize_states(self) -> torch.Tensor:
+        """
+        Инициализирует тензор состояний клеток.
+        """
+        init_method = self.config.initialization_method
+        dims = (self.config.total_cells, self.state_size)
+
+        if init_method == "zeros":
+            states = torch.zeros(dims, device=self.device)
+        elif init_method == "ones":
+            states = torch.ones(dims, device=self.device)
+        elif init_method == "uniform":
+            states = torch.rand(dims, device=self.device)
+        elif init_method == "normal":
+            states = (
+                torch.randn(dims, device=self.device) * self.config.initialization_std
+                + self.config.initialization_mean
+            )
+        else:
+            raise ValueError(f"Unknown initialization method: {init_method}")
+
+        return states
+
+    def _compute_face_indices(self) -> Dict[Face, List[int]]:
+        """
+        Предварительно вычисляет линейные индексы клеток для каждой грани.
+        """
+        x_size, y_size, z_size = self.config.dimensions
+        face_indices: Dict[Face, List[int]] = {face: [] for face in Face}
+
+        for x in range(x_size):
+            for y in range(y_size):
+                face_indices[Face.FRONT].append(
+                    self.pos_helper.to_linear_index((x, y, 0))
+                )
+                face_indices[Face.BACK].append(
+                    self.pos_helper.to_linear_index((x, y, z_size - 1))
+                )
+
+        for y in range(y_size):
+            for z in range(z_size):
+                face_indices[Face.LEFT].append(
+                    self.pos_helper.to_linear_index((0, y, z))
+                )
+                face_indices[Face.RIGHT].append(
+                    self.pos_helper.to_linear_index((x_size - 1, y, z))
+                )
+
+        for x in range(x_size):
+            for z in range(z_size):
+                face_indices[Face.TOP].append(
+                    self.pos_helper.to_linear_index((x, y_size - 1, z))
+                )
+                face_indices[Face.BOTTOM].append(
+                    self.pos_helper.to_linear_index((x, 0, z))
+                )
+
+        return face_indices
+
+    def forward(self, external_inputs: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Выполняет один шаг обновления состояния решетки.
+        """
+        start_time = time.time()
+
+        if self.config.parallel_processing:
+            new_states = self._parallel_forward(external_inputs)
+        else:
+            new_states = self._sequential_forward(external_inputs)
+
+        self.states = new_states
+        self.perf_stats["total_steps"] += 1
+
+        if self.config.track_performance:
+            self._update_performance_stats(time.time() - start_time)
+
+        return self.states
+
+    def _parallel_forward(
+        self, external_inputs: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        """Параллельное (векторизованное) обновление всех клеток (быстро, для GPU)."""
+        neighbor_indices_list = [
+            self.topology.get_neighbor_indices(i)
+            for i in range(self.config.total_cells)
+        ]
+
+        max_neighbors = self.config.neighbors
+        for i in range(len(neighbor_indices_list)):
+            if len(neighbor_indices_list[i]) < max_neighbors:
+                diff = max_neighbors - len(neighbor_indices_list[i])
+                neighbor_indices_list[i].extend([i] * diff)
+
+        neighbor_indices = torch.tensor(
+            neighbor_indices_list, dtype=torch.long, device=self.device
+        )
+
+        neighbor_states = self.states[neighbor_indices]
+        neighbor_weights = self.connection_weights
+
+        new_states = self.cell_prototype(
+            neighbor_states, self.states, neighbor_weights, external_inputs
+        )
+
+        return new_states
+
+    def _sequential_forward(
+        self, external_inputs: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        """Последовательное обновление состояния каждой клетки (медленно, для отладки)."""
+        new_states = torch.zeros_like(self.states)
+
+        for i in range(self.config.total_cells):
+            neighbor_indices = self.topology.get_neighbor_indices(i)
 
 
 class IOPointPlacer:
@@ -859,6 +1028,7 @@ class NeighborTopology:
     - local: стандартные 6 соседей (фон Нейман)
     - random_sample: случайная выборка N соседей со всей решетки
     - hybrid: комбинация локальных и случайных соседей
+    - tiered: трехуровневая стратегия (локальные+функциональные+дальние)
     """
 
     # Направления к 6 локальным соседям в 3D пространстве
@@ -891,6 +1061,15 @@ class NeighborTopology:
         self._all_coords_list = all_coords
         self._all_coords_set = set(all_coords)
 
+        # Инициализация SpatialHashGrid для стратегий, которые его используют
+        self._spatial_grid: Optional[SpatialHashGrid] = None
+        if self.strategy == "tiered":
+            grid_cell_size = self.strategy_config.get("local_grid_cell_size", 5)
+            self._spatial_grid = SpatialHashGrid(self.dimensions, grid_cell_size)
+            # Заполняем решетку всеми клетками
+            for i, c in enumerate(all_coords):
+                self._spatial_grid.insert(c, i)
+
         self.neighbor_cache: Optional[Dict[int, List[int]]] = (
             {} if config.cache_neighbors else None
         )
@@ -914,6 +1093,8 @@ class NeighborTopology:
             return self._get_random_sample_neighbors(coords)
         elif self.strategy == "hybrid":
             return self._get_hybrid_neighbors(coords)
+        elif self.strategy == "tiered":
+            return self._get_tiered_neighbors(coords)
         else:
             raise ValueError(f"Unknown neighbor finding strategy: {self.strategy}")
 
@@ -973,6 +1154,99 @@ class NeighborTopology:
             random_neighbors = []
 
         return local_neighbors + random_neighbors
+
+    def _get_tiered_neighbors(self, coords: Coordinates3D) -> List[Coordinates3D]:
+        """
+        Реализует трехуровневую гибридную стратегию:
+        1. Локальные соседи через Spatial Hashing.
+        2. Функциональные соседи (временная заглушка - случайные).
+        3. Стохастические дальние связи (вероятность ~ 1/расстояние).
+        """
+        if self._spatial_grid is None:
+            raise RuntimeError(
+                "SpatialHashGrid не инициализирован для 'tiered' стратегии."
+            )
+
+        # --- Уровень 1: Локальные соседи ---
+        local_config = self.strategy_config.get("local_tier", {})
+        local_radius = local_config.get("radius", 5.0)
+        local_ratio = local_config.get("ratio", 0.7)
+        local_count = int(self.num_neighbors * local_ratio)
+
+        # Используем SpatialHashGrid для быстрого поиска
+        local_indices = self._spatial_grid.query_radius(coords, local_radius)
+        self_index = self.pos_helper.to_linear_index(coords)
+
+        # Удаляем себя из кандидатов, используя set для эффективности
+        local_indices_set = set(local_indices)
+        local_indices_set.discard(self_index)
+
+        # Ограничиваем количество
+        if len(local_indices_set) > local_count:
+            final_local_indices = list(
+                np.random.choice(list(local_indices_set), local_count, replace=False)
+            )
+        else:
+            final_local_indices = list(local_indices_set)
+
+        # --- Уровень 2: Функциональные соседи (заглушка) ---
+        functional_config = self.strategy_config.get("functional_tier", {})
+        functional_ratio = functional_config.get("ratio", 0.2)
+        functional_count = int(self.num_neighbors * functional_ratio)
+
+        # Временно берем случайные, исключая уже выбранные и себя
+        exclude_indices = set(final_local_indices) | {self_index}
+        all_indices_set = set(range(self.pos_helper.total_positions))
+        possible_functional = list(all_indices_set - exclude_indices)
+
+        num_to_sample_func = min(functional_count, len(possible_functional))
+        functional_indices = (
+            list(
+                np.random.choice(possible_functional, num_to_sample_func, replace=False)
+            )
+            if num_to_sample_func > 0
+            else []
+        )
+
+        # --- Уровень 3: Стохастические дальние связи ---
+        long_range_config = self.strategy_config.get("long_range_tier", {})
+        long_range_count = (
+            self.num_neighbors - len(final_local_indices) - len(functional_indices)
+        )
+
+        # Исключаем всех уже выбранных
+        exclude_indices.update(functional_indices)
+        possible_long_range = list(all_indices_set - exclude_indices)
+
+        if long_range_count > 0 and possible_long_range:
+            # Вычисляем веса как 1 / расстояние
+            distances = np.array(
+                [
+                    self.pos_helper.euclidean_distance(
+                        coords, self.pos_helper.to_3d_coordinates(idx)
+                    )
+                    for idx in possible_long_range
+                ]
+            )
+            # Добавляем epsilon, чтобы избежать деления на ноль
+            probabilities = 1.0 / (distances + 1e-6)
+            probabilities /= np.sum(probabilities)  # Нормализуем
+
+            num_to_sample_lr = min(long_range_count, len(possible_long_range))
+            long_range_indices = list(
+                np.random.choice(
+                    possible_long_range,
+                    num_to_sample_lr,
+                    replace=False,
+                    p=probabilities,
+                )
+            )
+        else:
+            long_range_indices = []
+
+        # --- Собираем всех соседей ---
+        final_indices = final_local_indices + functional_indices + long_range_indices
+        return [self.pos_helper.to_3d_coordinates(idx) for idx in final_indices]
 
     def get_neighbor_indices(self, linear_index: int) -> List[int]:
         """
@@ -1158,6 +1432,19 @@ class Lattice3D(nn.Module):
         # Передаем полный список координат для продвинутых стратегий
         all_coords = self.pos_helper.get_all_coordinates()
         self.topology = NeighborTopology(config, all_coords=all_coords)
+
+        # --- НОВОЕ: Веса соединений ---
+        # Создаем буфер для весов. Он будет частью состояния модели, но не обучаемым параметром.
+        # Размер: (общее число клеток, максимальное число соседей)
+        self.register_buffer(
+            "connection_weights",
+            torch.ones(
+                self.config.total_cells, self.config.neighbors, device=self.device
+            ),
+        )
+        self.logger.info(
+            f"Connection weights tensor created with shape: {self.connection_weights.shape}"
+        )
 
         # Инициализация состояний клеток
         self.states = self._initialize_states()
@@ -1370,65 +1657,42 @@ class Lattice3D(nn.Module):
     def _parallel_forward(
         self, external_inputs: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        """
-        Параллельное обновление всех клеток.
+        """Параллельное (векторизованное) обновление всех клеток (быстро, для GPU)."""
 
-        Args:
-            external_inputs: Внешние входы или None
+        # --- МОДИФИКАЦИЯ: Передаем веса в клетку ---
+        # 1. Получаем индексы соседей для всех клеток сразу
+        # Этот код предполагает, что топология статична между шагами forward.
+        # Если кэш соседей включен, это будет очень быстро.
+        neighbor_indices_list = [
+            self.topology.get_neighbor_indices(i)
+            for i in range(self.config.total_cells)
+        ]
 
-        Returns:
-            torch.Tensor: Новые состояния всех клеток
-        """
-        total_cells = self.config.total_cells
-        batch_size = total_cells
+        # Убедимся, что у всех одинаковое количество соседей, дополняем если нужно
+        max_neighbors = self.config.neighbors
+        for i in range(len(neighbor_indices_list)):
+            if len(neighbor_indices_list[i]) < max_neighbors:
+                # Дополняем собственным индексом, чтобы не влиять на вычисления
+                diff = max_neighbors - len(neighbor_indices_list[i])
+                neighbor_indices_list[i].extend([i] * diff)
 
-        # Собираем данные для всех клеток
-        all_neighbor_states = []
-        all_own_states = []
-        all_external_inputs = []
+        neighbor_indices = torch.tensor(
+            neighbor_indices_list, dtype=torch.long, device=self.device
+        )
 
-        for cell_idx in range(total_cells):
-            # Получаем соседей для каждой клетки
-            neighbor_indices = self.topology.get_neighbor_indices(cell_idx)
+        # 2. Собираем состояния соседей
+        neighbor_states = self.states[neighbor_indices]
 
-            # Собираем состояния соседей
-            neighbor_states = []
-            for neighbor_idx in neighbor_indices:
-                neighbor_states.append(self._states[neighbor_idx])
+        # 3. Собираем веса для этих соседей
+        # connection_weights уже имеет правильную размерность [total_cells, max_neighbors]
+        neighbor_weights = self.connection_weights
 
-            # Если соседей меньше 6, дополняем нулями
-            while len(neighbor_states) < 6:
-                neighbor_states.append(torch.zeros_like(self._states[0]))
-
-            # Формируем тензор состояний соседей [1, 6, state_size]
-            neighbor_tensor = torch.stack(neighbor_states[:6]).unsqueeze(0)
-            all_neighbor_states.append(neighbor_tensor)
-
-            # Собственное состояние [1, state_size]
-            own_state = self._states[cell_idx].unsqueeze(0)
-            all_own_states.append(own_state)
-
-            # Внешний вход для этой клетки
-            if external_inputs is not None:
-                ext_input = self._get_external_input_for_cell(cell_idx, external_inputs)
-            else:
-                ext_input = torch.zeros(
-                    1, self.cell_prototype.input_size, device=self.config.device
-                )
-            all_external_inputs.append(ext_input)
-
-        # Объединяем все данные в батчи
-        batch_neighbor_states = torch.cat(
-            all_neighbor_states, dim=0
-        )  # [total_cells, 6, state_size]
-        batch_own_states = torch.cat(all_own_states, dim=0)  # [total_cells, state_size]
-        batch_external_inputs = torch.cat(
-            all_external_inputs, dim=0
-        )  # [total_cells, input_size]
-
-        # Применяем cell_prototype ко всем клеткам одновременно
+        # 4. Вызываем forward прототипа клетки
         new_states = self.cell_prototype(
-            batch_neighbor_states, batch_own_states, batch_external_inputs
+            neighbor_states,
+            self.states,
+            neighbor_weights,  # Передаем веса
+            external_inputs,
         )
 
         return new_states
@@ -1436,47 +1700,38 @@ class Lattice3D(nn.Module):
     def _sequential_forward(
         self, external_inputs: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        """
-        Последовательное обновление клеток (для отладки).
+        """Последовательное обновление состояния каждой клетки (медленно, для отладки)."""
+        new_states = torch.zeros_like(self.states)
 
-        Args:
-            external_inputs: Внешние входы или None
+        for i in range(self.config.total_cells):
+            # 1. Получаем соседей и их состояния
+            neighbor_indices = self.topology.get_neighbor_indices(i)
+            # Дополняем, если нужно
+            if len(neighbor_indices) < self.config.neighbors:
+                diff = self.config.neighbors - len(neighbor_indices)
+                neighbor_indices.extend([i] * diff)
 
-        Returns:
-            torch.Tensor: Новые состояния всех клеток
-        """
-        new_states = torch.zeros_like(self._states)
+            neighbor_states = self.states[neighbor_indices]
 
-        for cell_idx in range(self.config.total_cells):
-            # Получаем соседей
-            neighbor_indices = self.topology.get_neighbor_indices(cell_idx)
+            # 2. Получаем веса для этих связей
+            neighbor_weights = self.connection_weights[i]
 
-            # Собираем состояния соседей
-            neighbor_states = []
-            for neighbor_idx in neighbor_indices:
-                neighbor_states.append(self._states[neighbor_idx])
+            # 3. Получаем внешний вход для этой клетки
+            cell_external_input = self._get_external_input_for_cell(i, external_inputs)
 
-            # Дополняем до 6 соседей
-            while len(neighbor_states) < 6:
-                neighbor_states.append(torch.zeros_like(self._states[0]))
-
-            # Формируем входные данные
-            neighbor_tensor = torch.stack(neighbor_states[:6]).unsqueeze(
-                0
-            )  # [1, 6, state_size]
-            own_state = self._states[cell_idx].unsqueeze(0)  # [1, state_size]
-
-            # Внешний вход
-            if external_inputs is not None:
-                ext_input = self._get_external_input_for_cell(cell_idx, external_inputs)
-            else:
-                ext_input = torch.zeros(
-                    1, self.cell_prototype.input_size, device=self.config.device
-                )
-
-            # Применяем cell_prototype
-            new_state = self.cell_prototype(neighbor_tensor, own_state, ext_input)
-            new_states[cell_idx] = new_state.squeeze(0)
+            # 4. Вызываем forward прототипа клетки
+            # unsqueeze(0) добавляет batch-измерение
+            new_state = self.cell_prototype(
+                neighbor_states.unsqueeze(0),
+                self.states[i].unsqueeze(0),
+                neighbor_weights.unsqueeze(0),
+                (
+                    cell_external_input.unsqueeze(0)
+                    if cell_external_input is not None
+                    else None
+                ),
+            )
+            new_states[i] = new_state.squeeze(0)
 
         return new_states
 

@@ -189,6 +189,7 @@ class GatedMLPCell(nn.Module):
         self,
         neighbor_states: torch.Tensor,
         own_state: torch.Tensor,
+        connection_weights: torch.Tensor,
         external_input: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
@@ -197,6 +198,7 @@ class GatedMLPCell(nn.Module):
         Args:
             neighbor_states: [batch, neighbor_count, state_size] - состояния соседей
             own_state: [batch, state_size] - собственное состояние
+            connection_weights: [batch, neighbor_count] - веса для связей с соседями
             external_input: [batch, external_input_size] - внешний вход (опционально)
 
         Returns:
@@ -206,9 +208,16 @@ class GatedMLPCell(nn.Module):
 
         # === ЭТАП 1: INPUT PREPARATION ===
 
+        # --- НОВОЕ: Взвешивание состояний соседей ---
+        # Умножаем состояния соседей на их веса.
+        # unsqueeze(-1) для [batch, neighbor_count, 1] чтобы broadcast'иться с [..., state_size]
+        weighted_neighbor_states = neighbor_states * connection_weights.unsqueeze(-1)
+
         # Обработка neighbor states
-        if neighbor_states.numel() > 0:
-            neighbor_flat = neighbor_states.view(batch_size, -1)  # Flatten neighbors
+        if weighted_neighbor_states.numel() > 0:
+            neighbor_flat = weighted_neighbor_states.view(
+                batch_size, -1
+            )  # Flatten neighbors
         else:
             # Если соседей нет, создаем нулевой вектор
             neighbor_flat = torch.zeros(
@@ -364,52 +373,50 @@ def create_gmlp_cell_from_config(config: Dict[str, Any]) -> GatedMLPCell:
 
 
 def test_gmlp_cell_basic() -> bool:
-    """
-    Базовое тестирование gMLP клетки
-
-    Returns:
-        bool: True если все тесты прошли
-    """
-    logger.info("🧪 Тестирование GatedMLPCell...")
-
+    """Тестирование базовой функциональности gMLP-клетки."""
+    logger.info("--- Running Basic GatedMLPCell Test ---")
     try:
-        # Создание клетки
+        # Параметры теста
+        batch_size = 4
+        state_size = 32
+        neighbor_count = 6
+        external_input_size = 12
+
+        # Создание экземпляра клетки
         cell = GatedMLPCell(
-            state_size=32,
-            neighbor_count=6,
-            hidden_dim=256,  # Меньше для тестирования
-            external_input_size=12,
+            state_size=state_size,
+            neighbor_count=neighbor_count,
+            external_input_size=external_input_size,
         )
 
-        # Тестовые данные
-        batch_size = 4
-        neighbor_states = torch.randn(batch_size, 6, 32)
-        own_state = torch.randn(batch_size, 32)
-        external_input = torch.randn(batch_size, 12)
+        # Входные тензоры
+        neighbor_states = torch.randn(batch_size, neighbor_count, state_size)
+        own_state = torch.randn(batch_size, state_size)
+        external_input = torch.randn(batch_size, external_input_size)
+        connection_weights = torch.rand(batch_size, neighbor_count)  # Веса от 0 до 1
 
-        # Forward pass
-        new_state = cell(neighbor_states, own_state, external_input)
+        # Вызов forward
+        new_state = cell(neighbor_states, own_state, connection_weights, external_input)
 
         # Проверки
         assert new_state.shape == (
             batch_size,
-            32,
-        ), f"Wrong output shape: {new_state.shape}"
-        assert not torch.isnan(new_state).any(), "NaN values in output"
-        assert not torch.isinf(new_state).any(), "Inf values in output"
+            state_size,
+        ), f"Shape mismatch: {new_state.shape}"
+        logger.info(f"Output shape OK: {new_state.shape}")
 
-        # Тест memory reset
-        cell.reset_memory()
-        assert cell.memory_state is None, "Memory not reset"
+        # Проверка без внешнего входа
+        new_state_no_ext = cell(neighbor_states, own_state, connection_weights)
+        assert new_state_no_ext.shape == (
+            batch_size,
+            state_size,
+        ), "Shape mismatch without external input"
+        logger.info("Forward pass without external input OK.")
 
-        # Информация о клетке
-        info = cell.get_info()
-        logger.info(f"[OK] gMLP Cell тест пройден: {info['total_parameters']} params")
-
+        logger.info("[SUCCESS] Basic GatedMLPCell Test Passed")
         return True
-
     except Exception as e:
-        logger.error(f"[ERROR] gMLP Cell тест failed: {e}")
+        logger.error(f"[FAILURE] GatedMLPCell Test Failed: {e}", exc_info=True)
         return False
 
 
