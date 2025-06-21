@@ -8,11 +8,13 @@ Clean 3D Cellular Neural Network - Cells Module
 
 from .base_cell import BaseCell, CellFactory
 from .nca_cell import NCACell
-from .gmlp_cell import GMLPCell
+from .gnn_cell import GNNCell
+from .gmlp_cell import GMLPCell  # Legacy совместимость
 
 __all__ = [
     "BaseCell",
     "NCACell",
-    "GMLPCell",
+    "GNNCell",
+    "GMLPCell",  # DEPRECATED
     "CellFactory",
 ]

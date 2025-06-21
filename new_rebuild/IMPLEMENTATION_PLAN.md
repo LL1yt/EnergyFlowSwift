@@ -122,6 +122,15 @@ class ProjectConfig:
     # === PHASE 4 ADDITIONS ===
     # Новые секции для поддержки clean конфигураций
 
+    # Топология соседства - нам нужно имитировать связи с 10000 других нейронов
+    neighbors: 26 # 3D соседство (биологически правдоподобно)
+    neighbor_finding_strategy: "tiered"
+    neighbor_strategy_config:
+        local_tier: 0.2 # 20% локальные соседи
+        functional_tier: 0.6 # 50% функциональные (spatial hashing)
+        random_tier: 0.2 # 20% дальние стохастические
+        local_grid_cell_size: 8 # Размер spatial hash bins
+
     # Пластичность (из clean конфигураций)
     plasticity:
     enable_plasticity: true

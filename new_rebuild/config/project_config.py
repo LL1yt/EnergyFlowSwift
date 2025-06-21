@@ -26,7 +26,7 @@ class ProjectConfig:
     """
 
     # === АРХИТЕКТУРА ===
-    architecture_type: str = "hybrid"  # nca | gmlp | hybrid
+    architecture_type: str = "gnn"  # nca | gnn | gmlp (deprecated) | hybrid
 
     # === 3D РЕШЕТКА ===
     # Начинаем с малой для тестов, масштабируем до цели
@@ -42,20 +42,21 @@ class ProjectConfig:
     nca_target_params: int = 69  # ~60 параметров как в биологии
     nca_activation: str = "tanh"  # стабильная для NCA
 
-    # === gMLP СВЯЗИ (межнейронные соединения) - БЕЗ BOTTLENECK ===
-    gmlp_state_size: int = 32  # полноценная архитектура (было 36 в Legacy)
-    gmlp_hidden_dim: int = 64  # увеличено от bottleneck 32
-    gmlp_neighbor_count: int = 26  # синхронизация с NCA
-    gmlp_external_input_size: int = 8  # полноценный external input
-    gmlp_target_params: int = (
-        80000  # ~10k связей как в биологии, но учитывая ограничения архитектуры
-    )
-    gmlp_activation: str = "gelu"  # современная активация
-    gmlp_use_memory: bool = False  # память отключена (shared weights)
+    # === GNN СВЯЗИ (замена gMLP) - оптимизированная коммуникация ===
+    gnn_state_size: int = 32  # размер состояния клетки
+    gnn_message_dim: int = 16  # размер сообщений между клетками
+    gnn_hidden_dim: int = 32  # скрытый слой для обработки
+    gnn_neighbor_count: int = 26  # синхронизация с NCA
+    gnn_external_input_size: int = 8  # внешний вход
+    gnn_target_params: int = 8000  # намного меньше чем gMLP (113k → 8k)
+    gnn_activation: str = "gelu"  # современная активация
+    gnn_use_attention: bool = True  # attention mechanism для селективной агрегации
+    gnn_aggregation: str = "attention"  # тип агрегации сообщений
+    gnn_num_layers: int = 1  # количество слоев GNN (начинаем с 1)
 
     # === HYBRID ИНТЕГРАЦИЯ ===
     hybrid_nca_weight: float = 0.1  # 10% влияние нейронов
-    hybrid_gmlp_weight: float = 0.9  # 90% влияние связей
+    hybrid_gnn_weight: float = 0.9  # 90% влияние связей (было gmlp_weight)
 
     # === ОБУЧЕНИЕ ===
     learning_rate: float = 0.001
@@ -71,6 +72,15 @@ class ProjectConfig:
     tissue_simulation: bool = True  # решетка как нервная ткань
     receptor_coverage: float = 1.0  # рецепторная стратегия (100% покрытия)
     signal_propagation: bool = True  # сигналы как нервные импульсы
+    # === ТОПОЛОГИЯ СОСЕДСТВА (оптимизированная для эмерджентности) ===
+    # Пропорции из GNN анализа: 10/60/30 для максимизации эмерджентности
+    neighbors: int = 26  # 3D соседство
+    neighbor_finding_strategy: str = "tiered"
+    # neighbor_strategy_config:
+    local_tier: float = 0.1  # 10% локальные (минимум для стабильности)
+    functional_tier: float = 0.6  # 60% функциональные (ЯДРО эмерджентности)
+    distant_tier: float = 0.3  # 30% дальние (глобальная координация)
+    local_grid_cell_size: int = 8  # Размер spatial hash bins
 
     # === ПЛАСТИЧНОСТЬ ===
     enable_plasticity: bool = True
@@ -99,13 +109,13 @@ class ProjectConfig:
         if self.device == "auto":
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # Синхронизация neighbor_count между NCA и gMLP
-        if self.nca_neighbor_count != self.gmlp_neighbor_count:
+        # Синхронизация neighbor_count между NCA и GNN
+        if self.nca_neighbor_count != self.gnn_neighbor_count:
             logging.warning(
-                f"⚠️ NCA neighbor_count ({self.nca_neighbor_count}) != gMLP neighbor_count ({self.gmlp_neighbor_count})"
+                f"⚠️ NCA neighbor_count ({self.nca_neighbor_count}) != GNN neighbor_count ({self.gnn_neighbor_count})"
             )
             # Принудительно синхронизируем
-            self.gmlp_neighbor_count = self.nca_neighbor_count
+            self.gnn_neighbor_count = self.nca_neighbor_count
 
         # Подсчет общего количества клеток
         self.total_cells = (
@@ -122,7 +132,7 @@ class ProjectConfig:
             )
             logging.info(f"   Device: {self.device}")
             logging.info(f"   NCA params target: {self.nca_target_params}")
-            logging.info(f"   gMLP params target: {self.gmlp_target_params}")
+            logging.info(f"   GNN params target: {self.gnn_target_params}")
 
     # === МЕТОДЫ ДОСТУПА (совместимость с Legacy) ===
     def get_nca_config(self) -> Dict[str, Any]:
@@ -139,17 +149,36 @@ class ProjectConfig:
             "enable_lattice_scaling": False,
         }
 
-    def get_gmlp_config(self) -> Dict[str, Any]:
-        """Получить полную gMLP конфигурацию (совместимость с Legacy)"""
+    def get_gnn_config(self) -> Dict[str, Any]:
+        """Получить полную GNN конфигурацию (замена gMLP)"""
         return {
-            "state_size": self.gmlp_state_size,
-            "neighbor_count": self.gmlp_neighbor_count,
-            "hidden_dim": self.gmlp_hidden_dim,
-            "external_input_size": self.gmlp_external_input_size,
-            "target_params": self.gmlp_target_params,
-            "activation": self.gmlp_activation,
+            "state_size": self.gnn_state_size,
+            "neighbor_count": self.gnn_neighbor_count,
+            "message_dim": self.gnn_message_dim,
+            "hidden_dim": self.gnn_hidden_dim,
+            "external_input_size": self.gnn_external_input_size,
+            "target_params": self.gnn_target_params,
+            "activation": self.gnn_activation,
+            "use_attention": self.gnn_use_attention,
+            "aggregation": self.gnn_aggregation,
+            "num_layers": self.gnn_num_layers,
             "dropout": 0.0,  # отключено для clean архитектуры
-            "use_memory": self.gmlp_use_memory,
+        }
+
+    def get_gmlp_config(self) -> Dict[str, Any]:
+        """DEPRECATED: Получить полную gMLP конфигурацию (Legacy совместимость)"""
+        # Возвращаем GNN конфигурацию для обратной совместимости
+        gnn_config = self.get_gnn_config()
+        # Маппинг для совместимости
+        return {
+            "state_size": gnn_config["state_size"],
+            "neighbor_count": gnn_config["neighbor_count"],
+            "hidden_dim": gnn_config["hidden_dim"],
+            "external_input_size": gnn_config["external_input_size"],
+            "target_params": gnn_config["target_params"],
+            "activation": gnn_config["activation"],
+            "dropout": 0.0,  # отключено для clean архитектуры
+            "use_memory": False,  # память отключена (shared weights)
             # НЕ ИСПОЛЬЗУЕМ bottleneck для полноценной архитектуры
             "bottleneck_dim": None,
         }
@@ -169,7 +198,7 @@ class ProjectConfig:
     @property
     def total_target_params(self) -> int:
         """Общее количество целевых параметров"""
-        return self.nca_target_params + self.gmlp_target_params
+        return self.nca_target_params + self.gnn_target_params
 
 
 # === ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР ===

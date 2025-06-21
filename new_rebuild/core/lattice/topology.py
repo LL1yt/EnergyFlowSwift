@@ -68,12 +68,15 @@ class NeighborTopology:
         # Количество соседей - синхронизированное значение
         if self.config.architecture_type == "nca":
             self.num_neighbors = self.config.nca_neighbor_count
+        elif self.config.architecture_type == "gnn":
+            self.num_neighbors = self.config.gnn_neighbor_count
         elif self.config.architecture_type == "gmlp":
-            self.num_neighbors = self.config.gmlp_neighbor_count
+            # Legacy совместимость: gMLP → GNN
+            self.num_neighbors = self.config.gnn_neighbor_count
         else:  # hybrid
             # Для hybrid берем максимальное значение
             self.num_neighbors = max(
-                self.config.nca_neighbor_count, self.config.gmlp_neighbor_count
+                self.config.nca_neighbor_count, self.config.gnn_neighbor_count
             )
 
         # Конфигурация стратегии (можно расширить в будущем)

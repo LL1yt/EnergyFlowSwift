@@ -11,6 +11,11 @@ import torch.nn as nn
 from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 
+# Импорты для логирования
+from ...utils.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class BaseCell(nn.Module, ABC):
     """
@@ -98,7 +103,7 @@ class CellFactory:
         Создать клетку по типу и конфигурации
 
         Args:
-            cell_type: "nca" | "gmlp" | "hybrid"
+            cell_type: "nca" | "gnn" | "gmlp" (deprecated) | "hybrid"
             config: конфигурация клетки
 
         Returns:
@@ -108,9 +113,18 @@ class CellFactory:
             from .nca_cell import NCACell
 
             return NCACell(**config)
-        elif cell_type == "gmlp":
-            from .gmlp_cell import GMLPCell
+        elif cell_type == "gnn":
+            from .gnn_cell import GNNCell
 
-            return GMLPCell(**config)
+            return GNNCell(**config)
+        elif cell_type == "gmlp":
+            # Legacy совместимость: gmlp теперь возвращает GNNCell
+            from .gnn_cell import GNNCell
+
+            logger.warning("⚠️ gmlp is deprecated, using GNN instead")
+            return GNNCell(**config)
+        elif cell_type == "hybrid":
+            # TODO: реализовать HybridCell с NCA + GNN
+            raise NotImplementedError("HybridCell не реализован")
         else:
             raise ValueError(f"Unknown cell type: {cell_type}")

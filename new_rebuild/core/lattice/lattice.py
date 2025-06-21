@@ -124,33 +124,53 @@ class Lattice3D(nn.Module):
                 "debug_mode": self.config.debug_mode,
             }
             cell = self.cell_factory.create_cell("nca", nca_config)
+        elif self.config.architecture_type == "gnn":
+            # GNN клетка (заменяет gMLP)
+            gnn_config = {
+                "state_size": self.config.gnn_state_size,
+                "message_dim": self.config.gnn_message_dim,
+                "hidden_dim": self.config.gnn_hidden_dim,
+                "neighbor_count": self.config.gnn_neighbor_count,
+                "external_input_size": self.config.gnn_external_input_size,
+                "activation": self.config.gnn_activation,
+                "target_params": self.config.gnn_target_params,
+                "use_attention": self.config.gnn_use_attention,
+                "device": self.config.device,
+                "debug_mode": self.config.debug_mode,
+            }
+            cell = self.cell_factory.create_cell("gnn", gnn_config)
         elif self.config.architecture_type == "gmlp":
-            gmlp_config = {
-                "state_size": self.config.gmlp_state_size,
-                "hidden_dim": self.config.gmlp_hidden_dim,
-                "neighbor_count": self.config.gmlp_neighbor_count,
-                "external_input_size": self.config.gmlp_external_input_size,
-                "activation": self.config.gmlp_activation,
-                "target_params": self.config.gmlp_target_params,
-                "use_memory": self.config.gmlp_use_memory,
+            # Legacy совместимость: gMLP → GNN
+            gnn_config = {
+                "state_size": self.config.gnn_state_size,
+                "message_dim": self.config.gnn_message_dim,
+                "hidden_dim": self.config.gnn_hidden_dim,
+                "neighbor_count": self.config.gnn_neighbor_count,
+                "external_input_size": self.config.gnn_external_input_size,
+                "activation": self.config.gnn_activation,
+                "target_params": self.config.gnn_target_params,
+                "use_attention": self.config.gnn_use_attention,
                 "device": self.config.device,
                 "debug_mode": self.config.debug_mode,
             }
-            cell = self.cell_factory.create_cell("gmlp", gmlp_config)
+            cell = self.cell_factory.create_cell(
+                "gmlp", gnn_config
+            )  # CellFactory сделает маппинг
         elif self.config.architecture_type == "hybrid":
-            # Для hybrid пока используем gmlp (можно расширить позже)
-            gmlp_config = {
-                "state_size": self.config.gmlp_state_size,
-                "hidden_dim": self.config.gmlp_hidden_dim,
-                "neighbor_count": self.config.gmlp_neighbor_count,
-                "external_input_size": self.config.gmlp_external_input_size,
-                "activation": self.config.gmlp_activation,
-                "target_params": self.config.gmlp_target_params,
-                "use_memory": self.config.gmlp_use_memory,
+            # Для hybrid используем GNN (заменил gMLP)
+            gnn_config = {
+                "state_size": self.config.gnn_state_size,
+                "message_dim": self.config.gnn_message_dim,
+                "hidden_dim": self.config.gnn_hidden_dim,
+                "neighbor_count": self.config.gnn_neighbor_count,
+                "external_input_size": self.config.gnn_external_input_size,
+                "activation": self.config.gnn_activation,
+                "target_params": self.config.gnn_target_params,
+                "use_attention": self.config.gnn_use_attention,
                 "device": self.config.device,
                 "debug_mode": self.config.debug_mode,
             }
-            cell = self.cell_factory.create_cell("gmlp", gmlp_config)
+            cell = self.cell_factory.create_cell("gnn", gnn_config)
         else:
             raise ValueError(
                 f"Неподдерживаемый тип архитектуры: {self.config.architecture_type}"
@@ -169,12 +189,13 @@ class Lattice3D(nn.Module):
             # Fallback для определения размера состояния
             if self.config.architecture_type == "nca":
                 state_size = self.config.nca_state_size
+            elif self.config.architecture_type == "gnn":
+                state_size = self.config.gnn_state_size
             elif self.config.architecture_type == "gmlp":
-                state_size = self.config.gmlp_state_size
+                # Legacy: gMLP теперь использует GNN параметры
+                state_size = self.config.gnn_state_size
             else:  # hybrid
-                state_size = max(
-                    self.config.nca_state_size, self.config.gmlp_state_size
-                )
+                state_size = max(self.config.nca_state_size, self.config.gnn_state_size)
 
         dims = (self.pos_helper.total_positions, state_size)
 
