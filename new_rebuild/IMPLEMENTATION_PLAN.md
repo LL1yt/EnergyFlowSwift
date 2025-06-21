@@ -6,14 +6,20 @@
 > **ЦЕЛЬ**: Максимальная эмерджентность при минимальных вычислениях  
 > **РЕЗУЛЬТАТ**: удобно тестировать для исследовательских целей. никакого продакшена
 
+сначала смотрим на реализацию из корневого проекта(если не находим реализацию, то спрашиваем у пользователя уточнений) и стараемся скопировать с минимальными изменениями принципов реализации, но конечно меняя так, что бы работало в новых условиях - в том смысле, что с оглядкой на уже реализованное.(хотя если есть простая и эффективная оптимизация, то делаем запрос у ползователя на подтверждение)
+
 1. **MinimalNCACell** - готовая архитектура (~69 параметров)
-2. **EmergentGMLPCell** - готовая архитектура (~23000 параметров)
+2. **GMLPOptConnections** - готовая архитектура (~80000 параметров)
 3. **3D Lattice** - концепцию структуры решетки
 4. **Hybrid подход** - NCA нейроны + gMLP связи
 5. **Конфигурации** - удачные параметры из экспериментов
 6. держим план урхитектуры актуальным - напротив каждого файла в схеме можно указывать его актуальность и описание, что делает краткое - ждя этого можно иметь отдельный файл с визуальным представлением структуры.
 7. **Конфигурации** - стараемся сделать так, что бы конфигурации были централизованы и можно было бы лего настравивать из одного файла
-   @PHASE_4_PLAN.md - это последняя попутка интегрировать новую архитектуру в проект, но она завершилась неудачей.
+8. Использовать централизованное логирование, что бы можно было отследить какой модуль был вызван и кем. debug_mode: true - максимум логов, но можено поменять на более компактный режим.
+
+Реализация processing концепции:
+TRAINING MODE: 4096D LLaMA → 225D Surface → FULL CUBE INFLUENCE → 225D Surface → Learning
+INFERENCE MODE: Question → 225D Front → [EMERGENT PROCESSING] → 225D Back → Answer
 
 ### ❌ ЧТО ИСКЛЮЧАЕМ:
 
@@ -21,41 +27,38 @@
 2. **Множественные конфигурации** - только один centralized_config.py
 3. **Legacy совместимость** - чистый код без адаптеров
 4. **Динамические конфигурации** - статичные конфигурации
+5. **Bottleneck архитектура** - убираем ограничения, берем полноценную архитектуру
 
 ---
-
-## 🔍 АНАЛИЗ СУЩЕСТВУЮЩИХ КОМПОНЕНТОВ
 
 ### ✅ ГОТОВЫЕ КОМПОНЕНТЫ (найдены в проекте):
 
-#### **1. MinimalNCACell** (~69 параметров) ✅
+## 🔍 АНАЛИЗ СУЩЕСТВУЮЩИХ КОМПОНЕНТОВ
 
-- **Расположение**: `core/cell_prototype/architectures/minimal_nca_cell.py`
-- **Параметры**: state_size=4, hidden_dim=3, neighbor_count=26
-- **Статус**: ✅ Готов к переносу
-- **Особенности**: NCA динамика, learnable weights для соседей
-
-#### **2. gmlp** (~50000 параметров) ✅
-
-- **Расположение**: `core\cell_prototype\architectures\gmlp_opt_connections.py`
-- **Параметры**: state_size=32, hidden_dim=64, spatial_connections=True
-- **Статус**: ✅ Готов к переносу
-- **Особенности**: Пространственные связи, память отключаема
-
-#### **3. 3D Lattice структура** ✅
-
-- **Расположение**: `core/lattice_3d/lattice.py`
-- **Особенности**: Topology, neighbor finding, boundary conditions
-- **Статус**: ✅ перенести
-- **Проблема**:
-
-#### **4. Hybrid архитектура** ⚠️ (частично готова)
-
-- **Расположение**: `FINAL_HYBRID_ARCHITECTURE_IMPLEMENTATION_PLAN.md`
-- **Статус**: ⚠️ Концепция готова, но не реализована
-- **Задача**: Реализовать HybridNCAGMLPCell
-
----
+Рабочие рещения из Legacy проекта, которые можно использовать:
+core/cell_prototype/architectures/minimal_nca_cell.py
+core/cell_prototype/architectures/gmlp_opt_connections.py
+core\lattice_3d
+data\embedding_adapter\universal_adapter.py
+core\cell_prototype
+core\signal_propagation
+emergent_training переименовать в -> training (так же Реализация processing концепции: TRAINING MODE: размер эмбединга обучающей llm → размер входного эмбединга поверхности куба → FULL CUBE INFLUENCE → размер выходного эмбединга поверхности куба → Learning; INFERENCE MODE: Question → размер входного эмбединга поверхности куба Front → [PROCESSING] → размер выходного эмбединга поверхности куба Back → Answer)
+training\automated_training - можно использовать, как основу, но убрать все CLI и постараться реализовать обучными средствами атоматизацию.
+production_training
+inference\lightweight_decoder Компактный декодер для преобразования эмбедингов в текст
+data\embedding_loader - Модуль для загрузки и предобработки векторных представлений (эмбедингов) различных типов. Обеспечивает унифицированный интерфейс для работы с популярными форматами эмбедингов в контексте 3D клеточной нейронной сети.
+data\embeddings - готовые эмбединги от DistilBERT
+training\embedding_trainer\dialogue_dataset.py - DialogueDataset - Класс для подготовки данных к обучению куба в dialogue режиме Этот модуль реализует специализированный dataset для обучения 3D Cubic Core на задачах диалога (question_embedding → answer_embedding).
+training\embedding_trainer\autoencoder_dataset.py - AutoencoderDataset - Класс для подготовки данных к обучению куба в autoencoder режиме Этот модуль реализует специализированный dataset для обучения 3D Cubic Core на задачах реконструкции эмбедингов (autoencoder mode).
+training\embedding_trainer\advanced_loss_functions.py - Продвинутая система loss functions для Stage 2.3 Включает: - Curriculum learning loss (easy→hard progression) - Triplet loss для enhanced semantic alignment - Contrastive learning approaches - Multi-objective optimization (similarity + diversity)
+training\embedding_trainer\neural_cellular_automata.py - Реализация emergent behavior preservation во время GPU-optimized training. Ключевые принципы NCA для 3D Cellular Neural Network: 1. Stochastic Cell Updates - избежание глобальной синхронизации 2. Residual Update Rules - маленькие, стабильные модификации 3. Pattern Formation Metrics - количественная оценка emergence 4. Emergent Behavior Preservation - сохранение паттернов при оптимизации
+download_distilbert.py - Скрипт для предварительной загрузки DistilBERT в локальную папку проекта models/local_cache.
+generate_large_embedding_dataset.py - Генератор большого датасета эмбеддингов для обучения 3D куба Создает тысячи пар question-answer и сохраняет готовые эмбеддинги
+generate_snli_embedding_dataset.py - Генератор эмбеддингов из SNLI датасета для обучения 3D куба Использует 1/5 часть SNLI (Stanford Natural Language Inference) датасета
+precomputed_embedding_loader.py - Загрузчик готовых эмбеддингов из предварительно сгенерированного файла Используется для быстрого обучения без пересчета эмбеддингов
+study_plan реализации архитектуры на основе локальных правил и эмерджентной связности.md - это последняя попытка интегрировать новую архитектуру в проект, но она завершилась неудачей.
+Современные методы динамической связности для крупномасштабных 3D клеточных нейронных сетей.md - понимание оптимизации новой архитектуры
+PHASE_5_PLUS_ROADMAP.md
 
 ## 🚀 ПЛАН РЕАЛИЗАЦИИ new_rebuild
 
@@ -75,8 +78,8 @@ class ProjectConfig:
     # === 3D РЕШЕТКА ===
     # Начинаем с малой для тестов, масштабируем до цели
     lattice_dimensions: Tuple[int, int, int] = (6, 6, 6)  # отладка
-    lattice_dimensions: Tuple[int, int, int] = (16, 16, 16)  # test
-    target_dimensions: Tuple[int, int, int] = (666, 666, 333)  # научные опыты
+    # lattice_dimensions: Tuple[int, int, int] = (16, 16, 16)  # test
+    # target_dimensions: Tuple[int, int, int] = (666, 666, 333)  # научные опыты
 
     # === NCA НЕЙРОНЫ (биологический аналог) ===
     nca_state_size: int = 4      # состояние нейрона
@@ -85,10 +88,12 @@ class ProjectConfig:
     nca_target_params: int = 69  # ~60 параметров как в биологии
     nca_activation: str = "tanh" # стабильная для NCA
 
-    # === gMLP СВЯЗИ (межнейронные соединения) ===
-    gmlp_state_size: int = 32       # совместимость с NCA
-    gmlp_hidden_dim: int = 364      # обработка связей
-    gmlp_target_params: int = 80000 # ~10k связей как в биологии, но так как размер сложно подобрать, то можно и больше взять 50k-100k
+    # === gMLP СВЯЗИ (межнейронные соединения) - БЕЗ BOTTLENECK ===
+    gmlp_state_size: int = 32       # полноценная архитектура
+    gmlp_hidden_dim: int = 64       # Динамически: 32-332
+    gmlp_neighbor_count: int = 26   # синхронизация с NCA
+    gmlp_external_input_size: int = 8  # полноценный external input
+    gmlp_target_params: int = 50000 # ~10k связей как в биологии, но так как размер сложно подобрать, 50k-100k параметров полноценной архитектуры
     gmlp_activation: str = "gelu"   # современная активация
     gmlp_use_memory: bool = False   # память отключена (shared weights)
 
@@ -101,20 +106,55 @@ class ProjectConfig:
     batch_size: int = 4
     device: str = "cuda"  # auto-detect cuda/cpu
 
-    # === ЭМБЕДДИНГИ === data\embedding_adapter\universal_adapter.py
+    # === ЭМБЕДДИНГИ ===
     embedding_dim: int = 768     # from DistilBERT
     phrase_based_training: bool = True  # целые фразы, не токены
+
+    # === BIOLOGICAL PRINCIPLES ===
+    biological:
+    # Клетки как нейроны с общими весами
+    shared_weights: true
+
+    # Решетка как нервная ткань
+    tissue_simulation: true
+
+    # Рецепторная стратегия (100% покрытия)
+    receptor_coverage: 1
+
+    # Сигналы как нервные импульсы
+    signal_propagation: true
+
+    # === PHASE 4 ADDITIONS ===
+    # Новые секции для поддержки clean конфигураций
+
+    # Пластичность (из clean конфигураций)
+    plasticity:
+    enable_plasticity: true
+    plasticity_rule: "combined" # STDP + BCM + competitive
+    enable_competitive_learning: true
+    enable_metaplasticity: true
+    enable_clustering: false # Пока отключено
+
+    # Оптимизация памяти
+    optimization:
+    memory_efficient: true
+    use_checkpointing: true
+    mixed_precision: true
 ```
 
-#### 1.2 Перенести и упростить клетки
+#### 1.2 для начала Перенести и оптимизировать клетки
 
 **Задачи:**
 
 1. ✅ Скопировать `MinimalNCACell` → `new_rebuild/core/cells/nca_cell.py`
-2. ✅ Скопировать `gmlp` → `new_rebuild/core/cells/gmlp_connections.py`
+2. ✅ Скопировать `GMLPOptConnections` → `new_rebuild/core/cells/gmlp_cell.py`
+   - **ВАЖНО**: Убрать bottleneck архитектуру для полноценной производительности
+   - Увеличить `hidden_dim` с 32 до 64
+   - Убрать `bottleneck_dim` ограничения
+   - Оставить оптимизированную SGU архитектуру
 3. ✅ Создать базовый интерфейс `BaseCell`
 
-#### 1.3 Создать упрощенную 3D решетку
+#### 1.3 Создать 3D решетку
 
 **Задачи:**
 
@@ -123,398 +163,34 @@ class ProjectConfig:
 3. ✅ Граничные условия: periodic
 4. ✅ Методы: `get_neighbors()`, `forward_pass()`, `get_states()`
 
-### **ЭТАП 2: HYBRID АРХИТЕКТУРА** ⏱️ 2-3 часа
-
-#### 2.1 Реализовать HybridCell
-
-```python
-# new_rebuild/core/hybrid/hybrid_cell.py
-class HybridCell(BaseCell):
-    """
-    Биологически корректная композиция:
-    - NCA нейрон обрабатывает локальную динамику
-    - gMLP связи обрабатывают межнейронные соединения
-    - Learnable веса для интеграции
-    """
-
-    def __init__(self, config: ProjectConfig):
-        super().__init__()
-
-        # NCA компонент (нейронная динамика)
-        self.nca_neuron = NCACell(
-            state_size=config.nca_state_size,
-            hidden_dim=config.nca_hidden_dim,
-            neighbor_count=config.nca_neighbor_count,
-            activation=config.nca_activation,
-            target_params=config.nca_target_params
-        )
-
-        # gMLP компонент (связи между нейронами)
-        self.gmlp_connections = GMLPCell(
-            state_size=config.gmlp_state_size,
-            hidden_dim=config.gmlp_hidden_dim,
-            use_memory=config.gmlp_use_memory,
-            activation=config.gmlp_activation,
-            target_params=config.gmlp_target_params
-        )
-
-        # Learnable веса интеграции
-        self.integration_weights = nn.Parameter(
-            torch.tensor([config.hybrid_nca_weight, config.hybrid_gmlp_weight])
-        )
-
-        # Проекции для совместимости размерностей
-        self.nca_projection = nn.Linear(config.nca_state_size, config.nca_state_size)
-        self.gmlp_projection = nn.Linear(config.gmlp_state_size, config.nca_state_size)
-
-    def forward(self, own_state, neighbor_states, external_input=None):
-        """
-        Hybrid forward: NCA обрабатывает состояние, gMLP - связи
-        """
-        # NCA: локальная динамика нейрона
-        nca_output = self.nca_neuron(neighbor_states, own_state, external_input)
-
-        # gMLP: обработка межнейронных связей
-        gmlp_output = self.gmlp_connections(own_state, neighbor_states, external_input)
-
-        # Проекция к единой размерности
-        nca_proj = self.nca_projection(nca_output)
-        gmlp_proj = self.gmlp_projection(gmlp_output)
-
-        # Learnable интеграция
-        weights = torch.softmax(self.integration_weights, dim=0)
-        integrated = weights[0] * nca_proj + weights[1] * gmlp_proj
-
-        return integrated
-```
-
-#### 2.2 Создать HybridLattice
-
-```python
-# new_rebuild/core/hybrid/hybrid_lattice.py
-class HybridLattice3D:
-    """3D решетка с Hybrid клетками"""
-
-    def __init__(self, config: ProjectConfig):
-        self.config = config
-        self.dimensions = config.lattice_dimensions
-        self.total_cells = np.prod(self.dimensions)
-
-        # Создаем Hybrid клетки
-        self.cells = nn.ModuleList([
-            HybridCell(config) for _ in range(self.total_cells)
-        ])
-
-        # Простая топология соседства
-        self.topology = self._build_topology()
-
-    def forward(self, embeddings):
-        """
-        Параллельный forward pass через все клетки
-        """
-        batch_size = embeddings.size(0)
-        outputs = []
-
-        for cell_idx in range(self.total_cells):
-            # Получаем состояние клетки и соседей
-            own_state = self.get_cell_state(cell_idx)
-            neighbor_states = self.get_neighbor_states(cell_idx)
-            external_input = self.get_external_input(cell_idx, embeddings)
-
-            # Forward через Hybrid клетку
-            cell_output = self.cells[cell_idx](own_state, neighbor_states, external_input)
-            outputs.append(cell_output)
-
-        return torch.stack(outputs, dim=1)
-```
-
-### **ЭТАП 3: СИСТЕМА ОБУЧЕНИЯ** ⏱️ 1-2 часа
-
-#### 3.1 Создать простой trainer
-
-```python
-# new_rebuild/training/trainer.py
-class SimpleTrainer:
-    """Упрощенный trainer без CLI и сложной автоматизации"""
-
-    def __init__(self, config: ProjectConfig):
-        self.config = config
-        self.device = torch.device(config.device if config.device != "auto"
-                                 else "cuda" if torch.cuda.is_available() else "cpu")
-
-        # Создаем модель
-        self.model = HybridLattice3D(config).to(self.device)
-
-        # Оптимизатор
-        self.optimizer = torch.optim.AdamW(
-            self.model.parameters(),
-            lr=config.learning_rate
-        )
-
-        # Loss функция
-        self.criterion = nn.MSELoss()
-
-    def train_step(self, input_embeddings, target_embeddings):
-        """Один шаг обучения"""
-        self.optimizer.zero_grad()
-
-        # Forward pass
-        outputs = self.model(input_embeddings)
-
-        # Loss (reconstruction)
-        loss = self.criterion(outputs, target_embeddings)
-
-        # Backward pass
-        loss.backward()
-        self.optimizer.step()
-
-        return loss.item()
-
-    def train_epoch(self, dataloader):
-        """Один epoch обучения"""
-        total_loss = 0
-        for batch_idx, (inputs, targets) in enumerate(dataloader):
-            inputs = inputs.to(self.device)
-            targets = targets.to(self.device)
-
-            loss = self.train_step(inputs, targets)
-            total_loss += loss
-
-        return total_loss / len(dataloader)
-```
-
-### **ЭТАП 4: DATA PIPELINE** ⏱️ 1 час
-
-#### 4.1 Работа с embeddings
-
-```python
-# new_rebuild/data/embeddings.py (data\embedding_adapter\universal_adapter.py)
-class EmbeddingProcessor:
-
-
-    def __init__(self, config: ProjectConfig):
-        self.config = config
-        self.embedding_dim = config.embedding_dim
-
-    def process_phrases(self, phrases: List[str], model_name="distilbert"):
-        """
-        Обрабатывает целые фразы в embeddings
-        """
-        # Используем простую модель для получения embeddings
-        from transformers import AutoTokenizer, AutoModel
-
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModel.from_pretrained(model_name)
-
-        embeddings = []
-        for phrase in phrases:
-            tokens = tokenizer(phrase, return_tensors="pt", padding=True, truncation=True)
-            with torch.no_grad():
-                outputs = model(**tokens)
-                # Берем [CLS] token или mean pooling
-                embedding = outputs.last_hidden_state.mean(dim=1)
-                embeddings.append(embedding)
-
-        return torch.stack(embeddings)
-
-    def create_phrase_pairs(self, questions: List[str], answers: List[str]):
-        """
-        Создает пары вопрос-ответ для обучения
-        """
-        question_embeddings = self.process_phrases(questions)
-        answer_embeddings = self.process_phrases(answers)
-
-        return list(zip(question_embeddings, answer_embeddings))
-```
-
-### **ЭТАП 5: ТЕСТИРОВАНИЕ И ВАЛИДАЦИЯ** ⏱️ 1-2 часа
-
-#### 5.1 Поэтапные тесты
-
-```python
-# new_rebuild/tests/test_step_by_step.py
-
-def test_nca_cell():
-    """Тест NCA клетки"""
-    config = ProjectConfig()
-    cell = NCACell(config)
-
-    # Тестовые данные
-    own_state = torch.randn(1, config.nca_state_size)
-    neighbor_states = torch.randn(1, config.nca_neighbor_count, config.nca_state_size)
-
-    output = cell(neighbor_states, own_state)
-
-    assert output.shape == own_state.shape
-    assert cell.count_parameters() <= config.nca_target_params * 1.1  # 10% tolerance
-    print(f"✅ NCA Cell: {cell.count_parameters()} params")
-
-def test_gmlp_cell():
-    """Тест gMLP клетки"""
-    config = ProjectConfig()
-    cell = GMLPCell(config)
-
-    # Тестовые данные
-    own_state = torch.randn(1, config.gmlp_state_size)
-    neighbor_states = torch.randn(1, config.nca_neighbor_count, config.gmlp_state_size)
-
-    output = cell(own_state, neighbor_states)
-
-    assert output.shape == own_state.shape
-    print(f"✅ gMLP Cell: {cell.count_parameters()} params")
-
-def test_hybrid_cell():
-    """Тест Hybrid клетки"""
-    config = ProjectConfig()
-    cell = HybridCell(config)
-
-    # Тестовые данные
-    own_state = torch.randn(1, config.nca_state_size)
-    neighbor_states = torch.randn(1, config.nca_neighbor_count, config.nca_state_size)
-
-    output = cell(own_state, neighbor_states)
-
-    total_params = cell.count_parameters()
-    expected_params = config.nca_target_params + config.gmlp_target_params
-
-    print(f"✅ Hybrid Cell: {total_params} params (expected ~{expected_params})")
-
-def test_lattice_3d():
-    """Тест 3D решетки"""
-    config = ProjectConfig()
-    lattice = HybridLattice3D(config)
-
-    # Тестовые embeddings
-    batch_size = 2
-    embeddings = torch.randn(batch_size, config.embedding_dim)
-
-    output = lattice(embeddings)
-
-    expected_shape = (batch_size, lattice.total_cells, config.nca_state_size)
-    assert output.shape == expected_shape
-
-    print(f"✅ Lattice 3D: {lattice.dimensions} = {lattice.total_cells} cells")
-
-def test_full_pipeline():
-    """Тест полного pipeline"""
-    config = ProjectConfig()
-
-    # Данные
-    questions = ["What is AI?", "How does neural network work?"]
-    answers = ["AI is artificial intelligence", "Neural networks learn patterns"]
-
-    # Обработка
-    processor = EmbeddingProcessor(config)
-    pairs = processor.create_phrase_pairs(questions, answers)
-
-    # Тренировка
-    trainer = SimpleTrainer(config)
-
-    for i, (input_emb, target_emb) in enumerate(pairs):
-        loss = trainer.train_step(input_emb.unsqueeze(0), target_emb.unsqueeze(0))
-        print(f"✅ Training step {i}: loss = {loss:.4f}")
-
-if __name__ == "__main__":
-    test_nca_cell()
-    test_gmlp_cell()
-    test_hybrid_cell()
-    test_lattice_3d()
-    test_full_pipeline()
-    print("🎉 ALL TESTS PASSED!")
-```
-
----
-
 ## 📋 ДЕТАЛЬНЫЙ ЧЕКЛИСТ РЕАЛИЗАЦИИ
 
-### **PHASE 1: Foundation** ⏱️ 1-2 часа
+### **PHASE 1: Foundation**
 
 - [ ] **1.1** Создать `new_rebuild/config/project_config.py`
 - [ ] **1.2** Перенести `MinimalNCACell` → `core/cells/nca_cell.py`
-- [ ] **1.3** Перенести `EmergentGMLPCell` → `core/cells/gmlp_cell.py`
+- [ ] **1.3** Перенести `GMLPOptConnections` → `core/cells/gmlp_cell.py`
+  - **УБРАТЬ** bottleneck архитектуру
+  - **УВЕЛИЧИТЬ** hidden_dim до 64
+  - **УВЕЛИЧИТЬ** external_input_size до 8
+  - **УБРАТЬ** bottleneck_dim полностью
 - [ ] **1.4** Создать `BaseCell` интерфейс
-- [ ] **1.5** Создать `SimpleLattice3D`
-- [ ] **1.6** Тест: все компоненты создаются без ошибок
+- [ ] **1.5** Создать `Lattice3D`
+- [ ] **1.** Тест: каждый компонент создаются без ошибок
 
-### **PHASE 2: Hybrid Architecture** ⏱️ 2-3 часа
+### **PHASE 2: Hybrid Architecture**
 
-- [ ] **2.1** Реализовать `HybridCell`
-- [ ] **2.2** Реализовать `HybridLattice3D`
+- [ ] **2.1** Реализовать `HybridCell` с полноценной архитектурой
+- [ ] **2.2** Реализовать `HybridLattice3D` с расширяемой топологией
 - [ ] **2.3** Тест: hybrid forward pass работает
-- [ ] **2.4** Валидация: количество параметров корректное
+- [ ] **2.4** Валидация: количество параметров корректное (~50k+ для gMLP)
 
-### **PHASE 3: Training System** ⏱️ 1-2 часа
+### **PHASE 3: Training System**
 
-- [ ] **3.1** Создать `SimpleTrainer`
-- [ ] **3.2** Создать `EmbeddingProcessor`
+- [ ] **3.1** Создать `Trainer`
+- [ ] **3.2** Создать `Processor` с полноценной обработкой
 - [ ] **3.3** Тест: один epoch обучения проходит
 - [ ] **3.4** Валидация: loss уменьшается
-
-### **PHASE 4: Integration & Testing** ⏱️ 1-2 часа
-
-- [ ] **4.1** Полные end-to-end тесты
-- [ ] **4.2** Документация usage examples
-- [ ] **4.3** Performance benchmarks
-- [ ] **4.4** Масштабирование: 16³ → 32³ → 64³
-
-### **PHASE 5: Production Ready** ⏱️ 1 час
-
-- [ ] **5.1** Создать `main.py` entry point
-- [ ] **5.2** Простое логирование и мониторинг
-- [ ] **5.3** Save/load functionality
-- [ ] **5.4** README с quick start
+- иметь возможеность проверять эмбединг насколько он уже генерирует осознанные фразы - например раз за эпоху.
 
 ---
-
-## 🎯 EXPECTED RESULTS
-
-### **Архитектурные цели:**
-
-- ✅ **Параметры**: NCA ~69, gMLP ~23k, Hybrid ~23k
-- ✅ **Решетка**: Начало 16³ (4k клеток) → цель 666×666×333 (148M клеток)
-- ✅ **Эмерджентность**: Максимальная за счет biological правил
-- ✅ **Простота**: Один config файл, Python API, без CLI
-
-### **Производительность:**
-
-- ✅ **Memory**: Efficient для 16³ решетки
-- ✅ **Speed**: Forward pass < 100ms на GPU
-- ✅ **Scalability**: Linear scaling до 64³+
-
-### **Качество кода:**
-
-- ✅ **Модульность**: Каждый компонент независим
-- ✅ **Testability**: 100% покрытие тестами
-- ✅ **Maintainability**: Простая архитектура без magic
-
----
-
-## 🚀 НЕМЕДЛЕННЫЕ ДЕЙСТВИЯ
-
-**Сегодня (2-3 часа работы):**
-
-1. 📁 Создать базовую структуру папок
-2. ⚙️ Реализовать `ProjectConfig`
-3. 🧠 Перенести `MinimalNCACell` и `EmergentGMLPCell`
-4. 🔗 Создать `HybridCell`
-5. ✅ Первые тесты
-
-**Завтра:**
-
-1. 🕸️ Реализовать `HybridLattice3D`
-2. 🎓 Создать `SimpleTrainer`
-3. 📊 Полные end-to-end тесты
-4. 📈 Benchmark на малой решетке
-
-**Эта неделя:**
-
-1. 🎯 Production готовый код
-2. 📖 Документация и примеры
-3. 🔄 Масштабирование до 64³
-4. 🚀 Готовность к реальному обучению
-
----
-
-**STATUS**: 🎯 READY TO START  
-**CONFIDENCE**: 🔥 HIGH (все компоненты найдены)  
-**TIMELINE**: 2-3 дня до production ready system
