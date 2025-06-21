@@ -26,7 +26,7 @@ class ProjectConfig:
     """
 
     # === АРХИТЕКТУРА ===
-    architecture_type: str = "gnn"  # nca | gnn | gmlp (deprecated) | hybrid
+    architecture_type: str = "hybrid"  # nca | gnn | gmlp (deprecated) | hybrid
 
     # === 3D РЕШЕТКА ===
     # Начинаем с малой для тестов, масштабируем до цели

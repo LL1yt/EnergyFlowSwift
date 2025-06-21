@@ -124,7 +124,8 @@ class CellFactory:
             logger.warning("⚠️ gmlp is deprecated, using GNN instead")
             return GNNCell(**config)
         elif cell_type == "hybrid":
-            # TODO: реализовать HybridCell с NCA + GNN
-            raise NotImplementedError("HybridCell не реализован")
+            from .hybrid_cell import HybridCell
+
+            return HybridCell(**config)
         else:
             raise ValueError(f"Unknown cell type: {cell_type}")

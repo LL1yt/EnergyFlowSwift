@@ -10,11 +10,13 @@ from .base_cell import BaseCell, CellFactory
 from .nca_cell import NCACell
 from .gnn_cell import GNNCell
 from .gmlp_cell import GMLPCell  # Legacy совместимость
+from .hybrid_cell import HybridCell
 
 __all__ = [
     "BaseCell",
     "NCACell",
     "GNNCell",
     "GMLPCell",  # DEPRECATED
+    "HybridCell",
     "CellFactory",
 ]
