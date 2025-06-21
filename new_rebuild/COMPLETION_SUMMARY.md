@@ -210,10 +210,25 @@ hybrid_nca_weight: 0.1, hybrid_gmlp_weight: 0.9
 ### Приоритет 3: Hybrid Cell Architecture
 
 - [ ] Создать HybridCell, объединяющий NCA и gMLP
+- [ ] Адаптировать под ProjectConfig и clean архитектуру
 - [ ] Реализовать веса влияния (nca_weight: 0.1, gmlp_weight: 0.9)
 - [ ] Тестирование hybrid архитектуры на полной решетке
 
-### Приоритет 4: Training System Integration
+(Что можно взять из CellPrototype:
+Логику обработки external_input (проверка на None)
+Логику обработки пустых neighbor_states
+Общую структуру get_info() метода
+Интерфейс forward: Правильная сигнатура (neighbor_states, own_state, external_input)
+Вывод: CellPrototype НЕ полезен для нашей задачи. Лучше создать HybridCell с нуля, используя наши готовые NCA и gMLP компоненты.)
+
+### Приоритет 4: Signal Propagation Integration
+
+- [ ] Перенести core/signal_propagation/ → new_rebuild/core/signal/
+- [ ] Интегрировать TimeManager для управления временными шагами
+- [ ] Использовать ConvergenceDetector для стабильности обучения
+- [ ] PropagationPatterns для анализа эмерджентного поведения
+
+### Приоритет 5: Training System Integration
 
 - [ ] Перенести `emergent_training/` → `new_rebuild/training/`
 - [ ] Адаптировать систему обучения под clean архитектуру

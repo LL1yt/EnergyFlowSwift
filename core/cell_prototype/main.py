@@ -47,7 +47,7 @@ class CellPrototype(nn.Module):
         input_size (int): Размер входного вектора
         state_size (int): Размер состояния клетки
         hidden_size (int): Размер скрытых слоев
-        num_neighbors (int): Ожидаемое количество соседей (по умолчанию 6 для 3D)
+        num_neighbors (int): Ожидаемое количество соседей (по умолчанию 26 для 3D)
         activation (str): Функция активации ('tanh', 'sigmoid', 'relu')
         use_bias (bool): Использовать ли bias в слоях
     """
