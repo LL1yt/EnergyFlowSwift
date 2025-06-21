@@ -6,6 +6,8 @@ the main training pipeline.
 
 import torch
 import logging
+from datetime import datetime
+import json
 
 from emergent_training import EmergentCubeTrainer, EmergentTrainingConfig
 from data.embedding_adapter.universal_adapter import UniversalEmbeddingAdapter
@@ -52,6 +54,20 @@ def validate_system(model_name: str, device: str) -> bool:
             batch_size=1,
             epochs=1,
         )
+
+        # --- Enhanced Logging ---
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        try:
+            config_dict = config.to_dict()
+        except Exception:
+            config_dict = {"error": "Failed to serialize config"}
+
+        logger.info(
+            f"VALIDATOR is creating EmergentCubeTrainer @ {timestamp}\n"
+            f"     WITH_CONFIG: {json.dumps(config_dict, indent=2, default=str)}"
+        )
+        # --- End of Logging ---
+
         trainer = EmergentCubeTrainer(config, device=device)
         logger.info(f"[OK] EmergentCubeTrainer initialized on {trainer.device}")
 

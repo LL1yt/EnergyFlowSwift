@@ -13,11 +13,14 @@ from typing import Tuple, List, Dict, Optional, Any
 import numpy as np
 import logging
 import torch
+from datetime import datetime
+import json
 
 from .config import LatticeConfig
 from .enums import BoundaryCondition, NeighborStrategy
 from .position import Position3D, Coordinates3D
 from .spatial_hashing import SpatialHashGrid
+from ..log_utils import _get_caller_info
 
 
 class NeighborTopology:
@@ -52,6 +55,22 @@ class NeighborTopology:
             config: Конфигурация решетки.
             all_coords: Полный список всех координат в решетке.
         """
+        # --- Enhanced Initialization Logging ---
+        caller_info = _get_caller_info()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        logger = logging.getLogger(__name__)
+        try:
+            config_dict = config.to_dict()
+        except Exception:
+            config_dict = {"error": "Failed to serialize config"}
+
+        logger.info(
+            f"🚀 INIT NeighborTopology @ {timestamp}\n"
+            f"     FROM: {caller_info}\n"
+            f"     WITH_CONFIG: {json.dumps(config_dict, indent=2, default=str)}"
+        )
+        # --- End of Logging ---
+
         self.config = config
         self.dimensions = config.dimensions
         self.boundary_conditions = config.boundary_conditions

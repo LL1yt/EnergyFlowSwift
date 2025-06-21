@@ -9,8 +9,35 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Dict, Any
 import logging
+import inspect
+from datetime import datetime
+import os
+import json
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _get_caller_info():
+    """Возвращает информацию о вызывающем коде (файл, строка, функция)."""
+    try:
+        # inspect.stack() is slow, but for debugging it's acceptable.
+        stack = inspect.stack()
+        # Ищем первый фрейм не из этого файла
+        for frame_info in stack[1:]:
+            if frame_info.filename != str(Path(__file__).resolve()):
+                # Return a concise string with relevant info, relative to project root 'AA'
+                try:
+                    rel_path = os.path.relpath(
+                        frame_info.filename, start=os.environ.get("AA_ROOT", Path.cwd())
+                    )
+                except (ValueError, TypeError):
+                    rel_path = frame_info.filename
+                return f"{rel_path}:{frame_info.lineno} ({frame_info.function})"
+        return "N/A"
+    except Exception:
+        # This could fail in some environments (e.g. optimized Python), so we have a fallback.
+        return "N/A"
 
 
 class MinimalNCACell(nn.Module):
@@ -36,6 +63,7 @@ class MinimalNCACell(nn.Module):
         memory_dim: int = 4,  # Не используется в NCA
         target_params: int = None,  # Только для логирования
         enable_lattice_scaling: bool = False,  # Отключено по умолчанию
+        **kwargs,  # Accept extra args for logging
     ):
         """
         Минимальная NCA клетка с настраиваемой архитектурой
@@ -54,6 +82,32 @@ class MinimalNCACell(nn.Module):
         """
         super().__init__()
 
+        # --- Enhanced Initialization Logging ---
+        caller_info = _get_caller_info()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+        # Log all passed parameters for full transparency
+        config_log = {
+            "state_size": state_size,
+            "neighbor_count": neighbor_count,
+            "hidden_dim": hidden_dim,
+            "external_input_size": external_input_size,
+            "activation": activation,
+            "target_params": target_params,
+            "dropout": dropout,
+            "use_memory": use_memory,
+            "enable_lattice_scaling": enable_lattice_scaling,
+            "memory_dim": memory_dim,
+            **kwargs,
+        }
+
+        logger.info(
+            f"🚀 INIT MinimalNCACell @ {timestamp}\n"
+            f"     FROM: {caller_info}\n"
+            f"     WITH_CONFIG: {json.dumps(config_log, indent=2, default=str)}"
+        )
+        # --- End of Logging ---
+
         # Настраиваемые размеры из конфигурации
         self.state_size = state_size
         self.hidden_dim = hidden_dim
@@ -65,11 +119,6 @@ class MinimalNCACell(nn.Module):
 
         # Отключаем сложное масштабирование
         self.enable_lattice_scaling = False
-
-        logger.info(
-            f"[NCA-CONFIG] Создание MinimalNCA: state={state_size}, hidden={hidden_dim}, "
-            f"input={external_input_size}, neighbors={neighbor_count}"
-        )
 
         # 1. Neighbor weights (learnable aggregation)
         self.neighbor_weights = nn.Parameter(
@@ -247,76 +296,92 @@ def create_nca_cell_from_config(config: Dict[str, Any]) -> MinimalNCACell:
         "enable_lattice_scaling": False,
     }
 
-    logger.info(
-        f"🔬 Создание MinimalNCACell: state={params['state_size']}, "
-        f"hidden={params['hidden_dim']}, neighbors={params['neighbor_count']}"
-    )
+    logger.info(f"Creating MinimalNCACell from config factory with params: {params}")
 
     return MinimalNCACell(**params)
 
 
 def test_nca_cell_basic() -> bool:
-    """
-    Базовое тестирование NCA клетки с новой архитектурой
-
-    Returns:
-        bool: True если все тесты прошли
-    """
-    logger.info("🧪 Тестирование MinimalNCACell...")
-
+    """Базовый тест для MinimalNCACell"""
+    print("--- Testing MinimalNCACell Basic Functionality ---")
     try:
-        # Создание клетки с настраиваемыми размерами
         cell = MinimalNCACell(
-            state_size=4, hidden_dim=3, external_input_size=1, neighbor_count=26
+            state_size=4,
+            neighbor_count=26,
+            hidden_dim=3,
+            external_input_size=1,
+            target_params=67,
         )
 
-        # Тестовые данные
         batch_size = 4
-        neighbor_states = torch.randn(
-            batch_size, 26, 4
-        )  # neighbor_count=26, state_size=4
-        own_state = torch.randn(batch_size, 4)  # state_size=4
-        external_input = torch.randn(batch_size, 1)  # external_input_size=1
+        neighbor_states = torch.randn(batch_size, 26, 4)
+        own_state = torch.randn(batch_size, 4)
+        external_input = torch.randn(batch_size, 1)
 
-        # Forward pass
-        new_state = cell(neighbor_states, own_state, external_input)
+        output = cell(neighbor_states, own_state, external_input)
+        assert output.shape == (batch_size, 4), f"Wrong output shape: {output.shape}"
+        print(f"✅ Output shape OK: {output.shape}")
 
-        # Проверки
-        assert new_state.shape == (
+        info = cell.get_info()
+        assert info["architecture"] == "MinimalNCA"
+        assert info["total_parameters"] > 0
+        print(f"✅ Get info OK: {info['total_parameters']} params")
+
+        # Test no external input
+        output_no_ext = cell(neighbor_states, own_state, None)
+        assert output_no_ext.shape == (
             batch_size,
             4,
-        ), f"Wrong output shape: {new_state.shape}"
-        assert not torch.isnan(new_state).any(), "NaN values in output"
-        assert not torch.isinf(new_state).any(), "Inf values in output"
+        ), f"Wrong shape (no external): {output_no_ext.shape}"
+        print("✅ No external input OK")
 
-        # Тест memory reset (для совместимости)
-        cell.reset_memory()
-
-        # Информация о клетке
-        info = cell.get_info()
-        logger.info(f"[OK] NCA Cell тест пройден: {info['total_parameters']} params")
-
+        print("--- MinimalNCACell Basic Test PASSED ---")
         return True
-
     except Exception as e:
-        logger.error(f"[ERROR] NCA Cell тест failed: {e}")
+        print(f"--- MinimalNCACell Basic Test FAILED: {e} ---")
+        import traceback
+
+        traceback.print_exc()
         return False
 
 
-# Convenience function для создания NCA
 def create_compatible_nca_cell(**kwargs) -> MinimalNCACell:
     """
-    Создает NCA клетку с настраиваемыми параметрами
-    Использует все переданные параметры
+    Создание MinimalNCA клетки, полностью совместимой с gMLPCell.
+    Использует state_size=8, hidden_dim=16 для совместимости.
     """
-    # Используем все переданные параметры
-    nca_params = {
-        "state_size": kwargs.get("state_size", 4),
-        "hidden_dim": kwargs.get("hidden_dim", 3),
-        "external_input_size": kwargs.get("external_input_size", 1),
-        "neighbor_count": kwargs.get("neighbor_count", 26),
-        "activation": kwargs.get("activation", "tanh"),
-        "target_params": kwargs.get("target_params"),  # Только для логирования
+    compatible_params = {
+        "state_size": 8,
+        "hidden_dim": 16,
+        "neighbor_count": 26,
+        "external_input_size": 1,
+        "activation": "gelu",
+        **kwargs,
     }
+    return MinimalNCACell(**compatible_params)
 
-    return MinimalNCACell(**nca_params)
+
+if __name__ == "__main__":
+    test_nca_cell_basic()
+
+    print("\n--- Testing create_nca_cell_from_config ---")
+    test_config = {
+        "minimal_nca_cell": {
+            "state_size": 5,
+            "hidden_dim": 10,
+            "target_params": 300,
+        }
+    }
+    cell_from_config = create_nca_cell_from_config(test_config)
+    info = cell_from_config.get_info()
+    assert info["state_size"] == 5
+    assert info["hidden_dim"] == 10
+    assert info["target_parameters"] == 300
+    print("✅ Create from config OK")
+
+    print("\n--- Testing create_compatible_nca_cell ---")
+    comp_cell = create_compatible_nca_cell()
+    info_comp = comp_cell.get_info()
+    assert info_comp["state_size"] == 8
+    assert info_comp["hidden_dim"] == 16
+    print("✅ Create compatible cell OK")

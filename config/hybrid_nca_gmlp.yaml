@@ -98,24 +98,9 @@ cell_prototype:
 connection_config:
   architecture: "gated_mlp"
 
-  gmlp_cell:
-    # МАСШТАБИРУЕМЫЕ параметры
-    state_size: 36 # Совпадает с NCA state_size
-    neighbor_count: 26 # Синхронизируется с lattice.neighbors
-
-    # ОПТИМИЗИРОВАННЫЕ размеры (54,892 → 25,000 parameters)
-    hidden_dim: 32 # Уменьшено с 64 для оптимизации
-    external_input_size: 8 # Уменьшено с 12
-    memory_dim: 16 # Уменьшено с 32
-
-    # Architecture features
-    use_memory: true # GatedMLP needs explicit memory
-    activation: "gelu" # Modern activation
-    dropout: 0.05 # Light regularization
-
-    # Масштабирование
-    enable_lattice_scaling: true
-    target_params: 10000 # Масштабируется с решеткой
+  gmlp_opt_connections:
+    state_size: 8
+    neighbor_count: 26
 
 # === I/O CONFIGURATION ===
 io:

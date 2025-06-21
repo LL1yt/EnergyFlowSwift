@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.optim as optim
 import logging
 from typing import Optional, Dict, Any
+from datetime import datetime
+import json
 
 from emergent_training.config.config import EmergentTrainingConfig
 from emergent_training.model.cell import EmergentGMLPCell
@@ -37,6 +39,20 @@ from core.cell_prototype.architectures.minimal_nca_cell import (
 logger = logging.getLogger(__name__)
 
 
+def _get_caller_info():  # Simple version for this file
+    """Возвращает информацию о вызывающем коде (файл, строка, функция)."""
+    try:
+        import inspect
+
+        stack = inspect.stack()
+        for frame_info in stack[2:]:
+            if frame_info.filename != __file__:
+                return f"{frame_info.filename}:{frame_info.lineno} (in {frame_info.function})"
+        return "N/A"
+    except Exception:
+        return "N/A"
+
+
 class EmergentCubeTrainer(nn.Module):
     """
     Orchestrates the emergent training process for the 3D Cellular Neural Network.
@@ -44,6 +60,23 @@ class EmergentCubeTrainer(nn.Module):
 
     def __init__(self, config: EmergentTrainingConfig, device: Optional[str] = None):
         super().__init__()
+
+        # --- Enhanced Initialization Logging ---
+        caller_info = _get_caller_info()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        try:
+            # This config object is complex, we need a custom serializer
+            config_dict = config.to_dict()
+        except Exception:
+            config_dict = {"error": "Failed to serialize EmergentTrainingConfig"}
+
+        logger.info(
+            f"🚀 INIT EmergentCubeTrainer @ {timestamp}\n"
+            f"     FROM: {caller_info}\n"
+            f"     WITH_CONFIG: {json.dumps(config_dict, indent=2, default=str)}"
+        )
+        # --- End of Logging ---
+
         self.config = config
         self._device = torch.device(
             device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -132,8 +165,14 @@ class EmergentCubeTrainer(nn.Module):
             }
         else:
             # Create cell_config for gMLP
-            gmlp_cell_config = {**self.config.gmlp_config}
-            cell_config = {"prototype_name": "gmlp_cell", "gmlp_cell": gmlp_cell_config}
+            logger.info(
+                f"ERROR: мы больше не использыем gMLP для создания клетки нейрона @ \n"
+            )
+            raise NotImplementedError(
+                "gMLP path in EmergentCubeTrainer is disabled. "
+                "The only supported architecture is currently 'minimal_nca_cell'. "
+                "Enable NCA or implement the new gmlp_opt_connections path."
+            )
 
         lattice_config.cell_config = cell_config
         self.lattice = Lattice3D(lattice_config)

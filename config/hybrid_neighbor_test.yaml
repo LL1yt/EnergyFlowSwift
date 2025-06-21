@@ -22,6 +22,17 @@ lattice:
   cache_neighbors: true # Кэшируем соседей для производительности
   seed: 42 # Для воспроизводимости случайной выборки
 
+  cell_config:
+    prototype_name: "gmlp_opt_connections"
+
+    # Конфигурация для gmlp_opt_connections
+    gmlp_opt_connections:
+      state_size: 16
+      hidden_dim: 64
+      external_input_size: 12
+      use_memory: false
+      target_params: 25000
+
 # ==================================
 # Секция Клетки (Cell)
 # ==================================

@@ -19,6 +19,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import logging
 from typing import Optional, List, Dict, Any
+from .architectures.minimal_nca_cell import (
+    MinimalNCACell,
+    create_nca_cell_from_config,
+)
+from .architectures.gmlp_opt_connections import (
+    GMLPOptConnections,
+    create_gmlp_opt_connections_from_config,
+)
 
 # Настраиваем логгер для этого модуля
 logger = logging.getLogger(__name__)
@@ -235,7 +243,7 @@ def create_cell_from_config(config: Dict[str, Any]):
 
     PHASE 4: Поддерживает только hybrid архитектуры:
     - minimal_nca_cell: MinimalNCACell (default для hybrid)
-    - gmlp_cell: GatedMLPCell (альтернатива)
+    - gmlp_opt_connections: GMLPOptConnections (альтернатива)
 
     Параметры:
         config (Dict[str, Any]): Словарь с параметрами конфигурации
@@ -248,81 +256,16 @@ def create_cell_from_config(config: Dict[str, Any]):
 
     logger.info(f"Создание клетки архитектуры: {prototype_name}")
 
-    if prototype_name == "gmlp_cell":
-        # Импорт GatedMLPCell
-        from .architectures.gmlp_cell import GatedMLPCell
-
-        # Извлекаем конфигурацию из правильного места
-        gmlp_config = config.get("gmlp_cell", {})
-
-        # Поддержка новой структуры с cell_prototype
-        if not gmlp_config and "cell_prototype" in config:
-            cell_proto_config = config.get("cell_prototype", {})
-            gmlp_config = cell_proto_config.get("gmlp_cell", {})
-
-        # PHASE 4: ВСЕ ЗНАЧЕНИЯ ДОЛЖНЫ БРАТЬСЯ ИЗ КОНФИГУРАЦИИ!
-        # Если конфигурация пустая - это ошибка конфигурации, а не место для fallback
-        if not gmlp_config:
-            raise ValueError(
-                "gmlp_cell configuration is missing! Check your central configuration."
-            )
-
-        params = {
-            "state_size": gmlp_config["state_size"],
-            "neighbor_count": gmlp_config["neighbor_count"],
-            "hidden_dim": gmlp_config["hidden_dim"],
-            "external_input_size": gmlp_config["external_input_size"],
-            "use_memory": gmlp_config.get(
-                "use_memory", False
-            ),  # Только этот default оставляем
-            "target_params": gmlp_config["target_params"],
-        }
-
-        logger.info(f"Создаем GatedMLPCell с параметрами: {params}")
-        return GatedMLPCell(**params)
-
-    elif prototype_name == "minimal_nca_cell":
-        # Импорт MinimalNCACell
-        from .architectures.minimal_nca_cell import MinimalNCACell
-
-        # Извлекаем конфигурацию из правильного места
-        nca_config = config.get("minimal_nca_cell", {})
-
-        # Поддержка новой структуры с cell_prototype
-        if not nca_config and "cell_prototype" in config:
-            cell_proto_config = config.get("cell_prototype", {})
-            nca_config = cell_proto_config.get("minimal_nca_cell", {})
-
-        # PHASE 4: ВСЕ ЗНАЧЕНИЯ ДОЛЖНЫ БРАТЬСЯ ИЗ КОНФИГУРАЦИИ!
-        if not nca_config:
-            raise ValueError(
-                "minimal_nca_cell configuration is missing! Check your central configuration."
-            )
-
-        params = {
-            "state_size": nca_config["state_size"],
-            "neighbor_count": nca_config["neighbor_count"],
-            "hidden_dim": nca_config["hidden_dim"],
-            "external_input_size": nca_config["external_input_size"],
-            "activation": nca_config.get(
-                "activation", "tanh"
-            ),  # Только безопасные defaults
-            "dropout": nca_config.get("dropout", 0.0),
-            "use_memory": nca_config.get("use_memory", False),
-            "enable_lattice_scaling": nca_config.get("enable_lattice_scaling", False),
-            "target_params": nca_config["target_params"],
-        }
-
-        logger.info(f"Создаем MinimalNCACell с параметрами: {params}")
-        return MinimalNCACell(**params)
-
+    if prototype_name == "minimal_nca_cell":
+        return create_nca_cell_from_config(config)
+    elif prototype_name == "gmlp_opt_connections":
+        return create_gmlp_opt_connections_from_config(config)
     else:
-        # PHASE 4: УБИРАЕМ FALLBACK! Если архитектура неизвестна - это ошибка!
-        raise ValueError(
-            f"Unknown architecture '{prototype_name}'! "
-            f"Supported: 'minimal_nca_cell', 'gmlp_cell'. "
-            f"Legacy 'cell_prototype' is no longer supported in Phase 4."
+        logger.warning(
+            f"Неизвестное имя прототипа: {prototype_name}, "
+            f"используется minimal_nca_cell по умолчанию."
         )
+        return create_nca_cell_from_config(config)
 
 
 # Простая функция для тестирования

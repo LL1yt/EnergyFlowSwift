@@ -14,6 +14,8 @@ from typing import List, Dict, Optional, Any
 import logging
 import time
 import collections
+from datetime import datetime
+import json
 
 # Импорты из других модулей проекта
 from core.cell_prototype import CellPrototype, create_cell_from_config
@@ -26,6 +28,7 @@ from .position import Position3D
 from .topology import NeighborTopology
 from .plasticity import PlasticityMixin
 from .clustering import ClusteringMixin
+from ..log_utils import _get_caller_info
 
 # Добавляем импорт для коллекций
 from collections import deque
@@ -54,6 +57,21 @@ class Lattice3D(nn.Module, PlasticityMixin, ClusteringMixin):
         )
         self.pos_helper = Position3D(config.dimensions)
         self.logger = logging.getLogger(__name__)
+
+        # --- Enhanced Initialization Logging ---
+        caller_info = _get_caller_info()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        try:
+            config_dict = config.to_dict()
+        except Exception:
+            config_dict = {"error": "Failed to serialize config"}
+
+        self.logger.info(
+            f"🚀 INIT Lattice3D @ {timestamp}\n"
+            f"     FROM: {caller_info}\n"
+            f"     WITH_CONFIG: {json.dumps(config_dict, indent=2, default=str)}"
+        )
+        # --- End of Logging ---
 
         if config.enable_logging:
             self.logger.info(f"Initializing Lattice3D on device: {self.device}")
@@ -137,14 +155,20 @@ class Lattice3D(nn.Module, PlasticityMixin, ClusteringMixin):
                     prototype_config["minimal_nca_cell"][
                         "neighbor_count"
                     ] = self.config.neighbors
-                elif prototype_config.get("gmlp_cell"):
-                    prototype_config["gmlp_cell"][
+                elif prototype_config.get("gmlp_opt_connections"):
+                    self.logger.info(
+                        f"ERROR: тут проверить для чего используется gmlp_opt_connections @ \n"
+                    )
+                    prototype_config["gmlp_opt_connections"][
                         "neighbor_count"
                     ] = self.config.neighbors
 
             # Старая структура для совместимости
-            elif self.config.cell_config.get("gmlp_cell"):
-                self.config.cell_config["gmlp_cell"][
+            elif self.config.cell_config.get("gmlp_opt_connections"):
+                self.logger.info(
+                    f"ERROR: тут проверить для чего используется gmlp_opt_connections @ \n"
+                )
+                self.config.cell_config["gmlp_opt_connections"][
                     "neighbor_count"
                 ] = self.config.neighbors
             elif self.config.cell_config.get("minimal_nca_cell"):
@@ -232,137 +256,132 @@ class Lattice3D(nn.Module, PlasticityMixin, ClusteringMixin):
         """
         start_time = time.time()
 
-        # Принудительно используем векторизованный метод
-        new_states = self._parallel_forward(external_inputs)
+        if self.config.parallel_processing:
+            new_states = self._parallel_forward(external_inputs)
+        else:
+            raise NotImplementedError("Sequential processing is currently disabled.")
 
         self.states = new_states
 
-        # === Отслеживание активности для STDP (через mixin) ===
-        self._track_activity_for_stdp(new_states)
+        step_time = time.time() - start_time
+        self._update_performance_stats(step_time)
 
-        if self.config.track_performance:
-            self._update_performance_stats(time.time() - start_time)
-
-        self.perf_stats["total_steps"] += 1
         return self.states
 
     def _parallel_forward(
         self, external_inputs: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        """Параллельное (векторизованное) обновление всех клеток (быстро, для GPU)."""
-        # 1. Получаем индексы всех соседей для всех клеток одним батчем
-        neighbor_indices = self.topology.get_all_neighbor_indices_batched()
-
-        # 2. Собираем состояния соседей
+        """
+        Параллельный forward pass для всех клеток.
+        """
+        # 1. Сбор состояний соседей
+        neighbor_indices = self.topology.get_all_neighbors_flat().to(self.device)
         neighbor_states = self.states[neighbor_indices]
 
-        # 3. Получаем веса соединений
-        neighbor_weights = self.connection_weights
+        # 2. Подготовка внешних входов
+        # Транслируем external_inputs на все клетки
+        ext_input_expanded = torch.zeros(
+            (self.config.total_cells, self.cell_prototype.external_input_size),
+            device=self.device,
+        )
+        if external_inputs is not None and len(self.input_indices) > 0:
+            # Используем mean() для агрегации если входов несколько, а точка одна
+            if external_inputs.shape[0] > len(self.input_indices):
+                aggregated_input = external_inputs.mean(dim=0, keepdim=True)
+                ext_input_expanded[self.input_indices] = aggregated_input
+            else:
+                ext_input_expanded[self.input_indices] = external_inputs
 
-        # 4. Подготавливаем external_input для всех клеток
-        if external_inputs is not None:
-            # ОТЛАДКА: логируем размеры
-            self.logger.debug(f"[DEBUG] external_inputs shape: {external_inputs.shape}")
-            self.logger.debug(f"[DEBUG] total_cells: {self.config.total_cells}")
-            self.logger.debug(f"[DEBUG] input_indices count: {len(self.input_indices)}")
+        # 3. Прямой проход через все клетки
+        new_states = self.cell_prototype(
+            neighbor_states, self.states, ext_input_expanded
+        )
 
-            # Создаем тензор для всех клеток
-            all_external_inputs = torch.zeros(
-                self.config.total_cells,
-                self.cell_prototype.external_input_size,
-                device=self.device,
-            )
-
-            # Заполняем только input клетки
-            for i, input_idx in enumerate(self.input_indices):
-                if i < external_inputs.shape[0]:
-                    all_external_inputs[input_idx] = external_inputs[i]
-
-            external_inputs_for_cells = all_external_inputs
-        else:
-            external_inputs_for_cells = None
-
-        # 5. Вызываем прототип клетки для всех клеток сразу
-        # Проверяем, поддерживает ли клетка connection_weights (gMLP)
-        if (
-            hasattr(self.cell_prototype, "forward")
-            and "connection_weights" in self.cell_prototype.forward.__code__.co_varnames
-        ):
-            new_states = self.cell_prototype(
-                neighbor_states,
-                self.states,
-                neighbor_weights,
-                external_inputs_for_cells,
-            )
-        else:
-            # Fallback для простых клеток без поддержки весов
-            new_states = self.cell_prototype(
-                neighbor_states, self.states, external_inputs_for_cells
-            )
+        # 4. Применение маски замороженных клеток
+        if self.config.frozen_cells_mask is not None:
+            frozen_mask = self.config.frozen_cells_mask.to(self.device)
+            new_states = torch.where(frozen_mask, self.states, new_states)
 
         return new_states
 
     def _get_external_input_for_cell(
         self, cell_idx: int, external_inputs: torch.Tensor
     ) -> Optional[torch.Tensor]:
+        """
+        (Больше не используется в параллельной версии)
+        Возвращает внешний вход для конкретной клетки.
+        """
         if external_inputs is None:
             return None
-
         try:
-            input_position = self.input_indices.index(cell_idx)
-            return external_inputs[input_position]
+            input_pos_index = self.input_indices.index(cell_idx)
+            return external_inputs[input_pos_index]
         except ValueError:
             return None
 
     def _update_performance_stats(self, step_time: float):
+        """Обновляет статистику производительности."""
+        self.perf_stats["total_steps"] += 1
         self.perf_stats["total_time"] += step_time
-        self.perf_stats["avg_time_per_step"] = self.perf_stats["total_time"] / (
-            self.perf_stats["total_steps"] + 1
+        self.perf_stats["avg_time_per_step"] = (
+            self.perf_stats["total_time"] / self.perf_stats["total_steps"]
         )
 
     def get_states(self) -> torch.Tensor:
-        return self.states
+        return self.states.detach().cpu()
 
     def set_states(self, new_states: torch.Tensor):
         if new_states.shape != self.states.shape:
-            raise ValueError("Shape of new states must match existing states.")
-        self.states = new_states
+            raise ValueError("Shape of new_states must match the lattice states.")
+        self.states = new_states.to(self.device)
 
     def get_face_states(self, face: Face) -> torch.Tensor:
-        face_indices = self._face_indices_cache.get(face, [])
-        return self.states[face_indices]
+        indices = self._face_indices_cache[face]
+        return self.states[indices].detach().cpu()
 
     def get_output_states(self) -> torch.Tensor:
-        return self.states[self.output_indices]
+        return self.states[self.output_indices].detach().cpu()
 
     def get_io_point_info(self) -> Dict[str, Any]:
+        """Возвращает информацию о точках ввода/вывода."""
         return {
-            "input_points_count": len(self.input_points),
-            "output_points_count": len(self.output_points),
-            "input_points_coords": self.input_points,
-            "output_points_coords": self.output_points,
+            "input_points": [p.to_tuple() for p in self.input_points],
+            "output_points": [p.to_tuple() for p in self.output_points],
+            "input_indices": self.input_indices,
+            "output_indices": self.output_indices,
+            "input_face": self.config.input_face.name,
+            "output_face": self.config.output_face.name,
         }
 
     def reset_states(self):
+        """Сбрасывает состояние решетки к начальному."""
+        self.logger.info("Resetting lattice states.")
         self.states = self._initialize_states()
-        self.perf_stats["total_steps"] = 0
-        self.perf_stats["total_time"] = 0.0
-        self.perf_stats["avg_time_per_step"] = 0.0
+        self.cell_prototype.reset_memory()
+        self.perf_stats = {
+            "total_steps": 0,
+            "total_time": 0.0,
+            "avg_time_per_step": 0.0,
+        }
 
     def get_performance_stats(self) -> Dict[str, Any]:
-        return self.perf_stats.copy()
+        return self.perf_stats
 
     def _validate_initial_setup(self):
-        self.logger.debug("Validating initial lattice setup...")
-        assert self.states.shape == (self.config.total_cells, self.state_size)
-        self.logger.debug("Initial states validation passed.")
+        """Проверяет корректность начальных состояний и конфигурации."""
+        assert (
+            self.states.shape[0] == self.config.total_cells
+        ), "Mismatch in state count"
+        assert self.states.shape[1] == self.state_size, "Mismatch in state size"
+        assert not torch.isnan(self.states).any(), "NaNs in initial states"
+        self.logger.info("Initial setup validation passed.")
 
 
 def create_lattice_from_config(
     config_path: Optional[str] = None, config_dict: Optional[Dict[str, Any]] = None
 ) -> Lattice3D:
     """
-    Фабричная функция для создания экземпляра Lattice3D из файла или словаря.
+    Фабричная функция для создания Lattice3D из файла конфигурации или словаря.
     """
     if config_path:
         config = load_lattice_config(config_path)

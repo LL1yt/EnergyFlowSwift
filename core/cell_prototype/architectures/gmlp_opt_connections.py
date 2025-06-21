@@ -17,13 +17,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Dict, Any
 import logging
+from datetime import datetime
+import json
+
+from ...log_utils import _get_caller_info
+
 
 logger = logging.getLogger(__name__)
 
 
-class MinimalSpatialGatingUnit(nn.Module):
+class SGUOptConnections(nn.Module):
     """
-    Минимальная Spatial Gating Unit
+    Оптимизированная Spatial Gating Unit
     Ключевая инновация без memory overhead
     """
 
@@ -54,9 +59,10 @@ class MinimalSpatialGatingUnit(nn.Module):
         return out
 
 
-class MinimalGatedMLPCell(nn.Module):
+class GMLPOptConnections(nn.Module):
     """
-    Минимальная Gated MLP Cell для shared weights architecture
+    Оптимизированная Gated MLP Cell для shared weights architecture
+    (ранее MinimalGatedMLPCell)
 
     Target: ~10,000 параметров
     Philosophy: Spatial distributed memory > Local memory
@@ -76,8 +82,32 @@ class MinimalGatedMLPCell(nn.Module):
         activation: str = "gelu",
         dropout: float = 0.0,  # Убираем dropout для экономии
         target_params: int = 10000,
+        **kwargs,  # Принимаем доп. параметры для логгирования
     ):
         super().__init__()
+
+        # --- Enhanced Initialization Logging ---
+        caller_info = _get_caller_info()
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+        config_log = {
+            "state_size": state_size,
+            "neighbor_count": neighbor_count,
+            "hidden_dim": hidden_dim,
+            "bottleneck_dim": bottleneck_dim,
+            "external_input_size": external_input_size,
+            "activation": activation,
+            "dropout": dropout,
+            "target_params": target_params,
+            **kwargs,
+        }
+
+        logger.info(
+            f"🚀 INIT GMLPOptConnections @ {timestamp}\n"
+            f"     FROM: {caller_info}\n"
+            f"     WITH_CONFIG: {json.dumps(config_log, indent=2, default=str)}"
+        )
+        # --- End of Logging ---
 
         # === КОНФИГУРАЦИЯ ===
         self.state_size = state_size
@@ -105,7 +135,7 @@ class MinimalGatedMLPCell(nn.Module):
         self.pre_gating = nn.Linear(
             hidden_dim, hidden_dim * 2, bias=False
         )  # 32*64 = 2,048
-        self.spatial_gating = MinimalSpatialGatingUnit(
+        self.spatial_gating = SGUOptConnections(
             dim=hidden_dim, seq_len=neighbor_count + 1  # 27
         )
 
@@ -138,7 +168,7 @@ class MinimalGatedMLPCell(nn.Module):
         """Детальный анализ параметров"""
         total_params = sum(p.numel() for p in self.parameters())
 
-        logger.info(f"[MINIMAL] MinimalGatedMLPCell параметры:")
+        logger.info(f"[GMLP_OPT] GMLPOptConnections параметры:")
         logger.info(f"   Total: {total_params:,} parameters")
         logger.info(f"   Target: {self.target_params:,} parameters")
         logger.info(f"   Efficiency: {total_params/self.target_params:.3f}x target")
@@ -151,7 +181,7 @@ class MinimalGatedMLPCell(nn.Module):
                 component_params[component] = 0
             component_params[component] += param.numel()
 
-        logger.info(f"[BREAKDOWN] Parameter distribution:")
+        logger.info(f"[GMLP_OPT_BREAKDOWN] Parameter distribution:")
         for component, count in sorted(
             component_params.items(), key=lambda x: x[1], reverse=True
         ):
@@ -160,11 +190,11 @@ class MinimalGatedMLPCell(nn.Module):
 
         # Статус относительно target
         if total_params <= self.target_params * 1.1:  # 10% tolerance
-            logger.info(f"[SUCCESS] ✅ Parameter count within target!")
+            logger.info(f"[GMLP_OPT_SUCCESS] ✅ Parameter count within target!")
         else:
             excess = total_params - self.target_params
             logger.warning(
-                f"[OVER] ⚠️ Exceeds target by {excess:,} ({total_params/self.target_params:.2f}x)"
+                f"[GMLP_OPT_OVER] ⚠️ Exceeds target by {excess:,} ({total_params/self.target_params:.2f}x)"
             )
 
     def forward(
@@ -243,7 +273,7 @@ class MinimalGatedMLPCell(nn.Module):
         total_params = sum(p.numel() for p in self.parameters())
 
         return {
-            "architecture": "MinimalGatedMLP",
+            "architecture": "GMLPOptConnections",
             "state_size": self.state_size,
             "neighbor_count": self.neighbor_count,
             "hidden_dim": self.hidden_dim,
@@ -257,53 +287,60 @@ class MinimalGatedMLPCell(nn.Module):
         }
 
 
-def create_minimal_gmlp_cell_from_config(config: Dict[str, Any]) -> MinimalGatedMLPCell:
-    """Создание минимальной gMLP клетки из конфигурации"""
-    cell_config = config.get("cell_prototype", {})
-    arch_config = cell_config.get("architecture", {})
+def create_gmlp_opt_connections_from_config(
+    config: Dict[str, Any],
+) -> GMLPOptConnections:
+    """Фабрика для создания GMLPOptConnections из конфига"""
+
+    # Извлекаем конфиг gmlp_cell или gmlp_opt_connections
+    gmlp_config = config.get("gmlp_opt_connections", config.get("gmlp_cell", {}))
 
     params = {
-        "state_size": cell_config.get("state_size", 36),
-        "neighbor_count": cell_config.get("num_neighbors", 26),
-        "hidden_dim": arch_config.get("hidden_dim", 32),
-        "bottleneck_dim": arch_config.get("bottleneck_dim", 16),
-        "external_input_size": cell_config.get("input_size", 4),
-        "activation": arch_config.get("activation", "gelu"),
-        "dropout": arch_config.get("dropout", 0.0),
-        "target_params": arch_config.get("target_params", 10000),
+        "state_size": gmlp_config.get("state_size", 36),
+        "neighbor_count": gmlp_config.get("neighbor_count", 26),
+        "hidden_dim": gmlp_config.get("hidden_dim", 32),
+        "bottleneck_dim": gmlp_config.get("bottleneck_dim", 16),
+        "external_input_size": gmlp_config.get("external_input_size", 4),
+        "activation": gmlp_config.get("activation", "gelu"),
+        "target_params": gmlp_config.get("target_params", 10000),
     }
 
-    logger.info(f"🧬 Creating MinimalGatedMLPCell: {params}")
-    return MinimalGatedMLPCell(**params)
+    return GMLPOptConnections(**params)
 
 
-def test_minimal_gmlp_cell() -> bool:
-    """Тест минимальной клетки"""
+def test_gmlp_opt_connections() -> bool:
+    """Тест для GMLPOptConnections"""
+    print("--- Testing GMLPOptConnections ---")
     try:
-        cell = MinimalGatedMLPCell()
+        cell = GMLPOptConnections(target_params=21000)
 
-        # Test data
         batch_size = 4
         neighbor_states = torch.randn(batch_size, 26, 36)
         own_state = torch.randn(batch_size, 36)
-        connection_weights = torch.randn(batch_size, 26)
+        connection_weights = torch.rand(batch_size, 26)
         external_input = torch.randn(batch_size, 4)
 
-        # Forward pass
         output = cell(neighbor_states, own_state, connection_weights, external_input)
+        assert output.shape == (batch_size, 36), f"Wrong output shape: {output.shape}"
+        print(f"✅ Output shape OK: {output.shape}")
 
-        logger.info(f"[TEST] Forward pass successful: {output.shape}")
-        logger.info(f"[TEST] Info: {cell.get_info()}")
+        info = cell.get_info()
+        assert info["architecture"] == "GMLPOptConnections"
+        assert info["total_parameters"] > 0
+        print(f"✅ Get info OK: {info['total_parameters']} params")
 
+        print("--- GMLPOptConnections Test PASSED ---")
         return True
-
     except Exception as e:
-        logger.error(f"[TEST FAILED] {e}")
+        print(f"--- GMLPOptConnections Test FAILED: {e} ---")
+        import traceback
+
+        traceback.print_exc()
         return False
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    print("🧪 Testing Minimal GatedMLPCell...")
-    success = test_minimal_gmlp_cell()
+    print("🧪 Testing GMLPOptConnections...")
+    success = test_gmlp_opt_connections()
     print(f"Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
