@@ -81,7 +81,7 @@ class GMLPOptConnections(nn.Module):
         external_input_size: int = 4,  # Минимальный external input
         activation: str = "gelu",
         dropout: float = 0.0,  # Убираем dropout для экономии
-        target_params: int = 10000,
+        target_params: int = 23000,
         **kwargs,  # Принимаем доп. параметры для логгирования
     ):
         super().__init__()

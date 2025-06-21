@@ -9,7 +9,7 @@ lattice_3d:
     depth: 16
 
   # Граничные условия
-  boundary_conditions: "walls"
+  boundary_conditions: ""
 
   # Производительность - PHASE 4 GPU OPTIMIZED
   parallel_processing: true

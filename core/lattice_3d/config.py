@@ -32,7 +32,7 @@ class LatticeConfig:
 
     # Основные параметры решетки
     dimensions: Dimensions3D = (8, 8, 8)
-    boundary_conditions: BoundaryCondition = BoundaryCondition.WALLS
+    boundary_conditions: BoundaryCondition = BoundaryCondition.PERIODIC
 
     # Производительность
     parallel_processing: bool = True
