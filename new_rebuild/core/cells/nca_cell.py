@@ -11,12 +11,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Dict, Any
-import logging
 
 from .base_cell import BaseCell
 from ...config import get_project_config
+from ...utils.logging import (
+    get_logger,
+    log_cell_init,
+    log_cell_forward,
+    log_cell_component_params,
+)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NCACell(BaseCell):
@@ -92,19 +97,31 @@ class NCACell(BaseCell):
             self._log_parameter_count()
 
     def _log_parameter_count(self):
-        """Логирование параметров (упрощенная версия из Legacy)"""
+        """Логирование параметров через централизованную систему"""
         total_params = sum(p.numel() for p in self.parameters())
 
-        logger.info(
-            f"[NCACell] Initialized with {total_params:,} parameters "
-            f"(target: {self.target_params:,})"
+        # Используем специализированную функцию логирования клеток
+        log_cell_init(
+            cell_type="NCA",
+            total_params=total_params,
+            target_params=self.target_params,
+            state_size=self.state_size,
+            hidden_dim=self.hidden_dim,
+            neighbor_count=self.neighbor_count,
+            external_input_size=self.external_input_size,
         )
 
-        if total_params > self.target_params * 1.2:
-            logger.warning(
-                f"[NCACell] Parameter count exceeds target by "
-                f"{total_params - self.target_params:,}"
-            )
+        # Детализация по компонентам (если в debug режиме)
+        config = get_project_config()
+        if config.debug_mode:
+            component_params = {}
+            for name, param in self.named_parameters():
+                component = name.split(".")[0] if "." in name else name
+                if component not in component_params:
+                    component_params[component] = 0
+                component_params[component] += param.numel()
+
+            log_cell_component_params(component_params, total_params)
 
     def forward(
         self,
@@ -125,6 +142,18 @@ class NCACell(BaseCell):
             new_state: [batch, state_size]
         """
         batch_size = own_state.shape[0]
+
+        # Логирование forward pass (только в debug режиме)
+        config = get_project_config()
+        if config.debug_mode:
+            input_shapes = {
+                "neighbor_states": neighbor_states.shape,
+                "own_state": own_state.shape,
+            }
+            if external_input is not None:
+                input_shapes["external_input"] = external_input.shape
+
+            log_cell_forward("NCA", input_shapes)
 
         # === STEP 1: NEIGHBOR AGGREGATION ===
         if neighbor_states.numel() > 0:

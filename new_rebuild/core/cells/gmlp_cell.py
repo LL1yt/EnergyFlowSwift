@@ -12,12 +12,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Dict, Any
-import logging
 
 from .base_cell import BaseCell
 from ...config import get_project_config
+from ...utils.logging import (
+    get_logger,
+    log_cell_init,
+    log_cell_forward,
+    log_cell_component_params,
+)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SGUOptimized(nn.Module):
@@ -143,27 +148,29 @@ class GMLPCell(BaseCell):
             self._log_parameter_count()
 
     def _log_parameter_count(self):
-        """Детальный анализ параметров (упрощенная версия из Legacy)"""
+        """Логирование параметров через централизованную систему"""
         total_params = sum(p.numel() for p in self.parameters())
 
-        logger.info(
-            f"[GMLPCell] Initialized with {total_params:,} parameters "
-            f"(target: {self.target_params:,})"
+        # Используем специализированную функцию логирования клеток
+        log_cell_init(
+            cell_type="gMLP",
+            total_params=total_params,
+            target_params=self.target_params,
+            state_size=self.state_size,
+            hidden_dim=self.hidden_dim,
+            neighbor_count=self.neighbor_count,
+            external_input_size=self.external_input_size,
         )
 
-        # Breakdown по компонентам
+        # Детализация по компонентам
         component_params = {}
         for name, param in self.named_parameters():
-            component = name.split(".")[0]
+            component = name.split(".")[0] if "." in name else name
             if component not in component_params:
                 component_params[component] = 0
             component_params[component] += param.numel()
 
-        for component, count in sorted(
-            component_params.items(), key=lambda x: x[1], reverse=True
-        ):
-            percentage = (count / total_params) * 100
-            logger.info(f"   {component}: {count:,} params ({percentage:.1f}%)")
+        log_cell_component_params(component_params, total_params)
 
     def forward(
         self,
@@ -186,6 +193,18 @@ class GMLPCell(BaseCell):
             new_state: [batch, state_size]
         """
         batch_size = own_state.shape[0]
+
+        # Логирование forward pass (только в debug режиме)
+        config = get_project_config()
+        if config.debug_mode:
+            input_shapes = {
+                "neighbor_states": neighbor_states.shape,
+                "own_state": own_state.shape,
+            }
+            if external_input is not None:
+                input_shapes["external_input"] = external_input.shape
+
+            log_cell_forward("gMLP", input_shapes)
 
         # === STEP 1: INPUT PREPARATION ===
 
