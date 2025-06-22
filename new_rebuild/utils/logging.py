@@ -451,7 +451,7 @@ get_caller_info = _get_caller_info
 # === СИСТЕМА ПРЕДОТВРАЩЕНИЯ ДУБЛИРОВАНИЯ ЛОГОВ ===
 
 
-class DuplicationManager:
+class DuplicationManager:  # deprecated
     """
     Менеджер для предотвращения дублирования логов.
 
