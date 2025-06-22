@@ -2,27 +2,44 @@
 Clean 3D Cellular Neural Network - Cells Module
 ===============================================
 
-Клетки (нейроны) для 3D решетки.
-Перенос из Legacy core/cell_prototype/architectures/ с оптимизацией.
+НОВАЯ АРХИТЕКТУРА: MoE (Mixture of Experts)
+Клетки заменены на экспертов в core/moe/
+
+СТАТУС КОМПОНЕНТОВ:
+- GNNCell: АКТИВНЫЙ (используется в Functional Expert)
+- NCACell: DEPRECATED (заменен на GatingNetwork в MoE)
+- HybridCell*, GMLPCell: DEPRECATED (заменены на MoE)
+- MoE архитектура: в отдельном модуле core/moe/
 """
 
 from .base_cell import BaseCell, CellFactory
-from .nca_cell import NCACell
 from .gnn_cell import GNNCell
-from .gmlp_cell import GMLPCell  # Legacy совместимость
-from .hybrid_cell import HybridCell
-from .nca_modulator import NCAModulator
-from .modulated_gnn import ModulatedGNNCell
-from .hybrid_cell_v2 import HybridCellV2
 
+# DEPRECATED компоненты (для обратной совместимости)
+try:
+    from .nca_cell import NCACell  # DEPRECATED: заменен на GatingNetwork
+
+    _NCA_AVAILABLE = True
+except ImportError:
+    _NCA_AVAILABLE = False
+
+try:
+    from .gmlp_cell import GMLPCell  # DEPRECATED: заменен на GNN
+
+    _GMLP_AVAILABLE = True
+except ImportError:
+    _GMLP_AVAILABLE = False
+
+# Основные активные компоненты
 __all__ = [
     "BaseCell",
-    "NCACell",
-    "GNNCell",
-    "GMLPCell",  # DEPRECATED
-    "HybridCell",
-    "NCAModulator",
-    "ModulatedGNNCell",
-    "HybridCellV2",
+    "GNNCell",  # Единственная активная клетка (для Functional Expert)
     "CellFactory",
 ]
+
+# Добавляем deprecated компоненты если доступны
+if _NCA_AVAILABLE:
+    __all__.append("NCACell")  # DEPRECATED - используйте MoE GatingNetwork
+
+if _GMLP_AVAILABLE:
+    __all__.append("GMLPCell")  # DEPRECATED - используйте GNNCell

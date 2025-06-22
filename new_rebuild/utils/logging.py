@@ -371,17 +371,20 @@ def log_cell_init(
     """
     logger = get_logger()
 
-    # Проверяем превышение параметров
-    if total_params > target_params * 1.2:
+    # Проверяем превышение параметров (только если target_params указан)
+    if target_params is not None and total_params > target_params * 1.2:
         status = "⚠️ ПРЕВЫШЕНИЕ"
         logger.warning(
             f"🚀 INIT {cell_type}Cell: {total_params:,} params (target: {target_params:,}) - {status}"
         )
-    else:
+    elif target_params is not None:
         status = "✅ НОРМА"
         logger.info(
             f"🚀 INIT {cell_type}Cell: {total_params:,} params (target: {target_params:,}) - {status}"
         )
+    else:
+        # Нет целевого количества параметров
+        logger.info(f"🚀 INIT {cell_type}Cell: {total_params:,} params")
 
     # Дополнительная информация
     for key, value in kwargs.items():

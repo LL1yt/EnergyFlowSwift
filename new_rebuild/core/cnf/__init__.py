@@ -1,34 +1,49 @@
+#!/usr/bin/env python3
 """
-Lightweight CNF Module for 3D Cellular Neural Network
-===================================================
+CNF (Continuous Normalizing Flow) Module для 3D CNN
+==================================================
 
-Continuous Normalizing Flows для functional и distant connections.
-Заменяет сложную пластичность для дальних связей на эффективную
-continuous dynamics с минимальными вычислениями.
+НОВАЯ АРХИТЕКТУРА: Только для Distant Expert в MoE
+CNF используется исключительно в Distant Expert для долгосрочной памяти.
 
-КОМПОНЕНТЫ:
-- LightweightCNF: основной CNF класс с Neural ODE
-- EulerSolver: 3-step Euler integration (7x быстрее RK4)
-- ConnectionClassifier: классификация связей по типам
-- HybridConnectionProcessor: MoE архитектура для разных связей
+СТАТУС КОМПОНЕНТОВ:
+- LightweightCNF: АКТИВНЫЙ (используется в Distant Expert)
+- NeuralODE: АКТИВНЫЙ (часть LightweightCNF)
+- EulerSolver: АКТИВНЫЙ (интеграция для CNF)
+- ConnectionClassifier: DEPRECATED (заменен на MoE GatingNetwork)
 
-ИСПОЛЬЗОВАНИЕ:
-    from new_rebuild.core.cnf import LightweightCNF, HybridConnectionProcessor
+MoE АРХИТЕКТУРА:
+Новые MoE компоненты находятся в отдельном модуле core/moe/
+Доступны через импорт: from new_rebuild.core.moe import ...
 
-    cnf_processor = HybridConnectionProcessor(config)
-    new_states = cnf_processor(states, neighbor_classification)
+DEPRECATED:
+- HybridConnectionProcessor: заменен на MoEConnectionProcessor
+- ConnectionClassifier: заменен на GatingNetwork в MoE
 """
 
-from .lightweight_cnf import LightweightCNF, ConnectionType
+from .lightweight_cnf import LightweightCNF, NeuralODE, ConnectionType
 from .euler_solver import EulerSolver
-from .connection_classifier import ConnectionClassifier, ConnectionCategory
-from .hybrid_connection_processor import HybridConnectionProcessor
 
+# DEPRECATED компоненты (для обратной совместимости)
+try:
+    from .connection_classifier import (
+        ConnectionClassifier,
+        ConnectionCategory,
+    )  # DEPRECATED
+
+    _CLASSIFIER_AVAILABLE = True
+except ImportError:
+    _CLASSIFIER_AVAILABLE = False
+
+# Основные активные компоненты
 __all__ = [
+    # Активные CNF компоненты для Distant Expert
     "LightweightCNF",
+    "NeuralODE",
     "ConnectionType",
     "EulerSolver",
-    "ConnectionClassifier",
-    "ConnectionCategory",
-    "HybridConnectionProcessor",
 ]
+
+# Добавляем deprecated компоненты если доступны
+if _CLASSIFIER_AVAILABLE:
+    __all__.extend(["ConnectionClassifier", "ConnectionCategory"])  # DEPRECATED

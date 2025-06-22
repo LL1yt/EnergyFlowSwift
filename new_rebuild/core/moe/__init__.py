@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""
+MoE (Mixture of Experts) Module для 3D CNN
+==========================================
+
+АРХИТЕКТУРА:
+Базовая клетка: NCA Cell (локальная динамика нейрона)
+Обработка связей: MoE Connection Processor с тремя экспертами
+
+ЭКСПЕРТЫ ПО ТИПАМ СВЯЗЕЙ:
+- SimpleLinearExpert (10%) - рефлексы (спинной мозг)
+- HybridGNN_CNF_Expert (55%) - основная обработка (кора мозга)
+- LightweightCNF (35%) - долгосрочная память (гиппокамп)
+
+КОМПОНЕНТЫ:
+- Три специализированных эксперта с точными параметрами
+- GatingNetwork для адаптивного взвешивания результатов
+- MoEConnectionProcessor для управления всей системой
+- Полная интеграция с централизованным конфигом
+
+БИОЛОГИЧЕСКАЯ АНАЛОГИЯ:
+1. NCA Cell = Нейрон (локальная динамика, 4D состояние)
+2. Local Expert = Рефлексы (быстрая реакция без сложных вычислений)
+3. Functional Expert = Кора (основная обработка, GNN+CNF гибрид)
+4. Distant Expert = Гиппокамп (долгосрочная память, continuous dynamics)
+
+ПРИНЦИПЫ:
+1. Централизованная конфигурация (все параметры из ProjectConfig)
+2. Динамический расчет соседей (2000 для 27×27×27, до 10k для больших решеток)
+3. Точное соответствие параметров спецификации
+4. Биологическая правдоподобность распределения нагрузки
+"""
+
+from .simple_linear_expert import SimpleLinearExpert
+from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert, AdaptiveGatingNetwork
+from .moe_connection_processor import MoEConnectionProcessor, GatingNetwork
+
+__all__ = [
+    # Эксперты
+    "SimpleLinearExpert",
+    "HybridGNN_CNF_Expert",
+    "AdaptiveGatingNetwork",
+    # Основная MoE архитектура
+    "MoEConnectionProcessor",
+    "GatingNetwork",
+]

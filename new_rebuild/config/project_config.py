@@ -26,21 +26,22 @@ class ProjectConfig:
     """
 
     # === АРХИТЕКТУРА ===
-    architecture_type: str = "hybrid"  # nca | gnn | gmlp (deprecated) | hybrid
+    architecture_type: str = "moe"  # moe | gnn (deprecated: nca, gmlp, hybrid)
 
     # === 3D РЕШЕТКА ===
     # Начинаем с малой для тестов, масштабируем до цели
-    lattice_dimensions: Tuple[int, int, int] = (6, 6, 6)  # отладка
+    lattice_dimensions: Tuple[int, int, int] = (27, 27, 27)  # MoE тестирование
+    # lattice_dimensions: Tuple[int, int, int] = (6, 6, 6)  # отладка
     # lattice_dimensions: Tuple[int, int, int] = (16, 16, 16)  # test
     # target_dimensions: Tuple[int, int, int] = (666, 666, 333)  # научные опыты
 
-    # === NCA НЕЙРОНЫ (биологический аналог) ===
-    nca_state_size: int = 4  # состояние нейрона
-    nca_hidden_dim: int = 3  # внутренняя обработка
-    nca_neighbor_count: int = 26  # 3D Moore neighborhood
-    nca_external_input_size: int = 1  # минимальный внешний вход
-    nca_target_params: int = 69  # ~60 параметров как в биологии
-    nca_activation: str = "tanh"  # стабильная для NCA
+    # === DEPRECATED: NCA НЕЙРОНЫ (заменены на MoE Gating) ===
+    # nca_state_size: int = 4  # DEPRECATED - используйте gnn_state_size
+    # nca_hidden_dim: int = 3  # DEPRECATED
+    # nca_neighbor_count: int = 26  # DEPRECATED - используйте effective_neighbors
+    # nca_external_input_size: int = 1  # DEPRECATED
+    # nca_target_params: int = 69  # DEPRECATED
+    # nca_activation: str = "tanh"  # DEPRECATED
 
     # === GNN СВЯЗИ (замена gMLP) - оптимизированная коммуникация ===
     gnn_state_size: int = 32  # размер состояния клетки
@@ -55,8 +56,8 @@ class ProjectConfig:
     gnn_num_layers: int = 1  # количество слоев GNN (начинаем с 1)
 
     # === HYBRID ИНТЕГРАЦИЯ ===
-    hybrid_nca_weight: float = 0.1  # 10% влияние нейронов
-    hybrid_gnn_weight: float = 0.9  # 90% влияние связей (было gmlp_weight)
+    # deprecated hybrid_nca_weight: float = 0.1  # 10% влияние нейронов
+    # deprecated hybrid_gnn_weight: float = 0.9  # 90% влияние связей (было gmlp_weight)
 
     # === ОБУЧЕНИЕ ===
     learning_rate: float = 0.001
@@ -72,10 +73,12 @@ class ProjectConfig:
     tissue_simulation: bool = True  # решетка как нервная ткань
     receptor_coverage: float = 1.0  # рецепторная стратегия (100% покрытия)
     signal_propagation: bool = True  # сигналы как нервные импульсы
-    # === ТОПОЛОГИЯ СОСЕДСТВА (оптимизированная для эмерджентности) ===
+    # === ТОПОЛОГИЯ СОСЕДСТВА (динамическая, зависит от размера решетки) ===
     # Обновленные пропорции: 10/55/35 для увеличения CNF влияния
-    neighbors: int = 26  # 3D соседство
+    neighbors: int = 26  # Базовое значение (3D Moore neighborhood)
+    max_neighbors: int = 10000  # Биологический максимум (10k связей)
     neighbor_finding_strategy: str = "tiered"
+    dynamic_neighbor_count: bool = True  # Автоматический расчет на основе решетки
     # neighbor_strategy_config:
     local_tier: float = 0.1  # 10% локальные (минимум для стабильности)
     functional_tier: float = 0.55  # 55% функциональные (уменьшено для CNF)
@@ -89,15 +92,48 @@ class ProjectConfig:
     enable_metaplasticity: bool = True
     enable_clustering: bool = False  # пока отключено
 
+    # === MoE ARCHITECTURE (ОСНОВНАЯ АРХИТЕКТУРА) ===
+    enable_moe: bool = True  # Mixture of Experts - основная архитектура
+
+    # === GATING NETWORK (заменяет NCA нейрон) ===
+    gating_state_size: int = 32  # размер состояния для gating (= gnn_state_size)
+    gating_params: int = 808  # точно по спецификации
+    gating_num_experts: int = 3  # количество экспертов
+    gating_activation: str = "gelu"  # активация для gating network
+
+    # === ЭКСПЕРТЫ И ИХ ПАРАМЕТРЫ ===
+    # Local Expert (SimpleLinear) - рефлексы
+    local_expert_params: int = 2059  # точно по спецификации
+    local_expert_type: str = "linear"  # тип эксперта
+
+    # Functional Expert (GNN) - основная обработка
+    functional_expert_params: int = 8233  # верхняя граница
+    functional_expert_type: str = "gnn"  # только GNN (без CNF в functional)
+
+    # Distant Expert (CNF) - долгосрочная память
+    distant_expert_params: int = 4000  # верхняя граница для LightweightCNF
+    distant_expert_type: str = "cnf"  # только CNF
+
+    # === РАСПРЕДЕЛЕНИЕ СВЯЗЕЙ ПО ЭКСПЕРТАМ ===
+    local_connections_ratio: float = 0.10  # 10% связей - Local Expert
+    functional_connections_ratio: float = 0.55  # 55% связей - Functional Expert
+    distant_connections_ratio: float = 0.35  # 35% связей - Distant Expert
+
+    # Пороги для классификации связей
+    local_distance_threshold: float = 1.5  # расстояние для local connections
+    functional_similarity_threshold: float = 0.3  # порог функциональной схожести
+
+    # === DEPRECATED: HYBRID GNN+CNF EXPERT ===
+    # hybrid_gnn_cnf_expert_params: int = 12233  # DEPRECATED - слишком сложно
+    # cnf_expert_params: int = 3000  # DEPRECATED - используйте distant_expert_params
+
     # === PHASE 4: LIGHTWEIGHT CNF ===
-    enable_cnf: bool = False  # Пока отключено для тестирования
+    enable_cnf: bool = True  # Включаем CNF для MoE
     cnf_functional_connections: bool = True  # CNF для functional (55%)
     cnf_distant_connections: bool = True  # CNF для distant (35%)
     cnf_integration_steps: int = 3  # 3-step Euler (вместо 10 RK4)
     cnf_adaptive_step_size: bool = True  # Адаптивный шаг интеграции
-    cnf_target_params_per_connection: int = (
-        3000  # Оптимальный баланс: 3000 параметров на связь (NeuralODE + LightweightCNF)
-    )
+    cnf_target_params_per_connection: int = 3000  # Базовое значение для CNF
 
     # === ОПТИМИЗАЦИЯ ПАМЯТИ ===
     memory_efficient: bool = True
@@ -146,7 +182,7 @@ class ProjectConfig:
 
     # === МЕТОДЫ ДОСТУПА (совместимость с Legacy) ===
     def get_nca_config(self) -> Dict[str, Any]:
-        """Получить полную NCA конфигурацию (совместимость с Legacy)"""
+        """Получить полную NCA конфигурацию"""
         return {
             "state_size": self.nca_state_size,
             "hidden_dim": self.nca_hidden_dim,
@@ -234,6 +270,35 @@ class ProjectConfig:
     def neighbor_strategy_config(self) -> Dict[str, Any]:
         """Свойство для совместимости с кодом, который ожидает neighbor_strategy_config"""
         return self.get_neighbor_strategy_config()
+
+    def calculate_dynamic_neighbors(self) -> int:
+        """
+        Динамический расчет количества соседей на основе размера решетки
+
+        Принцип: стремимся к биологическим ~10000 связей на нейрон
+        Биологическая аналогия: в плотной ткани больше связей
+        """
+        if not self.dynamic_neighbor_count:
+            return self.neighbors  # Возвращаем фиксированное значение
+
+        # Расчет на основе размера решетки с биологическим обоснованием
+        total_cells = self.total_cells
+
+        if total_cells <= 216:  # 6x6x6
+            return 26  # Стандартное 3D Moore neighborhood (минимум)
+        elif total_cells <= 4096:  # 16x16x16
+            return 500  # Средний размер для тестирования
+        elif total_cells <= 19683:  # 27x27x27
+            return 2000  # Приближение к биологическим 10k для MoE
+        elif total_cells <= 262144:  # 64x64x64
+            return 5000  # Большие решетки
+        else:  # Крупные решетки (666x666x333)
+            return min(self.max_neighbors, 10000)  # Биологический максимум
+
+    @property
+    def effective_neighbors(self) -> int:
+        """Эффективное количество соседей (динамическое или фиксированное)"""
+        return self.calculate_dynamic_neighbors()
 
 
 # === ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР ===
