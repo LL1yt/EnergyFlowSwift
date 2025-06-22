@@ -73,13 +73,13 @@ class ProjectConfig:
     receptor_coverage: float = 1.0  # рецепторная стратегия (100% покрытия)
     signal_propagation: bool = True  # сигналы как нервные импульсы
     # === ТОПОЛОГИЯ СОСЕДСТВА (оптимизированная для эмерджентности) ===
-    # Пропорции из GNN анализа: 10/60/30 для максимизации эмерджентности
+    # Обновленные пропорции: 10/55/35 для увеличения CNF влияния
     neighbors: int = 26  # 3D соседство
     neighbor_finding_strategy: str = "tiered"
     # neighbor_strategy_config:
     local_tier: float = 0.1  # 10% локальные (минимум для стабильности)
-    functional_tier: float = 0.6  # 60% функциональные (ЯДРО эмерджентности)
-    distant_tier: float = 0.3  # 30% дальние (глобальная координация)
+    functional_tier: float = 0.55  # 55% функциональные (уменьшено для CNF)
+    distant_tier: float = 0.35  # 35% дальние (увеличено для CNF)
     local_grid_cell_size: int = 8  # Размер spatial hash bins
 
     # === ПЛАСТИЧНОСТЬ ===
@@ -88,6 +88,16 @@ class ProjectConfig:
     enable_competitive_learning: bool = True
     enable_metaplasticity: bool = True
     enable_clustering: bool = False  # пока отключено
+
+    # === PHASE 4: LIGHTWEIGHT CNF ===
+    enable_cnf: bool = False  # Пока отключено для тестирования
+    cnf_functional_connections: bool = True  # CNF для functional (55%)
+    cnf_distant_connections: bool = True  # CNF для distant (35%)
+    cnf_integration_steps: int = 3  # 3-step Euler (вместо 10 RK4)
+    cnf_adaptive_step_size: bool = True  # Адаптивный шаг интеграции
+    cnf_target_params_per_connection: int = (
+        3000  # Оптимальный баланс: 3000 параметров на связь (NeuralODE + LightweightCNF)
+    )
 
     # === ОПТИМИЗАЦИЯ ПАМЯТИ ===
     memory_efficient: bool = True
@@ -195,10 +205,35 @@ class ProjectConfig:
             "initialization_method": self.initialization_method,
         }
 
+    def get_cnf_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию Lightweight CNF"""
+        return {
+            "enable_cnf": self.enable_cnf,
+            "functional_connections": self.cnf_functional_connections,
+            "distant_connections": self.cnf_distant_connections,
+            "integration_steps": self.cnf_integration_steps,
+            "adaptive_step_size": self.cnf_adaptive_step_size,
+            "target_params_per_connection": self.cnf_target_params_per_connection,
+        }
+
+    def get_neighbor_strategy_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию стратегии соседства (для CNF классификации)"""
+        return {
+            "local_tier": self.local_tier,
+            "functional_tier": self.functional_tier,
+            "distant_tier": self.distant_tier,
+            "local_grid_cell_size": self.local_grid_cell_size,
+        }
+
     @property
     def total_target_params(self) -> int:
         """Общее количество целевых параметров"""
         return self.nca_target_params + self.gnn_target_params
+
+    @property
+    def neighbor_strategy_config(self) -> Dict[str, Any]:
+        """Свойство для совместимости с кодом, который ожидает neighbor_strategy_config"""
+        return self.get_neighbor_strategy_config()
 
 
 # === ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР ===

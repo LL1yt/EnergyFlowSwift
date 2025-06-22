@@ -336,7 +336,7 @@ new_rebuild/
 │       ├── io.py                   ✅ IOPointPlacer (все стратегии)
 │       ├── topology.py             ✅ NeighborTopology (адаптирован)
 │       ├── lattice.py              ✅ Lattice3D (clean архитектура)
-│       └── plasticity/             ✅ Phase 3.5 ПЛАСТИЧНОСТЬ ⭐ НОВОЕ!
+│       └── plasticity/             ✅ Phase 3.5 ПЛАСТИЧНОСТЬ ⭐ НОВОЕ! ❌ deprecated
 │           ├── __init__.py         ✅ Экспорты пластичности
 │           ├── adaptive_threshold.py ✅ BCM метапластичность (195 строк)
 │           ├── stdp.py             ✅ STDP механизм (240 строк, упрощенный)

@@ -301,6 +301,7 @@ class GNNCell(BaseCell):
         own_state: torch.Tensor,
         external_input: Optional[torch.Tensor] = None,
         connection_weights: Optional[torch.Tensor] = None,  # STDP веса
+        flexible_neighbor_count: bool = False,  # NEW: поддержка переменного количества соседей
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -354,18 +355,25 @@ class GNNCell(BaseCell):
 
         # 1. Создание сообщений от каждого соседа к текущей клетке
         messages = []
-        for i in range(self.neighbor_count):
+        # Используем фактическое количество соседей если flexible_neighbor_count=True
+        actual_neighbor_count = (
+            neighbor_states.shape[1] if flexible_neighbor_count else self.neighbor_count
+        )
+
+        for i in range(actual_neighbor_count):
             neighbor_state = neighbor_states[:, i, :]  # [batch, state_size]
 
             # Создаем контекстно-зависимое сообщение
             message = self.message_network(neighbor_state, own_state)
             messages.append(message)
 
-        messages = torch.stack(messages, dim=1)  # [batch, neighbor_count, message_dim]
+        messages = torch.stack(
+            messages, dim=1
+        )  # [batch, actual_neighbor_count, message_dim]
 
         # 2. Модуляция сообщений через STDP веса (если есть)
         if connection_weights is not None:
-            # connection_weights: [batch, neighbor_count] → [batch, neighbor_count, 1]
+            # connection_weights: [batch, actual_neighbor_count] → [batch, actual_neighbor_count, 1]
             stdp_weights = connection_weights.unsqueeze(-1)
             messages = messages * stdp_weights
 
