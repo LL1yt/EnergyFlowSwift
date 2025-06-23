@@ -16,22 +16,8 @@ DEPRECATED:
 
 # Основные компоненты
 from .cells import BaseCell, GNNCell, CellFactory
-from .lattice import Lattice3D, create_lattice, NeighborTopology
+from .lattice import Lattice3D, create_lattice  # NeighborTopology
 
-# DEPRECATED компоненты (для обратной совместимости)
-try:
-    from .cells import NCACell  # DEPRECATED: заменен на MoE GatingNetwork
-
-    _NCA_AVAILABLE = True
-except ImportError:
-    _NCA_AVAILABLE = False
-
-try:
-    from .cells import GMLPCell  # DEPRECATED: заменен на GNN
-
-    _GMLP_AVAILABLE = True
-except ImportError:
-    _GMLP_AVAILABLE = False
 
 # Основные экспорты - MoE архитектура
 __all__ = [
@@ -40,5 +26,4 @@ __all__ = [
     "CellFactory",
     "Lattice3D",
     "create_lattice",
-    "NeighborTopology",
 ]

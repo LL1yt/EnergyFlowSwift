@@ -27,7 +27,8 @@ from .spatial_optimization import (
     estimate_moe_memory_requirements,
 )
 from .io import IOPointPlacer
-from .topology import NeighborTopology
+
+# from .topology import NeighborTopology
 from .lattice import Lattice3D, create_lattice
 
 # Определяем, что будет импортировано при `from . import *`
@@ -36,7 +37,7 @@ __all__ = [
     "Lattice3D",
     "create_lattice",
     # Из topology.py
-    "NeighborTopology",
+    # "NeighborTopology",
     # Из enums.py
     "Face",
     "BoundaryCondition",

@@ -150,9 +150,13 @@ class MoEConnectionProcessor(nn.Module):
         self.lattice_dimensions = (
             lattice_dimensions or config.lattice_dimensions
         )  # (27, 27, 27)
-        self.neighbor_count = (
-            neighbor_count or config.effective_neighbors
-        )  # Динамический расчет
+        # ОБНОВЛЕНО: Используем adaptive_radius вместо фиксированного количества соседей
+        self.adaptive_radius = (
+            config.calculate_adaptive_radius()
+        )  # Биологически правдоподобный радиус
+        self.max_neighbors = (
+            config.max_neighbors
+        )  # Максимальный лимит для производительности
         self.enable_cnf = (
             enable_cnf if enable_cnf is not None else config.enable_cnf
         )  # True
@@ -181,14 +185,16 @@ class MoEConnectionProcessor(nn.Module):
         # === ЭКСПЕРТЫ ===
 
         # 1. Local Expert - рефлексы (2059 параметров)
+        # Поддерживает переменное количество соседей в пределах max_neighbors
         self.local_expert = SimpleLinearExpert(
-            state_size=self.state_size, max_neighbors=self.neighbor_count
+            state_size=self.state_size, max_neighbors=self.max_neighbors
         )
 
         # 2. Functional Expert - основная обработка (HybridGNN_CNF)
+        # Используем flexible_neighbor_count для работы с переменным количеством соседей
         self.functional_expert = HybridGNN_CNF_Expert(
             state_size=self.state_size,
-            neighbor_count=self.neighbor_count,
+            neighbor_count=self.max_neighbors,  # Max capacity, но будет использовать переменное количество
             target_params=config.functional_expert_params,  # 8233 (обновлено)
             cnf_params=config.distant_expert_params,  # 4000 (обновлено)
         )
@@ -234,18 +240,20 @@ class MoEConnectionProcessor(nn.Module):
             **expert_params,
         )
 
-        logger.info(f"MoEConnectionProcessor: {total_params} параметров")
+        logger.info(f"🔧 MoEConnectionProcessor: {total_params} параметров")
+        logger.info(f"   📐 Adaptive radius: {self.adaptive_radius:.2f}")
+        logger.info(f"   🔢 Max neighbors: {self.max_neighbors}")
         logger.info(
-            f"  Local Expert: {expert_params['local']} (цель: {config.local_expert_params})"
+            f"   🎯 Local Expert: {expert_params['local']} (цель: {config.local_expert_params})"
         )
         logger.info(
-            f"  Functional Expert: {expert_params['functional']} (цель: {config.functional_expert_params})"
+            f"   🎯 Functional Expert: {expert_params['functional']} (цель: {config.functional_expert_params})"
         )
         logger.info(
-            f"  Distant Expert: {expert_params['distant']} (цель: {config.distant_expert_params})"
+            f"   🎯 Distant Expert: {expert_params['distant']} (цель: {config.distant_expert_params})"
         )
         logger.info(
-            f"  Gating Network: {expert_params['gating']} (цель: {config.gating_params})"
+            f"   🎯 Gating Network: {expert_params['gating']} (цель: {config.gating_params})"
         )
 
     def forward(
@@ -255,6 +263,7 @@ class MoEConnectionProcessor(nn.Module):
         cell_idx: int,
         neighbor_indices: List[int],
         external_input: Optional[torch.Tensor] = None,
+        spatial_optimizer=None,  # НОВОЕ: поддержка adaptive radius поиска
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -266,10 +275,42 @@ class MoEConnectionProcessor(nn.Module):
             cell_idx: int - индекс текущей клетки
             neighbor_indices: List[int] - индексы соседей
             external_input: Optional[Tensor] - внешний вход
+            spatial_optimizer: Optional[SpatialOptimizer] - для adaptive radius поиска
 
         Returns:
             result: Dict с новым состоянием и статистикой
         """
+
+        # НОВАЯ АРХИТЕКТУРА: Используем adaptive radius поиск если передан spatial_optimizer
+        if spatial_optimizer is not None:
+            # Находим соседей по adaptive radius вместо использования переданных
+            adaptive_neighbors = self.find_neighbors_by_radius(
+                cell_idx, spatial_optimizer
+            )
+
+            if adaptive_neighbors:
+                # Обновляем neighbor_indices и neighbor_states на основе adaptive radius
+                neighbor_indices = adaptive_neighbors
+
+                # Для adaptive radius архитектуры нам нужен доступ к состояниям всей решетки
+                # Мы получим их через kwargs или создадим заглушку
+                if "full_lattice_states" in kwargs:
+                    full_states = kwargs["full_lattice_states"]
+                    # Создаем neighbor_states из полных состояний решетки
+                    neighbor_states = full_states[neighbor_indices].unsqueeze(
+                        0
+                    )  # [1, num_neighbors, state_size]
+                    neighbor_indices = adaptive_neighbors
+                else:
+                    # Fallback - используем переданные состояния (старая архитектура)
+                    logger.warning(
+                        "⚠️ Не переданы full_lattice_states, используем fallback режим"
+                    )
+                    actual_neighbor_count = min(
+                        len(adaptive_neighbors), neighbor_states.shape[1]
+                    )
+                    neighbor_states = neighbor_states[:, :actual_neighbor_count, :]
+                    neighbor_indices = neighbor_indices[:actual_neighbor_count]
         batch_size = current_state.shape[0]
 
         if neighbor_states.shape[1] == 0:
@@ -439,3 +480,81 @@ class MoEConnectionProcessor(nn.Module):
                 )
             },
         }
+
+    def get_adaptive_radius(self) -> float:
+        """Получить текущий adaptive radius для поиска соседей"""
+        return self.adaptive_radius
+
+    def get_neighbor_search_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию поиска соседей"""
+        return {
+            "adaptive_radius": self.adaptive_radius,
+            "max_neighbors": self.max_neighbors,
+            "search_strategy": "radius_based",  # Новая стратегия вместо fixed_count
+            "lattice_dimensions": self.lattice_dimensions,
+        }
+
+    def find_neighbors_by_radius(
+        self, cell_idx: int, spatial_optimizer=None
+    ) -> List[int]:
+        """
+        Находит соседей по adaptive radius (новая архитектура)
+
+        Args:
+            cell_idx: индекс клетки
+            spatial_optimizer: опциональный SpatialOptimizer для поиска
+
+        Returns:
+            список индексов соседей в adaptive radius
+        """
+        if spatial_optimizer is None:
+            # Fallback - создаем простой helper для координат
+            from ..lattice.position import Position3D
+
+            pos_helper = Position3D(self.lattice_dimensions)
+            coords = pos_helper.index_to_coords(cell_idx)
+
+            # Простой поиск в радиусе без spatial optimization
+            # TODO: В будущем можно использовать spatial hashing
+            neighbors = []
+            total_cells = (
+                self.lattice_dimensions[0]
+                * self.lattice_dimensions[1]
+                * self.lattice_dimensions[2]
+            )
+
+            for neighbor_idx in range(total_cells):
+                if neighbor_idx == cell_idx:
+                    continue
+
+                neighbor_coords = pos_helper.index_to_coords(neighbor_idx)
+                distance = (
+                    (coords[0] - neighbor_coords[0]) ** 2
+                    + (coords[1] - neighbor_coords[1]) ** 2
+                    + (coords[2] - neighbor_coords[2]) ** 2
+                ) ** 0.5
+
+                if distance <= self.adaptive_radius:
+                    neighbors.append(neighbor_idx)
+
+                # Лимит производительности
+                if len(neighbors) >= self.max_neighbors:
+                    break
+
+            return neighbors
+        else:
+            # Используем оптимизированный поиск
+            from ..lattice.position import Position3D
+
+            pos_helper = Position3D(self.lattice_dimensions)
+            coords = pos_helper.index_to_coords(cell_idx)
+
+            neighbors = spatial_optimizer.find_neighbors_optimized(
+                coords, self.adaptive_radius
+            )
+
+            # Применяем лимит производительности
+            if len(neighbors) > self.max_neighbors:
+                neighbors = neighbors[: self.max_neighbors]
+
+            return neighbors

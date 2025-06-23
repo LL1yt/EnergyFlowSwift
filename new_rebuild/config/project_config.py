@@ -8,9 +8,25 @@
 """
 
 from dataclasses import dataclass
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List
 import logging
 import torch
+
+# Для spatial optimization - используем Tuple вместо Coordinates3D чтобы избежать circular import
+from typing import Tuple
+
+
+@dataclass
+class ChunkInfo:
+    """Информация о chunk'е решетки для spatial optimization"""
+
+    chunk_id: int
+    start_coords: Tuple[int, int, int]  # (x, y, z)
+    end_coords: Tuple[int, int, int]  # (x, y, z)
+    cell_indices: List[int]
+    neighbor_chunks: List[int]  # ID соседних chunk'ов
+    memory_size_mb: float
+    processing_time_ms: float = 0.0
 
 
 @dataclass
@@ -76,7 +92,7 @@ class ProjectConfig:
     # === ТОПОЛОГИЯ СОСЕДСТВА (динамическая, зависит от размера решетки) ===
     # Обновленные пропорции: 10/55/35 для увеличения CNF влияния
     neighbors: int = 26  # Базовое значение (legacy совместимость)
-    max_neighbors: int = 10000  # Биологический максимум (10k связей)
+    max_neighbors: int = 20000  # Биологический максимум (10k связей)
     neighbor_finding_strategy: str = "tiered"
     dynamic_neighbor_count: bool = True  # Автоматический расчет на основе решетки
 
@@ -84,7 +100,7 @@ class ProjectConfig:
     adaptive_radius_enabled: bool = True  # Включить адаптивный радиус
     adaptive_radius_ratio: float = 0.3  # 30% от максимального размера решетки
     adaptive_radius_max: float = 500.0  # Максимальный радиус (биологический лимит)
-    adaptive_radius_min: float = 1.5  # Минимальный радиус (локальные соседи)
+    adaptive_radius_min: float = 5  # Минимальный радиус (локальные соседи)
 
     # neighbor_strategy_config:
     local_tier: float = 0.1  # 10% локальные (минимум для стабильности)
@@ -147,6 +163,31 @@ class ProjectConfig:
     cnf_adaptive_step_size: bool = True  # Адаптивный шаг интеграции
     cnf_target_params_per_connection: int = 3000  # Базовое значение для CNF
 
+    # === SPATIAL OPTIMIZATION (перенесено из spatial_optimization/config.py) ===
+    # Chunking parameters
+    spatial_chunk_size: int = 64  # Размер chunk'а (64×64×64 = 262k клеток)
+    spatial_chunk_overlap: int = 8  # Перекрытие между chunk'ами для соседства
+    spatial_max_chunks_in_memory: int = 4  # Максимум chunk'ов в GPU памяти одновременно
+
+    # Memory management
+    spatial_memory_pool_size_gb: float = 12.0  # Размер memory pool (75% от 16GB)
+    spatial_garbage_collect_frequency: int = 100  # GC каждые N операций
+    spatial_prefetch_chunks: bool = True  # Предзагрузка следующих chunk'ов
+
+    # Hierarchical indexing
+    spatial_levels: int = 3  # Количество уровней пространственного индекса
+    spatial_min_cells_per_node: int = 1000  # Минимум клеток в узле индекса
+    spatial_max_search_radius: float = 50.0  # Максимальный радиус поиска соседей
+
+    # Parallel processing
+    spatial_num_worker_threads: int = 4  # Количество worker потоков
+    spatial_batch_size_per_thread: int = 10000  # Размер batch'а на поток
+    spatial_enable_async_processing: bool = True  # Асинхронная обработка
+
+    # Performance monitoring
+    spatial_enable_profiling: bool = True  # Профилирование производительности
+    spatial_log_memory_usage: bool = True  # Логирование использования памяти
+
     # === ОПТИМИЗАЦИЯ ПАМЯТИ ===
     memory_efficient: bool = True
     use_checkpointing: bool = True
@@ -176,6 +217,8 @@ class ProjectConfig:
             * self.lattice_dimensions[1]
             * self.lattice_dimensions[2]
         )
+
+        self.max_neighbors = self.calculate_dynamic_neighbors()
 
         if self.debug_mode:
             logging.info(f"🔧 ProjectConfig initialized:")
@@ -315,6 +358,45 @@ class ProjectConfig:
             },
         }
 
+    def get_spatial_optim_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию spatial optimization"""
+        # Адаптивные настройки на основе размера решетки
+        total_cells = self.total_cells
+        max_dim = max(self.lattice_dimensions)
+
+        return {
+            # Chunking адаптируется под размер решетки
+            "chunk_size": (
+                min(self.spatial_chunk_size, max_dim // 2)
+                if total_cells > 100_000
+                else 32
+            ),
+            "chunk_overlap": self.spatial_chunk_overlap if total_cells > 50_000 else 4,
+            "max_chunks_in_memory": (
+                self.spatial_max_chunks_in_memory if total_cells > 100_000 else 2
+            ),
+            # Memory management на основе конфигурации
+            "memory_pool_size_gb": (
+                self.spatial_memory_pool_size_gb if self.device == "cuda" else 4.0
+            ),
+            "garbage_collect_frequency": self.spatial_garbage_collect_frequency,
+            "prefetch_chunks": self.spatial_prefetch_chunks,
+            # Hierarchical indexing
+            "spatial_levels": self.spatial_levels,
+            "min_cells_per_node": self.spatial_min_cells_per_node,
+            "max_search_radius": self.calculate_adaptive_radius(),  # Используем adaptive radius
+            # Parallel processing
+            "num_worker_threads": (
+                self.spatial_num_worker_threads if self.device == "cuda" else 2
+            ),
+            "batch_size_per_thread": self.spatial_batch_size_per_thread,
+            "enable_async_processing": self.spatial_enable_async_processing
+            and self.device == "cuda",
+            # Performance monitoring
+            "enable_profiling": self.spatial_enable_profiling,
+            "log_memory_usage": self.spatial_log_memory_usage,
+        }
+
     @property
     def total_target_params(self) -> int:
         """Общее количество целевых параметров MoE"""
@@ -324,11 +406,6 @@ class ProjectConfig:
             + self.functional_expert_params
             + self.distant_expert_params
         )
-
-    @property
-    def neighbor_strategy_config(self) -> Dict[str, Any]:
-        """Свойство для совместимости с кодом, который ожидает neighbor_strategy_config"""
-        return self.get_neighbor_strategy_config()
 
     def calculate_dynamic_neighbors(self) -> int:
         """
@@ -348,16 +425,18 @@ class ProjectConfig:
         elif total_cells <= 4096:  # 16x16x16
             return 500  # Средний размер для тестирования
         elif total_cells <= 19683:  # 27x27x27
-            return 2000  # Приближение к биологическим 10k для MoE
+            return 5000  # Приближение к биологическим 10k для MoE
         elif total_cells <= 262144:  # 64x64x64
-            return 5000  # Большие решетки
-        else:  # Крупные решетки (666x666x333)
-            return min(self.max_neighbors, 19683)  # Биологический максимум
+            return 10000  # Большие решетки
+        else:  # Крупные решетки (200x200x1000)
+            return min(self.max_neighbors, total_cells)  # Биологический максимум
 
+    """DEPRECATED
     @property
     def effective_neighbors(self) -> int:
-        """Эффективное количество соседей (динамическое или фиксированное)"""
+        # DEPRECATED: Используйте calculate_adaptive_radius() для биологически правдоподобного поиска по радиусу
         return self.calculate_dynamic_neighbors()
+    """
 
     def calculate_adaptive_radius(self) -> float:
         """
@@ -380,6 +459,78 @@ class ProjectConfig:
         adaptive_radius = min(self.adaptive_radius_max, adaptive_radius)
 
         return adaptive_radius
+
+
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ SPATIAL OPTIMIZATION ===
+def create_spatial_config_for_lattice(
+    dimensions: Tuple[int, int, int],
+) -> Dict[str, Any]:
+    """
+    Создает оптимальную конфигурацию для заданного размера решетки
+
+    РЕКОМЕНДУЕТСЯ: Используйте get_project_config().get_spatial_optim_config() для
+    интеграции с централизованным ProjectConfig
+
+    Args:
+        dimensions: размеры решетки (x, y, z)
+
+    Returns:
+        dict с оптимальными настройками spatial optimization
+    """
+
+    # Приоритет: если размеры совпадают с ProjectConfig, используем централизованную конфигурацию
+    try:
+        project_config = get_project_config()
+        current_dims = project_config.lattice_dimensions
+
+        if (
+            current_dims[0] == dimensions[0]
+            and current_dims[1] == dimensions[1]
+            and current_dims[2] == dimensions[2]
+        ):
+            return project_config.get_spatial_optim_config()
+    except Exception:
+        # Fallback на legacy логику если ProjectConfig недоступен
+        pass
+
+    # Legacy логика для обратной совместимости
+    total_cells = dimensions[0] * dimensions[1] * dimensions[2]
+    max_dim = max(dimensions)
+
+    # Адаптивная настройка параметров
+    if total_cells < 50_000:  # Малые решетки (< 50k клеток)
+        return {
+            "chunk_size": 32,
+            "chunk_overlap": 4,
+            "max_chunks_in_memory": 2,
+            "memory_pool_size_gb": 2.0,
+            "num_worker_threads": 2,
+            "batch_size_per_thread": 5000,
+            "max_search_radius": min(20.0, max_dim * 0.5),
+            "enable_async_processing": False,
+        }
+    elif total_cells < 500_000:  # Средние решетки (50k - 500k клеток)
+        return {
+            "chunk_size": 48,
+            "chunk_overlap": 6,
+            "max_chunks_in_memory": 3,
+            "memory_pool_size_gb": 4.0,
+            "num_worker_threads": 4,
+            "batch_size_per_thread": 10000,
+            "max_search_radius": min(30.0, max_dim * 0.3),
+            "enable_async_processing": True,
+        }
+    else:  # Большие решетки (> 500k клеток)
+        return {
+            "chunk_size": 64,
+            "chunk_overlap": 8,
+            "max_chunks_in_memory": 4,
+            "memory_pool_size_gb": 12.0,
+            "num_worker_threads": 6,
+            "batch_size_per_thread": 15000,
+            "max_search_radius": min(50.0, max_dim * 0.2),
+            "enable_async_processing": True,
+        }
 
 
 # === ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР ===

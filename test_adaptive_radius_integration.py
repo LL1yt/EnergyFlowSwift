@@ -94,33 +94,6 @@ def test_moe_spatial_optimizer_config_integration():
     print("✅ Интеграция MoE с ProjectConfig работает!")
 
 
-def test_deprecated_tiered_neighbor_indices():
-    """Тест что deprecated метод помечен корректно"""
-    print("\n⚠️ ТЕСТ DEPRECATED МЕТОДА")
-    print("=" * 70)
-
-    from new_rebuild.core.lattice.topology import NeighborTopology
-    import inspect
-
-    # Проверяем что метод существует
-    assert hasattr(
-        NeighborTopology, "_get_tiered_neighbor_indices"
-    ), "Метод _get_tiered_neighbor_indices не найден"
-
-    # Проверяем docstring на наличие DEPRECATED
-    method = getattr(NeighborTopology, "_get_tiered_neighbor_indices")
-    docstring = inspect.getdoc(method)
-
-    print(f"📋 Docstring метода:")
-    print(f"   {docstring[:200]}...")
-
-    assert "DEPRECATED" in docstring, "Метод не помечен как DEPRECATED"
-    assert "MoE" in docstring, "Нет упоминания о MoE архитектуре"
-    assert "hardcoded" in docstring.lower(), "Нет упоминания о hardcoded значениях"
-
-    print("✅ Deprecated метод помечен корректно")
-
-
 def test_adaptive_radius_configuration_flexibility():
     """Тест гибкости настройки adaptive_radius"""
     print("\n🔀 ТЕСТ ГИБКОСТИ НАСТРОЙКИ ADAPTIVE RADIUS")
