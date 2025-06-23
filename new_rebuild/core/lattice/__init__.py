@@ -17,7 +17,8 @@
 # Импортируем основные классы и функции
 from .enums import Face, BoundaryCondition, PlacementStrategy, NeighborStrategy
 from .position import Position3D, Coordinates3D, Dimensions3D
-from .spatial_hashing import SpatialHashGrid, MortonEncoder
+
+# from .spatial_hashing import SpatialHashGrid, MortonEncoder
 from .spatial_optimization import (
     SpatialOptimizer,
     create_spatial_optimizer,
@@ -56,8 +57,8 @@ __all__ = [
     "Coordinates3D",
     "Dimensions3D",
     # Из spatial_hashing.py
-    "SpatialHashGrid",
-    "MortonEncoder",
+    # "SpatialHashGrid",
+    # "MortonEncoder",
     # Из spatial_optimization.py
     "SpatialOptimizer",
     "create_spatial_optimizer",

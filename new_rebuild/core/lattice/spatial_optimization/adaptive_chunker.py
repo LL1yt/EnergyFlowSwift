@@ -18,7 +18,7 @@ AdaptiveGPUChunker автоматически разбивает большие 
 
 import torch
 import numpy as np
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Dict, Tuple, Optional, Set, Any
 from dataclasses import dataclass, field
 import time
 import threading
@@ -299,6 +299,11 @@ class AdaptiveGPUChunker:
         logger.info(
             f"🎯 AdaptiveGPUChunker создан: {len(self.adaptive_chunks)} chunks на {self.device}"
         )
+
+    @property
+    def chunks(self) -> List[AdaptiveChunkInfo]:
+        """Совместимость: возвращает adaptive_chunks как chunks"""
+        return self.adaptive_chunks
 
     def _create_adaptive_chunks(self):
         """Создает adaptive chunk'и с оптимальным размером"""
@@ -625,7 +630,7 @@ class AdaptiveGPUChunker:
             "device_stats": device_stats,
         }
 
-    def get_comprehensive_stats(self) -> Dict[str, any]:
+    def get_comprehensive_stats(self) -> Dict[str, Any]:
         """Получить полную статистику adaptive chunker'а"""
         memory_stats = self.get_memory_stats()
 

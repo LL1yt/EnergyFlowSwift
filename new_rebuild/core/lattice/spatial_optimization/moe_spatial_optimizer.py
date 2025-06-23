@@ -26,6 +26,11 @@ from ..spatial_hashing import Coordinates3D
 from ..position import Position3D
 from ....utils.logging import get_logger
 
+# GPU Spatial Optimization интеграция
+from .gpu_spatial_processor import GPUSpatialProcessor
+from .adaptive_chunker import AdaptiveGPUChunker
+from ..gpu_spatial_hashing import AdaptiveGPUSpatialHash
+
 logger = get_logger(__name__)
 
 
@@ -67,9 +72,25 @@ class MoESpatialOptimizer(SpatialOptimizer):
             "distant": project_config.distant_connections_ratio,
         }
 
+        # === ИНТЕГРАЦИЯ GPU SPATIAL OPTIMIZATION ===
+        # Создаем GPU Spatial Processor для высокопроизводительного поиска соседей
+        # (device определяется автоматически через device_manager)
+        self.gpu_spatial_processor = GPUSpatialProcessor(dimensions=dimensions)
+
+        # GPU Adaptive Chunker для обработки больших решеток
+        self.gpu_chunker = AdaptiveGPUChunker(dimensions=dimensions)
+
+        # Adaptive GPU Spatial Hash для быстрого поиска соседей
+        project_config = get_project_config()
+        target_memory = getattr(project_config, "gpu_spatial_target_memory_mb", 1024.0)
+        self.gpu_spatial_hash = AdaptiveGPUSpatialHash(
+            dimensions=dimensions, target_memory_mb=target_memory
+        )
+
         logger.info(f"🔧 MoESpatialOptimizer готов для реальной MoE архитектуры")
         logger.info(f"   📊 Распределение связей: {self.connection_distributions}")
         logger.info(f"   🎯 Устройство: {self.device}")
+        logger.info(f"   🚀 GPU Spatial Optimization ИНТЕГРИРОВАН")
 
     def optimize_moe_forward(
         self, states: torch.Tensor, moe_processor=None
@@ -146,13 +167,26 @@ class MoESpatialOptimizer(SpatialOptimizer):
 
         logger.info(f"   📐 Adaptive radius: {adaptive_radius:.2f}")
 
-        # Для тестирования используем быстрый режим с ограниченным количеством batch'ей
-        max_batches = getattr(
-            project_config, "max_test_batches", 3
-        )  # Ограничение для тестов
-        batch_size = (
-            min(1000, num_cells // max_batches) if num_cells > 5000 else num_cells
-        )
+        # === GPU ADAPTIVE CHUNKER ИНТЕГРАЦИЯ ===
+        try:
+            # Используем GPU Adaptive Chunker для оптимального разбиения
+            processing_schedule = self.gpu_chunker.get_adaptive_processing_schedule()
+            logger.info(
+                f"🔧 GPU Chunker создал schedule с {len(processing_schedule)} chunk'ами"
+            )
+
+            # Адаптивные размеры batch'ей на основе GPU chunker
+            chunk_stats = self.gpu_chunker.get_comprehensive_stats()
+            optimal_batch_size = chunk_stats["chunks"]["chunk_size"] ** 3
+            batch_size = min(optimal_batch_size, num_cells)
+
+        except Exception as e:
+            logger.warning(f"⚠️ GPU Chunker не удался: {e}, используем fallback")
+            # Fallback на старую логику
+            max_batches = getattr(project_config, "max_test_batches", 3)
+            batch_size = (
+                min(1000, num_cells // max_batches) if num_cells > 5000 else num_cells
+            )
 
         processed_cells = 0
         batch_count = 0
@@ -337,7 +371,7 @@ class MoESpatialOptimizer(SpatialOptimizer):
         self, cell_idx: int, spatial_optimizer=None
     ) -> List[int]:
         """
-        Безопасный поиск соседей с полной валидацией для MoE архитектуры
+        GPU-ACCELERATED поиск соседей с полной валидацией для MoE архитектуры
 
         Args:
             cell_idx: индекс клетки
@@ -346,7 +380,6 @@ class MoESpatialOptimizer(SpatialOptimizer):
         Returns:
             список индексов соседей в adaptive radius
         """
-
         # Валидация входных данных
         total_cells = self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
         if not (0 <= cell_idx < total_cells):
@@ -356,9 +389,34 @@ class MoESpatialOptimizer(SpatialOptimizer):
         pos_helper = Position3D(self.dimensions)
         coords = pos_helper.to_3d_coordinates(cell_idx)
 
+        # === GPU SPATIAL OPTIMIZATION ИНТЕГРАЦИЯ ===
+        try:
+            # Конвертируем координаты в torch tensor
+            query_point = torch.tensor(
+                [list(coords)], dtype=torch.float32, device=self.device
+            )
+
+            # Используем adaptive radius из конфигурации
+            project_config = get_project_config()
+            search_radius = float(project_config.calculate_adaptive_radius())
+
+            # GPU-accelerated поиск через GPUSpatialProcessor
+            result = self.gpu_spatial_processor.query_neighbors_sync(
+                coordinates=query_point, radius=search_radius, timeout=10.0
+            )
+
+            if result and result.neighbor_lists:
+                neighbors = result.neighbor_lists[0].cpu().tolist()
+                logger.debug(
+                    f"🚀 GPU поиск нашел {len(neighbors)} соседей для cell {cell_idx}"
+                )
+                return neighbors[: project_config.max_neighbors]
+
+        except Exception as e:
+            logger.warning(f"⚠️ GPU поиск не удался: {e}, fallback на CPU")
+
+        # === FALLBACK НА CPU ВЕРСИЮ ===
         neighbors = []
-        # Используем adaptive radius из конфигурации
-        project_config = get_project_config()
         search_radius = project_config.calculate_adaptive_radius()
         max_neighbors = project_config.max_neighbors
 
@@ -370,7 +428,7 @@ class MoESpatialOptimizer(SpatialOptimizer):
         z_min = max(0, coords[2] - int(search_radius))
         z_max = min(self.dimensions[2], coords[2] + int(search_radius) + 1)
 
-        # Безопасный поиск в bounds с строгой валидацией
+        # CPU поиск в bounds с строгой валидацией
         for x in range(x_min, x_max):
             for y in range(y_min, y_max):
                 for z in range(z_min, z_max):
@@ -404,6 +462,9 @@ class MoESpatialOptimizer(SpatialOptimizer):
                         if len(neighbors) >= max_neighbors:
                             break
 
+        logger.debug(
+            f"💻 CPU fallback нашел {len(neighbors)} соседей для cell {cell_idx}"
+        )
         return neighbors
 
     def estimate_moe_memory_requirements(

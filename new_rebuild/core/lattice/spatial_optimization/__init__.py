@@ -9,23 +9,38 @@ Spatial Optimization Module
 ОБНОВЛЕНИЕ (28 декабря 2025):
 - Все конфигурационные классы перенесены в центральный config
 - ChunkInfo и SpatialOptimConfig теперь в project_config.py
+- 🚀 ДОБАВЛЕНЫ GPU SPATIAL OPTIMIZATION КОМПОНЕНТЫ
+
+⚠️ MIGRATION GUIDE:
+===================
+DEPRECATED → РЕКОМЕНДУЕМАЯ ЗАМЕНА:
+- LatticeChunker → AdaptiveGPUChunker (GPU acceleration, adaptive memory)
+- ParallelSpatialProcessor → GPUSpatialProcessor (GPU + async processing)
+- SpatialHashGrid → GPUSpatialHashGrid или AdaptiveGPUSpatialHash (GPU batch operations)
+- MortonEncoder → GPUMortonEncoder (GPU vectorized operations)
+
+Старые компоненты помечены как DEPRECATED и будут удалены в версии 2.0.
+Для новых проектов используйте GPU аналоги!
 """
 
 # Базовые классы
 from .spatial_optimizer import SpatialOptimizer
 from .moe_spatial_optimizer import MoESpatialOptimizer
 
-# Вспомогательные компоненты
-from .chunker import LatticeChunker
-from .memory_manager import MemoryPoolManager
-from .hierarchical_index import HierarchicalSpatialIndex
-from .parallel_processor import ParallelSpatialProcessor
+# ⚠️ DEPRECATED вспомогательные компоненты (используйте GPU аналоги)
+# from .chunker import LatticeChunker  # DEPRECATED: use AdaptiveGPUChunker
+from .memory_manager import MemoryPoolManager  # Still used
+from .hierarchical_index import HierarchicalSpatialIndex  # Still used
+
+# from .parallel_processor import (
+#     ParallelSpatialProcessor,
+# )  # DEPRECATED: use GPUSpatialProcessor
 
 # Конфигурационные классы (теперь из центрального конфига)
 from ....config.project_config import ChunkInfo, create_spatial_config_for_lattice
 from ....config.project_config import ProjectConfig
 
-# Добавляем импорты для новых adaptive компонентов
+# GPU Spatial Optimization Components (из guide)
 from .adaptive_chunker import (
     AdaptiveGPUChunker,
     AdaptiveChunkInfo,
@@ -35,6 +50,14 @@ from .adaptive_chunker import (
 )
 
 from .gpu_spatial_processor import GPUSpatialProcessor, SpatialQuery, SpatialQueryResult
+
+# GPU Spatial Hashing (из core/lattice/)
+from ..gpu_spatial_hashing import (
+    GPUMortonEncoder,
+    GPUSpatialHashGrid,
+    AdaptiveGPUSpatialHash,
+    GPUSpatialHashingStats,
+)
 
 
 def get_spatial_config_from_project(project_config: ProjectConfig) -> dict:
@@ -52,13 +75,13 @@ from .spatial_optimizer import create_spatial_optimizer, estimate_memory_require
 # Экспорты для обратной совместимости
 __all__ = [
     # Основные классы
-    "SpatialOptimizer",
+    "SpatialOptimizer",  # PARTIALLY DEPRECATED
     "MoESpatialOptimizer",
-    # Вспомогательные компоненты
-    "LatticeChunker",
-    "MemoryPoolManager",
-    "HierarchicalSpatialIndex",
-    "ParallelSpatialProcessor",
+    # ⚠️ DEPRECATED вспомогательные компоненты
+    # "LatticeChunker",  # DEPRECATED: use AdaptiveGPUChunker
+    "MemoryPoolManager",  # Still used
+    "HierarchicalSpatialIndex",  # Still used
+    # "ParallelSpatialProcessor",  # DEPRECATED: use GPUSpatialProcessor
     # Конфигурационные классы (из центрального конфига)
     "ChunkInfo",
     "create_spatial_config_for_lattice",
@@ -68,4 +91,17 @@ __all__ = [
     "create_spatial_optimizer",
     "estimate_moe_memory_requirements",
     "estimate_memory_requirements",
+    # GPU Spatial Optimization Components
+    "AdaptiveGPUChunker",
+    "AdaptiveChunkInfo",
+    "ChunkProcessingTask",
+    "AdaptiveMemoryPredictor",
+    "ChunkScheduler",
+    "GPUSpatialProcessor",
+    "SpatialQuery",
+    "SpatialQueryResult",
+    "GPUMortonEncoder",
+    "GPUSpatialHashGrid",
+    "AdaptiveGPUSpatialHash",
+    "GPUSpatialHashingStats",
 ]

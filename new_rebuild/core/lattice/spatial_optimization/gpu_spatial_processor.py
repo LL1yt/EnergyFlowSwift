@@ -20,7 +20,7 @@ GPU Spatial Processor - Интегрированный процессор про
 
 import torch
 import numpy as np
-from typing import List, Dict, Tuple, Optional, Set, Union
+from typing import List, Dict, Tuple, Optional, Set, Union, Any
 from dataclasses import dataclass
 import time
 import threading
@@ -29,7 +29,8 @@ import asyncio
 
 try:
     from ....config.project_config import get_project_config
-    from ..spatial_hashing import Coordinates3D
+
+    # from ..spatial_hashing import Coordinates3D
     from ..position import Position3D
     from ....utils.logging import get_logger
     from ....utils.device_manager import get_device_manager
@@ -52,7 +53,8 @@ except ImportError:
 
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
     from config.project_config import get_project_config
-    from core.lattice.spatial_hashing import Coordinates3D
+
+    # from core.lattice.spatial_hashing import Coordinates3D
     from core.lattice.position import Position3D
     from utils.logging import get_logger
     from utils.device_manager import get_device_manager
@@ -70,6 +72,8 @@ except ImportError:
     )
 
 logger = get_logger(__name__)
+
+Coordinates3D = Tuple[int, int, int]
 
 
 @dataclass
@@ -116,7 +120,9 @@ class GPUSpatialProcessor:
         self._initialize_components()
 
         # Query management
-        self.query_queue = asyncio.Queue()
+        from queue import Queue
+
+        self.query_queue = Queue()
         self.active_queries: Dict[str, SpatialQuery] = {}
         self.query_results: Dict[str, SpatialQueryResult] = {}
 
@@ -187,13 +193,15 @@ class GPUSpatialProcessor:
 
     async def _async_processing_loop(self):
         """Основной цикл асинхронной обработки запросов"""
+        from queue import Empty
+
         while self.processing_active:
             try:
                 # Ждем новый запрос (с таймаутом)
                 try:
-                    query = await asyncio.wait_for(self.query_queue.get(), timeout=1.0)
+                    query = self.query_queue.get(timeout=1.0)
                     await self._process_spatial_query(query)
-                except asyncio.TimeoutError:
+                except Empty:
                     # Периодические задачи обслуживания
                     await self._perform_maintenance_tasks()
 
@@ -311,14 +319,18 @@ class GPUSpatialProcessor:
 
     def _chunk_load_callback(self, task: ChunkProcessingTask):
         """Callback для загрузки chunk'а"""
-        chunk_info = self.chunker.adaptive_chunks[task.chunk_id]
+        try:
+            chunk_info = self.chunker.adaptive_chunks[task.chunk_id]
+        except (IndexError, KeyError):
+            logger.error(f"❌ Chunk {task.chunk_id} не найден")
+            return f"Chunk {task.chunk_id} not found"
 
         # Создаем координаты и индексы для spatial hash
         coordinates = []
         indices = []
 
         for cell_idx in chunk_info.cell_indices:
-            coord = self.chunker.pos_helper.to_coordinates(cell_idx)
+            coord = self.chunker.pos_helper.to_3d_coordinates(cell_idx)
             coordinates.append(coord)
             indices.append(cell_idx)
 
@@ -357,7 +369,7 @@ class GPUSpatialProcessor:
             valid_neighbors = []
 
             for neighbor_idx in neighbors:
-                neighbor_coord = self.chunker.pos_helper.to_coordinates(
+                neighbor_coord = self.chunker.pos_helper.to_3d_coordinates(
                     neighbor_idx.item()
                 )
                 try:
@@ -531,11 +543,8 @@ class GPUSpatialProcessor:
         # Добавляем в активные запросы и очередь
         self.active_queries[query_id] = query
 
-        # Отправляем в async очередь (thread-safe)
-        asyncio.run_coroutine_threadsafe(
-            self.query_queue.put(query),
-            asyncio.get_event_loop() if hasattr(asyncio, "_running_loop") else None,
-        )
+        # Отправляем в queue (thread-safe)
+        self.query_queue.put(query)
 
         return query_id
 
@@ -588,7 +597,7 @@ class GPUSpatialProcessor:
         """Проверить, завершен ли запрос"""
         return query_id in self.query_results
 
-    def get_performance_stats(self) -> Dict[str, any]:
+    def get_performance_stats(self) -> Dict[str, Any]:
         """Получить полную статистику производительности"""
         # Собираем статистику от всех компонентов
         chunker_stats = self.chunker.get_comprehensive_stats()

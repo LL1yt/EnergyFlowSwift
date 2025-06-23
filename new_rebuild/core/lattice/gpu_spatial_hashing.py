@@ -19,7 +19,7 @@ GPU-Accelerated Spatial Hashing для 3D Решетки
 
 import torch
 import numpy as np
-from typing import Tuple, List, Dict, Optional, Set
+from typing import Tuple, List, Dict, Optional, Set, Any
 from dataclasses import dataclass
 import math
 
@@ -224,7 +224,8 @@ class GPUSpatialHashGrid:
 
     def _compute_grid_hashes_batch(self, grid_coords: torch.Tensor) -> torch.Tensor:
         """Вычисляет хэши для batch grid координат"""
-        # Простое хэширование через комбинацию координат
+        # Приводим к целочисленному типу для битовых операций
+        grid_coords = grid_coords.long()
         x, y, z = grid_coords[:, 0], grid_coords[:, 1], grid_coords[:, 2]
 
         # Используем простую но эффективную хэш-функцию
@@ -273,12 +274,13 @@ class GPUSpatialHashGrid:
             max_grid = ((point + radius) // self.cell_size).long()
 
             # Ограничиваем диапазон границами решетки
-            min_grid = torch.clamp(
-                min_grid, 0, torch.tensor(self.grid_dims, device=self.device) - 1
+            grid_dims_tensor = torch.tensor(
+                self.grid_dims, device=self.device, dtype=torch.long
             )
-            max_grid = torch.clamp(
-                max_grid, 0, torch.tensor(self.grid_dims, device=self.device) - 1
-            )
+            max_bounds = grid_dims_tensor - 1
+            zero_tensor = torch.zeros_like(max_bounds)
+            min_grid = torch.clamp(min_grid, min=zero_tensor, max=max_bounds)
+            max_grid = torch.clamp(max_grid, min=zero_tensor, max=max_bounds)
 
             # Собираем кандидатов из всех релевантных ячеек
             candidates = set()
@@ -488,7 +490,7 @@ class AdaptiveGPUSpatialHash:
         device_stats = self.device_manager.get_memory_stats()
 
         return {
-            "spatial_hash": {
+            "hash_grid": {
                 "cell_size": self.optimal_cell_size,
                 "queries": hash_stats.total_queries,
                 "avg_query_time_ms": hash_stats.avg_query_time_ms,
@@ -496,9 +498,12 @@ class AdaptiveGPUSpatialHash:
             },
             "memory": memory_stats,
             "device": device_stats,
-            "adaptive": {
+            "adaptations": {
                 "adaptation_frequency": self.adaptation_frequency,
                 "query_count": self.query_count,
                 "target_memory_mb": self.target_memory_mb,
+                "adaptations_performed": max(
+                    0, self.query_count // self.adaptation_frequency
+                ),
             },
         }

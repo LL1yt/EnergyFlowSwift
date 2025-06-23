@@ -1,0 +1,58 @@
+graph TD
+    subgraph "🚀 NEW GPU SPATIAL OPTIMIZATION"
+        A["⚡ GPUSpatialProcessor<br/>High-performance async processing"]
+        B["🧩 AdaptiveGPUChunker<br/>Intelligent memory management"]
+        C["🗂️ AdaptiveGPUSpatialHash<br/>GPU batch spatial indexing"]
+        D["📊 GPUMortonEncoder<br/>Vectorized Morton encoding"]
+    end
+    
+    subgraph "⚠️ DEPRECATED LEGACY COMPONENTS"
+        E["❌ ParallelSpatialProcessor<br/>DEPRECATED - CPU only"]
+        F["❌ LatticeChunker<br/>DEPRECATED - Fixed chunking"]
+        G["❌ SpatialHashGrid<br/>DEPRECATED - No batch operations"]
+        H["❌ MortonEncoder<br/>PARTIALLY DEPRECATED - CPU only"]
+    end
+    
+    subgraph "🔧 STILL USED COMPONENTS"
+        I["✅ MemoryPoolManager<br/>Still active"]
+        J["✅ HierarchicalSpatialIndex<br/>Still active"]
+        K["✅ SpatialOptimizer<br/>Base class - PARTIALLY DEPRECATED"]
+    end
+    
+    subgraph "🏗️ INTEGRATION LAYER"
+        L["🎯 MoESpatialOptimizer<br/>Uses GPU components"]
+        M["🏠 Lattice3D<br/>Main architecture"]
+    end
+    
+    A --> L
+    B --> L
+    C --> L
+    D --> L
+    
+    I --> L
+    J --> L
+    K --> L
+    
+    L --> M
+    
+    E -.-> A
+    F -.-> B
+    G -.-> C
+    H -.-> D
+    
+    style A fill:#4ecdc4
+    style B fill:#4ecdc4
+    style C fill:#4ecdc4
+    style D fill:#4ecdc4
+    
+    style E fill:#ff6b6b
+    style F fill:#ff6b6b
+    style G fill:#ff6b6b
+    style H fill:#ffa726
+    
+    style I fill:#96ceb4
+    style J fill:#96ceb4
+    style K fill:#ffa726
+    
+    style L fill:#45b7d1
+    style M fill:#6c5ce7
