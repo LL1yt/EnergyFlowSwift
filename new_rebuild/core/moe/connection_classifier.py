@@ -46,6 +46,9 @@ class UnifiedConnectionClassifier(nn.Module):
         self.local_distance_threshold = nn.Parameter(
             torch.tensor(config.local_distance_threshold)
         )
+        self.functional_distance_threshold = nn.Parameter(
+            torch.tensor(config.functional_distance_threshold)
+        )
         self.distant_distance_threshold = nn.Parameter(
             torch.tensor(config.distant_distance_threshold)
         )
@@ -103,23 +106,34 @@ class UnifiedConnectionClassifier(nn.Module):
         # 2. Классификация по расстоянию
         local_mask_flat = euclidean_distances <= self.local_distance_threshold
         distant_mask_flat = euclidean_distances >= self.distant_distance_threshold
-        functional_mask_flat = ~(local_mask_flat | distant_mask_flat)
+        # Функциональные связи: между local и functional_distance_threshold
+        functional_candidate_mask = (
+            euclidean_distances > self.local_distance_threshold
+        ) & (euclidean_distances <= self.functional_distance_threshold)
+        # Средние связи: между functional_distance и distant_threshold (будут проверены на similarity)
+        middle_mask = (euclidean_distances > self.functional_distance_threshold) & (
+            euclidean_distances < self.distant_distance_threshold
+        )
 
         # 3. Уточнение функциональных связей
-        if functional_mask_flat.any():
-            functional_cells = valid_cells[functional_mask_flat]
-            functional_neighbors = valid_neighbors[functional_mask_flat]
+        # Прямые функциональные (близкие по расстоянию)
+        functional_mask_flat = functional_candidate_mask.clone()
 
-            cell_states = states[functional_cells]
-            neighbor_states = states[functional_neighbors]
+        # Проверяем средние связи на функциональную близость
+        if middle_mask.any():
+            middle_cells = valid_cells[middle_mask]
+            middle_neighbors = valid_neighbors[middle_mask]
+
+            cell_states = states[middle_cells]
+            neighbor_states = states[middle_neighbors]
 
             similarities = self.similarity_analyzer(cell_states, neighbor_states)
             high_similarity = similarities > self.functional_similarity_threshold
 
-            # Обновляем маски функциональных связей
-            functional_mask_flat = functional_mask_flat.clone()
-            functional_indices = torch.where(functional_mask_flat)[0]
-            functional_mask_flat[functional_indices[~high_similarity]] = False
+            # Добавляем средние связи с высокой функциональной близостью к functional
+            middle_indices = torch.where(middle_mask)[0]
+            functional_middle_indices = middle_indices[high_similarity]
+            functional_mask_flat[functional_middle_indices] = True
 
         # 4. Восстанавливаем форму масок
         local_mask = torch.zeros(
@@ -269,6 +283,12 @@ class UnifiedConnectionClassifier(nn.Module):
             "distant_ratio": self.usage_stats["distant_count"] / total,
             "total_connections": total,
             "total_classifications": self.usage_stats["total_classifications"],
+            "thresholds": {
+                "local_distance": self.local_distance_threshold.item(),
+                "functional_distance": self.functional_distance_threshold.item(),
+                "distant_distance": self.distant_distance_threshold.item(),
+                "functional_similarity": self.functional_similarity_threshold.item(),
+            },
         }
 
     def reset_stats(self):

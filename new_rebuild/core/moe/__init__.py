@@ -33,7 +33,7 @@ MoE (Mixture of Experts) Module для 3D CNN
 
 from .simple_linear_expert import SimpleLinearExpert
 from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert, AdaptiveGatingNetwork
-from .moe_connection_processor import MoEConnectionProcessor, GatingNetwork
+from .moe_processor import GatingNetwork
 
 __all__ = [
     # Эксперты

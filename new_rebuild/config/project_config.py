@@ -137,10 +137,9 @@ class ProjectConfig:
 
     # Пороги для классификации связей
     local_distance_threshold: float = 1.5  # расстояние для local connections
+    functional_distance_threshold: float = 3.0  # максимальное расстояние для functional
+    distant_distance_threshold: float = 4.5  # расстояние для distant connections
     functional_similarity_threshold: float = 0.3  # порог функциональной схожести
-    distant_distance_threshold: float = (
-        local_distance_threshold * 3.0
-    )  # расстояние для distant connections
 
     # === DEPRECATED: HYBRID GNN+CNF EXPERT ===
     # hybrid_gnn_cnf_expert_params: int = 12233  # DEPRECATED - слишком сложно

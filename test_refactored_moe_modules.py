@@ -146,6 +146,10 @@ def test_connection_classifier():
     lattice_dims = (5, 5, 5)
     classifier = UnifiedConnectionClassifier(lattice_dims)
 
+    # Выводим пороги для понимания логики
+    stats = classifier.get_classification_stats()
+    print(f"Пороги классификации: {stats.get('thresholds', {})}")
+
     # Создаем тестовые данные
     cell_idx = 12  # Центральная клетка
     neighbor_indices = [11, 13, 7, 17]  # Соседи
