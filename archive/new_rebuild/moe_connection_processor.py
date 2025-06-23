@@ -16,10 +16,11 @@ MoE Connection Processor - Mixture of Experts для 3D CNN
 5. Динамический расчет соседей
 
 АРХИТЕКТУРА:
-- Connection Classifier для определения типов связей
+- UnifiedConnectionClassifier для определения типов связей (без deprecated зависимостей)
 - Три специализированных эксперта
 - Learnable Gating Network для комбинирования
 - Результирующая обработка с residual connections
+- Batch processing для производительности
 """
 
 import torch
@@ -27,10 +28,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Optional, Any, Tuple
 
+# НОВЫЕ МОДУЛЬНЫЕ ИМПОРТЫ
+from .moe_processor import MoEConnectionProcessor as NewMoEConnectionProcessor
+from .gating_network import GatingNetwork as NewGatingNetwork
+from .connection_classifier import (
+    UnifiedConnectionClassifier as NewUnifiedConnectionClassifier,
+)
+from .connection_types import ConnectionCategory, ConnectionInfo
+from .distance_calculator import DistanceCalculator
+from .functional_similarity import FunctionalSimilarityAnalyzer
+
+# СТАРЫЕ ИМПОРТЫ (для обратной совместимости)
 from .simple_linear_expert import SimpleLinearExpert
 from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert
 from ..cnf.lightweight_cnf import LightweightCNF, ConnectionType
-from ..cnf.connection_classifier import ConnectionClassifier, ConnectionCategory
 from ...config import get_project_config
 from ...utils.logging import get_logger, log_cell_init, log_cell_forward
 from ..lattice.position import Position3D
@@ -169,18 +180,10 @@ class MoEConnectionProcessor(nn.Module):
             "distant": config.distant_tier,  # 0.35 из конфига
         }
 
-        # === КЛАССИФИКАТОР СВЯЗЕЙ ===
-        neighbor_strategy_config = {
-            "local_tier": self.connection_ratios["local"],
-            "functional_tier": self.connection_ratios["functional"],
-            "distant_tier": self.connection_ratios["distant"],
-            "local_grid_cell_size": config.local_grid_cell_size,  # 8 из конфига
-        }
-
-        self.connection_classifier = ConnectionClassifier(
-            lattice_dimensions=self.lattice_dimensions,
-            state_size=self.state_size,
-            neighbor_strategy_config=neighbor_strategy_config,
+        # === UNIFIED КЛАССИФИКАТОР СВЯЗЕЙ ===
+        # Новый унифицированный классификатор без deprecated зависимостей
+        self.connection_classifier = UnifiedConnectionClassifier(
+            lattice_dimensions=self.lattice_dimensions
         )
 
         # === ЭКСПЕРТЫ ===
@@ -582,3 +585,224 @@ class MoEConnectionProcessor(nn.Module):
                 valid_neighbors = valid_neighbors[: self.max_neighbors]
 
             return valid_neighbors
+
+    def forward_batch(
+        self,
+        batch_states: torch.Tensor,
+        batch_neighbor_states: torch.Tensor,
+        batch_cell_indices: torch.Tensor,
+        batch_neighbor_indices: torch.Tensor,
+        full_lattice_states: torch.Tensor,
+        external_input: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Batch обработка для производительности на больших решетках
+
+        Args:
+            batch_states: [batch_size, state_size] - состояния клеток
+            batch_neighbor_states: [batch_size, max_neighbors, state_size] - состояния соседей
+            batch_cell_indices: [batch_size] - индексы центральных клеток
+            batch_neighbor_indices: [batch_size, max_neighbors] - индексы соседей (padded с -1)
+            full_lattice_states: [total_cells, state_size] - все состояния решетки
+            external_input: Optional[Tensor] - внешний вход
+
+        Returns:
+            result: Dict с batch результатами
+        """
+        batch_size, max_neighbors, state_size = batch_neighbor_states.shape
+        device = batch_states.device
+
+        # 1. Batch классификация связей
+        classifications = self.connection_classifier.classify_connections_batch(
+            batch_cell_indices, batch_neighbor_indices, full_lattice_states
+        )
+
+        # 2. Подготовка batch neighbor activity
+        valid_mask = batch_neighbor_indices >= 0  # [batch_size, max_neighbors]
+        neighbor_activity = torch.zeros_like(batch_states)  # [batch_size, state_size]
+
+        # Вычисляем активность соседей для каждой клетки
+        for batch_idx in range(batch_size):
+            valid_neighbors = valid_mask[batch_idx]
+            if valid_neighbors.sum() > 0:
+                neighbor_activity[batch_idx] = torch.mean(
+                    torch.abs(batch_neighbor_states[batch_idx, valid_neighbors]), dim=0
+                )
+
+        # 3. Batch обработка экспертами
+        expert_outputs = []
+
+        # Local Expert (10%)
+        local_mask = classifications["local"]  # [batch_size, max_neighbors]
+        local_outputs = self._process_expert_batch(
+            batch_states,
+            batch_neighbor_states,
+            local_mask,
+            self.local_expert,
+            "local",
+            external_input,
+        )
+        expert_outputs.append(local_outputs)
+
+        # Functional Expert (55%)
+        functional_mask = classifications["functional"]  # [batch_size, max_neighbors]
+        functional_outputs = self._process_expert_batch(
+            batch_states,
+            batch_neighbor_states,
+            functional_mask,
+            self.functional_expert,
+            "functional",
+            external_input,
+        )
+        expert_outputs.append(functional_outputs)
+
+        # Distant Expert (35%)
+        distant_mask = classifications["distant"]  # [batch_size, max_neighbors]
+        distant_outputs = self._process_expert_batch(
+            batch_states,
+            batch_neighbor_states,
+            distant_mask,
+            self.distant_expert,
+            "distant",
+            external_input,
+        )
+        expert_outputs.append(distant_outputs)
+
+        # 4. Batch Gating Network
+        combined_result, expert_weights = self.gating_network(
+            batch_states, neighbor_activity, expert_outputs
+        )
+
+        # 5. Batch residual connection
+        alpha = 0.1
+        final_result = (1 - alpha) * combined_result + alpha * batch_states
+
+        # 6. Batch статистика
+        connection_counts = self._compute_batch_connection_counts(classifications)
+
+        self.usage_stats["total_calls"] += batch_size
+
+        return {
+            "new_states": final_result,  # [batch_size, state_size]
+            "expert_weights": expert_weights,  # [batch_size, num_experts]
+            "expert_contributions": {
+                "local": expert_weights[:, 0].mean().item(),
+                "functional": expert_weights[:, 1].mean().item(),
+                "distant": expert_weights[:, 2].mean().item(),
+            },
+            "connection_counts": connection_counts,
+            "batch_size": batch_size,
+        }
+
+    def _process_expert_batch(
+        self,
+        batch_states: torch.Tensor,
+        batch_neighbor_states: torch.Tensor,
+        connection_mask: torch.Tensor,
+        expert: nn.Module,
+        expert_type: str,
+        external_input: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Batch обработка одного эксперта
+
+        Args:
+            batch_states: [batch_size, state_size]
+            batch_neighbor_states: [batch_size, max_neighbors, state_size]
+            connection_mask: [batch_size, max_neighbors] - boolean mask для связей
+            expert: экземпляр эксперта
+            expert_type: тип эксперта для статистики
+            external_input: внешний вход
+
+        Returns:
+            outputs: [batch_size, state_size] - результаты эксперта
+        """
+        batch_size, max_neighbors, state_size = batch_neighbor_states.shape
+        outputs = torch.zeros_like(batch_states)
+
+        for batch_idx in range(batch_size):
+            # Получаем маску соединений для этой клетки
+            cell_mask = connection_mask[batch_idx]  # [max_neighbors]
+
+            if cell_mask.sum() == 0:
+                # Нет соединений этого типа - возвращаем текущее состояние
+                outputs[batch_idx] = batch_states[batch_idx]
+                continue
+
+            # Фильтруем соседей по маске
+            filtered_neighbors = batch_neighbor_states[batch_idx, cell_mask].unsqueeze(
+                0
+            )  # [1, num_connections, state_size]
+            current_state = batch_states[batch_idx].unsqueeze(0)  # [1, state_size]
+
+            # Вызываем эксперта
+            if expert_type == "functional" and hasattr(expert, "forward"):
+                # Functional expert возвращает dict
+                result = expert(current_state, filtered_neighbors, external_input)
+                if isinstance(result, dict) and "new_state" in result:
+                    outputs[batch_idx] = result["new_state"].squeeze(0)
+                else:
+                    outputs[batch_idx] = (
+                        result.squeeze(0)
+                        if hasattr(result, "squeeze")
+                        else current_state.squeeze(0)
+                    )
+            else:
+                # Остальные эксперты возвращают tensor
+                result = expert(current_state, filtered_neighbors)
+                outputs[batch_idx] = result.squeeze(0)
+
+        # Обновляем статистику
+        active_connections = connection_mask.sum().item()
+        if active_connections > 0:
+            self.usage_stats[f"{expert_type}_calls"] += batch_size
+
+        return outputs
+
+    def _compute_batch_connection_counts(
+        self, classifications: Dict[str, torch.Tensor]
+    ) -> Dict[str, Any]:
+        """Вычисляет статистику соединений для batch"""
+        local_counts = classifications["local"].sum(dim=1)  # [batch_size]
+        functional_counts = classifications["functional"].sum(dim=1)  # [batch_size]
+        distant_counts = classifications["distant"].sum(dim=1)  # [batch_size]
+
+        return {
+            "local": {
+                "mean": local_counts.float().mean().item(),
+                "total": local_counts.sum().item(),
+                "per_cell": local_counts.tolist(),
+            },
+            "functional": {
+                "mean": functional_counts.float().mean().item(),
+                "total": functional_counts.sum().item(),
+                "per_cell": functional_counts.tolist(),
+            },
+            "distant": {
+                "mean": distant_counts.float().mean().item(),
+                "total": distant_counts.sum().item(),
+                "per_cell": distant_counts.tolist(),
+            },
+        }
+
+
+# === РЕФАКТОРИНГ И ОБРАТНАЯ СОВМЕСТИМОСТЬ ===
+#
+# ВНИМАНИЕ: Этот файл был разбит на более мелкие модули для улучшения читаемости:
+#
+# Новые модули:
+# - connection_types.py - типы данных для связей (ConnectionCategory, ConnectionInfo)
+# - distance_calculator.py - вычисление расстояний в 3D решетке
+# - functional_similarity.py - анализ функциональной близости
+# - gating_network.py - сеть управления экспертами
+# - connection_classifier.py - классификация связей
+# - moe_processor.py - упрощенный основной процессор
+#
+# Рекомендуемые импорты для нового кода:
+# from .moe_processor import MoEConnectionProcessor  # Упрощенная версия
+# from .gating_network import GatingNetwork
+# from .connection_classifier import UnifiedConnectionClassifier
+# from .connection_types import ConnectionCategory, ConnectionInfo
+#
+# Этот файл сохранен для обратной совместимости с существующим кодом.

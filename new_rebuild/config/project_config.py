@@ -51,14 +51,6 @@ class ProjectConfig:
     # lattice_dimensions: Tuple[int, int, int] = (16, 16, 16)  # test
     # target_dimensions: Tuple[int, int, int] = (666, 666, 333)  # научные опыты
 
-    # === DEPRECATED: NCA НЕЙРОНЫ (заменены на MoE Gating) ===
-    # nca_state_size: int = 4  # DEPRECATED - используйте gnn_state_size
-    # nca_hidden_dim: int = 3  # DEPRECATED
-    # nca_neighbor_count: int = 26  # DEPRECATED - используйте effective_neighbors
-    # nca_external_input_size: int = 1  # DEPRECATED
-    # nca_target_params: int = 69  # DEPRECATED
-    # nca_activation: str = "tanh"  # DEPRECATED
-
     # === GNN СВЯЗИ (замена gMLP) - оптимизированная коммуникация ===
     gnn_state_size: int = 32  # размер состояния клетки
     gnn_message_dim: int = 16  # размер сообщений между клетками
@@ -70,10 +62,6 @@ class ProjectConfig:
     gnn_use_attention: bool = True  # attention mechanism для селективной агрегации
     gnn_aggregation: str = "attention"  # тип агрегации сообщений
     gnn_num_layers: int = 1  # количество слоев GNN (начинаем с 1)
-
-    # === HYBRID ИНТЕГРАЦИЯ ===
-    # deprecated hybrid_nca_weight: float = 0.1  # 10% влияние нейронов
-    # deprecated hybrid_gnn_weight: float = 0.9  # 90% влияние связей (было gmlp_weight)
 
     # === ОБУЧЕНИЕ ===
     learning_rate: float = 0.001
@@ -150,6 +138,9 @@ class ProjectConfig:
     # Пороги для классификации связей
     local_distance_threshold: float = 1.5  # расстояние для local connections
     functional_similarity_threshold: float = 0.3  # порог функциональной схожести
+    distant_distance_threshold: float = (
+        local_distance_threshold * 3.0
+    )  # расстояние для distant connections
 
     # === DEPRECATED: HYBRID GNN+CNF EXPERT ===
     # hybrid_gnn_cnf_expert_params: int = 12233  # DEPRECATED - слишком сложно

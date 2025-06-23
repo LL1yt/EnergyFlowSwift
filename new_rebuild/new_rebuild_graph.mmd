@@ -1,0 +1,58 @@
+graph TD
+    subgraph new_rebuild
+        subgraph core
+            subgraph moe ["core/moe"]
+                A["moe_connection_processor"] --> B["simple_linear_expert"]
+                A --> C["hybrid_gnn_cnf_expert"]
+                A --> D["GatingNetwork"]
+                C --> E["../cnf/lightweight_cnf.py"]
+                C --> F["../cells/gnn_cell.py"]
+                A --> E
+                A --> G["../cnf/connection_classifier.py"]
+                A --> H["../lattice/position.py"]
+            end
+
+            subgraph cnf ["core/cnf"]
+                E --> I["NeuralODE"]
+                I --> J["../cells/gnn_cell.py"]
+                G --> K["DistanceCalculator"]
+                G --> L["FunctionalSimilarity"]
+            end
+
+            subgraph cells ["core/cells"]
+                F --> M["MessageNetwork"]
+                F --> N["AttentionAggregator"]
+                F --> O["StateUpdater"]
+                F --> P["base_cell.py"]
+            end
+
+            subgraph lattice ["core/lattice"]
+                Q["lattice.py"] --> R["../cells/CellFactory"]
+                Q --> S["io.py"]
+                Q --> H
+                T["spatial_optimization"] --> U["chunker.py"]
+                T --> V["hierarchical_index.py"]
+                T --> W["memory_manager.py"]
+                T --> X["parallel_processor.py"]
+                U --> Y["../spatial_hashing.py"]
+                V --> Y
+                T --> Y
+                T --> H
+            end
+        end
+
+        subgraph config
+            Z["project_config.py"]
+        end
+
+        subgraph utils
+            AA["logging.py"]
+        end
+
+        core --> config
+        core --> utils
+    end
+
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style Z fill:#ccf,stroke:#333,stroke-width:2px
+    style AA fill:#cfc,stroke:#333,stroke-width:2px
