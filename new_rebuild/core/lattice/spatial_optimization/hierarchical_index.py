@@ -37,7 +37,7 @@ class HierarchicalSpatialIndex:
         """Строит иерархию spatial grid'ов"""
         max_dim = max(self.dimensions)
 
-        for level in range(self.config.spatial_levels):
+        for level in range(self.config["spatial_levels"]):
             # Размер ячейки увеличивается с каждым уровнем
             cell_size = max(1, max_dim // (4 ** (level + 1)))
 
@@ -74,7 +74,7 @@ class HierarchicalSpatialIndex:
                 candidates = candidates.intersection(level_candidates)
 
             # Если кандидатов мало, можно остановиться раньше
-            if len(candidates) < self.config.min_cells_per_node:
+            if len(candidates) < self.config["min_cells_per_node"]:
                 break
 
         return candidates

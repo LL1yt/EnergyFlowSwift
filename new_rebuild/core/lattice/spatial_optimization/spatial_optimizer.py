@@ -146,7 +146,7 @@ class SpatialOptimizer:
         for cell_idx in range(num_cells):
             coords = self.pos_helper.index_to_coords(cell_idx)
             neighbors = self.find_neighbors_optimized(
-                coords, self.config.max_search_radius
+                coords, self.config["max_search_radius"]
             )
 
             if neighbors:

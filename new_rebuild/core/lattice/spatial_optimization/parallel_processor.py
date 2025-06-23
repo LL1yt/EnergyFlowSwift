@@ -58,14 +58,14 @@ class ParallelSpatialProcessor:
         self._stats_lock = threading.Lock()
 
         logger.info(
-            f"⚙️ ParallelSpatialProcessor готов с {self.config.num_worker_threads} потоками"
+            f"⚙️ ParallelSpatialProcessor готов с {self.config['num_worker_threads']} потоками"
         )
 
     def _init_thread_pool(self):
         """Инициализирует thread pool для параллельной обработки"""
-        if self.config.enable_async_processing:
+        if self.config["enable_async_processing"]:
             self.thread_pool = ThreadPoolExecutor(
-                max_workers=self.config.num_worker_threads,
+                max_workers=self.config["num_worker_threads"],
                 thread_name_prefix="SpatialProcessor",
             )
 
@@ -102,7 +102,7 @@ class ParallelSpatialProcessor:
                 f"   🔄 Batch {batch_idx + 1}/{total_batches}: chunk'ы {chunk_ids}"
             )
 
-            if self.config.enable_async_processing and len(chunk_ids) > 1:
+            if self.config["enable_async_processing"] and len(chunk_ids) > 1:
                 # Асинхронная обработка для множественных chunk'ов
                 batch_results = self._process_batch_async(
                     chunk_ids, states, neighbor_processor_fn

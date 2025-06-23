@@ -43,6 +43,10 @@ class SimpleLinearExpert(nn.Module):
         config = get_project_config()
 
         self.state_size = state_size
+        # Устанавливаем max_neighbors ПЕРЕД использованием
+        self.max_neighbors = (
+            max_neighbors if max_neighbors is not None else config.max_neighbors
+        )
 
         self.target_params = config.local_expert_params  # 2059
 

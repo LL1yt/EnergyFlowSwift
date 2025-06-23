@@ -95,6 +95,10 @@ class HybridGNN_CNF_Expert(nn.Module):
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
         self.state_size = state_size or config.gnn_state_size  # 32
+        # Устанавливаем neighbor_count ПЕРЕД использованием
+        self.neighbor_count = (
+            neighbor_count if neighbor_count is not None else config.max_neighbors
+        )
         self.target_params = (
             target_params or config.functional_expert_params
         )  # 8233 (обновлено в MoE)

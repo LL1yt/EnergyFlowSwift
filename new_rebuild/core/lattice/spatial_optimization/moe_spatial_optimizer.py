@@ -24,7 +24,6 @@ from ....config.project_config import ChunkInfo, create_spatial_config_for_latti
 from ....config.project_config import get_project_config
 from ..spatial_hashing import Coordinates3D
 from ..position import Position3D
-from ....config import get_project_config
 from ....utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -369,8 +368,10 @@ def create_moe_spatial_optimizer(
     Returns:
         MoESpatialOptimizer настроенный для данной решетки
     """
-    # Автоматически создаем конфигурацию для решетки
-    config = create_spatial_config_for_lattice(dimensions)
+    # Используем централизованную конфигурацию
+
+    project_config = get_project_config()
+    config = project_config.get_spatial_optim_config()
 
     # Определяем устройство
     if device is None:
@@ -379,7 +380,7 @@ def create_moe_spatial_optimizer(
     logger.info(f"🏭 Создание MoE Spatial Optimizer для {dimensions}")
     logger.info(f"   🎯 Устройство: {device}")
     logger.info(
-        f"   ⚙️ Конфигурация: {config.chunk_size}×{config.chunk_size}×{config.chunk_size} chunks"
+        f"   ⚙️ Конфигурация: {config['chunk_size']}×{config['chunk_size']}×{config['chunk_size']} chunks"
     )
 
     # Если MoE processor не передан, создаем Mock версию для обратной совместимости
@@ -405,7 +406,11 @@ def estimate_moe_memory_requirements(dimensions: Coordinates3D) -> Dict[str, flo
     Returns:
         dict с оценками памяти в GB
     """
-    config = create_spatial_config_for_lattice(dimensions)
+    # Используем централизованную конфигурацию
+
+    project_config = get_project_config()
+    config = project_config.get_spatial_optim_config()
+
     optimizer = MoESpatialOptimizer(dimensions, config=config)
 
     return optimizer.estimate_moe_memory_requirements(dimensions)

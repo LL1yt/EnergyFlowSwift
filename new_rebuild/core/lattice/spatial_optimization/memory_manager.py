@@ -100,7 +100,7 @@ class MemoryPoolManager:
         self.allocation_count += 1
 
         # Периодически запускаем garbage collection
-        if self.allocation_count % self.config.garbage_collect_frequency == 0:
+        if self.allocation_count % self.config["garbage_collect_frequency"] == 0:
             self.garbage_collect()
 
         # Обновляем пиковое использование памяти

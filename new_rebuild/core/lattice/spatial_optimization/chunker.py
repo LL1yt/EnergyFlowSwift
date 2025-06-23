@@ -38,7 +38,7 @@ class LatticeChunker:
     def _create_chunks(self):
         """Создает chunk'и с оптимальным разбиением"""
         x_dim, y_dim, z_dim = self.dimensions
-        chunk_size = self.config.chunk_size
+        chunk_size = self.config["chunk_size"]
 
         # Вычисляем количество chunk'ов по каждой оси
         x_chunks = max(1, (x_dim + chunk_size - 1) // chunk_size)
@@ -109,7 +109,7 @@ class LatticeChunker:
 
     def _are_chunks_neighbors(self, chunk1: ChunkInfo, chunk2: ChunkInfo) -> bool:
         """Проверяет, являются ли chunk'и соседними"""
-        overlap = self.config.chunk_overlap
+        overlap = self.config["chunk_overlap"]
 
         # Расширяем границы chunk1 на overlap
         start1 = (
@@ -168,7 +168,7 @@ class LatticeChunker:
 
                 if (
                     not conflicts
-                    and len(current_batch) < self.config.max_chunks_in_memory
+                    and len(current_batch) < self.config["max_chunks_in_memory"]
                 ):
                     current_batch.append(chunk_id)
                     used_neighbors.add(chunk_id)
