@@ -131,22 +131,35 @@ class DeviceManager:
             Оптимальное torch.device
         """
         if prefer_cuda and torch.cuda.is_available():
-            # Проверяем доступную память GPU
-            device_properties = torch.cuda.get_device_properties(0)
-            gpu_memory_gb = device_properties.total_memory / (1024**3)
+            try:
+                # Проверяем количество устройств и их доступность
+                device_count = torch.cuda.device_count()
+                if device_count == 0:
+                    if self.debug_mode:
+                        logger.info(
+                            "💻 CUDA доступен, но устройств не найдено, используется CPU"
+                        )
+                    return torch.device("cpu")
 
-            if gpu_memory_gb >= 8.0:  # Минимум 8GB для эффективной работы
-                device = torch.device("cuda:0")
+                # Проверяем доступную память GPU
+                device_properties = torch.cuda.get_device_properties(0)
+                gpu_memory_gb = device_properties.total_memory / (1024**3)
+
+                if gpu_memory_gb >= 8.0:  # Минимум 8GB для эффективной работы
+                    device = torch.device("cuda:0")
+                    if self.debug_mode:
+                        logger.info(
+                            f"✅ CUDA устройство выбрано: {torch.cuda.get_device_name(0)} ({gpu_memory_gb:.1f}GB)"
+                        )
+                    return device
+                else:
+                    if self.debug_mode:
+                        logger.warning(
+                            f"⚠️ GPU память недостаточна ({gpu_memory_gb:.1f}GB < 8GB), используется CPU"
+                        )
+            except (RuntimeError, AssertionError) as e:
                 if self.debug_mode:
-                    logger.info(
-                        f"✅ CUDA устройство выбрано: {torch.cuda.get_device_name(0)} ({gpu_memory_gb:.1f}GB)"
-                    )
-                return device
-            else:
-                if self.debug_mode:
-                    logger.warning(
-                        f"⚠️ GPU память недостаточна ({gpu_memory_gb:.1f}GB < 8GB), используется CPU"
-                    )
+                    logger.info(f"💻 CUDA ошибка ({str(e)}), используется CPU")
 
         if self.debug_mode:
             if not torch.cuda.is_available():
@@ -162,14 +175,22 @@ class DeviceManager:
         logger.info(f"   Устройство: {self.device}")
 
         if self.device.type == "cuda":
-            props = torch.cuda.get_device_properties(self.device)
-            logger.info(f"   GPU: {torch.cuda.get_device_name(self.device)}")
-            logger.info(f"   Память: {props.total_memory / (1024**3):.1f}GB")
-            logger.info(f"   Compute Capability: {props.major}.{props.minor}")
+            try:
+                props = torch.cuda.get_device_properties(self.device)
+                logger.info(f"   GPU: {torch.cuda.get_device_name(self.device)}")
+                logger.info(f"   Память: {props.total_memory / (1024**3):.1f}GB")
+                logger.info(f"   Compute Capability: {props.major}.{props.minor}")
+            except (RuntimeError, AssertionError) as e:
+                logger.warning(f"   ⚠️ Ошибка получения информации GPU: {str(e)}")
         else:
-            memory_info = psutil.virtual_memory()
-            logger.info(f"   CPU Memory: {memory_info.total / (1024**3):.1f}GB total")
-            logger.info(f"   Available: {memory_info.available / (1024**3):.1f}GB")
+            try:
+                memory_info = psutil.virtual_memory()
+                logger.info(
+                    f"   CPU Memory: {memory_info.total / (1024**3):.1f}GB total"
+                )
+                logger.info(f"   Available: {memory_info.available / (1024**3):.1f}GB")
+            except Exception as e:
+                logger.warning(f"   ⚠️ Ошибка получения информации CPU: {str(e)}")
 
     def ensure_device(self, tensor: torch.Tensor) -> torch.Tensor:
         """

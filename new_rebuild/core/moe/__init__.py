@@ -31,7 +31,7 @@ MoE (Mixture of Experts) Module для 3D CNN
 4. Биологическая правдоподобность распределения нагрузки
 """
 
-from .simple_linear_expert import SimpleLinearExpert
+from .simple_linear_expert import OptimizedSimpleLinearExpert, SimpleLinearExpert
 from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert, AdaptiveGatingNetwork
 from .moe_processor import MoEConnectionProcessor, GatingNetwork
 
@@ -53,7 +53,8 @@ def create_moe_connection_processor(
 
 __all__ = [
     # Эксперты
-    "SimpleLinearExpert",
+    "OptimizedSimpleLinearExpert",
+    "SimpleLinearExpert",  # backward compatibility
     "HybridGNN_CNF_Expert",
     "AdaptiveGatingNetwork",
     # Основная MoE архитектура

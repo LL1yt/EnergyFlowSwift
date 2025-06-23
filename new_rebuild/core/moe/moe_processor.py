@@ -77,9 +77,7 @@ class MoEConnectionProcessor(nn.Module):
         )
 
         # === ЭКСПЕРТЫ ===
-        self.local_expert = SimpleLinearExpert(
-            state_size=self.state_size, max_neighbors=self.max_neighbors
-        )
+        self.local_expert = SimpleLinearExpert(state_size=self.state_size)
 
         self.functional_expert = HybridGNN_CNF_Expert(
             state_size=self.state_size,
@@ -99,9 +97,7 @@ class MoEConnectionProcessor(nn.Module):
             )
         else:
             # Fallback к простому linear если CNF отключен
-            self.distant_expert = SimpleLinearExpert(
-                state_size=self.state_size, max_neighbors=self.max_neighbors
-            )
+            self.distant_expert = SimpleLinearExpert(state_size=self.state_size)
 
         # === GATING NETWORK ===
         self.gating_network = GatingNetwork(state_size=self.state_size, num_experts=3)
@@ -136,10 +132,62 @@ class MoEConnectionProcessor(nn.Module):
             cell_idx: индекс текущей клетки
             neighbor_indices: индексы соседних клеток
             external_input: внешний вход (опционально)
+            spatial_optimizer: опциональный spatial optimizer для adaptive radius поиска
 
         Returns:
             Dict с результатами обработки
         """
+        # === ОСНОВНОЙ МЕТОД: Adaptive Radius Neighbor Search ===
+        if spatial_optimizer is not None and hasattr(
+            spatial_optimizer, "find_neighbors_by_radius_safe"
+        ):
+            # ВСЕГДА используем spatial optimizer для безопасного поиска соседей
+            adaptive_neighbors = spatial_optimizer.find_neighbors_by_radius_safe(
+                cell_idx
+            )
+
+            if adaptive_neighbors and "full_lattice_states" in kwargs:
+                # Получаем состояния соседей из полной решетки
+                full_states = kwargs["full_lattice_states"]
+
+                # ДОПОЛНИТЕЛЬНАЯ ВАЛИДАЦИЯ индексов перед использованием
+                max_idx = full_states.shape[0] - 1
+                valid_neighbors = [
+                    idx for idx in adaptive_neighbors if 0 <= idx <= max_idx
+                ]
+
+                if len(valid_neighbors) != len(adaptive_neighbors):
+                    logger.warning(
+                        f"⚠️ Отфильтровано {len(adaptive_neighbors) - len(valid_neighbors)} невалидных индексов для клетки {cell_idx}"
+                    )
+
+                if valid_neighbors:
+                    neighbor_indices = valid_neighbors
+                    neighbor_states = full_states[neighbor_indices]
+
+                    logger.debug(
+                        f"🔍 ОСНОВНОЙ РЕЖИМ: spatial_optimizer для клетки {cell_idx}: найдено {len(neighbor_indices)} валидных соседей"
+                    )
+                else:
+                    neighbor_indices = []
+                    neighbor_states = torch.empty(
+                        0, full_states.shape[1], device=full_states.device
+                    )
+            else:
+                logger.warning(
+                    f"⚠️ spatial_optimizer передан, но full_lattice_states отсутствует - fallback к переданным соседям"
+                )
+        else:
+            # Fallback только если spatial_optimizer не передан
+            if len(neighbor_indices) > 0:
+                logger.debug(
+                    f"🔄 FALLBACK РЕЖИМ: используем переданные соседи для клетки {cell_idx}: {len(neighbor_indices)} соседей"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Ни spatial_optimizer, ни neighbor_indices не переданы для клетки {cell_idx}"
+                )
+
         if len(neighbor_indices) == 0:
             return self._empty_forward_result(current_state)
 

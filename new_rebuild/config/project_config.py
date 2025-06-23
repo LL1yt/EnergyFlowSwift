@@ -49,8 +49,8 @@ class ProjectConfig:
 
     # === 3D РЕШЕТКА ===
     # Начинаем с малой для тестов, масштабируем до цели
-    lattice_dimensions: Tuple[int, int, int] = (27, 27, 27)  # MoE тестирование
-    # lattice_dimensions: Tuple[int, int, int] = (6, 6, 6)  # отладка
+    # lattice_dimensions: Tuple[int, int, int] = (27, 27, 27)  # MoE тестирование
+    lattice_dimensions: Tuple[int, int, int] = (5, 5, 5)  # отладка
     # lattice_dimensions: Tuple[int, int, int] = (16, 16, 16)  # test
     # target_dimensions: Tuple[int, int, int] = (666, 666, 333)  # научные опыты
 
@@ -91,7 +91,7 @@ class ProjectConfig:
     adaptive_radius_enabled: bool = True  # Включить адаптивный радиус
     adaptive_radius_ratio: float = 0.3  # 30% от максимального размера решетки
     adaptive_radius_max: float = 500.0  # Максимальный радиус (биологический лимит)
-    adaptive_radius_min: float = 5  # Минимальный радиус (локальные соседи)
+    adaptive_radius_min: float = 0.1  # Минимальный радиус (локальные соседи)
 
     # neighbor_strategy_config:
     local_tier: float = 0.1  # 10% локальные (минимум для стабильности)
@@ -119,6 +119,13 @@ class ProjectConfig:
     # === LOCAL EXPERT PARAMETERS ===
     local_expert_alpha: float = 0.1  # adaptive weight mixing parameter
     local_expert_beta: float = 0.9  # residual connection weight
+
+    # Оптимизированная архитектура SimpleLinearExpert
+    local_expert_neighbor_agg_hidden1: int = 32  # первый слой агрегатора
+    local_expert_neighbor_agg_hidden2: int = 16  # второй слой агрегатора
+    local_expert_processor_hidden: int = 64  # скрытый слой процессора
+    local_expert_max_neighbors_buffer: int = 100  # разумный лимит для attention
+    local_expert_use_attention: bool = True  # использовать attention-based агрегацию
 
     # === ЭКСПЕРТЫ И ИХ ПАРАМЕТРЫ ===
     # Local Expert (SimpleLinear) - рефлексы
@@ -338,6 +345,12 @@ class ProjectConfig:
             "params": self.local_expert_params,
             "alpha": self.local_expert_alpha,
             "beta": self.local_expert_beta,
+            # Архитектурные параметры для оптимизированной версии
+            "neighbor_agg_hidden1": self.local_expert_neighbor_agg_hidden1,
+            "neighbor_agg_hidden2": self.local_expert_neighbor_agg_hidden2,
+            "processor_hidden": self.local_expert_processor_hidden,
+            "max_neighbors_buffer": self.local_expert_max_neighbors_buffer,
+            "use_attention": self.local_expert_use_attention,
         }
 
     def get_moe_config(self) -> Dict[str, Any]:
@@ -461,8 +474,21 @@ class ProjectConfig:
         # Получаем максимальный размер решетки
         max_dimension = max(self.lattice_dimensions)
 
-        # Вычисляем адаптивный радиус как процент от размера
-        adaptive_radius = max_dimension * self.adaptive_radius_ratio
+        # ИСПРАВЛЕНО: Биологически обоснованный радиус с учетом плотности
+        # Принцип: радиус должен покрывать разумное количество соседей (10-50)
+        if max_dimension <= 5:
+            adaptive_radius = 1.5  # Очень маленькие решетки - только ближайшие соседи
+        elif max_dimension <= 10:
+            adaptive_radius = 2.0  # Маленькие решетки - локальное соседство
+        elif max_dimension <= 27:
+            adaptive_radius = 3.0  # Средние решетки - умеренный радиус
+        elif max_dimension <= 100:
+            adaptive_radius = 4.0  # Большие решетки - больший радиус
+        else:
+            # Для очень больших решеток используем логарифмическое масштабирование
+            import math
+
+            adaptive_radius = min(8.0, 2.0 + math.log10(max_dimension))
 
         # Ограничиваем минимальными и максимальными значениями
         adaptive_radius = max(self.adaptive_radius_min, adaptive_radius)

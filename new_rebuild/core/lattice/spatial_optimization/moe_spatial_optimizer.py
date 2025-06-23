@@ -333,6 +333,79 @@ class MoESpatialOptimizer(SpatialOptimizer):
 
         return classified
 
+    def find_neighbors_by_radius_safe(
+        self, cell_idx: int, spatial_optimizer=None
+    ) -> List[int]:
+        """
+        Безопасный поиск соседей с полной валидацией для MoE архитектуры
+
+        Args:
+            cell_idx: индекс клетки
+            spatial_optimizer: опциональный SpatialOptimizer для поиска (не используется в этой реализации)
+
+        Returns:
+            список индексов соседей в adaptive radius
+        """
+
+        # Валидация входных данных
+        total_cells = self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
+        if not (0 <= cell_idx < total_cells):
+            logger.warning(f"Invalid cell_idx: {cell_idx}")
+            return []
+
+        pos_helper = Position3D(self.dimensions)
+        coords = pos_helper.to_3d_coordinates(cell_idx)
+
+        neighbors = []
+        # Используем adaptive radius из конфигурации
+        project_config = get_project_config()
+        search_radius = project_config.calculate_adaptive_radius()
+        max_neighbors = project_config.max_neighbors
+
+        # Определяем bounds для поиска
+        x_min = max(0, coords[0] - int(search_radius))
+        x_max = min(self.dimensions[0], coords[0] + int(search_radius) + 1)
+        y_min = max(0, coords[1] - int(search_radius))
+        y_max = min(self.dimensions[1], coords[1] + int(search_radius) + 1)
+        z_min = max(0, coords[2] - int(search_radius))
+        z_max = min(self.dimensions[2], coords[2] + int(search_radius) + 1)
+
+        # Безопасный поиск в bounds с строгой валидацией
+        for x in range(x_min, x_max):
+            for y in range(y_min, y_max):
+                for z in range(z_min, z_max):
+                    if (x, y, z) == coords:
+                        continue
+
+                    # СТРОГАЯ ВАЛИДАЦИЯ координат
+                    if not (
+                        0 <= x < self.dimensions[0]
+                        and 0 <= y < self.dimensions[1]
+                        and 0 <= z < self.dimensions[2]
+                    ):
+                        continue
+
+                    distance = (
+                        (x - coords[0]) ** 2
+                        + (y - coords[1]) ** 2
+                        + (z - coords[2]) ** 2
+                    ) ** 0.5
+                    if distance <= search_radius:
+                        neighbor_idx = pos_helper.to_linear_index((x, y, z))
+
+                        # СТРОГАЯ ВАЛИДАЦИЯ индекса
+                        if 0 <= neighbor_idx < total_cells:
+                            neighbors.append(neighbor_idx)
+                        else:
+                            logger.warning(
+                                f"⚠️ Невалидный neighbor_idx: {neighbor_idx} из координат ({x}, {y}, {z})"
+                            )
+
+                        if len(neighbors) >= max_neighbors:
+                            break
+
+        return neighbors
+
     def estimate_moe_memory_requirements(
         self, dimensions: Coordinates3D
     ) -> Dict[str, float]:

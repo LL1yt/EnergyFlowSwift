@@ -101,10 +101,10 @@ class HybridGNN_CNF_Expert(nn.Module):
         )
         self.target_params = (
             target_params or config.functional_expert_params
-        )  # 8233 (обновлено в MoE)
+        )  # 8233 (обновлено в MoE) нам не столько важно попасть в target_params, сколько иметь возможность настроить это через конфиг центральный
         self.cnf_params = (
             cnf_params or config.distant_expert_params
-        )  # 4000 (обновлено в MoE)
+        )  # 4000 (обновлено в MoE) нам не столько важно попасть в target_params, сколько иметь возможность настроить это через конфиг центральный
 
         # === КОМПОНЕНТЫ ГИБРИДНОГО ЭКСПЕРТА ===
 

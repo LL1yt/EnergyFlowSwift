@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-Simple Linear Expert - для локальных связей (10%)
-================================================
+Optimized Simple Linear Expert - для локальных связей (10%)
+=========================================================
 
-Простой линейный эксперт для быстрой обработки ближайших соседей.
+Оптимизированный линейный эксперт с фиксированной архитектурой.
 Аналогия: рефлексы в нервной системе - быстрая реакция без сложных вычислений.
 
 АРХИТЕКТУРА:
-- Neighbor weights для взвешенной агрегации
-- Linear transformation для обработки состояний
-- Residual connection для стабильности
-- Точно 2059 параметров согласно спецификации
+- ФИКСИРОВАННАЯ архитектура независимо от max_neighbors
+- Attention-based агрегация для переменного количества соседей
+- Динамические веса адаптируются к любому количеству соседей
+- Все параметры настраиваются через централизованный конфиг
 
 ПРИНЦИПЫ:
-1. Минимальная сложность для максимальной скорости
-2. Стабильность через residual connections
+1. Фиксированное количество параметров
+2. Адаптивность к переменному количеству соседей
 3. Биологическая правдоподобность (рефлексы)
+4. Настройка через централизованный конфиг
 """
 
 import torch
@@ -29,94 +30,83 @@ from ...utils.logging import get_logger, log_cell_init, log_cell_forward
 logger = get_logger(__name__)
 
 
-class SimpleLinearExpert(nn.Module):
+class OptimizedSimpleLinearExpert(nn.Module):
     """
-    Простой линейный эксперт для local connections (10%)
+    Оптимизированный эксперт с фиксированными параметрами для local connections (10%)
 
-    Быстрая обработка ближайших соседей без сложных вычислений.
-    Целевые параметры: 2059 (точно по спецификации)
+    Фиксированная архитектура независимо от количества соседей.
+    Адаптивная агрегация для переменного количества соседей.
     """
 
-    def __init__(self, state_size: int, max_neighbors: Optional[int] = None):
+    def __init__(self, state_size: int):
         super().__init__()
 
         config = get_project_config()
+        local_config = config.get_local_expert_config()
 
         self.state_size = state_size
-        # Устанавливаем max_neighbors ПЕРЕД использованием
-        self.max_neighbors = (
-            max_neighbors if max_neighbors is not None else config.max_neighbors
-        )
+        self.target_params = local_config["params"]  # Из конфига
 
-        self.target_params = config.local_expert_params  # 2059
+        # === ФИКСИРОВАННАЯ АРХИТЕКТУРА ===
 
-        # === АРХИТЕКТУРА ДЛЯ ДОСТИЖЕНИЯ 2059 ПАРАМЕТРОВ ===
-
-        # 1. Neighbor weights (adaptive для разного количества соседей)
-        self.neighbor_weights = nn.Parameter(
-            torch.ones(self.max_neighbors) / self.max_neighbors
-        )
-        # params: зависит от размера решетки
-
-        # 2. Main processing network
-        # Рассчитываем размеры для достижения точно 2059 параметров
-        input_size = state_size * 2  # current + neighbor_influence
-
-        # Подбираем hidden_dim для достижения целевого количества параметров
-        # Layer1: input_size -> hidden_dim (bias included)
-        # Layer2: hidden_dim -> state_size (bias included)
-        # Total: input_size * hidden_dim + hidden_dim + hidden_dim * state_size + state_size
-        # = hidden_dim * (input_size + 1 + state_size) + state_size
-
-        remaining_params = self.target_params - self.max_neighbors  # 2059 - neighbors
-        # Для 2000 соседей: 2059 - 2000 = 59 параметров на сети
-        # Используем минимальную архитектуру если соседей много
-
-        if remaining_params > 100:
-            # Достаточно параметров для полной сети
-            hidden_dim = min(20, remaining_params // 100)  # Адаптивный размер
-        else:
-            # Минимальная архитектура
-            hidden_dim = 1
-
-        self.processing_network = nn.Sequential(
-            nn.Linear(input_size, hidden_dim, bias=True),
+        # 1. Neighbor aggregator - фиксированные размеры из конфига
+        self.neighbor_aggregator = nn.Sequential(
+            nn.Linear(
+                state_size, local_config["neighbor_agg_hidden1"], bias=True
+            ),  # state_size * hidden1 + hidden1
             nn.GELU(),
-            nn.Linear(hidden_dim, state_size, bias=True),
+            nn.Linear(
+                local_config["neighbor_agg_hidden1"],
+                local_config["neighbor_agg_hidden2"],
+                bias=True,
+            ),  # hidden1 * hidden2 + hidden2
         )
-        # Адаптивная архитектура в зависимости от количества соседей
 
-        # 3. Residual connection parameters
-        # Параметры из централизованной конфигурации
-        self.alpha = nn.Parameter(torch.tensor(config.local_expert_alpha))  # 1 параметр
-        self.beta = nn.Parameter(torch.tensor(config.local_expert_beta))  # 1 параметр
+        # 2. State processor - комбинирует состояние + агрегацию
+        processor_input_size = state_size + local_config["neighbor_agg_hidden2"]
+        self.state_processor = nn.Sequential(
+            nn.Linear(
+                processor_input_size, local_config["processor_hidden"], bias=True
+            ),  # (state_size + hidden2) * processor_hidden + processor_hidden
+            nn.GELU(),
+            nn.Linear(
+                local_config["processor_hidden"], state_size, bias=True
+            ),  # processor_hidden * state_size + state_size
+        )
 
-        # 4. Добавляем нормализацию для стабильности
+        # 3. Residual connection parameters из конфига
+        self.alpha = nn.Parameter(torch.tensor(local_config["alpha"]))  # 1 параметр
+        self.beta = nn.Parameter(torch.tensor(local_config["beta"]))  # 1 параметр
+
+        # 4. Нормализация для стабильности
         self.normalization = nn.LayerNorm(state_size, bias=True)
 
-        # Итого: адаптивное количество параметров в зависимости от neighbors
+        # 5. Настройки для adaptive агрегации
+        self.max_neighbors_buffer = local_config["max_neighbors_buffer"]
+        self.use_attention = local_config["use_attention"]
 
         # Подсчет и логирование параметров
         total_params = sum(p.numel() for p in self.parameters())
 
         log_cell_init(
-            cell_type="SimpleLinearExpert",
+            cell_type="OptimizedSimpleLinearExpert",
             total_params=total_params,
             target_params=self.target_params,
             state_size=state_size,
-            max_neighbors=self.max_neighbors,
-            hidden_dim=hidden_dim,
+            config=local_config,
         )
 
         logger.info(
-            f"SimpleLinearExpert: {total_params} параметров (цель: {self.target_params})"
+            f"OptimizedSimpleLinearExpert: {total_params} параметров "
+            f"(архитектура: {local_config['neighbor_agg_hidden1']}->{local_config['neighbor_agg_hidden2']} | "
+            f"{processor_input_size}->{local_config['processor_hidden']}->{state_size})"
         )
 
     def forward(
         self, current_state: torch.Tensor, neighbor_states: torch.Tensor, **kwargs
     ) -> torch.Tensor:
         """
-        Быстрая обработка локальных соседей
+        Быстрая обработка локальных соседей с фиксированной архитектурой
 
         Args:
             current_state: [batch, state_size] - текущее состояние
@@ -125,33 +115,38 @@ class SimpleLinearExpert(nn.Module):
         Returns:
             new_state: [batch, state_size] - обновленное состояние
         """
-        batch_size = current_state.shape[0]
+        batch_size, num_neighbors, _ = neighbor_states.shape
 
-        if neighbor_states.shape[1] == 0:
-            return current_state  # Нет соседей - возвращаем без изменений
+        if num_neighbors == 0:
+            # Нет соседей - возвращаем нормализованное состояние
+            return self.normalization(current_state)
 
-        # 1. Взвешенная агрегация соседей
-        num_neighbors = min(neighbor_states.shape[1], self.max_neighbors)
-        weights = self.neighbor_weights[:num_neighbors]
+        # 1. Адаптивная агрегация соседей
+        if self.use_attention and num_neighbors > 1:
+            # Attention-based агрегация (независимо от количества соседей)
+            attention_weights = F.softmax(
+                torch.sum(neighbor_states * current_state.unsqueeze(1), dim=-1), dim=1
+            )
+            aggregated_neighbors = torch.sum(
+                neighbor_states * attention_weights.unsqueeze(-1), dim=1
+            )
+        else:
+            # Простое усреднение для одного соседа или fallback
+            aggregated_neighbors = torch.mean(neighbor_states, dim=1)
 
-        # Нормализуем веса для корректной агрегации
-        weights = F.softmax(weights, dim=0)
+        # 2. Обработка агрегированных соседей через фиксированную сеть
+        neighbor_features = self.neighbor_aggregator(aggregated_neighbors)
 
-        # Weighted aggregation
-        neighbor_influence = torch.einsum(
-            "bnc,n->bc", neighbor_states[:, :num_neighbors], weights
-        )
+        # 3. Объединяем текущее состояние с обработанными соседями
+        combined_input = torch.cat([current_state, neighbor_features], dim=-1)
 
-        # 2. Объединяем текущее состояние с влиянием соседей
-        combined_input = torch.cat([current_state, neighbor_influence], dim=-1)
+        # 4. Основная обработка через фиксированную архитектуру
+        processed = self.state_processor(combined_input)
 
-        # 3. Линейная обработка
-        processed = self.processing_network(combined_input)
-
-        # 4. Нормализация для стабильности
+        # 5. Нормализация для стабильности
         processed = self.normalization(processed)
 
-        # 5. Residual connection с learnable коэффициентами
+        # 6. Residual connection с learnable коэффициентами
         new_state = self.alpha * current_state + self.beta * processed
 
         return new_state
@@ -159,9 +154,11 @@ class SimpleLinearExpert(nn.Module):
     def get_parameter_info(self) -> Dict[str, Any]:
         """Получить информацию о параметрах эксперта"""
         param_breakdown = {
-            "neighbor_weights": self.neighbor_weights.numel(),
-            "processing_network": sum(
-                p.numel() for p in self.processing_network.parameters()
+            "neighbor_aggregator": sum(
+                p.numel() for p in self.neighbor_aggregator.parameters()
+            ),
+            "state_processor": sum(
+                p.numel() for p in self.state_processor.parameters()
             ),
             "alpha": self.alpha.numel(),
             "beta": self.beta.numel(),
@@ -177,4 +174,11 @@ class SimpleLinearExpert(nn.Module):
             "efficiency": (
                 f"{total/self.target_params:.1%}" if self.target_params > 0 else "N/A"
             ),
+            "architecture": "fixed",
+            "adaptive_neighbors": True,
+            "use_attention": self.use_attention,
         }
+
+
+# Backward compatibility alias
+SimpleLinearExpert = OptimizedSimpleLinearExpert
