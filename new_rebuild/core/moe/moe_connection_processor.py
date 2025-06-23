@@ -33,6 +33,7 @@ from ..cnf.lightweight_cnf import LightweightCNF, ConnectionType
 from ..cnf.connection_classifier import ConnectionClassifier, ConnectionCategory
 from ...config import get_project_config
 from ...utils.logging import get_logger, log_cell_init, log_cell_forward
+from ..lattice.position import Position3D
 
 logger = get_logger(__name__)
 
@@ -507,12 +508,25 @@ class MoEConnectionProcessor(nn.Module):
         Returns:
             список индексов соседей в adaptive radius
         """
+        pos_helper = Position3D(self.lattice_dimensions)
+
+        # ПРОВЕРЯЕМ BOUNDS ДЛЯ CELL_IDX
+        total_cells = (
+            self.lattice_dimensions[0]
+            * self.lattice_dimensions[1]
+            * self.lattice_dimensions[2]
+        )
+        if not (0 <= cell_idx < total_cells):
+            logger.warning(
+                f"⚠️ Неправильный cell_idx: {cell_idx} для решетки {self.lattice_dimensions} (max: {total_cells-1})"
+            )
+            return []
+
         if spatial_optimizer is None:
             # Fallback - создаем простой helper для координат
-            from ..lattice.position import Position3D
 
-            pos_helper = Position3D(self.lattice_dimensions)
-            coords = pos_helper.index_to_coords(cell_idx)
+            # coords = pos_helper.index_to_coords(cell_idx)
+            coords = pos_helper.to_3d_coordinates(cell_idx)
 
             # Простой поиск в радиусе без spatial optimization
             # TODO: В будущем можно использовать spatial hashing
@@ -527,7 +541,8 @@ class MoEConnectionProcessor(nn.Module):
                 if neighbor_idx == cell_idx:
                     continue
 
-                neighbor_coords = pos_helper.index_to_coords(neighbor_idx)
+                # neighbor_coords = pos_helper.index_to_coords(neighbor_idx)
+                neighbor_coords = pos_helper.to_3d_coordinates(neighbor_idx)
                 distance = (
                     (coords[0] - neighbor_coords[0]) ** 2
                     + (coords[1] - neighbor_coords[1]) ** 2
@@ -544,17 +559,26 @@ class MoEConnectionProcessor(nn.Module):
             return neighbors
         else:
             # Используем оптимизированный поиск
-            from ..lattice.position import Position3D
 
-            pos_helper = Position3D(self.lattice_dimensions)
-            coords = pos_helper.index_to_coords(cell_idx)
+            # coords = pos_helper.index_to_coords(cell_idx)
+            coords = pos_helper.to_3d_coordinates(cell_idx)
 
             neighbors = spatial_optimizer.find_neighbors_optimized(
                 coords, self.adaptive_radius
             )
 
-            # Применяем лимит производительности
-            if len(neighbors) > self.max_neighbors:
-                neighbors = neighbors[: self.max_neighbors]
+            # ФИЛЬТРУЕМ СОСЕДЕЙ ПО BOUNDS
+            valid_neighbors = []
+            for neighbor_idx in neighbors:
+                if 0 <= neighbor_idx < total_cells:
+                    valid_neighbors.append(neighbor_idx)
+                else:
+                    logger.warning(
+                        f"⚠️ Неправильный neighbor_idx: {neighbor_idx} из spatial_optimizer для решетки {self.lattice_dimensions} (max: {total_cells-1})"
+                    )
 
-            return neighbors
+            # Применяем лимит производительности
+            if len(valid_neighbors) > self.max_neighbors:
+                valid_neighbors = valid_neighbors[: self.max_neighbors]
+
+            return valid_neighbors

@@ -79,7 +79,7 @@ class LatticeChunker:
         for z in range(start[2], end[2]):
             for y in range(start[1], end[1]):
                 for x in range(start[0], end[0]):
-                    cell_idx = self.pos_helper.coords_to_index((x, y, z))
+                    cell_idx = self.pos_helper.to_linear_index((x, y, z))
                     cell_indices.append(cell_idx)
 
         # Оценка размера памяти

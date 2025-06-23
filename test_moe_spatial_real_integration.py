@@ -95,10 +95,20 @@ class MoERealIntegrationTest:
         print(f"   📐 Тестовые размеры: {test_dimensions} ({total_cells} клеток)")
 
         try:
+            # ИСПРАВЛЕНИЕ: Создаем новый MoE processor с правильными размерами
+            print(f"   🔧 Создание MoE processor для размеров {test_dimensions}...")
+            test_moe_processor = MoEConnectionProcessor(
+                state_size=self.config.gnn_state_size,
+                lattice_dimensions=test_dimensions,  # ← ИСПРАВЛЕНО: используем test_dimensions
+                neighbor_count=self.config.max_neighbors,
+                enable_cnf=self.config.enable_cnf,
+            )
+            test_moe_processor.to(self.device)
+
             # Создаем spatial optimizer для MoE
             spatial_optimizer = create_moe_spatial_optimizer(
                 dimensions=test_dimensions,
-                moe_processor=moe_processor,
+                moe_processor=test_moe_processor,  # ← ИСПРАВЛЕНО: используем новый processor
                 device=self.device,
             )
 
@@ -116,9 +126,10 @@ class MoERealIntegrationTest:
             start_time = time.time()
 
             with torch.no_grad():
-                # Используем новый API с spatial_optimizer
+                # Используем новый MoE processor с правильными размерами
                 output_states = spatial_optimizer.optimize_moe_forward(
-                    states, moe_processor
+                    states,
+                    test_moe_processor,  # ← ИСПРАВЛЕНО: используем новый processor
                 )
 
             forward_time = time.time() - start_time
@@ -165,10 +176,20 @@ class MoERealIntegrationTest:
         print(f"   📐 Размеры решетки: {test_dimensions} ({total_cells:,} клеток)")
 
         try:
+            # ИСПРАВЛЕНИЕ: Создаем новый MoE processor с правильными размерами решетки
+            print(f"   🔧 Создание MoE processor для размеров {test_dimensions}...")
+            test_moe_processor = MoEConnectionProcessor(
+                state_size=self.config.gnn_state_size,
+                lattice_dimensions=test_dimensions,  # ← ИСПРАВЛЕНО: используем test_dimensions
+                neighbor_count=self.config.max_neighbors,
+                enable_cnf=self.config.enable_cnf,
+            )
+            test_moe_processor.to(self.device)
+
             # Создаем рефакторированный MoE spatial optimizer
             spatial_optimizer = create_moe_spatial_optimizer(
                 dimensions=test_dimensions,
-                moe_processor=moe_processor,
+                moe_processor=test_moe_processor,  # ← ИСПРАВЛЕНО: используем новый processor
                 device=self.device,
             )
 
@@ -188,7 +209,7 @@ class MoERealIntegrationTest:
             start_time = time.time()
 
             output_states = spatial_optimizer.optimize_moe_forward(
-                states, moe_processor
+                states, test_moe_processor  # ← ИСПРАВЛЕНО: используем новый processor
             )
 
             processing_time = time.time() - start_time

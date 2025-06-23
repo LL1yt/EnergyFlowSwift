@@ -210,6 +210,14 @@ class MoESpatialOptimizer(SpatialOptimizer):
         batch_size = len(cell_indices)
         state_size = states.shape[1]
 
+        # ЛОГИРУЕМ ИНФОРМАЦИЮ О BATCH'Е
+        logger.debug(
+            f"🔄 _process_moe_batch: batch_size={batch_size}, cell_indices={cell_indices[:10]}..."
+        )
+        logger.debug(
+            f"   📐 Dimensions: {self.dimensions}, total_valid_cells: {self.dimensions[0] * self.dimensions[1] * self.dimensions[2]}"
+        )
+
         # Инициализируем выходной tensor
         batch_output = torch.zeros(
             batch_size, state_size, device=self.device, dtype=states.dtype
@@ -218,8 +226,13 @@ class MoESpatialOptimizer(SpatialOptimizer):
         pos_helper = Position3D(self.dimensions)
 
         for i, cell_idx in enumerate(cell_indices):
+            # ЛОГИРУЕМ КАЖДУЮ КЛЕТКУ
+            logger.debug(
+                f"   🔄 Обрабатываем клетку {i+1}/{batch_size}: cell_idx={cell_idx}"
+            )
+
             # Получаем координаты клетки
-            coords = pos_helper.index_to_coords(cell_idx)
+            coords = pos_helper.to_3d_coordinates(cell_idx)
 
             # НОВАЯ АРХИТЕКТУРА: Передаем spatial_optimizer в MoE processor
             # Он сам найдет соседей по adaptive radius
@@ -277,11 +290,11 @@ class MoESpatialOptimizer(SpatialOptimizer):
 
         # Вычисляем расстояния до соседей
         pos_helper = Position3D(self.dimensions)
-        cell_coords = pos_helper.index_to_coords(cell_idx)
+        cell_coords = pos_helper.to_3d_coordinates(cell_idx)
 
         neighbor_distances = []
         for neighbor_idx in neighbors:
-            neighbor_coords = pos_helper.index_to_coords(neighbor_idx)
+            neighbor_coords = pos_helper.to_3d_coordinates(neighbor_idx)
 
             # Евклидово расстояние
             distance = (

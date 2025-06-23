@@ -145,13 +145,13 @@ class SpatialHashGrid:
         """
         center_grid_coords = self._get_grid_coords(coords)
 
-        # Определяем диапазон ячеек для проверки
-        min_x = (coords[0] - int(radius)) // self.cell_size
-        max_x = (coords[0] + int(radius)) // self.cell_size
-        min_y = (coords[1] - int(radius)) // self.cell_size
-        max_y = (coords[1] + int(radius)) // self.cell_size
-        min_z = (coords[2] - int(radius)) // self.cell_size
-        max_z = (coords[2] + int(radius)) // self.cell_size
+        # Определяем диапазон ячеек для проверки с проверкой границ
+        min_x = max(0, (coords[0] - int(radius)) // self.cell_size)
+        max_x = min(self.grid_dims[0] - 1, (coords[0] + int(radius)) // self.cell_size)
+        min_y = max(0, (coords[1] - int(radius)) // self.cell_size)
+        max_y = min(self.grid_dims[1] - 1, (coords[1] + int(radius)) // self.cell_size)
+        min_z = max(0, (coords[2] - int(radius)) // self.cell_size)
+        max_z = min(self.grid_dims[2] - 1, (coords[2] + int(radius)) // self.cell_size)
 
         found_indices: Set[int] = set()
 

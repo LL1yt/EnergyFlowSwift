@@ -68,7 +68,7 @@ class SpatialOptimizer:
         indices_list = []
 
         for idx in range(total_cells):
-            coords = self.pos_helper.index_to_coords(idx)
+            coords = self.pos_helper.to_3d_coordinates(idx)
             coords_list.append(coords)
             indices_list.append(idx)
 
@@ -95,18 +95,38 @@ class SpatialOptimizer:
         """
         start_time = time.time()
 
+        # ЛОГИРУЕМ ВХОДНЫЕ ДАННЫЕ
+        logger.debug(f"🔍 find_neighbors_optimized: coords={coords}, radius={radius}")
+        logger.debug(f"   📐 Dimensions: {self.dimensions}")
+
+        # Проверяем корректность входных координат
+        if not self.pos_helper.is_valid_coordinates(coords):
+            logger.warning(
+                f"⚠️ Неправильные координаты: {coords} для размеров {self.dimensions}"
+            )
+            return []
+
         try:
             # Используем иерархический индекс для больших радиусов
             if radius > 10.0 and self.spatial_index:
+                logger.debug(
+                    f"   🔎 Используем иерархический индекс для radius={radius}"
+                )
                 neighbors = list(self.spatial_index.query_hierarchical(coords, radius))
             else:
+                logger.debug(
+                    f"   🔎 Используем базовый spatial grid для radius={radius}"
+                )
                 # Используем базовый spatial grid для малых радиусов
                 neighbors = list(self.spatial_grid.query_radius(coords, radius))
 
+            logger.debug(f"   🔎 Найдено {len(neighbors)} соседей перед фильтрацией")
+
             # Убираем саму точку из результатов если она там есть
-            center_idx = self.pos_helper.coords_to_index(coords)
+            center_idx = self.pos_helper.to_linear_index(coords)
             if center_idx in neighbors:
                 neighbors.remove(center_idx)
+                logger.debug(f"   ✂️ Убрали центральную точку {center_idx}")
 
         except Exception as e:
             logger.warning(f"⚠️ Ошибка в поиске соседей: {e}")
@@ -120,6 +140,7 @@ class SpatialOptimizer:
             self.performance_stats["avg_neighbors_found"] * 0.9 + len(neighbors) * 0.1
         )
 
+        logger.debug(f"   ✅ Возвращаем {len(neighbors)} соседей: {neighbors[:10]}...")
         return neighbors
 
     def optimize_lattice_forward(
@@ -144,7 +165,7 @@ class SpatialOptimizer:
         output_states = states.clone()
 
         for cell_idx in range(num_cells):
-            coords = self.pos_helper.index_to_coords(cell_idx)
+            coords = self.pos_helper.to_3d_coordinates(cell_idx)
             neighbors = self.find_neighbors_optimized(
                 coords, self.config["max_search_radius"]
             )
