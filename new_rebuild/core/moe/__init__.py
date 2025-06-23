@@ -33,7 +33,23 @@ MoE (Mixture of Experts) Module для 3D CNN
 
 from .simple_linear_expert import SimpleLinearExpert
 from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert, AdaptiveGatingNetwork
-from .moe_processor import GatingNetwork
+from .moe_processor import MoEConnectionProcessor, GatingNetwork
+
+
+# Фабричная функция для создания MoE Connection Processor
+def create_moe_connection_processor(
+    dimensions=None, state_size=None, device=None, **kwargs
+):
+    """
+    Создает MoE Connection Processor с нужными параметрами
+    """
+    processor = MoEConnectionProcessor(
+        state_size=state_size, lattice_dimensions=dimensions, **kwargs
+    )
+    if device is not None:
+        processor = processor.to(device)
+    return processor
+
 
 __all__ = [
     # Эксперты
@@ -43,4 +59,6 @@ __all__ = [
     # Основная MoE архитектура
     "MoEConnectionProcessor",
     "GatingNetwork",
+    # Фабричные функции
+    "create_moe_connection_processor",
 ]

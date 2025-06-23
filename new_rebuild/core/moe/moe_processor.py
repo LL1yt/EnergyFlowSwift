@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Any, Tuple
 
 from .gating_network import GatingNetwork
 from .connection_classifier import UnifiedConnectionClassifier
+from .connection_types import ConnectionCategory
 from .simple_linear_expert import SimpleLinearExpert
 from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert
 from ..cnf.lightweight_cnf import LightweightCNF
@@ -84,10 +85,12 @@ class MoEConnectionProcessor(nn.Module):
 
         # 3. Distant Expert - долгосрочная память (LightweightCNF)
         if self.enable_cnf:
+            from ..cnf.lightweight_cnf import ConnectionType
+
             self.distant_expert = LightweightCNF(
                 state_size=self.state_size,
+                connection_type=ConnectionType.DISTANT,
                 target_params=config.distant_expert_params,  # 4000
-                lattice_dimensions=self.lattice_dimensions,
             )
         else:
             # Fallback к простому linear если CNF отключен
@@ -147,10 +150,7 @@ class MoEConnectionProcessor(nn.Module):
 
         # Local Expert
         local_neighbors = [
-            conn.target_idx
-            for conn in classifications[
-                self.connection_classifier.ConnectionCategory.LOCAL
-            ]
+            conn.target_idx for conn in classifications[ConnectionCategory.LOCAL]
         ]
         if local_neighbors:
             local_neighbor_states = neighbor_states[
@@ -165,10 +165,7 @@ class MoEConnectionProcessor(nn.Module):
 
         # Functional Expert
         functional_neighbors = [
-            conn.target_idx
-            for conn in classifications[
-                self.connection_classifier.ConnectionCategory.FUNCTIONAL
-            ]
+            conn.target_idx for conn in classifications[ConnectionCategory.FUNCTIONAL]
         ]
         if functional_neighbors:
             functional_neighbor_states = neighbor_states[
@@ -183,10 +180,7 @@ class MoEConnectionProcessor(nn.Module):
 
         # Distant Expert
         distant_neighbors = [
-            conn.target_idx
-            for conn in classifications[
-                self.connection_classifier.ConnectionCategory.DISTANT
-            ]
+            conn.target_idx for conn in classifications[ConnectionCategory.DISTANT]
         ]
         if distant_neighbors:
             distant_neighbor_states = neighbor_states[
@@ -230,9 +224,7 @@ class MoEConnectionProcessor(nn.Module):
             "expert_weights": torch.tensor(
                 [1.0, 0.0, 0.0], device=current_state.device
             ),
-            "classifications": {
-                cat: [] for cat in self.connection_classifier.ConnectionCategory
-            },
+            "classifications": {cat: [] for cat in ConnectionCategory},
             "expert_outputs": [
                 current_state,
                 torch.zeros_like(current_state),
@@ -243,15 +235,9 @@ class MoEConnectionProcessor(nn.Module):
 
     def _update_stats(self, classifications: Dict, expert_weights: torch.Tensor):
         """Обновление статистики использования"""
-        local_count = len(
-            classifications[self.connection_classifier.ConnectionCategory.LOCAL]
-        )
-        functional_count = len(
-            classifications[self.connection_classifier.ConnectionCategory.FUNCTIONAL]
-        )
-        distant_count = len(
-            classifications[self.connection_classifier.ConnectionCategory.DISTANT]
-        )
+        local_count = len(classifications[ConnectionCategory.LOCAL])
+        functional_count = len(classifications[ConnectionCategory.FUNCTIONAL])
+        distant_count = len(classifications[ConnectionCategory.DISTANT])
 
         self.usage_stats["local_connections"] += local_count
         self.usage_stats["functional_connections"] += functional_count

@@ -1,46 +1,50 @@
 """
-Модуль 3D Решетка клеток
-========================
+Модуль 3D Решетка клеток для MoE архитектуры
+==========================================
 
-Основной класс для создания и управления трёхмерной решеткой клеток.
-Содержит базовую функциональность forward pass'а и управления состояниями.
+Упрощенная версия Lattice3D, работающая только с MoE архитектурой.
+Интегрирована с spatial optimization для эффективной обработки больших решеток.
 
-Адаптирован для работы с ProjectConfig и новыми клетками из new_rebuild.
+АРХИТЕКТУРА: ТОЛЬКО MoE
+- Базовые клетки: GNN Cell
+- Обработка связей: MoE Connection Processor с spatial optimization
+- Убрана legacy совместимость и другие архитектуры
 """
 
 import torch
 import torch.nn as nn
-from typing import List, Dict, Optional, Any, Union
+from typing import List, Dict, Optional, Any
 import logging
 import time
 from datetime import datetime
-import json
 
 # Импорты из new_rebuild
 from ...config import get_project_config
-from ..cells import CellFactory, BaseCell
+from ..cells import CellFactory
 
 # Локальные импорты из lattice модуля
 from .enums import Face
 from .io import IOPointPlacer
 from .position import Position3D
 
-# from .topology import NeighborTopology
+# Spatial optimization для MoE архитектуры
+from .spatial_optimization import create_moe_spatial_optimizer, MoESpatialOptimizer
 
 
 class Lattice3D(nn.Module):
     """
-    Трёхмерная решётка клеток (нейронов).
+    Трёхмерная решётка клеток для MoE архитектуры.
 
-    Упрощенная версия для clean архитектуры, работающая с:
-    - ProjectConfig вместо LatticeConfig
-    - NCACell и GMLPCell из new_rebuild
+    Упрощенная версия, работающая только с:
+    - MoE архитектурой и MoE Connection Processor
+    - GNN базовыми клетками
+    - Spatial optimization для эффективности
     - Централизованным логированием
     """
 
     def __init__(self):
         """
-        Инициализация решетки на основе ProjectConfig.
+        Инициализация решетки для MoE архитектуры.
         """
         super().__init__()
         self.config = get_project_config()
@@ -48,33 +52,41 @@ class Lattice3D(nn.Module):
         self.pos_helper = Position3D(self.config.lattice_dimensions)
         self.logger = logging.getLogger(__name__)
 
-        # Логирование инициализации с централизованной системой
+        # Проверяем что используется MoE архитектура
+        if self.config.architecture_type != "moe":
+            raise ValueError(
+                f"Lattice3D теперь поддерживает только MoE архитектуру. "
+                f"Получена: {self.config.architecture_type}"
+            )
+
+        # Логирование инициализации
         from ...utils.logging import log_init
 
         if self.config.debug_mode:
             log_init(
-                "Lattice3D",
+                "Lattice3D_MoE",
                 dimensions=self.config.lattice_dimensions,
                 total_cells=self.pos_helper.total_positions,
-                architecture=self.config.architecture_type,
+                architecture="moe",
                 device=str(self.device),
             )
 
-        # Создаем клетки
+        # Создаем GNN клетки для MoE
         self.cell_factory = CellFactory()
-        self.cells = self._create_cells()
+        self.cells = self._create_gnn_cells()
 
-        # Инициализация топологии соседства
-        all_coords = self.pos_helper.get_all_coordinates()
-        # self.topology = NeighborTopology(all_coords=all_coords)
+        # MoE Spatial Optimizer
+        self.spatial_optimizer = create_moe_spatial_optimizer(
+            dimensions=self.config.lattice_dimensions, device=self.device
+        )
 
-        # Размещение I/O точек (упрощенная версия)
+        # Размещение I/O точек
         from .enums import PlacementStrategy
 
         self.io_placer = IOPointPlacer(
             lattice_dimensions=self.config.lattice_dimensions,
-            strategy=PlacementStrategy.FULL_FACE,  # Используем полное покрытие граней
-            config={},  # Пустая конфигурация для простоты
+            strategy=PlacementStrategy.FULL_FACE,
+            config={},
             seed=42,
         )
 
@@ -103,124 +115,51 @@ class Lattice3D(nn.Module):
 
             logger = get_logger(__name__)
             logger.info(
-                f"✅ Lattice3D initialized successfully:\n"
+                f"✅ Lattice3D MoE initialized successfully:\n"
                 f"     INPUT_POINTS: {len(self.input_points)}\n"
                 f"     OUTPUT_POINTS: {len(self.output_points)}\n"
-                f"     CELL_TYPE: {type(self.cells).__name__}"
+                f"     CELL_TYPE: {type(self.cells).__name__}\n"
+                f"     SPATIAL_OPTIMIZER: {type(self.spatial_optimizer).__name__}"
             )
 
-    def _create_cells(self) -> BaseCell:
+    def _create_gnn_cells(self):
         """
-        Создает клетки на основе конфигурации архитектуры.
+        Создает GNN клетки для MoE архитектуры.
         """
-        # Преобразуем ProjectConfig в словарь для NCA/gMLP клеток
-        if self.config.architecture_type == "nca":
-            # NCA DEPRECATED: используем GNN параметры для совместимости
-            nca_config = {
-                "state_size": self.config.gnn_state_size,  # Используем GNN параметры
-                "hidden_dim": 3,  # Жестко задаем для NCA
-                "neighbor_count": self.config.gnn_neighbor_count,  # Синхронизация
-                "activation": "tanh",  # Стандартная NCA активация
-                "target_params": 69,  # Стандартные NCA параметры
-                "device": self.config.device,
-                "debug_mode": self.config.debug_mode,
-            }
-            cell = self.cell_factory.create_cell("nca", nca_config)
-        elif self.config.architecture_type == "gnn":
-            # GNN клетка (заменяет gMLP)
-            gnn_config = {
-                "state_size": self.config.gnn_state_size,
-                "message_dim": self.config.gnn_message_dim,
-                "hidden_dim": self.config.gnn_hidden_dim,
-                "neighbor_count": self.config.gnn_neighbor_count,
-                "external_input_size": self.config.gnn_external_input_size,
-                "activation": self.config.gnn_activation,
-                "target_params": self.config.gnn_target_params,
-                "use_attention": self.config.gnn_use_attention,
-                "device": self.config.device,
-                "debug_mode": self.config.debug_mode,
-            }
-            cell = self.cell_factory.create_cell("gnn", gnn_config)
-        elif self.config.architecture_type == "gmlp":
-            # Legacy совместимость: gMLP → GNN
-            gnn_config = {
-                "state_size": self.config.gnn_state_size,
-                "message_dim": self.config.gnn_message_dim,
-                "hidden_dim": self.config.gnn_hidden_dim,
-                "neighbor_count": self.config.gnn_neighbor_count,
-                "external_input_size": self.config.gnn_external_input_size,
-                "activation": self.config.gnn_activation,
-                "target_params": self.config.gnn_target_params,
-                "use_attention": self.config.gnn_use_attention,
-                "device": self.config.device,
-                "debug_mode": self.config.debug_mode,
-            }
-            cell = self.cell_factory.create_cell(
-                "gmlp", gnn_config
-            )  # CellFactory сделает маппинг
-        elif self.config.architecture_type == "hybrid":
-            # Для hybrid используем GNN (заменил gMLP)
-            gnn_config = {
-                "state_size": self.config.gnn_state_size,
-                "message_dim": self.config.gnn_message_dim,
-                "hidden_dim": self.config.gnn_hidden_dim,
-                "neighbor_count": self.config.gnn_neighbor_count,
-                "external_input_size": self.config.gnn_external_input_size,
-                "activation": self.config.gnn_activation,
-                "target_params": self.config.gnn_target_params,
-                "use_attention": self.config.gnn_use_attention,
-                "device": self.config.device,
-                "debug_mode": self.config.debug_mode,
-            }
-            cell = self.cell_factory.create_cell("gnn", gnn_config)
-        elif self.config.architecture_type == "moe":
-            # MoE архитектура: используем GNN как базовую клетку
-            # MoE процессор будет создаваться отдельно на уровне выше
-            gnn_config = {
-                "state_size": self.config.gnn_state_size,
-                "message_dim": self.config.gnn_message_dim,
-                "hidden_dim": self.config.gnn_hidden_dim,
-                "neighbor_count": self.config.gnn_neighbor_count,
-                "external_input_size": self.config.gnn_external_input_size,
-                "activation": self.config.gnn_activation,
-                "target_params": self.config.gnn_target_params,
-                "use_attention": self.config.gnn_use_attention,
-                "device": self.config.device,
-                "debug_mode": self.config.debug_mode,
-            }
-            cell = self.cell_factory.create_cell("gnn", gnn_config)
-        else:
-            raise ValueError(
-                f"Неподдерживаемый тип архитектуры: {self.config.architecture_type}"
-            )
-
+        gnn_config = {
+            "state_size": self.config.gnn_state_size,
+            "message_dim": self.config.gnn_message_dim,
+            "hidden_dim": self.config.gnn_hidden_dim,
+            "neighbor_count": self.config.gnn_neighbor_count,
+            "external_input_size": self.config.gnn_external_input_size,
+            "activation": self.config.gnn_activation,
+            "target_params": self.config.gnn_target_params,
+            "use_attention": self.config.gnn_use_attention,
+            "device": self.config.device,
+            "debug_mode": self.config.debug_mode,
+        }
+        cell = self.cell_factory.create_cell("gnn", gnn_config)
         return cell.to(self.device)
+
+    def _create_moe_processor(self):
+        """Создаёт MoE processor для MoE архитектуры"""
+        from ..moe import create_moe_connection_processor
+
+        return create_moe_connection_processor(
+            dimensions=self.config.lattice_dimensions,
+            state_size=self.config.gnn_state_size,
+            device=self.device,
+        )
 
     def _initialize_states(self) -> torch.Tensor:
         """
         Инициализирует тензор состояний клеток.
         """
-        # Получаем размер состояния из клетки
-        if hasattr(self.cells, "state_size"):
-            state_size = self.cells.state_size
-        else:
-            # Fallback для определения размера состояния
-            if self.config.architecture_type == "nca":
-                state_size = self.config.nca_state_size
-            elif self.config.architecture_type == "gnn":
-                state_size = self.config.gnn_state_size
-            elif self.config.architecture_type == "gmlp":
-                # Legacy: gMLP теперь использует GNN параметры
-                state_size = self.config.gnn_state_size
-            elif self.config.architecture_type == "hybrid":
-                # Hybrid использует GNN параметры (NCA deprecated)
-                state_size = self.config.gnn_state_size
-            elif self.config.architecture_type == "moe":
-                # MoE использует GNN параметры как базовые
-                state_size = self.config.gnn_state_size
-            else:
-                # Fallback
-                state_size = self.config.gnn_state_size
+        state_size = (
+            self.cells.state_size
+            if hasattr(self.cells, "state_size")
+            else self.config.gnn_state_size
+        )
 
         dims = (self.pos_helper.total_positions, state_size)
 
@@ -238,7 +177,7 @@ class Lattice3D(nn.Module):
 
     def forward(self, external_inputs: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Выполняет один шаг forward pass через решетку.
+        Выполняет один шаг forward pass через решетку с MoE архитектурой.
 
         Args:
             external_inputs: Внешние входы для клеток (опционально)
@@ -248,20 +187,10 @@ class Lattice3D(nn.Module):
         """
         start_time = time.time()
 
-        # Получаем соседей для всех клеток
-        neighbor_indices = self.topology.get_all_neighbor_indices_batched()
-
-        # Собираем состояния соседей
-        neighbor_states = self._gather_neighbor_states(neighbor_indices)
-
-        # Подготавливаем внешние входы
-        processed_external_inputs = self._prepare_external_inputs(external_inputs)
-
-        # Применяем клетки ко всем позициям
-        new_states = self.cells(
-            neighbor_states=neighbor_states,
-            own_state=self.states,
-            external_input=processed_external_inputs,
+        # MoE forward pass через spatial optimizer
+        moe_processor = self._create_moe_processor()
+        new_states = self.spatial_optimizer.optimize_moe_forward(
+            states=self.states, moe_processor=moe_processor
         )
 
         # Обновляем состояния
@@ -272,59 +201,6 @@ class Lattice3D(nn.Module):
         self._update_performance_stats(step_time)
 
         return self.states
-
-    def _gather_neighbor_states(self, neighbor_indices: torch.Tensor) -> torch.Tensor:
-        """
-        Собирает состояния соседей для всех клеток.
-
-        Args:
-            neighbor_indices: Тензор индексов соседей [total_cells, max_neighbors]
-
-        Returns:
-            torch.Tensor: Состояния соседей [total_cells, max_neighbors, state_size]
-        """
-        batch_size, max_neighbors = neighbor_indices.shape
-        state_size = self.states.shape[1]
-
-        # Создаем тензор для состояний соседей
-        neighbor_states = torch.zeros(
-            batch_size,
-            max_neighbors,
-            state_size,
-            device=self.device,
-            dtype=self.states.dtype,
-        )
-
-        # Заполняем состояния соседей
-        for i in range(batch_size):
-            for j in range(max_neighbors):
-                neighbor_idx = neighbor_indices[i, j]
-                if neighbor_idx >= 0:  # -1 означает отсутствие соседа
-                    neighbor_states[i, j] = self.states[neighbor_idx]
-
-        return neighbor_states
-
-    def _prepare_external_inputs(
-        self, external_inputs: Optional[torch.Tensor]
-    ) -> Optional[torch.Tensor]:
-        """
-        Подготавливает внешние входы для клеток.
-        """
-        if external_inputs is None:
-            return None
-
-        # Убеждаемся, что внешние входы на правильном устройстве
-        if external_inputs.device != self.device:
-            external_inputs = external_inputs.to(self.device)
-
-        # Проверяем размерность
-        if external_inputs.shape[0] != self.pos_helper.total_positions:
-            raise ValueError(
-                f"External inputs batch size {external_inputs.shape[0]} "
-                f"doesn't match total cells {self.pos_helper.total_positions}"
-            )
-
-        return external_inputs
 
     def _update_performance_stats(self, step_time: float):
         """Обновляет статистику производительности."""
@@ -393,16 +269,16 @@ class Lattice3D(nn.Module):
         stats = {
             "dimensions": self.config.lattice_dimensions,
             "total_cells": self.pos_helper.total_positions,
-            "architecture_type": self.config.architecture_type,
+            "architecture_type": "moe",
             "device": str(self.device),
             "state_shape": list(self.states.shape),
             "input_points": len(self.input_points),
             "output_points": len(self.output_points),
         }
 
-        # Добавляем статистику топологии
-        topology_stats = self.topology.validate_topology()
-        stats["topology"] = topology_stats
+        # Добавляем статистику spatial optimizer
+        if hasattr(self.spatial_optimizer, "get_performance_stats"):
+            stats["spatial_optimizer"] = self.spatial_optimizer.get_performance_stats()
 
         # Добавляем информацию о клетках
         if hasattr(self.cells, "get_info"):
@@ -413,6 +289,6 @@ class Lattice3D(nn.Module):
 
 def create_lattice() -> Lattice3D:
     """
-    Фабричная функция для создания решетки на основе ProjectConfig.
+    Фабричная функция для создания MoE решетки на основе ProjectConfig.
     """
     return Lattice3D()
