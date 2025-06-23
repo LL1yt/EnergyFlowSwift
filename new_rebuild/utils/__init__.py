@@ -31,8 +31,22 @@ from .logging import (
     get_caller_info,
 )
 
+from .device_manager import (
+    # Основные классы
+    DeviceManager,
+    MemoryMonitor,
+    # Функции быстрого доступа
+    get_device_manager,
+    reset_device_manager,
+    ensure_device,
+    allocate_tensor,
+    transfer_module,
+    get_optimal_device,
+    cleanup_memory,
+)
+
 __all__ = [
-    # Основные функции
+    # Основные функции логирования
     "setup_logging",
     "get_logger",
     # Специализированные функции
@@ -51,4 +65,14 @@ __all__ = [
     # Legacy совместимость
     "_get_caller_info",
     "get_caller_info",
+    # Device Management
+    "DeviceManager",
+    "MemoryMonitor",
+    "get_device_manager",
+    "reset_device_manager",
+    "ensure_device",
+    "allocate_tensor",
+    "transfer_module",
+    "get_optimal_device",
+    "cleanup_memory",
 ]

@@ -19,6 +19,7 @@ from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert
 from ..cnf.lightweight_cnf import LightweightCNF
 from ...config import get_project_config
 from ...utils.logging import get_logger, log_cell_forward
+from ...utils.device_manager import get_device_manager
 from ..lattice.position import Position3D
 
 logger = get_logger(__name__)
@@ -49,6 +50,10 @@ class MoEConnectionProcessor(nn.Module):
         super().__init__()
 
         config = get_project_config()
+
+        # === DEVICE MANAGEMENT ===
+        self.device_manager = config.get_device_manager()
+        self.device = self.device_manager.get_device()
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
         self.state_size = state_size or config.gnn_state_size  # 32
@@ -108,6 +113,10 @@ class MoEConnectionProcessor(nn.Module):
         total_params = sum(p.numel() for p in self.parameters())
         logger.info(f"MoEConnectionProcessor: {total_params} параметров всего")
 
+        # Перенос модели на правильное устройство
+        self.device_manager.transfer_module(self)
+        logger.info(f"MoEConnectionProcessor перенесен на устройство: {self.device}")
+
     def forward(
         self,
         current_state: torch.Tensor,
@@ -137,6 +146,12 @@ class MoEConnectionProcessor(nn.Module):
         batch_size = 1
         device = current_state.device
 
+        # Убеждаемся что все tensor'ы на правильном устройстве
+        current_state = self.device_manager.ensure_device(current_state)
+        neighbor_states = self.device_manager.ensure_device(neighbor_states)
+        if external_input is not None:
+            external_input = self.device_manager.ensure_device(external_input)
+
         # === 1. КЛАССИФИКАЦИЯ СВЯЗЕЙ ===
         classifications = self.connection_classifier.classify_connections(
             cell_idx=cell_idx,
@@ -156,11 +171,20 @@ class MoEConnectionProcessor(nn.Module):
             local_neighbor_states = neighbor_states[
                 [neighbor_indices.index(idx) for idx in local_neighbors]
             ]
-            local_output = self.local_expert(
+            local_result = self.local_expert(
                 current_state.unsqueeze(0), local_neighbor_states.unsqueeze(0)
             )
+            # Извлекаем tensor из результата (может быть dict или tensor)
+            if isinstance(local_result, dict):
+                local_output = local_result.get(
+                    "output", local_result.get("new_state", current_state.unsqueeze(0))
+                )
+            else:
+                local_output = local_result
         else:
-            local_output = torch.zeros_like(current_state).unsqueeze(0)
+            local_output = self.device_manager.allocate_tensor(
+                (1, self.state_size), dtype=current_state.dtype
+            )
         expert_outputs.append(local_output.squeeze(0))
 
         # Functional Expert
@@ -171,11 +195,21 @@ class MoEConnectionProcessor(nn.Module):
             functional_neighbor_states = neighbor_states[
                 [neighbor_indices.index(idx) for idx in functional_neighbors]
             ]
-            functional_output = self.functional_expert(
+            functional_result = self.functional_expert(
                 current_state.unsqueeze(0), functional_neighbor_states.unsqueeze(0)
             )
+            # Извлекаем tensor из результата (может быть dict или tensor)
+            if isinstance(functional_result, dict):
+                functional_output = functional_result.get(
+                    "output",
+                    functional_result.get("new_state", current_state.unsqueeze(0)),
+                )
+            else:
+                functional_output = functional_result
         else:
-            functional_output = torch.zeros_like(current_state).unsqueeze(0)
+            functional_output = self.device_manager.allocate_tensor(
+                (1, self.state_size), dtype=current_state.dtype
+            )
         expert_outputs.append(functional_output.squeeze(0))
 
         # Distant Expert
@@ -187,15 +221,25 @@ class MoEConnectionProcessor(nn.Module):
                 [neighbor_indices.index(idx) for idx in distant_neighbors]
             ]
             if self.enable_cnf:
-                distant_output = self.distant_expert(
+                distant_result = self.distant_expert(
                     current_state.unsqueeze(0), distant_neighbor_states.unsqueeze(0)
                 )
             else:
-                distant_output = self.distant_expert(
+                distant_result = self.distant_expert(
                     current_state.unsqueeze(0), distant_neighbor_states.unsqueeze(0)
                 )
+            # Извлекаем tensor из результата (может быть dict или tensor)
+            if isinstance(distant_result, dict):
+                distant_output = distant_result.get(
+                    "output",
+                    distant_result.get("new_state", current_state.unsqueeze(0)),
+                )
+            else:
+                distant_output = distant_result
         else:
-            distant_output = torch.zeros_like(current_state).unsqueeze(0)
+            distant_output = self.device_manager.allocate_tensor(
+                (1, self.state_size), dtype=current_state.dtype
+            )
         expert_outputs.append(distant_output.squeeze(0))
 
         # === 3. GATING NETWORK ===

@@ -15,6 +15,9 @@ import torch
 # Для spatial optimization - используем Tuple вместо Coordinates3D чтобы избежать circular import
 from typing import Tuple
 
+# Импорт DeviceManager для централизованного управления устройствами
+from ..utils.device_manager import DeviceManager, get_device_manager
+
 
 @dataclass
 class ChunkInfo:
@@ -188,15 +191,28 @@ class ProjectConfig:
     enable_logging: bool = True
     log_level: str = "INFO"
 
+    # === DEVICE MANAGEMENT ===
+    # DeviceManager интегрирован для централизованного управления устройствами и памятью
+    prefer_cuda: bool = True  # Предпочитать CUDA если доступен
+    device_debug_mode: bool = True  # Подробное логирование операций с устройствами
+
+    # Memory management через DeviceManager
+    memory_cleanup_threshold: int = 100  # Cleanup каждые N операций
+    memory_safety_buffer: float = 0.15  # 15% буфер безопасности
+
     # === ИНИЦИАЛИЗАЦИЯ ===
     seed: int = 42
     initialization_method: str = "xavier"
 
     def __post_init__(self):
         """Валидация и автоматическая настройка после инициализации"""
-        # Автоопределение устройства
-        if self.device == "auto":
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Инициализация DeviceManager
+        self.device_manager = get_device_manager(
+            prefer_cuda=self.prefer_cuda, debug_mode=self.device_debug_mode
+        )
+
+        # Обновляем device из DeviceManager (заменяет auto-detection)
+        self.device = self.device_manager.get_device_str()
 
         # DEPRECATED: NCA синхронизация больше не нужна в MoE архитектуре
         # В MoE архитектуре NCA заменен на GatingNetwork
@@ -216,12 +232,16 @@ class ProjectConfig:
             logging.info(
                 f"   Lattice: {self.lattice_dimensions} = {self.total_cells} cells"
             )
-            logging.info(f"   Device: {self.device}")
+            logging.info(f"   Device: {self.device} (via DeviceManager)")
             logging.info(f"   MoE Gating params target: {self.gating_params}")
             logging.info(
                 f"   GNN Expert params target: {self.functional_expert_params}"
             )
             logging.info(f"   CNF Expert params target: {self.distant_expert_params}")
+
+            # Логируем статистику DeviceManager
+            device_stats = self.device_manager.get_memory_stats()
+            logging.info(f"   Memory stats: {device_stats}")
 
     # === МЕТОДЫ ДОСТУПА (совместимость с Legacy) ===
     def get_nca_config(self) -> Dict[str, Any]:
@@ -449,6 +469,40 @@ class ProjectConfig:
         adaptive_radius = min(self.adaptive_radius_max, adaptive_radius)
 
         return adaptive_radius
+
+    # === DEVICE MANAGEMENT METHODS ===
+    def get_device_manager(self) -> DeviceManager:
+        """Получить DeviceManager для текущей конфигурации"""
+        return self.device_manager
+
+    def ensure_tensor_device(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Перенести tensor на правильное устройство через DeviceManager"""
+        return self.device_manager.ensure_device(tensor)
+
+    def allocate_tensor(self, shape: Tuple[int, ...], **kwargs) -> torch.Tensor:
+        """Выделить tensor через DeviceManager с проверкой памяти"""
+        return self.device_manager.allocate_tensor(shape, **kwargs)
+
+    def transfer_module(self, module: torch.nn.Module) -> torch.nn.Module:
+        """Перенести модель на правильное устройство через DeviceManager"""
+        return self.device_manager.transfer_module(module)
+
+    def cleanup_memory(self):
+        """Очистка памяти через DeviceManager"""
+        self.device_manager.cleanup()
+
+    def get_device_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию устройства для использования в модулях"""
+        return {
+            "device": self.device,
+            "device_manager": self.device_manager,
+            "prefer_cuda": self.prefer_cuda,
+            "debug_mode": self.device_debug_mode,
+            "memory_cleanup_threshold": self.memory_cleanup_threshold,
+            "memory_safety_buffer": self.memory_safety_buffer,
+            "is_cuda": self.device_manager.is_cuda(),
+            "memory_stats": self.device_manager.get_memory_stats(),
+        }
 
 
 # === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ SPATIAL OPTIMIZATION ===

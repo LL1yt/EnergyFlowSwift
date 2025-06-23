@@ -12,6 +12,7 @@ import gc
 from typing import Dict, List, Tuple
 from ....config.project_config import get_project_config
 from ....utils.logging import get_logger
+from ....utils.device_manager import get_device_manager
 
 logger = get_logger(__name__)
 
@@ -26,7 +27,10 @@ class MemoryPoolManager:
 
     def __init__(self, config: dict = None):
         self.config = config or get_project_config().get_spatial_optim_config()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Используем DeviceManager для консистентного управления устройствами
+        self.device_manager = get_device_manager()
+        self.device = self.device_manager.get_device()
 
         # Memory pools по типам tensor'ов
         self.tensor_pools: Dict[Tuple[int, ...], List[torch.Tensor]] = {}
@@ -42,7 +46,9 @@ class MemoryPoolManager:
             "gc_calls": 0,
         }
 
-        logger.info(f"💾 MemoryPoolManager инициализирован для {self.device}")
+        logger.info(
+            f"💾 MemoryPoolManager инициализирован через DeviceManager для {self.device}"
+        )
 
     def get_tensor(
         self, shape: Tuple[int, ...], dtype: torch.dtype = torch.float32
@@ -66,8 +72,8 @@ class MemoryPoolManager:
             self.stats["pool_hits"] += 1
             return tensor
 
-        # Создаем новый tensor
-        tensor = torch.zeros(shape, dtype=dtype, device=self.device)
+        # Создаем новый tensor через DeviceManager для безопасного выделения памяти
+        tensor = self.device_manager.allocate_tensor(shape, dtype=dtype)
         self.stats["pool_misses"] += 1
         self._track_allocation(tensor)
 
@@ -111,7 +117,7 @@ class MemoryPoolManager:
             )
 
     def garbage_collect(self):
-        """Принудительная очистка памяти"""
+        """Принудительная очистка памяти через DeviceManager"""
         # Очищаем списки неиспользуемых tensor'ов
         self.allocated_tensors = [t for t in self.allocated_tensors if t.numel() > 0]
 
@@ -120,15 +126,13 @@ class MemoryPoolManager:
             if len(pool) > 5:  # Оставляем только 5 newest tensor'ов
                 pool[:] = pool[-5:]
 
-        # Python garbage collection
-        gc.collect()
-
-        # CUDA memory cleanup
-        if self.device.type == "cuda":
-            torch.cuda.empty_cache()
+        # Используем DeviceManager для централизованной очистки памяти
+        self.device_manager.cleanup()
 
         self.stats["gc_calls"] += 1
-        logger.debug(f"   🧹 Memory cleanup: GC вызван #{self.stats['gc_calls']}")
+        logger.debug(
+            f"   🧹 Memory cleanup через DeviceManager: GC вызван #{self.stats['gc_calls']}"
+        )
 
     def get_memory_stats(self) -> Dict[str, float]:
         """Получить статистику использования памяти"""
