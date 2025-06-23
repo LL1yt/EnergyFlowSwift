@@ -31,6 +31,14 @@ from .io import IOPointPlacer
 # from .topology import NeighborTopology
 from .lattice import Lattice3D, create_lattice
 
+# Добавляем импорты для новых GPU spatial компонентов
+from .gpu_spatial_hashing import (
+    AdaptiveGPUSpatialHash,
+    GPUSpatialHashGrid,
+    GPUMortonEncoder,
+    GPUSpatialHashingStats,
+)
+
 # Определяем, что будет импортировано при `from . import *`
 __all__ = [
     # Из lattice.py

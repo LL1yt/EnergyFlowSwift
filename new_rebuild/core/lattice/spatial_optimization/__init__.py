@@ -25,6 +25,17 @@ from .parallel_processor import ParallelSpatialProcessor
 from ....config.project_config import ChunkInfo, create_spatial_config_for_lattice
 from ....config.project_config import ProjectConfig
 
+# Добавляем импорты для новых adaptive компонентов
+from .adaptive_chunker import (
+    AdaptiveGPUChunker,
+    AdaptiveChunkInfo,
+    ChunkProcessingTask,
+    AdaptiveMemoryPredictor,
+    ChunkScheduler,
+)
+
+from .gpu_spatial_processor import GPUSpatialProcessor, SpatialQuery, SpatialQueryResult
+
 
 def get_spatial_config_from_project(project_config: ProjectConfig) -> dict:
     """Получить spatial optimization конфигурацию из ProjectConfig"""
