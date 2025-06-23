@@ -222,9 +222,11 @@ class MoESpatialOptimizationTest:
             # Получаем всех соседей с адаптивным радиусом
             cell_coords = optimizer.pos_helper.to_3d_coordinates(cell_idx)
 
-            # Адаптивный радиус в зависимости от размера решетки
-            max_dim = max(dimensions)
-            adaptive_radius = min(5.0, max_dim * 0.2)  # Не больше 20% от размера
+            # Адаптивный радиус из централизованной конфигурации
+            from new_rebuild.config.project_config import get_project_config
+
+            config = get_project_config()
+            adaptive_radius = config.calculate_adaptive_radius()
 
             all_neighbors = optimizer.find_neighbors_optimized(
                 cell_coords, radius=adaptive_radius

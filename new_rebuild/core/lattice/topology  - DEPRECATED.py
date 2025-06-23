@@ -125,7 +125,10 @@ class NeighborTopology:
         elif self.strategy == NeighborStrategy.HYBRID:
             return self._get_hybrid_neighbor_indices(linear_index)
         elif self.strategy == NeighborStrategy.TIERED:
-            return self._get_tiered_neighbor_indices(linear_index)
+            # return self._get_tiered_neighbor_indices(linear_index)
+            logger = get_logger(__name__)
+            logger.info(f"_get_tiered_neighbor_indices DEPRECATED")
+            return []
         else:
             raise ValueError(f"Unknown neighbor finding strategy: {self.strategy}")
 
@@ -176,10 +179,24 @@ class NeighborTopology:
 
         return local_neighbors + random_neighbors
 
+    '''DEPRECATED
     def _get_tiered_neighbor_indices(self, cell_idx: int) -> List[int]:
         """
-        Реализует трехуровневую гибридную стратегию, возвращая индексы.
+        DEPRECATED: Реализует трехуровневую гибридную стратегию, возвращая индексы.
+
+        ⚠️ ВНИМАНИЕ: Этот метод устарел и НЕ используется в текущей MoE архитектуре!
+
+        Проблемы:
+        - Hardcoded соотношения (0.7/0.2) НЕ соответствуют MoE (0.1/0.55/0.35)
+        - Hardcoded радиус 5.0 вместо adaptive_radius из конфигурации
+        - Текущая MoE архитектура использует MoESpatialOptimizer вместо NeighborTopology
+
+        Для MoE используйте:
+        - MoESpatialOptimizer._classify_neighbors_for_moe()
+        - ProjectConfig.calculate_adaptive_radius()
+        - connection_distributions из ProjectConfig
         """
+        # DEPRECATED: оставлено для Legacy совместимости, но НЕ используется в MoE
         if self._spatial_grid is None:
             raise RuntimeError(
                 "SpatialHashGrid не инициализирован для 'tiered' стратегии."
@@ -187,10 +204,11 @@ class NeighborTopology:
 
         current_coords_3d = self.pos_helper.to_3d_coordinates(cell_idx)
 
-        # 1. Local Tier (через Spatial Hashing)
+        # DEPRECATED: Эти значения НЕ соответствуют MoE архитектуре!
+        # Современная MoE: 10% local, 55% functional, 35% distant
         local_config = self.strategy_config.get("local_tier", {})
-        local_radius = local_config.get("radius", 5.0)
-        local_ratio = local_config.get("ratio", 0.7)
+        local_radius = local_config.get("radius", 5.0)  # DEPRECATED: hardcoded радиус
+        local_ratio = local_config.get("ratio", 0.7)  # DEPRECATED: 70% вместо 10%
         local_count = int(self.num_neighbors * local_ratio)
 
         local_indices = self._spatial_grid.query_radius(current_coords_3d, local_radius)
@@ -204,9 +222,11 @@ class NeighborTopology:
         else:
             final_local_indices = list(local_indices_set)
 
-        # 2. Functional Tier (случайные соседи)
+        # DEPRECATED: 20% functional вместо 55%
         functional_config = self.strategy_config.get("functional_tier", {})
-        functional_ratio = functional_config.get("ratio", 0.2)
+        functional_ratio = functional_config.get(
+            "ratio", 0.2
+        )  # DEPRECATED: 20% вместо 55%
         functional_count = int(self.num_neighbors * functional_ratio)
 
         exclude_indices = set(final_local_indices) | {cell_idx}
@@ -258,6 +278,8 @@ class NeighborTopology:
 
         final_indices = final_local_indices + functional_indices + long_range_indices
         return final_indices
+
+    '''
 
     def _apply_boundary_conditions(
         self, coords: Coordinates3D

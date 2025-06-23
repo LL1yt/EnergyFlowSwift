@@ -79,6 +79,13 @@ class ProjectConfig:
     max_neighbors: int = 10000  # Биологический максимум (10k связей)
     neighbor_finding_strategy: str = "tiered"
     dynamic_neighbor_count: bool = True  # Автоматический расчет на основе решетки
+
+    # === ADAPTIVE RADIUS (пространственный поиск соседей) ===
+    adaptive_radius_enabled: bool = True  # Включить адаптивный радиус
+    adaptive_radius_ratio: float = 0.3  # 30% от максимального размера решетки
+    adaptive_radius_max: float = 500.0  # Максимальный радиус (биологический лимит)
+    adaptive_radius_min: float = 1.5  # Минимальный радиус (локальные соседи)
+
     # neighbor_strategy_config:
     local_tier: float = 0.1  # 10% локальные (минимум для стабильности)
     functional_tier: float = 0.55  # 55% функциональные (уменьшено для CNF)
@@ -253,6 +260,12 @@ class ProjectConfig:
             "functional_tier": self.functional_tier,
             "distant_tier": self.distant_tier,
             "local_grid_cell_size": self.local_grid_cell_size,
+            # Добавляем adaptive radius конфигурацию
+            "adaptive_radius_enabled": self.adaptive_radius_enabled,
+            "adaptive_radius_ratio": self.adaptive_radius_ratio,
+            "adaptive_radius_max": self.adaptive_radius_max,
+            "adaptive_radius_min": self.adaptive_radius_min,
+            "adaptive_radius": self.calculate_adaptive_radius(),  # Вычисленное значение
         }
 
     def get_gating_config(self) -> Dict[str, Any]:
@@ -345,6 +358,28 @@ class ProjectConfig:
     def effective_neighbors(self) -> int:
         """Эффективное количество соседей (динамическое или фиксированное)"""
         return self.calculate_dynamic_neighbors()
+
+    def calculate_adaptive_radius(self) -> float:
+        """
+        Вычисляет адаптивный радиус поиска соседей
+
+        Returns:
+            Радиус поиска на основе размера решетки и настроек
+        """
+        if not self.adaptive_radius_enabled:
+            return self.adaptive_radius_max  # Возвращаем фиксированный радиус
+
+        # Получаем максимальный размер решетки
+        max_dimension = max(self.lattice_dimensions)
+
+        # Вычисляем адаптивный радиус как процент от размера
+        adaptive_radius = max_dimension * self.adaptive_radius_ratio
+
+        # Ограничиваем минимальными и максимальными значениями
+        adaptive_radius = max(self.adaptive_radius_min, adaptive_radius)
+        adaptive_radius = min(self.adaptive_radius_max, adaptive_radius)
+
+        return adaptive_radius
 
 
 # === ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР ===

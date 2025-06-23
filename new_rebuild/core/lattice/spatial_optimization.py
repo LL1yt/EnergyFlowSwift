@@ -30,6 +30,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 import gc
 
+from new_rebuild.config import project_config
+
 from .spatial_hashing import MortonEncoder, SpatialHashGrid, Coordinates3D
 from .position import Position3D, Coordinates3D
 from ...config import get_project_config
@@ -773,11 +775,15 @@ class MoESpatialOptimizer(SpatialOptimizer):
         if hasattr(self.moe_processor, "to"):
             self.moe_processor.to(self.device)
 
-        # MoE-специфичные настройки
+        # MoE-специфичные настройки из ProjectConfig
+        from new_rebuild.config.project_config import get_project_config
+
+        project_config = get_project_config()
+
         self.connection_distributions = {
-            "local": 0.10,
-            "functional": 0.55,
-            "distant": 0.35,
+            "local": project_config.local_connections_ratio,
+            "functional": project_config.functional_connections_ratio,
+            "distant": project_config.distant_connections_ratio,
         }
 
         logger.info(f"🔧 MoESpatialOptimizer готов для MoE архитектуры")
@@ -854,10 +860,14 @@ class MoESpatialOptimizer(SpatialOptimizer):
         chunk_neighbors = {"local": [], "functional": [], "distant": []}
 
         for cell_idx in chunk.cell_indices:
-            # Получаем всех соседей клетки
+            # Получаем всех соседей клетки с адаптивным радиусом
+            adaptive_radius = min(
+                project_config.calculate_adaptive_radius(),
+                self.config.max_search_radius,
+            )
             neighbors = self.find_neighbors_optimized(
                 self.pos_helper.to_3d_coordinates(cell_idx),
-                radius=self.config.max_search_radius,
+                radius=adaptive_radius,
             )
 
             # Классифицируем соседей по экспертам
@@ -895,13 +905,18 @@ class MoESpatialOptimizer(SpatialOptimizer):
         test_cells = chunk.cell_indices[: min(10, len(chunk.cell_indices))]
 
         for cell_idx in test_cells:
-            # Получаем ограниченное количество соседей (максимум 26)
+            # Получаем ограниченное количество соседей с адаптивным радиусом (для тестов)
+            adaptive_radius = min(
+                project_config.calculate_adaptive_radius()
+                * 0.5,  # 50% от адаптивного для быстрых тестов
+                self.config.max_search_radius,
+            )
             neighbors = self.find_neighbors_optimized(
                 self.pos_helper.to_3d_coordinates(cell_idx),
-                radius=min(3.0, self.config.max_search_radius),  # Маленький радиус
+                radius=adaptive_radius,
             )[
                 :26
-            ]  # Максимум 26 соседей
+            ]  # Максимум 26 соседей для тестов
 
             # Быстрая классификация соседей
             if neighbors:

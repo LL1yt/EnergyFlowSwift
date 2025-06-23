@@ -24,7 +24,8 @@ from ..cells import CellFactory, BaseCell
 from .enums import Face
 from .io import IOPointPlacer
 from .position import Position3D
-from .topology import NeighborTopology
+
+# from .topology import NeighborTopology
 
 
 class Lattice3D(nn.Module):
@@ -65,7 +66,7 @@ class Lattice3D(nn.Module):
 
         # Инициализация топологии соседства
         all_coords = self.pos_helper.get_all_coordinates()
-        self.topology = NeighborTopology(all_coords=all_coords)
+        # self.topology = NeighborTopology(all_coords=all_coords)
 
         # Размещение I/O точек (упрощенная версия)
         from .enums import PlacementStrategy
