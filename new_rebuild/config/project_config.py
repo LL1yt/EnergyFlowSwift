@@ -75,7 +75,7 @@ class ProjectConfig:
     signal_propagation: bool = True  # сигналы как нервные импульсы
     # === ТОПОЛОГИЯ СОСЕДСТВА (динамическая, зависит от размера решетки) ===
     # Обновленные пропорции: 10/55/35 для увеличения CNF влияния
-    neighbors: int = 26  # Базовое значение (3D Moore neighborhood)
+    neighbors: int = 26  # Базовое значение (legacy совместимость)
     max_neighbors: int = 10000  # Биологический максимум (10k связей)
     neighbor_finding_strategy: str = "tiered"
     dynamic_neighbor_count: bool = True  # Автоматический расчет на основе решетки
@@ -100,6 +100,11 @@ class ProjectConfig:
     gating_params: int = 808  # точно по спецификации
     gating_num_experts: int = 3  # количество экспертов
     gating_activation: str = "gelu"  # активация для gating network
+    gating_hidden_dim: int = 11  # скрытый слой для достижения 808 параметров
+
+    # === LOCAL EXPERT PARAMETERS ===
+    local_expert_alpha: float = 0.1  # adaptive weight mixing parameter
+    local_expert_beta: float = 0.9  # residual connection weight
 
     # === ЭКСПЕРТЫ И ИХ ПАРАМЕТРЫ ===
     # Local Expert (SimpleLinear) - рефлексы
@@ -155,13 +160,8 @@ class ProjectConfig:
         if self.device == "auto":
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # Синхронизация neighbor_count между NCA и GNN
-        if self.nca_neighbor_count != self.gnn_neighbor_count:
-            logging.warning(
-                f"⚠️ NCA neighbor_count ({self.nca_neighbor_count}) != GNN neighbor_count ({self.gnn_neighbor_count})"
-            )
-            # Принудительно синхронизируем
-            self.gnn_neighbor_count = self.nca_neighbor_count
+        # DEPRECATED: NCA синхронизация больше не нужна в MoE архитектуре
+        # В MoE архитектуре NCA заменен на GatingNetwork
 
         # Подсчет общего количества клеток
         self.total_cells = (
@@ -177,23 +177,17 @@ class ProjectConfig:
                 f"   Lattice: {self.lattice_dimensions} = {self.total_cells} cells"
             )
             logging.info(f"   Device: {self.device}")
-            logging.info(f"   NCA params target: {self.nca_target_params}")
-            logging.info(f"   GNN params target: {self.gnn_target_params}")
+            logging.info(f"   MoE Gating params target: {self.gating_params}")
+            logging.info(
+                f"   GNN Expert params target: {self.functional_expert_params}"
+            )
+            logging.info(f"   CNF Expert params target: {self.distant_expert_params}")
 
     # === МЕТОДЫ ДОСТУПА (совместимость с Legacy) ===
     def get_nca_config(self) -> Dict[str, Any]:
-        """Получить полную NCA конфигурацию"""
-        return {
-            "state_size": self.nca_state_size,
-            "hidden_dim": self.nca_hidden_dim,
-            "external_input_size": self.nca_external_input_size,
-            "neighbor_count": self.nca_neighbor_count,
-            "target_params": self.nca_target_params,
-            "activation": self.nca_activation,
-            "dropout": 0.0,
-            "use_memory": False,
-            "enable_lattice_scaling": False,
-        }
+        """DEPRECATED: NCA заменен на GatingNetwork в MoE"""
+        # Возвращаем конфигурацию GatingNetwork для совместимости
+        return self.get_gating_config()
 
     def get_gnn_config(self) -> Dict[str, Any]:
         """Получить полную GNN конфигурацию (замена gMLP)"""
@@ -234,7 +228,7 @@ class ProjectConfig:
         return {
             "dimensions": self.lattice_dimensions,
             "total_cells": self.total_cells,
-            "neighbors": self.nca_neighbor_count,  # синхронизировано
+            # "neighbors": self.effective_neighbors,  # используем динамические соседи
             "device": self.device,
             "enable_logging": self.enable_logging,
             "seed": self.seed,
@@ -261,10 +255,62 @@ class ProjectConfig:
             "local_grid_cell_size": self.local_grid_cell_size,
         }
 
+    def get_gating_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию GatingNetwork (замена NCA)"""
+        return {
+            "state_size": self.gating_state_size,
+            "num_experts": self.gating_num_experts,
+            "target_params": self.gating_params,
+            "activation": self.gating_activation,
+            "hidden_dim": self.gating_hidden_dim,
+        }
+
+    def get_local_expert_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию Local Expert"""
+        return {
+            "type": self.local_expert_type,
+            "params": self.local_expert_params,
+            "alpha": self.local_expert_alpha,
+            "beta": self.local_expert_beta,
+        }
+
+    def get_moe_config(self) -> Dict[str, Any]:
+        """Получить полную конфигурацию MoE архитектуры"""
+        return {
+            "enable_moe": self.enable_moe,
+            "gating_config": self.get_gating_config(),
+            "experts": {
+                "local": {
+                    "type": self.local_expert_type,
+                    "params": self.local_expert_params,
+                    "ratio": self.local_connections_ratio,
+                },
+                "functional": {
+                    "type": self.functional_expert_type,
+                    "params": self.functional_expert_params,
+                    "ratio": self.functional_connections_ratio,
+                },
+                "distant": {
+                    "type": self.distant_expert_type,
+                    "params": self.distant_expert_params,
+                    "ratio": self.distant_connections_ratio,
+                },
+            },
+            "thresholds": {
+                "local_distance": self.local_distance_threshold,
+                "functional_similarity": self.functional_similarity_threshold,
+            },
+        }
+
     @property
     def total_target_params(self) -> int:
-        """Общее количество целевых параметров"""
-        return self.nca_target_params + self.gnn_target_params
+        """Общее количество целевых параметров MoE"""
+        return (
+            self.gating_params
+            + self.local_expert_params
+            + self.functional_expert_params
+            + self.distant_expert_params
+        )
 
     @property
     def neighbor_strategy_config(self) -> Dict[str, Any]:
@@ -285,7 +331,7 @@ class ProjectConfig:
         total_cells = self.total_cells
 
         if total_cells <= 216:  # 6x6x6
-            return 26  # Стандартное 3D Moore neighborhood (минимум)
+            return 26  # Базовое фиксированное соседство (минимум)
         elif total_cells <= 4096:  # 16x16x16
             return 500  # Средний размер для тестирования
         elif total_cells <= 19683:  # 27x27x27
@@ -293,7 +339,7 @@ class ProjectConfig:
         elif total_cells <= 262144:  # 64x64x64
             return 5000  # Большие решетки
         else:  # Крупные решетки (666x666x333)
-            return min(self.max_neighbors, 10000)  # Биологический максимум
+            return min(self.max_neighbors, 19683)  # Биологический максимум
 
     @property
     def effective_neighbors(self) -> int:

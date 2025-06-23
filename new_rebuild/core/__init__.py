@@ -42,10 +42,3 @@ __all__ = [
     "create_lattice",
     "NeighborTopology",
 ]
-
-# Добавляем deprecated компоненты если доступны
-if _NCA_AVAILABLE:
-    __all__.append("NCACell")  # DEPRECATED - используйте MoE GatingNetwork
-
-if _GMLP_AVAILABLE:
-    __all__.append("GMLPCell")  # DEPRECATED - используйте GNNCell

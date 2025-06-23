@@ -64,7 +64,7 @@ def test_individual_experts():
     functional_params = sum(p.numel() for p in functional_expert.parameters())
 
     print(
-        f"   Параметры: {functional_params} (цель: {config.hybrid_gnn_cnf_expert_params})"
+        f"   Параметры: {functional_params} (цель: {config.functional_expert_params})"
     )
     print(f"   Выход: {functional_result['new_state'].shape}")
     print(f"   GNN/CNF веса: {functional_result['gating_weight']:.3f}")
@@ -180,24 +180,19 @@ def test_lattice_integration():
 
     config = get_project_config()
 
-    # Создаем решетку
-    lattice = Lattice3D(
-        dimensions=config.lattice_dimensions,
-        state_size=config.gnn_state_size,
-        cell_type="moe",
-        boundary_condition="periodic",
-    )
+    # Создаем решетку (все параметры из ProjectConfig)
+    lattice = Lattice3D()
 
     print(f"   Создана решетка: {config.lattice_dimensions}")
-    print(f"   Общее количество клеток: {lattice.total_cells}")
-    print(f"   Размер состояния: {lattice.state_size}")
+    print(f"   Общее количество клеток: {lattice.pos_helper.total_positions}")
+    print(f"   Размер состояния: {lattice.states.shape[-1]}")
 
     # Создаем MoE процессор для тестирования
     moe_processor = MoEConnectionProcessor(state_size=config.gnn_state_size)
 
     # Получаем случайную клетку и ее соседей
     cell_idx = 1000
-    neighbor_indices = lattice.get_neighbors(cell_idx)
+    neighbor_indices = lattice.topology.get_neighbor_indices(cell_idx)
 
     print(f"   Клетка {cell_idx} имеет {len(neighbor_indices)} соседей")
 
@@ -248,7 +243,10 @@ def test_parameter_targets():
     # Проверка соответствия
     targets = {
         "Local Expert": (local_params, config.local_expert_params),
-        "Functional Expert": (functional_params, config.hybrid_gnn_cnf_expert_params),
+        "Functional Expert": (
+            functional_params,
+            config.functional_expert_params,
+        ),  # hybrid_gnn_cnf_expert
         "Distant Expert": (distant_params, config.distant_expert_params),
         "Gating Network": (gating_params, config.gating_params),
     }

@@ -58,15 +58,8 @@ class GatingNetwork(nn.Module):
         # Input: state_size + neighbor_activity = 32 + 32 = 64
         input_size = self.state_size * 2
 
-        # Находим оптимальный hidden_dim для 808 параметров
-        # Layer1: 64 -> hidden_dim (with bias): 64 * hidden_dim + hidden_dim
-        # Layer2: hidden_dim -> 3 (with bias): hidden_dim * 3 + 3
-        # Total: hidden_dim * (64 + 1 + 3) + 3 = hidden_dim * 68 + 3
-        # 808 = hidden_dim * 68 + 3
-        # 805 = hidden_dim * 68
-        # hidden_dim ≈ 11.8 → 12
-
-        hidden_dim = 11  # Корректировка для точного попадания
+        # Получаем hidden_dim из централизованной конфигурации
+        hidden_dim = config.gating_hidden_dim  # Централизованное значение
 
         self.gating_network = nn.Sequential(
             nn.Linear(input_size, hidden_dim, bias=True),  # 64*11 + 11 = 715
@@ -196,8 +189,8 @@ class MoEConnectionProcessor(nn.Module):
         self.functional_expert = HybridGNN_CNF_Expert(
             state_size=self.state_size,
             neighbor_count=self.neighbor_count,
-            target_params=config.hybrid_gnn_cnf_expert_params,  # 12233
-            cnf_params=config.cnf_expert_params,  # 3000
+            target_params=config.functional_expert_params,  # 8233 (обновлено)
+            cnf_params=config.distant_expert_params,  # 4000 (обновлено)
         )
 
         # 3. Distant Expert - долгосрочная память (LightweightCNF)
@@ -246,7 +239,7 @@ class MoEConnectionProcessor(nn.Module):
             f"  Local Expert: {expert_params['local']} (цель: {config.local_expert_params})"
         )
         logger.info(
-            f"  Functional Expert: {expert_params['functional']} (цель: {config.hybrid_gnn_cnf_expert_params})"
+            f"  Functional Expert: {expert_params['functional']} (цель: {config.functional_expert_params})"
         )
         logger.info(
             f"  Distant Expert: {expert_params['distant']} (цель: {config.distant_expert_params})"
@@ -292,7 +285,7 @@ class MoEConnectionProcessor(nn.Module):
 
         # 1. Классификация связей по типам
         connection_classification = self.connection_classifier.classify_connections(
-            cell_idx, neighbor_indices
+            cell_idx, neighbor_indices, current_state[0], neighbor_states[0]
         )
 
         # 2. Подготовка входов для экспертов
@@ -304,10 +297,10 @@ class MoEConnectionProcessor(nn.Module):
         expert_outputs = []
 
         # Local Expert (10%)
-        local_neighbors = self._filter_neighbors(
-            neighbor_states,
-            neighbor_indices,
-            connection_classification.get("local", []),
+        local_connections = connection_classification.get(ConnectionCategory.LOCAL, [])
+        local_indices = [conn.target_idx for conn in local_connections]
+        local_neighbors = self._filter_neighbors_by_indices(
+            neighbor_states, neighbor_indices, local_indices
         )
         if local_neighbors.shape[1] > 0:
             local_result = self.local_expert(current_state, local_neighbors)
@@ -317,10 +310,12 @@ class MoEConnectionProcessor(nn.Module):
         expert_outputs.append(local_result)
 
         # Functional Expert (55%)
-        functional_neighbors = self._filter_neighbors(
-            neighbor_states,
-            neighbor_indices,
-            connection_classification.get("functional", []),
+        functional_connections = connection_classification.get(
+            ConnectionCategory.FUNCTIONAL, []
+        )
+        functional_indices = [conn.target_idx for conn in functional_connections]
+        functional_neighbors = self._filter_neighbors_by_indices(
+            neighbor_states, neighbor_indices, functional_indices
         )
         if functional_neighbors.shape[1] > 0:
             functional_result_dict = self.functional_expert(
@@ -333,10 +328,12 @@ class MoEConnectionProcessor(nn.Module):
         expert_outputs.append(functional_result)
 
         # Distant Expert (35%)
-        distant_neighbors = self._filter_neighbors(
-            neighbor_states,
-            neighbor_indices,
-            connection_classification.get("distant", []),
+        distant_connections = connection_classification.get(
+            ConnectionCategory.DISTANT, []
+        )
+        distant_indices = [conn.target_idx for conn in distant_connections]
+        distant_neighbors = self._filter_neighbors_by_indices(
+            neighbor_states, neighbor_indices, distant_indices
         )
         if distant_neighbors.shape[1] > 0:
             distant_result = self.distant_expert(current_state, distant_neighbors)
@@ -365,13 +362,13 @@ class MoEConnectionProcessor(nn.Module):
                 "distant": expert_weights[:, 2].mean().item(),
             },
             "connection_counts": {
-                "local": local_neighbors.shape[1],
-                "functional": functional_neighbors.shape[1],
-                "distant": distant_neighbors.shape[1],
+                "local": len(local_indices),
+                "functional": len(functional_indices),
+                "distant": len(distant_indices),
             },
         }
 
-    def _filter_neighbors(
+    def _filter_neighbors_by_indices(
         self,
         neighbor_states: torch.Tensor,
         neighbor_indices: List[int],

@@ -114,12 +114,13 @@ class Lattice3D(nn.Module):
         """
         # Преобразуем ProjectConfig в словарь для NCA/gMLP клеток
         if self.config.architecture_type == "nca":
+            # NCA DEPRECATED: используем GNN параметры для совместимости
             nca_config = {
-                "state_size": self.config.nca_state_size,
-                "hidden_dim": self.config.nca_hidden_dim,
-                "neighbor_count": self.config.nca_neighbor_count,
-                "activation": self.config.nca_activation,
-                "target_params": self.config.nca_target_params,
+                "state_size": self.config.gnn_state_size,  # Используем GNN параметры
+                "hidden_dim": 3,  # Жестко задаем для NCA
+                "neighbor_count": self.config.gnn_neighbor_count,  # Синхронизация
+                "activation": "tanh",  # Стандартная NCA активация
+                "target_params": 69,  # Стандартные NCA параметры
                 "device": self.config.device,
                 "debug_mode": self.config.debug_mode,
             }
@@ -171,6 +172,22 @@ class Lattice3D(nn.Module):
                 "debug_mode": self.config.debug_mode,
             }
             cell = self.cell_factory.create_cell("gnn", gnn_config)
+        elif self.config.architecture_type == "moe":
+            # MoE архитектура: используем GNN как базовую клетку
+            # MoE процессор будет создаваться отдельно на уровне выше
+            gnn_config = {
+                "state_size": self.config.gnn_state_size,
+                "message_dim": self.config.gnn_message_dim,
+                "hidden_dim": self.config.gnn_hidden_dim,
+                "neighbor_count": self.config.gnn_neighbor_count,
+                "external_input_size": self.config.gnn_external_input_size,
+                "activation": self.config.gnn_activation,
+                "target_params": self.config.gnn_target_params,
+                "use_attention": self.config.gnn_use_attention,
+                "device": self.config.device,
+                "debug_mode": self.config.debug_mode,
+            }
+            cell = self.cell_factory.create_cell("gnn", gnn_config)
         else:
             raise ValueError(
                 f"Неподдерживаемый тип архитектуры: {self.config.architecture_type}"
@@ -194,8 +211,15 @@ class Lattice3D(nn.Module):
             elif self.config.architecture_type == "gmlp":
                 # Legacy: gMLP теперь использует GNN параметры
                 state_size = self.config.gnn_state_size
-            else:  # hybrid
-                state_size = max(self.config.nca_state_size, self.config.gnn_state_size)
+            elif self.config.architecture_type == "hybrid":
+                # Hybrid использует GNN параметры (NCA deprecated)
+                state_size = self.config.gnn_state_size
+            elif self.config.architecture_type == "moe":
+                # MoE использует GNN параметры как базовые
+                state_size = self.config.gnn_state_size
+            else:
+                # Fallback
+                state_size = self.config.gnn_state_size
 
         dims = (self.pos_helper.total_positions, state_size)
 

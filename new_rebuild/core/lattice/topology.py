@@ -65,19 +65,12 @@ class NeighborTopology:
         # Стратегия поиска соседей - используем hybrid по умолчанию
         self.strategy = NeighborStrategy.HYBRID
 
-        # Количество соседей - синхронизированное значение
-        if self.config.architecture_type == "nca":
-            self.num_neighbors = self.config.nca_neighbor_count
-        elif self.config.architecture_type == "gnn":
+        if self.config.architecture_type == "moe":
+            # Для MoE используем effective_neighbors (динамический расчет)
+            self.num_neighbors = self.config.effective_neighbors
+        else:
+            # Fallback для других архитектур
             self.num_neighbors = self.config.gnn_neighbor_count
-        elif self.config.architecture_type == "gmlp":
-            # Legacy совместимость: gMLP → GNN
-            self.num_neighbors = self.config.gnn_neighbor_count
-        else:  # hybrid
-            # Для hybrid берем максимальное значение
-            self.num_neighbors = max(
-                self.config.nca_neighbor_count, self.config.gnn_neighbor_count
-            )
 
         # Конфигурация стратегии (можно расширить в будущем)
         self.strategy_config = {

@@ -95,13 +95,12 @@ class HybridGNN_CNF_Expert(nn.Module):
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
         self.state_size = state_size or config.gnn_state_size  # 32
-        self.neighbor_count = (
-            neighbor_count or config.effective_neighbors
-        )  # Динамический расчет
         self.target_params = (
-            target_params or config.hybrid_gnn_cnf_expert_params
-        )  # 12233
-        self.cnf_params = cnf_params or config.cnf_expert_params  # 3000
+            target_params or config.functional_expert_params
+        )  # 8233 (обновлено в MoE)
+        self.cnf_params = (
+            cnf_params or config.distant_expert_params
+        )  # 4000 (обновлено в MoE)
 
         # === КОМПОНЕНТЫ ГИБРИДНОГО ЭКСПЕРТА ===
 

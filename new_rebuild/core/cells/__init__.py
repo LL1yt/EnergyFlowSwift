@@ -16,6 +16,7 @@ from .base_cell import BaseCell, CellFactory
 from .gnn_cell import GNNCell
 
 # DEPRECATED компоненты (для обратной совместимости)
+"""
 try:
     from .nca_cell import NCACell  # DEPRECATED: заменен на GatingNetwork
 
@@ -29,17 +30,10 @@ try:
     _GMLP_AVAILABLE = True
 except ImportError:
     _GMLP_AVAILABLE = False
-
+"""
 # Основные активные компоненты
 __all__ = [
     "BaseCell",
     "GNNCell",  # Единственная активная клетка (для Functional Expert)
     "CellFactory",
 ]
-
-# Добавляем deprecated компоненты если доступны
-if _NCA_AVAILABLE:
-    __all__.append("NCACell")  # DEPRECATED - используйте MoE GatingNetwork
-
-if _GMLP_AVAILABLE:
-    __all__.append("GMLPCell")  # DEPRECATED - используйте GNNCell

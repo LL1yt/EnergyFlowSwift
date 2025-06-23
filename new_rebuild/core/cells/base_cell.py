@@ -109,23 +109,9 @@ class CellFactory:
         Returns:
             Экземпляр клетки
         """
-        if cell_type == "nca":
-            from .nca_cell import NCACell
-
-            return NCACell(**config)
-        elif cell_type == "gnn":
+        if cell_type == "gnn":
             from .gnn_cell import GNNCell
 
             return GNNCell(**config)
-        elif cell_type == "gmlp":
-            # Legacy совместимость: gmlp теперь возвращает GNNCell
-            from .gnn_cell import GNNCell
-
-            logger.warning("⚠️ gmlp is deprecated, using GNN instead")
-            return GNNCell(**config)
-        elif cell_type == "hybrid":
-            from .hybrid_cell import HybridCell
-
-            return HybridCell(**config)
         else:
             raise ValueError(f"Unknown cell type: {cell_type}")
