@@ -17,6 +17,7 @@ import logging
 import torch
 from datetime import datetime
 import json
+from ...utils.logging import get_logger
 
 from ...config import get_project_config
 from .enums import BoundaryCondition, NeighborStrategy
@@ -70,7 +71,9 @@ class NeighborTopology:
             self.num_neighbors = self.config.effective_neighbors
         else:
             # Fallback для других архитектур
-            self.num_neighbors = self.config.gnn_neighbor_count
+            logger = get_logger(__name__)
+            logger.info(f"Fallback to effective_neighbors")
+            self.num_neighbors = self.config.effective_neighbors
 
         # Конфигурация стратегии (можно расширить в будущем)
         self.strategy_config = {

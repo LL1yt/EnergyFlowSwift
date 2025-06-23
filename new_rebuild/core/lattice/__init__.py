@@ -18,6 +18,14 @@
 from .enums import Face, BoundaryCondition, PlacementStrategy, NeighborStrategy
 from .position import Position3D, Coordinates3D, Dimensions3D
 from .spatial_hashing import SpatialHashGrid, MortonEncoder
+from .spatial_optimization import (
+    SpatialOptimizer,
+    create_spatial_optimizer,
+    estimate_memory_requirements,
+    MoESpatialOptimizer,
+    create_moe_spatial_optimizer,
+    estimate_moe_memory_requirements,
+)
 from .io import IOPointPlacer
 from .topology import NeighborTopology
 from .lattice import Lattice3D, create_lattice
@@ -41,6 +49,13 @@ __all__ = [
     # Из spatial_hashing.py
     "SpatialHashGrid",
     "MortonEncoder",
+    # Из spatial_optimization.py
+    "SpatialOptimizer",
+    "create_spatial_optimizer",
+    "estimate_memory_requirements",
+    "MoESpatialOptimizer",
+    "create_moe_spatial_optimizer",
+    "estimate_moe_memory_requirements",
     # Из io.py
     "IOPointPlacer",
 ]
