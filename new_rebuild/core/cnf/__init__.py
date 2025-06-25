@@ -24,6 +24,26 @@ DEPRECATED:
 from .lightweight_cnf import LightweightCNF, NeuralODE, ConnectionType
 from .euler_solver import EulerSolver
 
+# NEW: GPU Optimized Euler Solver (v2.0)
+from .gpu_optimized_euler_solver import (
+    GPUOptimizedEulerSolver,
+    SolverConfig,
+    AdaptiveMethod,
+    IntegrationResult,
+    create_gpu_optimized_euler_solver,
+    batch_euler_solve,
+    benchmark_solver_performance
+)
+
+# NEW: GPU Enhanced CNF (v2.0)
+from .gpu_enhanced_cnf import (
+    GPUEnhancedCNF,
+    VectorizedNeuralODE,
+    BatchProcessingMode,
+    create_gpu_enhanced_cnf,
+    benchmark_cnf_performance
+)
+
 # DEPRECATED компоненты (для обратной совместимости)
 try:
     from .connection_classifier import (
@@ -42,6 +62,22 @@ __all__ = [
     "NeuralODE",
     "ConnectionType",
     "EulerSolver",
+    
+    # NEW: GPU Optimized Solver (v2.0)
+    "GPUOptimizedEulerSolver",
+    "SolverConfig",
+    "AdaptiveMethod",
+    "IntegrationResult",
+    "create_gpu_optimized_euler_solver",
+    "batch_euler_solve",
+    "benchmark_solver_performance",
+    
+    # NEW: GPU Enhanced CNF (v2.0)
+    "GPUEnhancedCNF",
+    "VectorizedNeuralODE",
+    "BatchProcessingMode",
+    "create_gpu_enhanced_cnf",
+    "benchmark_cnf_performance",
 ]
 
 # Добавляем deprecated компоненты если доступны
