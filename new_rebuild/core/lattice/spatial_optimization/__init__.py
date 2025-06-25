@@ -76,17 +76,17 @@ def get_spatial_config_from_project(project_config: ProjectConfig) -> dict:
 
 
 # Фабричные функции (из moe_spatial_optimizer.py)
-from .moe_spatial_optimizer import (
-    create_moe_spatial_optimizer,
-    estimate_moe_memory_requirements,
-)
-from .spatial_optimizer import create_spatial_optimizer, estimate_memory_requirements
+# from .moe_spatial_optimizer import (
+#    create_moe_spatial_optimizer,
+#    estimate_moe_memory_requirements,
+# )
+# from .spatial_optimizer import create_spatial_optimizer, estimate_memory_requirements
 
 # Экспорты для обратной совместимости и новые компоненты
 __all__ = [
     # DEPRECATED: Основные классы (используйте UnifiedSpatialOptimizer)
-    "SpatialOptimizer",  # DEPRECATED
-    "MoESpatialOptimizer",  # DEPRECATED
+    # "SpatialOptimizer",  # DEPRECATED
+    # "MoESpatialOptimizer",  # DEPRECATED
     # NEW: Unified Spatial Optimizer
     "UnifiedSpatialOptimizer",
     "create_unified_spatial_optimizer",
@@ -103,10 +103,10 @@ __all__ = [
     "create_spatial_config_for_lattice",
     "get_spatial_config_from_project",
     # Фабричные функции
-    "create_moe_spatial_optimizer",
-    "create_spatial_optimizer",
-    "estimate_moe_memory_requirements",
-    "estimate_memory_requirements",
+    # "create_moe_spatial_optimizer",
+    # "create_spatial_optimizer",
+    # "estimate_moe_memory_requirements",
+    # "estimate_memory_requirements",
     # GPU Spatial Optimization Components
     "AdaptiveGPUChunker",
     "AdaptiveChunkInfo",
