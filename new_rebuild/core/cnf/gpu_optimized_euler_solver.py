@@ -94,6 +94,17 @@ class GPUOptimizedEulerSolver(nn.Module):
         self.device_manager = get_device_manager()
         self.device = self.device_manager.get_device()
 
+        # Приведение adaptive_method к Enum, если это строка
+        if isinstance(self.config.adaptive_method, str):
+            try:
+                self.config.adaptive_method = AdaptiveMethod[
+                    self.config.adaptive_method.upper()
+                ]
+            except Exception:
+                logger.warning(
+                    f"Неизвестный adaptive_method: {self.config.adaptive_method}, используется как строка."
+                )
+
         # Learnable parameters
         self.base_dt = nn.Parameter(torch.tensor(self.config.base_dt))
         self.lipschitz_factor = nn.Parameter(
@@ -116,7 +127,10 @@ class GPUOptimizedEulerSolver(nn.Module):
         self._max_pool_size = 5  # Максимум кэшированных размеров
 
         logger.info(f"🚀 GPUOptimizedEulerSolver инициализирован:")
-        logger.info(f"   🎯 Adaptive method: {self.config.adaptive_method.value}")
+        if isinstance(self.config.adaptive_method, AdaptiveMethod):
+            logger.info(f"   🎯 Adaptive method: {self.config.adaptive_method.value}")
+        else:
+            logger.info(f"   🎯 Adaptive method: {self.config.adaptive_method}")
         logger.info(f"   📊 Max batch size: {self.config.max_batch_size}")
         logger.info(f"   💾 Memory efficient: {self.config.memory_efficient}")
         logger.info(f"   🖥️ Device: {self.device}")

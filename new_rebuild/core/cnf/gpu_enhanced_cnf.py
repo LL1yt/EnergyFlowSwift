@@ -251,13 +251,13 @@ class GPUEnhancedCNF(nn.Module):
         log_cell_init(
             cell_type="GPUEnhancedCNF",
             total_params=total_params,
-            target_params=get_project_config().cnf_target_params_per_connection,
+            target_params=get_project_config().cnf.target_params_per_connection,
             state_size=state_size,
-            connection_type=connection_type.value,
+            connection_type=connection_type.value if isinstance(connection_type, Enum) else connection_type,
             integration_steps=integration_steps,
-            batch_mode=batch_processing_mode.value,
+            batch_mode=batch_processing_mode.value if isinstance(batch_processing_mode, Enum) else batch_processing_mode,
             max_batch_size=max_batch_size,
-            adaptive_method=adaptive_method.value
+            adaptive_method=adaptive_method.value if isinstance(adaptive_method, Enum) else adaptive_method
         )
     
     def _create_derivative_function(self, neighbor_influences: torch.Tensor):
