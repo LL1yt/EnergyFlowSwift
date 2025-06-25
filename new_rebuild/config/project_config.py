@@ -331,6 +331,15 @@ class ConnectionInfoConfig:
     functional_similarity: Optional[float] = None
 
 
+@dataclass
+class Lattice3DConfig:
+    spatial_mode: str = "AUTO"
+    enable_moe: bool = True
+    enable_morton_encoding: bool = True
+    target_performance_ms: float = 50.0
+    fallback_enabled: bool = False
+
+
 # === ГЛАВНЫЙ КОНФИГУРАЦИОННЫЙ КЛАСС ===
 
 
@@ -360,6 +369,7 @@ class ProjectConfig:
     adaptive_chunker: AdaptiveChunkerConfig = field(default_factory=AdaptiveChunkerConfig)
     unified_spatial_optimizer: UnifiedSpatialOptimizerConfig = field(default_factory=UnifiedSpatialOptimizerConfig)
     unified_optimizer: UnifiedSpatialOptimizerConfig = field(default_factory=UnifiedSpatialOptimizerConfig)
+    lattice3d: Lattice3DConfig = field(default_factory=Lattice3DConfig)
 
     # --- Вычисляемые и Runtime-свойства ---
     device_manager: DeviceManager = field(init=False)

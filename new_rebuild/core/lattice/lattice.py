@@ -80,12 +80,13 @@ class Lattice3D(nn.Module):
         self.cells = self._create_gnn_cells()
 
         # Unified Spatial Optimizer с MoE поддержкой
+        lattice3d_cfg = self.config.lattice3d
         spatial_config = OptimizationConfig(
-            mode=OptimizationMode.AUTO,  # Автоматический выбор лучшего режима
-            enable_moe=True,  # Включаем MoE поддержку
-            enable_morton_encoding=True,  # Включаем Morton encoding для GPU
-            target_performance_ms=50.0,  # Целевая производительность
-            fallback_enabled=True,  # Включаем fallback на CPU при ошибках GPU
+            mode=OptimizationMode[lattice3d_cfg.spatial_mode],
+            enable_moe=lattice3d_cfg.enable_moe,
+            enable_morton_encoding=lattice3d_cfg.enable_morton_encoding,
+            target_performance_ms=lattice3d_cfg.target_performance_ms,
+            fallback_enabled=lattice3d_cfg.fallback_enabled,
         )
 
         # Создаем унифицированный оптимизатор (MoE processor будет добавлен позже в forward)
