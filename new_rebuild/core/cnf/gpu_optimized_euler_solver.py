@@ -637,7 +637,9 @@ class GPUOptimizedEulerSolver(nn.Module):
         # Создаем trajectory tensor если нужно
         trajectory = None
         if return_trajectory and trajectory_list:
-            trajectory = torch.stack([initial_states] + trajectory_list, dim=0)
+            # Убеждаемся, что initial_states на том же устройстве, что и trajectory_list
+            initial_states_device = initial_states.to(self.device)
+            trajectory = torch.stack([initial_states_device] + trajectory_list, dim=0)
         
         success = (current_time >= integration_time_tensor * 0.95).all().item()
         
