@@ -25,30 +25,13 @@ import threading
 from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor, Future
 
-try:
-    from ....config.project_config import get_project_config
-
-    # from ..spatial_hashing import Coordinates3D
-    from ..position import Position3D
-    from ....utils.logging import get_logger
-    from ....utils.device_manager import get_device_manager
-    from .memory_manager import MemoryPoolManager
-except ImportError:
-    # Fallback для прямого запуска
-    import sys
-    import os
-
-    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-    from config.project_config import get_project_config
-
-    # from core.lattice.spatial_hashing import Coordinates3D
-    from core.lattice.position import Position3D
-    from utils.logging import get_logger
-    from utils.device_manager import get_device_manager
-    from core.lattice.spatial_optimization.memory_manager import MemoryPoolManager
+from ....config import get_project_config, AdaptiveChunkerConfig
+from ..position import Position3D
+from ....utils.logging import get_logger
+from ....utils.device_manager import get_device_manager
+from .memory_manager import get_memory_pool_manager
 
 logger = get_logger(__name__)
-
 
 Coordinates3D = Tuple[int, int, int]
 
@@ -301,7 +284,7 @@ class AdaptiveGPUChunker:
         self.device = self.device_manager.get_device()
 
         # Memory management
-        self.memory_manager = MemoryPoolManager(self.config)
+        self.memory_manager = get_memory_pool_manager(self.config)
 
         # Performance monitoring
         self.performance_stats = {

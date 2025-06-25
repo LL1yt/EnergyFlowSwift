@@ -82,11 +82,9 @@ class Lattice3D(nn.Module):
         # Unified Spatial Optimizer с MoE поддержкой
         lattice3d_cfg = self.config.lattice3d
         spatial_config = OptimizationConfig(
-            mode=OptimizationMode[lattice3d_cfg.spatial_mode],
             enable_moe=lattice3d_cfg.enable_moe,
             enable_morton_encoding=lattice3d_cfg.enable_morton_encoding,
             target_performance_ms=lattice3d_cfg.target_performance_ms,
-            fallback_enabled=lattice3d_cfg.fallback_enabled,
         )
 
         # Создаем унифицированный оптимизатор (MoE processor будет добавлен позже в forward)

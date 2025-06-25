@@ -27,27 +27,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 
-try:
-    from ....config.project_config import get_project_config
-    from ....utils.logging import get_logger
-    from ....utils.device_manager import get_device_manager
-    from ..position import Position3D
-
-    # from .hierarchical_index import HierarchicalSpatialIndex
-    # from ..spatial_hashing import SpatialHashGrid
-    from .gpu_spatial_processor import GPUSpatialProcessor, SpatialQueryResult
-    from .adaptive_chunker import AdaptiveGPUChunker
-    from ..gpu_spatial_hashing import AdaptiveGPUSpatialHash, GPUMortonEncoder
-except ImportError:
-    # Fallback для прямого запуска
-    import sys
-    import os
-
-    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-    from config.project_config import get_project_config
-    from utils.logging import get_logger
-    from utils.device_manager import get_device_manager
-    from core.lattice.position import Position3D
+from ....config import get_project_config, UnifiedSpatialOptimizerConfig
+from ....utils.logging import get_logger
+from ....utils.device_manager import get_device_manager
+from ..position import Position3D
+from .gpu_spatial_processor import GPUSpatialProcessor
+from .adaptive_chunker import AdaptiveGPUChunker
+from ..gpu_spatial_hashing import AdaptiveGPUSpatialHash, GPUMortonEncoder
 
 logger = get_logger(__name__)
 
@@ -57,10 +43,7 @@ Coordinates3D = Tuple[int, int, int]
 class OptimizationMode(Enum):
     """Режимы оптимизации"""
 
-    AUTO = "auto"  # Автоматический выбор
-    CPU_ONLY = "cpu_only"  # Только CPU
-    GPU_ONLY = "gpu_only"  # Только GPU
-    HYBRID = "hybrid"  # Гибридный режим
+    GPU_ONLY = "gpu_only"
 
 
 class ConnectionType(Enum):
@@ -75,13 +58,11 @@ class ConnectionType(Enum):
 class OptimizationConfig:
     """Конфигурация для UnifiedSpatialOptimizer"""
 
-    mode: OptimizationMode = OptimizationMode.AUTO
     enable_moe: bool = True
     enable_morton_encoding: bool = True
     enable_adaptive_chunking: bool = True
     max_memory_gb: float = 8.0
     target_performance_ms: float = 10.0
-    fallback_enabled: bool = True
 
 
 @dataclass
@@ -256,10 +237,7 @@ class GPUSpatialProcessorWrapper(BaseSpatialProcessor):
 
 class UnifiedSpatialOptimizer:
     """
-    Унифицированная система пространственной оптимизации
-
-    Объединяет функциональность SpatialOptimizer и MoESpatialOptimizer
-    с полной GPU поддержкой и адаптивным выбором оптимальной стратегии.
+    Унифицированная система пространственной оптимизации (GPU-only).
     """
 
     def __init__(
@@ -268,226 +246,81 @@ class UnifiedSpatialOptimizer:
         config: Optional[OptimizationConfig] = None,
         moe_processor: Optional[nn.Module] = None,
     ):
+        self.config = config or get_project_config().unified_optimizer
         self.dimensions = dimensions
-        self.config = config or OptimizationConfig()
-        self.moe_processor = moe_processor
-
-        # Device management
         self.device_manager = get_device_manager()
-        self.device = self.device_manager.get_device()
+        self.pos_helper = Position3D(dimensions)
+        self.moe_processor = moe_processor
+        self.mode = self._determine_optimal_mode()
 
-        # Выбираем оптимальный режим работы
-        self.active_mode = self._determine_optimal_mode()
+        if not self.device_manager.is_cuda():
+            raise RuntimeError("UnifiedSpatialOptimizer requires a CUDA-enabled GPU.")
 
-        # Создаем процессоры
-        self._initialize_processors()
+        # Инициализируем только GPU компоненты
+        self.gpu_processor = GPUSpatialProcessor(self.dimensions, self.config)
+        self.chunker = (
+            AdaptiveGPUChunker(self.dimensions, self.config)
+            if self.config.enable_adaptive_chunking
+            else None
+        )
 
-        # MoE специфичные настройки
-        if self.config.enable_moe and moe_processor:
-            self._setup_moe_integration()
+        self.perf_history = []
+        self._setup_moe_integration()
 
-        # Performance monitoring
-        self.performance_history = []
-        self.adaptive_threshold_ms = self.config.target_performance_ms
-
-        logger.info(f"🔧 UnifiedSpatialOptimizer инициализирован:")
-        logger.info(f"   📊 Размеры: {dimensions}")
-        logger.info(f"   🎯 Режим: {self.active_mode.value}")
-        logger.info(f"   🤖 MoE: {'включен' if self.config.enable_moe else 'выключен'}")
-        logger.info(f"   🚀 GPU: {self.device}")
+        logger.info(
+            f"🚀 UnifiedSpatialOptimizer initialized in GPU_ONLY mode for dimensions {dimensions}"
+        )
 
     def _determine_optimal_mode(self) -> OptimizationMode:
-        cfg = get_project_config().unified_optimizer
-        if self.config.mode != OptimizationMode.AUTO:
-            return self.config.mode
-
-        # Автоматический выбор на основе условий
-        total_cells = np.prod(self.dimensions)
-
-        # Проверяем доступность CUDA
+        """Определяет оптимальный режим. Теперь всегда GPU_ONLY или ошибка."""
         if not self.device_manager.is_cuda():
-            logger.info("🖥️ CUDA недоступна, используем CPU режим")
-            return OptimizationMode.CPU_ONLY
-
-        # Получаем статистику памяти
-        try:
-            memory_stats = self.device_manager.get_memory_stats()
-            available_memory_mb = memory_stats.get(
-                "available_mb", cfg.fallback_memory_mb
+            raise RuntimeError(
+                "Cannot initialize UnifiedSpatialOptimizer: CUDA device not available."
             )
-            available_memory_gb = available_memory_mb / 1024
-        except:
-            available_memory_gb = cfg.fallback_memory_gb
-            logger.warning(
-                f"⚠️ Не удалось получить статистику памяти, используем fallback {cfg.fallback_memory_gb}GB"
-            )
-
-        if (
-            total_cells > cfg.large_lattice_threshold
-            and available_memory_gb < cfg.min_gpu_memory_gb
-        ):
-            logger.info("⚖️ Большая решетка + мало памяти, используем гибридный режим")
-            return OptimizationMode.HYBRID
-
-        if available_memory_gb >= cfg.min_gpu_memory_gb:
-            logger.info("🚀 Достаточно GPU памяти, используем GPU режим")
-            return OptimizationMode.GPU_ONLY
-
-        return OptimizationMode.HYBRID
-
-    def _initialize_processors(self):
-        """Инициализирует процессоры в зависимости от режима"""
-        project_config = get_project_config()
-        base_config = project_config.get_spatial_optim_config()
-
-        # Всегда создаем CPU fallback
-        # self.cpu_processor = CPUFallbackProcessor(self.dimensions, base_config)
-
-        # GPU processor если нужен
-        if self.active_mode in [OptimizationMode.GPU_ONLY, OptimizationMode.HYBRID]:
-            try:
-                self.gpu_processor = GPUSpatialProcessorWrapper(
-                    self.dimensions, base_config
-                )
-                self.has_gpu = True
-            except Exception as e:
-                logger.warning(f"⚠️ Не удалось создать GPU processor: {e}")
-                self.has_gpu = False
-                if self.active_mode == OptimizationMode.GPU_ONLY:
-                    logger.info("🔄 Переключаемся на CPU режим")
-                    self.active_mode = OptimizationMode.CPU_ONLY
-        else:
-            self.has_gpu = False
+        return OptimizationMode.GPU_ONLY
 
     def _setup_moe_integration(self):
-        """Настраивает интеграцию с MoE архитектурой"""
-        project_config = get_project_config()
-
-        self.connection_distributions = {
-            ConnectionType.LOCAL: project_config.local_connections_ratio,
-            ConnectionType.FUNCTIONAL: project_config.functional_connections_ratio,
-            ConnectionType.DISTANT: project_config.distant_connections_ratio,
-        }
-
-        # Переносим MoE processor на правильное устройство
-        if hasattr(self.moe_processor, "to"):
-            self.moe_processor.to(self.device)
-
-        logger.info(f"🤖 MoE интеграция настроена: {self.connection_distributions}")
+        """Настройка MoE процессора, если он есть."""
+        if self.moe_processor:
+            self.moe_processor = self.device_manager.transfer_module(self.moe_processor)
+            logger.info("✅ MoE Processor integrated with UnifiedSpatialOptimizer.")
 
     def find_neighbors_optimized(
         self, coords: Union[Coordinates3D, torch.Tensor], radius: float
     ) -> List[int]:
-        """
-        Оптимизированный поиск соседей с автоматическим выбором алгоритма
-
-        Args:
-            coords: Координаты точки поиска
-            radius: Радиус поиска
-
-        Returns:
-            Список индексов найденных соседей
-        """
-        start_time = time.time()
-
-        try:
-            # Выбираем процессор на основе текущего режима
-            if self.active_mode == OptimizationMode.CPU_ONLY or not self.has_gpu:
-                neighbors = self.cpu_processor.find_neighbors(coords, radius)
-                mode_used = OptimizationMode.CPU_ONLY
-
-            elif self.active_mode == OptimizationMode.GPU_ONLY:
-                neighbors = self.gpu_processor.find_neighbors(coords, radius)
-                mode_used = OptimizationMode.GPU_ONLY
-
-            else:  # HYBRID mode
-                # Пробуем GPU, fallback на CPU при ошибке
-                try:
-                    neighbors = self.gpu_processor.find_neighbors(coords, radius)
-                    mode_used = OptimizationMode.GPU_ONLY
-                except Exception as e:
-                    logger.debug(f"GPU fallback: {e}")
-                    neighbors = self.cpu_processor.find_neighbors(coords, radius)
-                    mode_used = OptimizationMode.CPU_ONLY
-
-            query_time_ms = (time.time() - start_time) * 1000
-
-            # Адаптивная оптимизация режима
-            self._record_performance(query_time_ms, mode_used, len(neighbors))
-
-            return neighbors
-
-        except Exception as e:
-            logger.error(f"❌ Критическая ошибка в find_neighbors_optimized: {e}")
-            # Финальный fallback
-            return self.cpu_processor.find_neighbors(coords, radius)
+        """GPU-ускоренный поиск соседей."""
+        return self.gpu_processor.find_neighbors(coords, radius)
 
     def optimize_lattice_forward(
         self, states: torch.Tensor, processor_fn: Optional[Callable] = None
     ) -> SpatialOptimizationResult:
         """
-        Унифицированная оптимизация решетки с поддержкой MoE
-
-        Args:
-            states: Состояния клеток [num_cells, state_size]
-            processor_fn: Пользовательская функция обработки (опционально)
-
-        Returns:
-            Результат оптимизации с полной статистикой
+        Выполняет один шаг forward pass через решетку, используя GPU.
         """
         start_time = time.time()
+        num_cells = states.shape[0]
 
-        # Убеждаемся что states на правильном устройстве
-        if (
-            self.active_mode in [OptimizationMode.GPU_ONLY, OptimizationMode.HYBRID]
-            and self.has_gpu
-        ):
-            states = self.device_manager.ensure_device(states)
-
-        # Выбираем процессор
+        # Определяем функцию обработки
         if processor_fn is None:
-            if self.config.enable_moe and self.moe_processor:
+            if self.moe_processor:
                 processor_fn = self._create_moe_processor_fn()
             else:
                 processor_fn = self._create_default_processor_fn()
 
-        # Выполняем оптимизацию
-        try:
-            if self.active_mode == OptimizationMode.CPU_ONLY or not self.has_gpu:
-                new_states = self.cpu_processor.process_lattice(states, processor_fn)
-                mode_used = OptimizationMode.CPU_ONLY
+        mem_before = self.device_manager.get_memory_stats().get("allocated_mb", 0)
 
-            elif self.active_mode == OptimizationMode.GPU_ONLY:
-                new_states = self.gpu_processor.process_lattice(states, processor_fn)
-                mode_used = OptimizationMode.GPU_ONLY
-
-            else:  # HYBRID
-                try:
-                    new_states = self.gpu_processor.process_lattice(
-                        states, processor_fn
-                    )
-                    mode_used = OptimizationMode.GPU_ONLY
-                except Exception as e:
-                    logger.warning(f"⚠️ GPU processing failed, fallback: {e}")
-                    new_states = self.cpu_processor.process_lattice(
-                        states, processor_fn
-                    )
-                    mode_used = OptimizationMode.CPU_ONLY
-
-        except Exception as e:
-            logger.error(f"❌ Критическая ошибка обработки: {e}")
-            new_states = states.clone()  # Безопасный fallback
-            mode_used = OptimizationMode.CPU_ONLY
-
-        processing_time_ms = (time.time() - start_time) * 1000
-
-        # Собираем статистику
-        result = self._create_optimization_result(
-            new_states, processing_time_ms, mode_used, states.shape[0]
+        # Обработка всегда через GPU
+        new_states = self.gpu_processor.process_lattice(
+            states, processor_fn, self.chunker
         )
 
-        # Адаптивная оптимизация
-        self._record_performance(processing_time_ms, mode_used, states.shape[0])
+        self.device_manager.synchronize()
+        processing_time_ms = (time.time() - start_time) * 1000
+
+        result = self._create_optimization_result(
+            new_states, processing_time_ms, self.mode, num_cells, mem_before
+        )
+        self._record_performance(processing_time_ms, self.mode, num_cells)
 
         return result
 
@@ -564,23 +397,23 @@ class UnifiedSpatialOptimizer:
         self,
         new_states: torch.Tensor,
         processing_time_ms: float,
-        mode_used: OptimizationMode,
+        mode: OptimizationMode,
         num_cells: int,
+        mem_before: float,
     ) -> SpatialOptimizationResult:
         cfg = get_project_config().unified_optimizer
 
         # Memory usage
-        memory_usage_mb = 0.0
-        if mode_used == OptimizationMode.GPU_ONLY and self.has_gpu:
-            device_stats = self.device_manager.get_memory_stats()
-            memory_usage_mb = device_stats.get("allocated_mb", 0.0)
+        memory_usage_mb = (
+            self.device_manager.get_memory_stats().get("allocated_mb", 0) - mem_before
+        )
 
         # GPU utilization
-        gpu_utilization = 1.0 if mode_used == OptimizationMode.GPU_ONLY else 0.0
+        gpu_utilization = 1.0
 
         # Cache hit rate (приблизительная оценка)
         cache_hit_rate = 0.0
-        if self.has_gpu and hasattr(self, "gpu_processor"):
+        if hasattr(self.gpu_processor, "get_performance_stats"):
             gpu_stats = self.gpu_processor.get_performance_stats()
             cache_hit_rate = (
                 gpu_stats.get("gpu_processor", {})
@@ -594,7 +427,7 @@ class UnifiedSpatialOptimizer:
             memory_usage_mb=memory_usage_mb,
             neighbors_found=num_cells * cfg.neighbors_found_factor,
             gpu_utilization=gpu_utilization,
-            mode_used=mode_used,
+            mode_used=mode,
             cache_hit_rate=cache_hit_rate,
             chunks_processed=max(1, num_cells // cfg.chunks_processed_div),
         )
@@ -603,92 +436,26 @@ class UnifiedSpatialOptimizer:
         self, time_ms: float, mode: OptimizationMode, data_size: int
     ):
         """Записывает производительность для адаптивной оптимизации"""
-        self.performance_history.append(
-            {
-                "time_ms": time_ms,
-                "mode": mode,
-                "data_size": data_size,
-                "timestamp": time.time(),
-            }
-        )
+        self.perf_history.append(time_ms)
 
         # Оставляем только последние 100 записей
-        if len(self.performance_history) > 100:
-            self.performance_history = self.performance_history[-100:]
-
-        # Адаптивное переключение режима в HYBRID mode
-        if (
-            self.config.mode == OptimizationMode.AUTO
-            and self.active_mode == OptimizationMode.HYBRID
-        ):
-            self._adaptive_mode_optimization()
-
-    def _adaptive_mode_optimization(self):
-        """Адаптивная оптимизация режима работы"""
-        if len(self.performance_history) < 10:
-            return
-
-        recent_history = self.performance_history[-10:]
-
-        # Анализируем производительность GPU vs CPU
-        gpu_times = [
-            h["time_ms"]
-            for h in recent_history
-            if h["mode"] == OptimizationMode.GPU_ONLY
-        ]
-        cpu_times = [
-            h["time_ms"]
-            for h in recent_history
-            if h["mode"] == OptimizationMode.CPU_ONLY
-        ]
-
-        if len(gpu_times) >= 3 and len(cpu_times) >= 3:
-            avg_gpu = np.mean(gpu_times)
-            avg_cpu = np.mean(cpu_times)
-
-            # Переключаемся на более быстрый режим
-            if avg_gpu < avg_cpu * 0.8:  # GPU значительно быстрее
-                if self.active_mode != OptimizationMode.GPU_ONLY:
-                    logger.info(
-                        "🚀 Переключение на GPU_ONLY режим (производительность)"
-                    )
-                    self.active_mode = OptimizationMode.GPU_ONLY
-            elif avg_cpu < avg_gpu * 0.8:  # CPU значительно быстрее
-                if self.active_mode != OptimizationMode.CPU_ONLY:
-                    logger.info("🖥️ Переключение на CPU_ONLY режим (производительность)")
-                    self.active_mode = OptimizationMode.CPU_ONLY
+        if len(self.perf_history) > 100:
+            self.perf_history = self.perf_history[-100:]
 
     def get_comprehensive_stats(self) -> Dict[str, Any]:
-        """Получить полную статистику системы"""
+        """Возвращает полную статистику по оптимизатору."""
         stats = {
-            "unified_optimizer": {
-                "dimensions": self.dimensions,
-                "active_mode": self.active_mode.value,
-                "moe_enabled": self.config.enable_moe,
-                "morton_enabled": self.config.enable_morton_encoding,
-                "performance_history_length": len(self.performance_history),
-            }
+            "mode": self.mode.value,
+            "performance_history_ms": [round(t, 2) for t in self.perf_history[-100:]],
+            "avg_perf_ms": np.mean(self.perf_history) if self.perf_history else 0,
+            "gpu_processor": self.gpu_processor.get_performance_stats(),
         }
 
-        # CPU stats
-        stats["cpu_processor"] = self.cpu_processor.get_performance_stats()
+        if self.chunker:
+            stats["chunker"] = self.chunker.get_comprehensive_stats()
 
-        # GPU stats если доступен
-        if self.has_gpu:
-            stats["gpu_processor"] = self.gpu_processor.get_performance_stats()
-            stats["device"] = self.device_manager.get_memory_stats()
-
-        # Performance analysis
-        if self.performance_history:
-            recent = self.performance_history[-20:]  # Последние 20 операций
-            stats["performance_analysis"] = {
-                "avg_time_ms": np.mean([h["time_ms"] for h in recent]),
-                "mode_distribution": {
-                    mode.value: len([h for h in recent if h["mode"] == mode])
-                    for mode in OptimizationMode
-                },
-                "target_performance_ms": self.adaptive_threshold_ms,
-            }
+        if self.moe_processor and hasattr(self.moe_processor, "get_usage_stats"):
+            stats["moe_processor"] = self.moe_processor.get_usage_stats()
 
         return stats
 
@@ -697,13 +464,10 @@ class UnifiedSpatialOptimizer:
         logger.info("🔧 Запуск принудительной оптимизации UnifiedSpatialOptimizer")
 
         # Оптимизируем GPU компоненты
-        if self.has_gpu:
-            self.gpu_processor.gpu_processor.optimize_performance()
+        self.gpu_processor.optimize_performance()
 
         # Очищаем историю производительности
-        self.performance_history = self.performance_history[
-            -20:
-        ]  # Оставляем только последние 20
+        self.perf_history = self.perf_history[-20:]  # Оставляем только последние 20
 
         # Принудительная очистка памяти
         self.device_manager.cleanup()
@@ -714,8 +478,7 @@ class UnifiedSpatialOptimizer:
         """Освобождение ресурсов"""
         logger.info("🛑 Завершение работы UnifiedSpatialOptimizer")
 
-        if self.has_gpu:
-            self.gpu_processor.gpu_processor.shutdown()
+        self.gpu_processor.shutdown()
 
         # Финальная очистка
         self.device_manager.cleanup()
@@ -776,30 +539,13 @@ def estimate_unified_memory_requirements(
         total_cells * cfg.moe_expert_state_size * 4 / (1024**3)
     )  # float32 состояния
 
-    # CPU компоненты (всегда присутствуют)
-    cpu_requirements = {
-        "cpu_spatial_index_gb": total_cells * cfg.cpu_spatial_index_bytes / (1024**3),
-        "cpu_neighbor_cache_gb": total_cells
-        * cfg.cpu_neighbor_cache_neighbors
-        * cfg.cpu_neighbor_cache_bytes
-        / (1024**3),
-    }
-
     # GPU компоненты (если включены)
-    gpu_requirements = {}
-    if config.mode in [
-        OptimizationMode.AUTO,
-        OptimizationMode.GPU_ONLY,
-        OptimizationMode.HYBRID,
-    ]:
-        gpu_requirements = {
-            "gpu_spatial_hash_gb": total_cells * cfg.gpu_spatial_hash_bytes / (1024**3),
-            "gpu_morton_encoder_gb": total_cells
-            * cfg.gpu_morton_encoder_bytes
-            / (1024**3),
-            "gpu_chunker_gb": config.max_memory_gb * cfg.gpu_chunker_memory_fraction,
-            "gpu_tensor_overhead_gb": cell_states_gb * cfg.gpu_tensor_overhead_fraction,
-        }
+    gpu_requirements = {
+        "gpu_spatial_hash_gb": total_cells * cfg.gpu_spatial_hash_bytes / (1024**3),
+        "gpu_morton_encoder_gb": total_cells * cfg.gpu_morton_encoder_bytes / (1024**3),
+        "gpu_chunker_gb": config.max_memory_gb * cfg.gpu_chunker_memory_fraction,
+        "gpu_tensor_overhead_gb": cell_states_gb * cfg.gpu_tensor_overhead_fraction,
+    }
 
     # MoE компоненты (если включены)
     moe_requirements = {}
@@ -818,21 +564,19 @@ def estimate_unified_memory_requirements(
 
     # Общие требования
     base_memory = cell_states_gb
-    cpu_memory = sum(cpu_requirements.values())
     gpu_memory = sum(gpu_requirements.values())
     moe_memory = sum(moe_requirements.values())
 
-    total_memory_gb = base_memory + cpu_memory + gpu_memory + moe_memory
+    total_memory_gb = base_memory + gpu_memory + moe_memory
 
     result = {
         "cell_states_gb": base_memory,
-        **cpu_requirements,
         **gpu_requirements,
         **moe_requirements,
         "total_memory_gb": total_memory_gb,
         "recommended_gpu_memory_gb": total_memory_gb
         * cfg.recommended_gpu_memory_fraction,
-        "recommended_system_memory_gb": cpu_memory
+        "recommended_system_memory_gb": gpu_memory
         * cfg.recommended_system_memory_fraction,
     }
 

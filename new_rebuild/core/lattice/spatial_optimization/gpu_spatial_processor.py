@@ -20,54 +20,46 @@ GPU Spatial Processor - Интегрированный процессор про
 
 import torch
 import numpy as np
-from typing import List, Dict, Tuple, Optional, Set, Union, Any
+from typing import List, Dict, Tuple, Optional, Set, Union, Any, Callable
 from dataclasses import dataclass
 import time
 import threading
 from concurrent.futures import Future, as_completed
 import asyncio
 
-try:
-    from ....config.project_config import get_project_config
 
-    # from ..spatial_hashing import Coordinates3D
-    # from ..position import Position3D
+try:
+    # Относительные импорты для использования в качестве модуля
+    from ....config.project_config import get_project_config
     from ....utils.logging import get_logger
     from ....utils.device_manager import get_device_manager
-
-    # Импортируем наши новые компоненты
+    from ..position import Position3D
     from ..gpu_spatial_hashing import (
         AdaptiveGPUSpatialHash,
         GPUSpatialHashGrid,
         GPUSpatialHashingStats,
+        GPUMortonEncoder,
     )
-    from .adaptive_chunker import (
-        AdaptiveGPUChunker,
-        AdaptiveChunkInfo,
-        ChunkProcessingTask,
-    )
+    from .adaptive_chunker import AdaptiveGPUChunker, ChunkProcessingTask
+
 except ImportError:
-    # Fallback для прямого запуска
+    # Абсолютные импорты для обратной совместимости или прямого запуска
     import sys
     import os
 
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
     from config.project_config import get_project_config
-
-    # from core.lattice.spatial_hashing import Coordinates3D
-    from core.lattice.position import Position3D
     from utils.logging import get_logger
     from utils.device_manager import get_device_manager
-
-    # Импортируем наши новые компоненты
+    from core.lattice.position import Position3D
     from core.lattice.gpu_spatial_hashing import (
         AdaptiveGPUSpatialHash,
         GPUSpatialHashGrid,
         GPUSpatialHashingStats,
+        GPUMortonEncoder,
     )
-    from core.lattice.spatial_optimization.adaptive_chunker import (
+    from new_rebuild.core.lattice.spatial_optimization.adaptive_chunker import (
         AdaptiveGPUChunker,
-        AdaptiveChunkInfo,
         ChunkProcessingTask,
     )
 
@@ -144,15 +136,21 @@ class GPUSpatialProcessor:
         )
 
     def _initialize_components(self):
-        """Инициализирует основные компоненты"""
-        # Adaptive chunker для управления памятью
-        self.chunker = AdaptiveGPUChunker(self.dimensions, self.config)
+        """Инициализация внутренних компонентов: Morton Encoder, Adaptive Hash и Chunker."""
+        project_cfg = get_project_config()
 
-        # GPU spatial hash для быстрого поиска
-        target_memory_mb = (
-            self.config.get("memory_pool_size_gb", 8.0) * 1024 * 0.6
-        )  # 60% памяти
-        self.spatial_hash = AdaptiveGPUSpatialHash(self.dimensions, target_memory_mb)
+        # GPU-специфичные компоненты
+        self.morton_encoder = GPUMortonEncoder(self.dimensions)
+        self.adaptive_hash = AdaptiveGPUSpatialHash(
+            self.dimensions,
+            project_cfg.spatial.memory_pool_size_gb * 1024 * 0.6,
+        )
+
+        # Chunker инициализируется со своей собственной конфигурацией
+        self.chunker = AdaptiveGPUChunker(self.dimensions)
+
+        if self.config.get("log_memory_usage", False):
+            logger.info("Компоненты GPUSpatialProcessor инициализированы.")
 
         # Интеграционный layer для координации между компонентами
         self._setup_integration_layer()

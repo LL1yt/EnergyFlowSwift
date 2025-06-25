@@ -337,7 +337,7 @@ class ConnectionInfoConfig:
 
 @dataclass
 class Lattice3DConfig:
-    spatial_mode: str = "AUTO"
+    spatial_mode: str = "GPU_ONLY"
     enable_moe: bool = True
     enable_morton_encoding: bool = True
     target_performance_ms: float = 50.0
