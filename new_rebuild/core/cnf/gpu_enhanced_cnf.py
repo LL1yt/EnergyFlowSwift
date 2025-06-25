@@ -34,7 +34,6 @@ try:
     from ...utils.device_manager import get_device_manager
     from .gpu_optimized_euler_solver import (
         GPUOptimizedEulerSolver,
-        SolverConfig,
         AdaptiveMethod,
         create_gpu_optimized_euler_solver
     )
@@ -234,14 +233,8 @@ class GPUEnhancedCNF(nn.Module):
         )
         
         # GPU Optimized Euler Solver
-        solver_config = SolverConfig(
-            adaptive_method=adaptive_method,
-            max_batch_size=max_batch_size,
-            memory_efficient=True,
-            base_dt=0.1,
-            lipschitz_safety_factor=0.8
-        )
-        self.solver = GPUOptimizedEulerSolver(solver_config)
+        euler_cfg = get_project_config().euler
+        self.solver = GPUOptimizedEulerSolver(config=euler_cfg)
         
         # Performance tracking
         self.performance_stats = {

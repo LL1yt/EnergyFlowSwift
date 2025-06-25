@@ -163,6 +163,59 @@ class TestCleanArchitecture(unittest.TestCase):
         self.assertEqual(result["expert_weights"].shape, (3,))
         logger.info("✅ Forward pass MoE процессора выполнен успешно")
 
+    def test_project_config_sections_and_defaults(self):
+        """Проверка наличия и значений новых секций централизованного ProjectConfig"""
+        config = get_project_config()
+        # Проверяем наличие новых секций
+        self.assertTrue(hasattr(config, "euler"))
+        self.assertTrue(hasattr(config, "connection"))
+        self.assertTrue(hasattr(config, "adaptive_chunker"))
+        self.assertTrue(hasattr(config, "unified_spatial_optimizer"))
+        self.assertTrue(hasattr(config, "lattice3d"))
+
+        # Проверяем значения по умолчанию для новых секций
+        self.assertEqual(config.euler.base_dt, 0.1)
+        self.assertEqual(config.connection.strength, 1.0)
+        self.assertEqual(config.adaptive_chunker.optimal_batch_size, 1000)
+        self.assertEqual(config.unified_spatial_optimizer.fallback_memory_mb, 4000)
+        self.assertEqual(config.lattice3d.spatial_mode, "AUTO")
+
+        # Проверяем, что параметры доступны и используются
+        self.assertIsInstance(config.euler, type(config.euler))
+        self.assertIsInstance(config.connection, type(config.connection))
+        self.assertIsInstance(config.adaptive_chunker, type(config.adaptive_chunker))
+        self.assertIsInstance(config.unified_spatial_optimizer, type(config.unified_spatial_optimizer))
+        self.assertIsInstance(config.lattice3d, type(config.lattice3d))
+
+        # Проверяем, что старые секции также доступны для обратной совместимости
+        self.assertTrue(hasattr(config, "lattice"))
+        self.assertTrue(hasattr(config, "gnn"))
+        self.assertTrue(hasattr(config, "expert"))
+        self.assertTrue(hasattr(config, "neighbors"))
+        self.assertTrue(hasattr(config, "spatial"))
+        self.assertTrue(hasattr(config, "memory"))
+        self.assertTrue(hasattr(config, "logging"))
+        self.assertTrue(hasattr(config, "device"))
+        self.assertTrue(hasattr(config, "init"))
+
+        # Проверяем, что значения по умолчанию не изменились
+        self.assertEqual(config.lattice.dimensions, (5, 5, 5))
+        self.assertEqual(config.gnn.state_size, 32)
+        self.assertEqual(config.expert.gating.params, 808)
+        self.assertEqual(config.expert.local.params, 2059)
+        self.assertTrue(config.expert.enabled)
+        self.assertEqual(config.neighbors.base_neighbor_count, 26)
+        self.assertEqual(config.spatial.chunk_size, 64)
+        self.assertTrue(config.memory.efficient)
+        self.assertTrue(config.logging.enabled)
+        self.assertEqual(config.device.device, "auto")
+        self.assertEqual(config.init.seed, 42)
+        
+        # Проверяем, что можно получить device string и total_cells
+        self.assertIsInstance(config.current_device, str)
+        self.assertIsInstance(config.total_cells, int)
+        self.assertGreater(config.total_cells, 0)
+
 
 if __name__ == "__main__":
     logger.info("🚀 ЗАПУСК ТЕСТОВ CLEAN АРХИТЕКТУРЫ С НОВОЙ КОНФИГУРАЦИЕЙ")

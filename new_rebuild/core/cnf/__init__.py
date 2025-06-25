@@ -30,7 +30,6 @@ DEPRECATED:
 # NEW: GPU Optimized Euler Solver (v2.0)
 from .gpu_optimized_euler_solver import (
     GPUOptimizedEulerSolver,
-    SolverConfig,
     AdaptiveMethod,
     IntegrationResult,
     create_gpu_optimized_euler_solver,
@@ -68,7 +67,6 @@ __all__ = [
     # "EulerSolver",
     # NEW: GPU Optimized Solver (v2.0)
     "GPUOptimizedEulerSolver",
-    "SolverConfig",
     "AdaptiveMethod",
     "IntegrationResult",
     "create_gpu_optimized_euler_solver",
