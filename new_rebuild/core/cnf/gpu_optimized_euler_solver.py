@@ -491,6 +491,14 @@ class GPUOptimizedEulerSolver(nn.Module):
         
         # Инициализация
         current_states = initial_states.clone()
+        # Убеждаемся что initial_states на правильном устройстве
+        current_states = self.device_manager.ensure_device(current_states)
+        
+        logger.info(f"DEBUG: Инициализация device check:")
+        logger.info(f"  initial_states device: {initial_states.device}")
+        logger.info(f"  current_states device: {current_states.device}")
+        logger.info(f"  self.device: {self.device}")
+        
         current_time = torch.zeros(batch_size, device=self.device, dtype=initial_states.dtype)
         dt = torch.full((batch_size,), self.base_dt.item(), device=self.device, dtype=initial_states.dtype)
         
@@ -525,10 +533,19 @@ class GPUOptimizedEulerSolver(nn.Module):
             if batch_current_states.shape[0] == 0:
                 break
             
+            # DEBUG: Логируем устройства перед batch_euler_step
+            logger.info(f"DEBUG: Перед batch_euler_step:")
+            logger.info(f"  batch_current_states device: {batch_current_states.device}")
+            logger.info(f"  batch_time device: {batch_time.device if torch.is_tensor(batch_time) else 'scalar'}")
+            logger.info(f"  batch_dt device: {batch_dt.device}")
+            
             # Полный шаг
             full_step_states, _ = self.batch_euler_step(
                 derivative_fn, batch_current_states, batch_time, batch_dt, *args, **kwargs
             )
+            
+            logger.info(f"DEBUG: После full step:")
+            logger.info(f"  full_step_states device: {full_step_states.device}")
             
             # Два половинных шага для оценки ошибки
             half_dt = batch_dt / 2
@@ -560,6 +577,13 @@ class GPUOptimizedEulerSolver(nn.Module):
                     current_time[active_indices]
                 )
             else:
+                # DEBUG: Логируем устройства всех тензоров
+                logger.info(f"Device debugging before torch.where:")
+                logger.info(f"  accept_mask device: {accept_mask.device}")
+                logger.info(f"  full_step_states device: {full_step_states.device}")
+                logger.info(f"  batch_current_states device: {batch_current_states.device}")
+                logger.info(f"  current_states device: {current_states.device}")
+                
                 current_states = torch.where(
                     accept_mask.unsqueeze(-1),
                     full_step_states,
