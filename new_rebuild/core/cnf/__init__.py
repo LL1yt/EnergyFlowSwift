@@ -9,7 +9,9 @@ CNF используется исключительно в Distant Expert для
 СТАТУС КОМПОНЕНТОВ:
 - LightweightCNF: АКТИВНЫЙ (используется в Distant Expert)
 - NeuralODE: АКТИВНЫЙ (часть LightweightCNF)
-- EulerSolver: АКТИВНЫЙ (интеграция для CNF)
+- EulerSolver: DEPRECATED (заменен на GPUOptimizedEulerSolver)
+- GPUOptimizedEulerSolver: АКТИВНЫЙ (v2.0)
+- GPUEnhancedCNF: АКТИВНЫЙ (v2.0)
 - ConnectionClassifier: DEPRECATED (заменен на MoE GatingNetwork)
 
 MoE АРХИТЕКТУРА:
@@ -17,12 +19,13 @@ MoE АРХИТЕКТУРА:
 Доступны через импорт: from new_rebuild.core.moe import ...
 
 DEPRECATED:
+- EulerSolver: заменен на GPUOptimizedEulerSolver
 - HybridConnectionProcessor: заменен на MoEConnectionProcessor
 - ConnectionClassifier: заменен на GatingNetwork в MoE
 """
 
-from .lightweight_cnf import LightweightCNF, NeuralODE, ConnectionType
-from .euler_solver import EulerSolver
+# from .lightweight_cnf import LightweightCNF, NeuralODE, ConnectionType
+# from .euler_solver import EulerSolver  # DEPRECATED: заменен на GPUOptimizedEulerSolver
 
 # NEW: GPU Optimized Euler Solver (v2.0)
 from .gpu_optimized_euler_solver import (
@@ -32,7 +35,7 @@ from .gpu_optimized_euler_solver import (
     IntegrationResult,
     create_gpu_optimized_euler_solver,
     batch_euler_solve,
-    benchmark_solver_performance
+    benchmark_solver_performance,
 )
 
 # NEW: GPU Enhanced CNF (v2.0)
@@ -41,19 +44,19 @@ from .gpu_enhanced_cnf import (
     VectorizedNeuralODE,
     BatchProcessingMode,
     create_gpu_enhanced_cnf,
-    benchmark_cnf_performance
+    benchmark_cnf_performance,
 )
 
 # DEPRECATED компоненты (для обратной совместимости)
-try:
-    from .connection_classifier import (
-        ConnectionClassifier,
-        ConnectionCategory,
-    )  # DEPRECATED
+# try:
+#     from .connection_classifier import (
+#         ConnectionClassifier,
+#         ConnectionCategory,
+#     )  # DEPRECATED
 
-    _CLASSIFIER_AVAILABLE = True
-except ImportError:
-    _CLASSIFIER_AVAILABLE = False
+#     _CLASSIFIER_AVAILABLE = True
+# except ImportError:
+#     _CLASSIFIER_AVAILABLE = False
 
 # Основные активные компоненты
 __all__ = [
@@ -61,8 +64,7 @@ __all__ = [
     "LightweightCNF",
     "NeuralODE",
     "ConnectionType",
-    "EulerSolver",
-    
+    # "EulerSolver",
     # NEW: GPU Optimized Solver (v2.0)
     "GPUOptimizedEulerSolver",
     "SolverConfig",
@@ -81,5 +83,6 @@ __all__ = [
 ]
 
 # Добавляем deprecated компоненты если доступны
-if _CLASSIFIER_AVAILABLE:
-    __all__.extend(["ConnectionClassifier", "ConnectionCategory"])  # DEPRECATED
+# __all__.append("EulerSolver")  # DEPRECATED
+# if _CLASSIFIER_AVAILABLE:
+#    __all__.extend(["ConnectionClassifier", "ConnectionCategory"])  # DEPRECATED

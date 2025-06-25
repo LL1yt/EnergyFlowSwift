@@ -38,7 +38,7 @@ try:
         AdaptiveMethod,
         create_gpu_optimized_euler_solver
     )
-    from .lightweight_cnf import ConnectionType  # Импорт из legacy версии
+    # from .lightweight_cnf import ConnectionType  # Импорт из legacy версии
 except ImportError:
     # Fallback для прямого запуска
     import sys
@@ -56,6 +56,12 @@ class BatchProcessingMode(Enum):
     SINGLE = "single"           # Одна связь за раз (legacy)
     CONNECTION_BATCH = "batch"  # Batch по связям
     ADAPTIVE_BATCH = "adaptive" # Adaptive batch size на основе памяти
+
+class ConnectionType(Enum):
+    """Типы связей для CNF обработки"""
+
+    FUNCTIONAL = "functional"  # 60% связей - средние расстояния
+    DISTANT = "distant"  # 30% связей - дальние расстояния
     
 
 class VectorizedNeuralODE(nn.Module):
