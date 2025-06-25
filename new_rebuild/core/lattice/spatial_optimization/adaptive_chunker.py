@@ -27,7 +27,8 @@ from concurrent.futures import ThreadPoolExecutor, Future
 
 try:
     from ....config.project_config import get_project_config
-    from ..spatial_hashing import Coordinates3D
+
+    # from ..spatial_hashing import Coordinates3D
     from ..position import Position3D
     from ....utils.logging import get_logger
     from ....utils.device_manager import get_device_manager
@@ -39,13 +40,17 @@ except ImportError:
 
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
     from config.project_config import get_project_config
-    from core.lattice.spatial_hashing import Coordinates3D
+
+    # from core.lattice.spatial_hashing import Coordinates3D
     from core.lattice.position import Position3D
     from utils.logging import get_logger
     from utils.device_manager import get_device_manager
     from core.lattice.spatial_optimization.memory_manager import MemoryPoolManager
 
 logger = get_logger(__name__)
+
+
+Coordinates3D = Tuple[int, int, int]
 
 
 @dataclass
@@ -141,11 +146,16 @@ class AdaptiveMemoryPredictor:
         device_stats = self.device_manager.get_memory_stats()
         cfg = get_project_config().adaptive_chunker
         if self.device_manager.is_cuda():
-            available_mb = device_stats.get("available_mb", cfg.cuda_fallback_available_mb)
+            available_mb = device_stats.get(
+                "available_mb", cfg.cuda_fallback_available_mb
+            )
         else:
-            available_mb = device_stats.get("available_mb", cfg.cpu_fallback_available_mb)
+            available_mb = device_stats.get(
+                "available_mb", cfg.cpu_fallback_available_mb
+            )
         safe_available_mb = available_mb * cfg.safe_memory_buffer
         return max(cfg.min_available_memory_mb, safe_available_mb)
+
 
 class ChunkScheduler:
     """Планировщик обработки chunk'ов с учетом памяти и зависимостей"""
@@ -472,9 +482,13 @@ class AdaptiveGPUChunker:
 
             # Устанавливаем приоритет на основе memory pressure
             if chunk.memory_pressure_level > cfg.memory_pressure_high:
-                chunk.processing_priority = max(1, chunk.processing_priority - cfg.processing_priority_low_delta)
+                chunk.processing_priority = max(
+                    1, chunk.processing_priority - cfg.processing_priority_low_delta
+                )
             elif chunk.memory_pressure_level < cfg.memory_pressure_low:
-                chunk.processing_priority = min(100, chunk.processing_priority + cfg.processing_priority_high_delta)
+                chunk.processing_priority = min(
+                    100, chunk.processing_priority + cfg.processing_priority_high_delta
+                )
 
     def get_chunk_by_coords(self, coords: Coordinates3D) -> AdaptiveChunkInfo:
         """Находит chunk по координатам с обновлением статистики доступа"""
