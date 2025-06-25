@@ -126,7 +126,7 @@ def test_adaptive_methods():
         # Более сложная функция производной
         def complex_derivative(t: torch.Tensor, states: torch.Tensor) -> torch.Tensor:
             # Нелинейная система с oscillations
-            x, y = states[..., 0], states[..., 1]
+            x, y = states[..., 0].unsqueeze(-1), states[..., 1].unsqueeze(-1)
             dxdt = -0.1 * x + 0.5 * y * torch.sin(
                 t.unsqueeze(-1) if t.dim() == 1 else t
             )
@@ -138,10 +138,12 @@ def test_adaptive_methods():
             rest = (
                 -0.1 * states[..., 2:]
                 if states.shape[-1] > 2
-                else torch.empty(states.shape[0], 0, device=states.device)
+                else torch.empty(
+                    states.shape[0], 0, device=states.device, dtype=states.dtype
+                )
             )
 
-            return torch.cat([dxdt.unsqueeze(-1), dydt.unsqueeze(-1), rest], dim=-1)
+            return torch.cat([dxdt, dydt, rest], dim=-1)
 
         methods_to_test = [
             AdaptiveMethod.LIPSCHITZ_BASED,
