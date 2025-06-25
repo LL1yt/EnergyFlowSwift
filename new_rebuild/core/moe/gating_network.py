@@ -30,16 +30,16 @@ class GatingNetwork(nn.Module):
 
         config = get_project_config()
 
-        self.state_size = state_size or config.gnn_state_size  # 32 из конфига
+        self.state_size = state_size or config.gnn.state_size
         self.num_experts = num_experts
-        self.target_params = config.gating_params  # 808 из конфига
+        self.target_params = config.expert.gating.params
 
         # Рассчитываем архитектуру для достижения 808 параметров
         # Input: state_size + neighbor_activity = 32 + 32 = 64
         input_size = self.state_size * 2
 
         # Получаем hidden_dim из централизованной конфигурации
-        hidden_dim = config.gating_hidden_dim  # Централизованное значение
+        hidden_dim = config.expert.gating.hidden_dim  # Централизованное значение
 
         self.gating_network = nn.Sequential(
             nn.Linear(input_size, hidden_dim, bias=True),  # 64*11 + 11 = 715

@@ -257,15 +257,12 @@ class ChunkScheduler:
 
 class AdaptiveGPUChunker:
     """
-    Интеллектуальный chunker с поддержкой GPU и adaptive оптимизацией
-
-    Автоматически подстраивает размеры chunk'ов и стратегию обработки
-    на основе доступной памяти и паттернов использования.
+    Адаптивный GPU Chunker
     """
 
     def __init__(self, dimensions: Coordinates3D, config: dict = None):
         self.dimensions = dimensions
-        self.config = config or get_project_config().get_spatial_optim_config()
+        local_config = config or get_project_config().get_spatial_optim_config()
 
         # Device management
         self.device_manager = get_device_manager()
@@ -275,13 +272,13 @@ class AdaptiveGPUChunker:
         self.pos_helper = Position3D(dimensions)
 
         # Memory management
-        self.memory_manager = MemoryPoolManager(self.config)
+        self.memory_manager = MemoryPoolManager(local_config)
         self.memory_predictor = AdaptiveMemoryPredictor()
 
         # Chunk management
         self.adaptive_chunks: List[AdaptiveChunkInfo] = []
         self.chunk_scheduler = ChunkScheduler(
-            self.config.get("max_chunks_in_memory", 4)
+            local_config.get("max_chunks_in_memory", 4)
         )
 
         # Performance monitoring
@@ -666,4 +663,4 @@ class AdaptiveGPUChunker:
         self.chunk_scheduler.shutdown()
         self.memory_manager.cleanup()
 
-        logger.info("🧹 AdaptiveGPUChunker очищен")
+        logger.info("�� AdaptiveGPUChunker очищен")

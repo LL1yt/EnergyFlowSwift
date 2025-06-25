@@ -31,7 +31,7 @@ from .position import Position3D
 from .spatial_optimization.unified_spatial_optimizer import (
     create_unified_spatial_optimizer,
     OptimizationConfig,
-    OptimizationMode
+    OptimizationMode,
 )
 
 
@@ -52,24 +52,24 @@ class Lattice3D(nn.Module):
         """
         super().__init__()
         self.config = get_project_config()
-        self.device = torch.device(self.config.device)
-        self.pos_helper = Position3D(self.config.lattice_dimensions)
+        self.device = torch.device(self.config.current_device)
+        self.pos_helper = Position3D(self.config.lattice.dimensions)
         self.logger = logging.getLogger(__name__)
 
         # Проверяем что используется MoE архитектура
-        if self.config.architecture_type != "moe":
+        if not self.config.expert.enabled:
             raise ValueError(
                 f"Lattice3D теперь поддерживает только MoE архитектуру. "
-                f"Получена: {self.config.architecture_type}"
+                f"Включите 'expert.enabled' в конфигурации."
             )
 
         # Логирование инициализации
         from ...utils.logging import log_init
 
-        if self.config.debug_mode:
+        if self.config.logging.debug_mode:
             log_init(
                 "Lattice3D_MoE",
-                dimensions=self.config.lattice_dimensions,
+                dimensions=self.config.lattice.dimensions,
                 total_cells=self.pos_helper.total_positions,
                 architecture="moe",
                 device=str(self.device),
@@ -82,26 +82,25 @@ class Lattice3D(nn.Module):
         # Unified Spatial Optimizer с MoE поддержкой
         spatial_config = OptimizationConfig(
             mode=OptimizationMode.AUTO,  # Автоматический выбор лучшего режима
-            enable_moe=True,             # Включаем MoE поддержку
-            enable_morton_encoding=True, # Включаем Morton encoding для GPU
+            enable_moe=True,  # Включаем MoE поддержку
+            enable_morton_encoding=True,  # Включаем Morton encoding для GPU
             target_performance_ms=50.0,  # Целевая производительность
-            fallback_enabled=True        # Включаем fallback на CPU при ошибках GPU
+            fallback_enabled=True,  # Включаем fallback на CPU при ошибках GPU
         )
-        
+
         # Создаем унифицированный оптимизатор (MoE processor будет добавлен позже в forward)
         self.spatial_optimizer = create_unified_spatial_optimizer(
-            dimensions=self.config.lattice_dimensions,
-            config=spatial_config
+            dimensions=self.config.lattice.dimensions, config=spatial_config
         )
 
         # Размещение I/O точек
         from .enums import PlacementStrategy
 
         self.io_placer = IOPointPlacer(
-            lattice_dimensions=self.config.lattice_dimensions,
+            lattice_dimensions=self.config.lattice.dimensions,
             strategy=PlacementStrategy.FULL_FACE,
             config={},
-            seed=42,
+            seed=self.config.init.seed,
         )
 
         # I/O точки (по умолчанию используем FRONT и BACK)
@@ -124,7 +123,7 @@ class Lattice3D(nn.Module):
             "avg_time_per_step": 0.0,
         }
 
-        if self.config.debug_mode:
+        if self.config.logging.debug_mode:
             from ...utils.logging import get_logger
 
             logger = get_logger(__name__)
@@ -141,16 +140,16 @@ class Lattice3D(nn.Module):
         Создает GNN клетки для MoE архитектуры.
         """
         gnn_config = {
-            "state_size": self.config.gnn_state_size,
-            "message_dim": self.config.gnn_message_dim,
-            "hidden_dim": self.config.gnn_hidden_dim,
-            "neighbor_count": self.config.gnn_neighbor_count,
-            "external_input_size": self.config.gnn_external_input_size,
-            "activation": self.config.gnn_activation,
-            "target_params": self.config.gnn_target_params,
-            "use_attention": self.config.gnn_use_attention,
-            "device": self.config.device,
-            "debug_mode": self.config.debug_mode,
+            "state_size": self.config.gnn.state_size,
+            "message_dim": self.config.gnn.message_dim,
+            "hidden_dim": self.config.gnn.hidden_dim,
+            "neighbor_count": self.config.gnn.neighbor_count,
+            "external_input_size": self.config.gnn.external_input_size,
+            "activation": self.config.gnn.activation,
+            "target_params": self.config.gnn.target_params,
+            "use_attention": self.config.gnn.use_attention,
+            "device": self.config.current_device,
+            "debug_mode": self.config.logging.debug_mode,
         }
         cell = self.cell_factory.create_cell("gnn", gnn_config)
         return cell.to(self.device)
@@ -160,8 +159,8 @@ class Lattice3D(nn.Module):
         from ..moe import create_moe_connection_processor
 
         return create_moe_connection_processor(
-            dimensions=self.config.lattice_dimensions,
-            state_size=self.config.gnn_state_size,
+            dimensions=self.config.lattice.dimensions,
+            state_size=self.config.gnn.state_size,
             device=self.device,
         )
 
@@ -172,16 +171,16 @@ class Lattice3D(nn.Module):
         state_size = (
             self.cells.state_size
             if hasattr(self.cells, "state_size")
-            else self.config.gnn_state_size
+            else self.config.gnn.state_size
         )
 
         dims = (self.pos_helper.total_positions, state_size)
 
         # Инициализация малыми случайными значениями
-        torch.manual_seed(42)  # Для воспроизводимости
+        torch.manual_seed(self.config.init.seed)  # Для воспроизводимости
         states = torch.randn(*dims, device=self.device, dtype=torch.float32) * 0.1
 
-        if self.config.debug_mode:
+        if self.config.logging.debug_mode:
             from ...utils.logging import get_logger
 
             logger = get_logger(__name__)
@@ -203,18 +202,20 @@ class Lattice3D(nn.Module):
 
         # Создаем MoE processor
         moe_processor = self._create_moe_processor()
-        
+
         # Устанавливаем MoE processor в унифицированный оптимизатор
         self.spatial_optimizer.moe_processor = moe_processor
-        
+
         # Unified Spatial Optimizer автоматически выберет лучший режим обработки
-        optimization_result = self.spatial_optimizer.optimize_lattice_forward(self.states)
-        
+        optimization_result = self.spatial_optimizer.optimize_lattice_forward(
+            self.states
+        )
+
         # Извлекаем новые состояния и дополнительную информацию
         new_states = optimization_result.new_states
-        
+
         # Логируем производительность если включен debug режим
-        if self.config.debug_mode:
+        if self.config.logging.debug_mode:
             self.logger.info(
                 f"Spatial optimization: {optimization_result.processing_time_ms:.1f}ms, "
                 f"режим: {optimization_result.mode_used.value}, "
@@ -237,7 +238,7 @@ class Lattice3D(nn.Module):
         self.perf_stats["avg_time_per_step"] = (
             self.perf_stats["total_time"] / self.perf_stats["total_steps"]
         )
-        
+
         # Добавляем статистику от унифицированного оптимизатора
         if optimization_result:
             self.perf_stats["spatial_optimization"] = {
@@ -246,7 +247,7 @@ class Lattice3D(nn.Module):
                 "memory_usage_mb": optimization_result.memory_usage_mb,
                 "gpu_utilization": optimization_result.gpu_utilization,
                 "neighbors_found": optimization_result.neighbors_found,
-                "cache_hit_rate": optimization_result.cache_hit_rate
+                "cache_hit_rate": optimization_result.cache_hit_rate,
             }
 
     def get_states(self) -> torch.Tensor:
@@ -306,7 +307,7 @@ class Lattice3D(nn.Module):
     def validate_lattice(self) -> Dict[str, Any]:
         """Валидирует решетку и возвращает статистику."""
         stats = {
-            "dimensions": self.config.lattice_dimensions,
+            "dimensions": self.config.lattice.dimensions,
             "total_cells": self.pos_helper.total_positions,
             "architecture_type": "moe",
             "device": str(self.device),
@@ -317,7 +318,9 @@ class Lattice3D(nn.Module):
 
         # Добавляем расширенную статистику от унифицированного оптимизатора
         if hasattr(self.spatial_optimizer, "get_comprehensive_stats"):
-            stats["spatial_optimizer"] = self.spatial_optimizer.get_comprehensive_stats()
+            stats["spatial_optimizer"] = (
+                self.spatial_optimizer.get_comprehensive_stats()
+            )
 
         # Добавляем информацию о клетках
         if hasattr(self.cells, "get_info"):

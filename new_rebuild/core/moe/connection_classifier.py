@@ -36,7 +36,7 @@ class UnifiedConnectionClassifier(nn.Module):
         config = get_project_config()
 
         self.lattice_dimensions = lattice_dimensions
-        self.state_size = config.gnn_state_size
+        self.state_size = config.gnn.state_size
 
         # Модульные компоненты
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
@@ -44,23 +44,23 @@ class UnifiedConnectionClassifier(nn.Module):
 
         # Learnable пороги для классификации
         self.local_distance_threshold = nn.Parameter(
-            torch.tensor(config.local_distance_threshold)
+            torch.tensor(config.expert.connections.local_distance_threshold)
         )
         self.functional_distance_threshold = nn.Parameter(
-            torch.tensor(config.functional_distance_threshold)
+            torch.tensor(config.expert.connections.functional_distance_threshold)
         )
         self.distant_distance_threshold = nn.Parameter(
-            torch.tensor(config.distant_distance_threshold)
+            torch.tensor(config.expert.connections.distant_distance_threshold)
         )
         self.functional_similarity_threshold = nn.Parameter(
-            torch.tensor(config.functional_similarity_threshold)
+            torch.tensor(config.expert.connections.functional_similarity_threshold)
         )
 
         # Целевые пропорции из конфига
         self.target_ratios = {
-            "local": config.local_tier,  # 0.10
-            "functional": config.functional_tier,  # 0.55
-            "distant": config.distant_tier,  # 0.35
+            "local": config.neighbors.local_tier,
+            "functional": config.neighbors.functional_tier,
+            "distant": config.neighbors.distant_tier,
         }
 
         # Статистика использования

@@ -16,7 +16,7 @@ from .connection_classifier import UnifiedConnectionClassifier
 from .connection_types import ConnectionCategory
 from .simple_linear_expert import SimpleLinearExpert
 from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert
-from ..cnf.lightweight_cnf import LightweightCNF
+from ..cnf.gpu_enhanced_cnf import GPUEnhancedCNF, ConnectionType
 from ...config import get_project_config
 from ...utils.logging import get_logger, log_cell_forward
 from ...utils.device_manager import get_device_manager
@@ -56,19 +56,17 @@ class MoEConnectionProcessor(nn.Module):
         self.device = self.device_manager.get_device()
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
-        self.state_size = state_size or config.gnn_state_size  # 32
-        self.lattice_dimensions = (
-            lattice_dimensions or config.lattice_dimensions
-        )  # (27, 27, 27)
+        self.state_size = state_size or config.gnn.state_size
+        self.lattice_dimensions = lattice_dimensions or config.lattice.dimensions
         self.adaptive_radius = config.calculate_adaptive_radius()
         self.max_neighbors = config.max_neighbors
-        self.enable_cnf = enable_cnf if enable_cnf is not None else config.enable_cnf
+        self.enable_cnf = enable_cnf if enable_cnf is not None else config.cnf.enabled
 
         # Конфигурация распределения связей: 10%/55%/35%
         self.connection_ratios = {
-            "local": config.local_tier,  # 0.10
-            "functional": config.functional_tier,  # 0.55
-            "distant": config.distant_tier,  # 0.35
+            "local": config.neighbors.local_tier,
+            "functional": config.neighbors.functional_tier,
+            "distant": config.neighbors.distant_tier,
         }
 
         # === КЛАССИФИКАТОР СВЯЗЕЙ ===
@@ -82,18 +80,19 @@ class MoEConnectionProcessor(nn.Module):
         self.functional_expert = HybridGNN_CNF_Expert(
             state_size=self.state_size,
             neighbor_count=self.max_neighbors,
-            target_params=config.functional_expert_params,  # 8233
-            cnf_params=config.distant_expert_params,  # 4000
+            target_params=config.expert.functional.params,
+            cnf_params=config.expert.distant.params,
         )
 
         # 3. Distant Expert - долгосрочная память (LightweightCNF)
         if self.enable_cnf:
-            from ..cnf.lightweight_cnf import ConnectionType
-
-            self.distant_expert = LightweightCNF(
+            self.distant_expert = GPUEnhancedCNF(
                 state_size=self.state_size,
                 connection_type=ConnectionType.DISTANT,
-                target_params=config.distant_expert_params,  # 4000
+                integration_steps=config.cnf.integration_steps,
+                batch_processing_mode=config.cnf.batch_processing_mode,
+                max_batch_size=config.cnf.max_batch_size,
+                adaptive_method=config.cnf.adaptive_method
             )
         else:
             # Fallback к простому linear если CNF отключен

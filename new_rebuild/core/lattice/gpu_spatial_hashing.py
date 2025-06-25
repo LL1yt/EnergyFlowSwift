@@ -154,7 +154,6 @@ class GPUSpatialHashGrid:
     def __init__(self, dimensions: Coordinates3D, cell_size: int = 4):
         self.device_manager = get_device_manager()
         self.device = self.device_manager.get_device()
-        self.config = get_project_config().get_spatial_optim_config()
 
         self.dimensions = dimensions
         self.cell_size = cell_size

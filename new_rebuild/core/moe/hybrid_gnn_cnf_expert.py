@@ -24,7 +24,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Dict, Any, Tuple
 
-from ..cnf.lightweight_cnf import LightweightCNF, ConnectionType
+from ..cnf.gpu_enhanced_cnf import GPUEnhancedCNF, ConnectionType
 from ..cells.gnn_cell import GNNCell
 from ...config import get_project_config
 from ...utils.logging import get_logger, log_cell_init, log_cell_forward
@@ -94,43 +94,35 @@ class HybridGNN_CNF_Expert(nn.Module):
         config = get_project_config()
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
-        self.state_size = state_size or config.gnn_state_size  # 32
-        # Устанавливаем neighbor_count ПЕРЕД использованием
+        self.state_size = state_size or config.gnn.state_size
         self.neighbor_count = (
-            neighbor_count if neighbor_count is not None else config.max_neighbors
+            neighbor_count
+            if neighbor_count is not None
+            else config.neighbors.max_neighbors
         )
-        self.target_params = (
-            target_params or config.functional_expert_params
-        )  # 8233 (обновлено в MoE) нам не столько важно попасть в target_params, сколько иметь возможность настроить это через конфиг центральный
-        self.cnf_params = (
-            cnf_params or config.distant_expert_params
-        )  # 4000 (обновлено в MoE) нам не столько важно попасть в target_params, сколько иметь возможность настроить это через конфиг центральный
+        self.target_params = target_params or config.expert.functional.params
+        self.cnf_params = cnf_params or config.expert.distant.params
 
         # === КОМПОНЕНТЫ ГИБРИДНОГО ЭКСПЕРТА ===
 
         # 1. GNN компонент (примерно 60% от общих параметров)
-        # Цель: ~7000 параметров для GNN
-        gnn_message_dim = config.gnn_message_dim  # 16 из конфига
-        gnn_hidden_dim = config.gnn_hidden_dim  # 32 из конфига
-        gnn_external_input_size = config.gnn_external_input_size  # 8 из конфига
-
         self.gnn_component = GNNCell(
             state_size=self.state_size,
             neighbor_count=self.neighbor_count,
-            message_dim=gnn_message_dim,
-            hidden_dim=gnn_hidden_dim,
-            external_input_size=gnn_external_input_size,
-            use_attention=config.gnn_use_attention,  # True из конфига
+            message_dim=config.gnn.message_dim,
+            hidden_dim=config.gnn.hidden_dim,
+            external_input_size=config.gnn.external_input_size,
+            use_attention=config.gnn.use_attention,
         )
 
         # 2. CNF компонент (примерно 25% от общих параметров)
-        # Цель: ~3000 параметров для CNF
-        self.cnf_component = LightweightCNF(
+        self.cnf_component = GPUEnhancedCNF(
             state_size=self.state_size,
             connection_type=ConnectionType.FUNCTIONAL,
-            integration_steps=config.cnf_integration_steps,  # 3 из конфига
-            adaptive_step_size=config.cnf_adaptive_step_size,  # True из конфига
-            target_params=self.cnf_params,
+            integration_steps=config.cnf.integration_steps,
+            batch_processing_mode=config.cnf.batch_processing_mode,
+            max_batch_size=config.cnf.max_batch_size,
+            adaptive_method=config.cnf.adaptive_method,
         )
 
         # 3. Adaptive gating network (примерно 15% от общих параметров)
@@ -205,7 +197,7 @@ class HybridGNN_CNF_Expert(nn.Module):
         # 3. GNN обработка
         if external_input is None:
             external_input = torch.zeros(
-                batch_size, config.gnn_external_input_size, device=current_state.device
+                batch_size, config.gnn.external_input_size, device=current_state.device
             )
 
         gnn_result = self.gnn_component(

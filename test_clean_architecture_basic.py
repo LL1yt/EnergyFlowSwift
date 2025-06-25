@@ -4,27 +4,33 @@
 ============================================
 
 Проверяем основные компоненты:
-1. Конфигурация работает
-2. Клетки создаются и выполняют forward pass
-3. Параметры соответствуют целевым значениям
+1. Новая модульная конфигурация работает
+2. MoE архитектура (эксперты, gating) создается и выполняется
+3. Параметры компонентов соответствуют целевым значениям в конфиге
 """
 
 import torch
 import logging
 import sys
 import os
+import unittest
 
 # Добавляем путь к new_rebuild
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "new_rebuild"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from new_rebuild import (
-    ProjectConfig,
+from new_rebuild.config import (
     get_project_config,
     set_project_config,
-    NCACell,
-    GMLPCell,
-    CellFactory,
+    reset_global_config,
+    ProjectConfig,
 )
+from new_rebuild.core.moe import (
+    GatingNetwork,
+    SimpleLinearExpert,
+    HybridGNN_CNF_Expert,
+    MoEConnectionProcessor,
+)
+from new_rebuild.core.cells import GNNCell  # GNNCell является базовой
 
 # Настраиваем логирование
 logging.basicConfig(
@@ -33,162 +39,131 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def test_project_config():
-    """Тест конфигурации"""
-    logger.info("=== ТЕСТ КОНФИГУРАЦИИ ===")
+class TestCleanArchitecture(unittest.TestCase):
 
-    config = get_project_config()
-    logger.info(f"✅ Конфигурация создана: {config.architecture_type}")
-    logger.info(
-        f"✅ Решетка: {config.lattice_dimensions} = {config.total_cells} клеток"
-    )
-    logger.info(f"✅ Устройство: {config.device}")
-    logger.info(
-        f"✅ Целевые параметры: NCA={config.nca_target_params}, gMLP={config.gmlp_target_params}"
-    )
-
-    # Проверяем методы доступа
-    nca_config = config.get_nca_config()
-    gmlp_config = config.get_gmlp_config()
-
-    assert nca_config["state_size"] == 4
-    assert gmlp_config["state_size"] == 32
-    assert nca_config["neighbor_count"] == gmlp_config["neighbor_count"]
-
-    logger.info("✅ Все проверки конфигурации пройдены")
-    return True
-
-
-def test_nca_cell():
-    """Тест NCA клетки"""
-    logger.info("=== ТЕСТ NCA КЛЕТКИ ===")
-
-    # Создаем клетку
-    cell = NCACell()
-    logger.info(f"✅ NCA клетка создана: {cell.state_size} состояние")
-
-    # Проверяем параметры
-    total_params = sum(p.numel() for p in cell.parameters())
-    logger.info(f"✅ Параметры: {total_params:,} (цель: {cell.target_params:,})")
-
-    # Тестируем forward pass
-    batch_size = 2
-    neighbor_count = cell.neighbor_count
-    state_size = cell.state_size
-
-    neighbor_states = torch.randn(batch_size, neighbor_count, state_size)
-    own_state = torch.randn(batch_size, state_size)
-    external_input = torch.randn(batch_size, cell.external_input_size)
-
-    with torch.no_grad():
-        output = cell(neighbor_states, own_state, external_input)
-
-    assert output.shape == (batch_size, state_size)
-    logger.info(f"✅ Forward pass: {output.shape}")
-
-    # Проверяем что выход отличается от входа (клетка что-то делает)
-    assert not torch.allclose(output, own_state, atol=1e-6)
-    logger.info("✅ Клетка изменяет состояние")
-
-    return True
-
-
-def test_gmlp_cell():
-    """Тест gMLP клетки"""
-    logger.info("=== ТЕСТ gMLP КЛЕТКИ ===")
-
-    # Создаем клетку
-    cell = GMLPCell()
-    logger.info(f"✅ gMLP клетка создана: {cell.state_size} состояние")
-
-    # Проверяем параметры
-    total_params = sum(p.numel() for p in cell.parameters())
-    logger.info(f"✅ Параметры: {total_params:,} (цель: {cell.target_params:,})")
-
-    # Проверяем что убрали bottleneck
-    bottleneck_found = any("bottleneck" in name for name, _ in cell.named_parameters())
-    assert not bottleneck_found, "❌ Найден bottleneck в архитектуре!"
-    logger.info("✅ Bottleneck архитектура убрана")
-
-    # Тестируем forward pass
-    batch_size = 2
-    neighbor_count = cell.neighbor_count
-    state_size = cell.state_size
-
-    neighbor_states = torch.randn(batch_size, neighbor_count, state_size)
-    own_state = torch.randn(batch_size, state_size)
-    external_input = torch.randn(batch_size, cell.external_input_size)
-
-    with torch.no_grad():
-        output = cell(neighbor_states, own_state, external_input)
-
-    assert output.shape == (batch_size, state_size)
-    logger.info(f"✅ Forward pass: {output.shape}")
-
-    # Проверяем что выход отличается от входа
-    assert not torch.allclose(output, own_state, atol=1e-6)
-    logger.info("✅ Клетка изменяет состояние")
-
-    return True
-
-
-def test_cell_factory():
-    """Тест фабрики клеток"""
-    logger.info("=== ТЕСТ ФАБРИКИ КЛЕТОК ===")
-
-    config = get_project_config()
-
-    # Тест создания NCA
-    nca_config = config.get_nca_config()
-    nca_cell = CellFactory.create_cell("nca", nca_config)
-    assert isinstance(nca_cell, NCACell)
-    logger.info("✅ NCA через фабрику")
-
-    # Тест создания gMLP
-    gmlp_config = config.get_gmlp_config()
-    gmlp_cell = CellFactory.create_cell("gmlp", gmlp_config)
-    assert isinstance(gmlp_cell, GMLPCell)
-    logger.info("✅ gMLP через фабрику")
-
-    return True
-
-
-def main():
-    """Основная функция тестирования"""
-    logger.info("🚀 ЗАПУСК ТЕСТОВ CLEAN АРХИТЕКТУРЫ")
-
-    try:
-        # Отключаем debug_mode для чистоты тестов
+    def setUp(self):
+        """Настройка перед каждым тестом"""
+        reset_global_config()
         config = ProjectConfig()
-        config.debug_mode = False
+        config.logging.debug_mode = False
         set_project_config(config)
+        logger.info(f"--- Запуск теста: {self._testMethodName} ---")
 
-        # Запускаем тесты
-        test_project_config()
-        test_nca_cell()
-        test_gmlp_cell()
-        test_cell_factory()
+    def tearDown(self):
+        """Очистка после каждого теста"""
+        reset_global_config()
+        logger.info(f"--- Завершение теста: {self._testMethodName} ---\n")
 
-        logger.info("🎉 ВСЕ ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО!")
-        logger.info("✅ Clean архитектура работает корректно")
-
-        # Выводим статистику
+    def test_project_config_new_structure(self):
+        """Тест новой модульной конфигурации"""
+        logger.info("Тестируем новую модульную структуру ProjectConfig")
         config = get_project_config()
-        logger.info(f"📊 СТАТИСТИКА:")
-        logger.info(f"   Общие целевые параметры: {config.total_target_params:,}")
-        logger.info(f"   Устройство: {config.device}")
-        logger.info(f"   Архитектура: {config.architecture_type}")
 
-        return True
+        self.assertTrue(hasattr(config, "lattice"))
+        self.assertTrue(hasattr(config, "gnn"))
+        self.assertTrue(hasattr(config, "expert"))
+        self.assertTrue(hasattr(config.expert, "gating"))
+        self.assertTrue(hasattr(config.expert, "local"))
+        self.assertTrue(hasattr(config.expert, "functional"))
+        self.assertTrue(hasattr(config.expert, "distant"))
 
-    except Exception as e:
-        logger.error(f"❌ ТЕСТ ПРОВАЛЕН: {e}")
-        import traceback
+        self.assertEqual(config.lattice.dimensions, (5, 5, 5))
+        self.assertEqual(config.expert.gating.params, 808)
+        self.assertEqual(config.expert.local.params, 2059)
+        self.assertTrue(config.expert.enabled)
 
-        traceback.print_exc()
-        return False
+        logger.info("✅ Новая структура конфигурации работает корректно")
+
+    def test_gnn_base_cell(self):
+        """Тест базовой GNN клетки"""
+        logger.info("Тестируем создание и работу базовой GNN клетки")
+        config = get_project_config()
+        cell = GNNCell(
+            state_size=config.gnn.state_size,
+            neighbor_count=config.neighbors.base_neighbor_count,
+            message_dim=config.gnn.message_dim,
+            hidden_dim=config.gnn.hidden_dim,
+            external_input_size=config.gnn.external_input_size,
+        )
+        total_params = sum(p.numel() for p in cell.parameters())
+        logger.info(f"✅ GNN клетка создана, параметры: {total_params}")
+
+        # Forward pass
+        batch_size = 2
+        neighbor_states = torch.randn(
+            batch_size, config.neighbors.base_neighbor_count, config.gnn.state_size
+        )
+        own_state = torch.randn(batch_size, config.gnn.state_size)
+        external_input = torch.randn(batch_size, config.gnn.external_input_size)
+
+        output = cell(neighbor_states, own_state, external_input)
+        self.assertEqual(output.shape, (batch_size, config.gnn.state_size))
+        logger.info("✅ Forward pass GNN клетки выполнен успешно")
+
+    def test_moe_architecture_components(self):
+        """Тест создания компонентов MoE архитектуры"""
+        logger.info("Тестируем создание и параметры компонентов MoE")
+        config = get_project_config()
+
+        # Gating Network
+        gating = GatingNetwork(state_size=config.gnn.state_size, num_experts=3)
+        gating_params = sum(p.numel() for p in gating.parameters())
+        self.assertAlmostEqual(gating_params, config.expert.gating.params, delta=100)
+        logger.info(
+            f"✅ GatingNetwork создан: {gating_params} параметров (цель: {config.expert.gating.params})"
+        )
+
+        # Local Expert
+        local_expert = SimpleLinearExpert(state_size=config.gnn.state_size)
+        local_params = sum(p.numel() for p in local_expert.parameters())
+        self.assertAlmostEqual(local_params, config.expert.local.params, delta=150)
+        logger.info(
+            f"✅ LocalExpert создан: {local_params} параметров (цель: {config.expert.local.params})"
+        )
+
+        # Functional Expert
+        functional_expert = HybridGNN_CNF_Expert(state_size=config.gnn.state_size)
+        functional_params = sum(p.numel() for p in functional_expert.parameters())
+        self.assertAlmostEqual(
+            functional_params, config.expert.functional.params, delta=500
+        )
+        logger.info(
+            f"✅ FunctionalExpert создан: {functional_params} параметров (цель: {config.expert.functional.params})"
+        )
+
+    def test_moe_processor_forward_pass(self):
+        """Тест forward pass через MoE Connection Processor"""
+        logger.info("Тестируем полный forward pass через MoE процессор")
+        config = get_project_config()
+        moe_processor = MoEConnectionProcessor(
+            state_size=config.gnn.state_size,
+            lattice_dimensions=config.lattice.dimensions,
+        )
+        moe_processor.to(config.current_device)
+
+        batch_size = 1
+        num_neighbors = 10
+        state_size = config.gnn.state_size
+
+        current_state = torch.randn(state_size).to(config.current_device)
+        neighbor_states = torch.randn(num_neighbors, state_size).to(
+            config.current_device
+        )
+
+        result = moe_processor(
+            current_state=current_state,
+            neighbor_states=neighbor_states,
+            cell_idx=0,
+            neighbor_indices=list(range(1, num_neighbors + 1)),
+        )
+
+        self.assertIn("new_state", result)
+        self.assertEqual(result["new_state"].shape, (state_size,))
+        self.assertIn("expert_weights", result)
+        self.assertEqual(result["expert_weights"].shape, (3,))
+        logger.info("✅ Forward pass MoE процессора выполнен успешно")
 
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    logger.info("🚀 ЗАПУСК ТЕСТОВ CLEAN АРХИТЕКТУРЫ С НОВОЙ КОНФИГУРАЦИЕЙ")
+    unittest.main()

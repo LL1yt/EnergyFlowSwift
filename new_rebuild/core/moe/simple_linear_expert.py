@@ -42,48 +42,48 @@ class OptimizedSimpleLinearExpert(nn.Module):
         super().__init__()
 
         config = get_project_config()
-        local_config = config.get_local_expert_config()
+        local_config = config.expert.local
 
         self.state_size = state_size
-        self.target_params = local_config["params"]  # Из конфига
+        self.target_params = local_config.params  # Из конфига
 
         # === ФИКСИРОВАННАЯ АРХИТЕКТУРА ===
 
         # 1. Neighbor aggregator - фиксированные размеры из конфига
         self.neighbor_aggregator = nn.Sequential(
             nn.Linear(
-                state_size, local_config["neighbor_agg_hidden1"], bias=True
+                state_size, local_config.neighbor_agg_hidden1, bias=True
             ),  # state_size * hidden1 + hidden1
             nn.GELU(),
             nn.Linear(
-                local_config["neighbor_agg_hidden1"],
-                local_config["neighbor_agg_hidden2"],
+                local_config.neighbor_agg_hidden1,
+                local_config.neighbor_agg_hidden2,
                 bias=True,
             ),  # hidden1 * hidden2 + hidden2
         )
 
         # 2. State processor - комбинирует состояние + агрегацию
-        processor_input_size = state_size + local_config["neighbor_agg_hidden2"]
+        processor_input_size = state_size + local_config.neighbor_agg_hidden2
         self.state_processor = nn.Sequential(
             nn.Linear(
-                processor_input_size, local_config["processor_hidden"], bias=True
+                processor_input_size, local_config.processor_hidden, bias=True
             ),  # (state_size + hidden2) * processor_hidden + processor_hidden
             nn.GELU(),
             nn.Linear(
-                local_config["processor_hidden"], state_size, bias=True
+                local_config.processor_hidden, state_size, bias=True
             ),  # processor_hidden * state_size + state_size
         )
 
         # 3. Residual connection parameters из конфига
-        self.alpha = nn.Parameter(torch.tensor(local_config["alpha"]))  # 1 параметр
-        self.beta = nn.Parameter(torch.tensor(local_config["beta"]))  # 1 параметр
+        self.alpha = nn.Parameter(torch.tensor(local_config.alpha))  # 1 параметр
+        self.beta = nn.Parameter(torch.tensor(local_config.beta))  # 1 параметр
 
         # 4. Нормализация для стабильности
         self.normalization = nn.LayerNorm(state_size, bias=True)
 
         # 5. Настройки для adaptive агрегации
-        self.max_neighbors_buffer = local_config["max_neighbors_buffer"]
-        self.use_attention = local_config["use_attention"]
+        self.max_neighbors_buffer = local_config.max_neighbors_buffer
+        self.use_attention = local_config.use_attention
 
         # Подсчет и логирование параметров
         total_params = sum(p.numel() for p in self.parameters())
@@ -98,8 +98,8 @@ class OptimizedSimpleLinearExpert(nn.Module):
 
         logger.info(
             f"OptimizedSimpleLinearExpert: {total_params} параметров "
-            f"(архитектура: {local_config['neighbor_agg_hidden1']}->{local_config['neighbor_agg_hidden2']} | "
-            f"{processor_input_size}->{local_config['processor_hidden']}->{state_size})"
+            f"(архитектура: {local_config.neighbor_agg_hidden1}->{local_config.neighbor_agg_hidden2} | "
+            f"{processor_input_size}->{local_config.processor_hidden}->{state_size})"
         )
 
     def forward(
