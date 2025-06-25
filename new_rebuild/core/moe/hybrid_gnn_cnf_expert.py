@@ -208,9 +208,10 @@ class HybridGNN_CNF_Expert(nn.Module):
         )
 
         # 4. CNF обработка
-        cnf_result = self.cnf_component(
+        cnf_result_dict = self.cnf_component(
             current_state=current_state, neighbor_states=neighbor_states
         )
+        cnf_result = cnf_result_dict["new_state"]
 
         # 5. Комбинирование результатов на основе gating
         # gating_weight: 0 = только GNN, 1 = только CNF

@@ -110,7 +110,9 @@ class CNFConfig:
     target_params_per_connection: int = 3000
     batch_processing_mode: str = "ADAPTIVE_BATCH"  # или "batch" если потребуется
     max_batch_size: int = 1024  # разумный дефолт для GPU/CPU
-    adaptive_method: str = "LIPSCHITZ_BASED"  # или "rk4", "euler", "adaptive" если потребуется
+    adaptive_method: str = (
+        "LIPSCHITZ_BASED"  # или "rk4", "euler", "adaptive" если потребуется
+    )
 
 
 @dataclass
@@ -173,6 +175,7 @@ class InitConfig:
 @dataclass
 class EulerSolverConfig:
     """Глобальная конфигурация для GPU Optimized Euler Solver"""
+
     adaptive_method: str = "LIPSCHITZ_BASED"
     base_dt: float = 0.1
     min_dt: float = 0.001
@@ -327,6 +330,7 @@ class DeprecatedConfig:
 @dataclass
 class ConnectionInfoConfig:
     """Централизованная конфигурация для информации о связи между клетками"""
+
     strength: float = 1.0
     functional_similarity: Optional[float] = None
 
@@ -366,9 +370,15 @@ class ProjectConfig:
     deprecated: DeprecatedConfig = field(default_factory=DeprecatedConfig)
     euler: EulerSolverConfig = field(default_factory=EulerSolverConfig)
     connection: ConnectionInfoConfig = field(default_factory=ConnectionInfoConfig)
-    adaptive_chunker: AdaptiveChunkerConfig = field(default_factory=AdaptiveChunkerConfig)
-    unified_spatial_optimizer: UnifiedSpatialOptimizerConfig = field(default_factory=UnifiedSpatialOptimizerConfig)
-    unified_optimizer: UnifiedSpatialOptimizerConfig = field(default_factory=UnifiedSpatialOptimizerConfig)
+    adaptive_chunker: AdaptiveChunkerConfig = field(
+        default_factory=AdaptiveChunkerConfig
+    )
+    unified_spatial_optimizer: UnifiedSpatialOptimizerConfig = field(
+        default_factory=UnifiedSpatialOptimizerConfig
+    )
+    unified_optimizer: UnifiedSpatialOptimizerConfig = field(
+        default_factory=UnifiedSpatialOptimizerConfig
+    )
     lattice3d: Lattice3DConfig = field(default_factory=Lattice3DConfig)
 
     # --- Вычисляемые и Runtime-свойства ---
