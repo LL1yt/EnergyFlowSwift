@@ -9,10 +9,12 @@ from .project_config import (
     ProjectConfig,
     get_project_config,
     set_project_config,
+    reset_global_config,
 )
 
 __all__ = [
     "ProjectConfig",
     "get_project_config",
     "set_project_config",
+    "reset_global_config",
 ]
