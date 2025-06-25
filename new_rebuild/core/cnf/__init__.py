@@ -7,8 +7,8 @@ CNF (Continuous Normalizing Flow) Module для 3D CNN
 CNF используется исключительно в Distant Expert для долгосрочной памяти.
 
 СТАТУС КОМПОНЕНТОВ:
-- LightweightCNF: АКТИВНЫЙ (используется в Distant Expert)
-- NeuralODE: АКТИВНЫЙ (часть LightweightCNF)
+- LightweightCNF: DEPRECATED (заменен на GPUEnhancedCNF)
+- NeuralODE: DEPRECATED (заменен на VectorizedNeuralODE)
 - EulerSolver: DEPRECATED (заменен на GPUOptimizedEulerSolver)
 - GPUOptimizedEulerSolver: АКТИВНЫЙ (v2.0)
 - GPUEnhancedCNF: АКТИВНЫЙ (v2.0)
@@ -45,6 +45,7 @@ from .gpu_enhanced_cnf import (
     BatchProcessingMode,
     create_gpu_enhanced_cnf,
     benchmark_cnf_performance,
+    ConnectionType,
 )
 
 # DEPRECATED компоненты (для обратной совместимости)
@@ -61,8 +62,8 @@ from .gpu_enhanced_cnf import (
 # Основные активные компоненты
 __all__ = [
     # Активные CNF компоненты для Distant Expert
-    "LightweightCNF",
-    "NeuralODE",
+    "GPUEnhancedCNF",
+    "VectorizedNeuralODE",
     "ConnectionType",
     # "EulerSolver",
     # NEW: GPU Optimized Solver (v2.0)
@@ -73,13 +74,13 @@ __all__ = [
     "create_gpu_optimized_euler_solver",
     "batch_euler_solve",
     "benchmark_solver_performance",
-    
     # NEW: GPU Enhanced CNF (v2.0)
     "GPUEnhancedCNF",
     "VectorizedNeuralODE",
     "BatchProcessingMode",
     "create_gpu_enhanced_cnf",
     "benchmark_cnf_performance",
+    "ConnectionType",
 ]
 
 # Добавляем deprecated компоненты если доступны

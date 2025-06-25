@@ -30,15 +30,6 @@ def test_cnf_imports():
     logger.info("🧪 Тест 1: Проверка импортов CNF компонентов")
 
     try:
-        # Legacy компоненты
-        from new_rebuild.core.cnf import (
-            LightweightCNF,
-            NeuralODE,
-            ConnectionType,
-            EulerSolver,
-        )
-
-        logger.info("✅ Legacy CNF импорты успешны")
 
         # Новые GPU компоненты
         from new_rebuild.core.cnf import (
@@ -76,7 +67,7 @@ def test_vectorized_neural_ode():
     logger.info("🧪 Тест 2: Vectorized Neural ODE")
 
     try:
-        from new_rebuild.core.cnf import VectorizedNeuralODE, ConnectionType
+        from new_rebuild.core.cnf import VectorizedNeuralODE
 
         state_size = 16
         batch_size = 10
