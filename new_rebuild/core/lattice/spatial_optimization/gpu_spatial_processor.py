@@ -31,7 +31,7 @@ try:
     from ....config.project_config import get_project_config
 
     # from ..spatial_hashing import Coordinates3D
-    from ..position import Position3D
+    # from ..position import Position3D
     from ....utils.logging import get_logger
     from ....utils.device_manager import get_device_manager
 

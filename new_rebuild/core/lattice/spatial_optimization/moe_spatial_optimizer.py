@@ -16,13 +16,14 @@ Spatial Optimizer адаптированный для MoE архитектуры
 
 import torch
 import torch.nn as nn
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import time
 
 from .spatial_optimizer import SpatialOptimizer
 from ....config.project_config import ChunkInfo, create_spatial_config_for_lattice
 from ....config.project_config import get_project_config
-from ..spatial_hashing import Coordinates3D
+
+# from ..spatial_hashing import Coordinates3D
 from ..position import Position3D
 from ....utils.logging import get_logger
 
@@ -32,6 +33,8 @@ from .adaptive_chunker import AdaptiveGPUChunker
 from ..gpu_spatial_hashing import AdaptiveGPUSpatialHash
 
 logger = get_logger(__name__)
+
+Coordinates3D = Tuple[int, int, int]
 
 
 class MoESpatialOptimizer(SpatialOptimizer):
