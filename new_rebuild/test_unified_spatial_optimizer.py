@@ -340,6 +340,7 @@ def test_performance_comparison():
         from core.lattice.spatial_optimization.spatial_optimizer import SpatialOptimizer
         
         legacy_optimizer = SpatialOptimizer(dimensions)
+        legacy_states = torch.randn(total_cells, state_size)  # Создаем states для legacy теста
         
         def simple_processor(current_state, neighbor_states, cell_idx, neighbors):
             if len(neighbors) == 0:
@@ -349,7 +350,7 @@ def test_performance_comparison():
         # Измерение производительности legacy
         start_time = time.time()
         for _ in range(3):
-            _ = legacy_optimizer.optimize_lattice_forward(states, simple_processor)
+            _ = legacy_optimizer.optimize_lattice_forward(legacy_states, simple_processor)
         legacy_time = (time.time() - start_time) / 3
         
         performance_results["legacy"] = {

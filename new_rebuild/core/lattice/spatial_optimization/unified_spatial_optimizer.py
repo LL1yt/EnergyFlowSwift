@@ -375,11 +375,21 @@ class UnifiedSpatialOptimizer:
         
         # Автоматический выбор на основе условий
         total_cells = np.prod(self.dimensions)
-        available_memory_gb = self.device_manager.get_available_memory_gb()
         
+        # Проверяем доступность CUDA
         if not self.device_manager.is_cuda():
             logger.info("🖥️ CUDA недоступна, используем CPU режим")
             return OptimizationMode.CPU_ONLY
+        
+        # Получаем статистику памяти
+        try:
+            memory_stats = self.device_manager.get_memory_stats()
+            available_memory_mb = memory_stats.get("available_mb", 4000)  # fallback 4GB
+            available_memory_gb = available_memory_mb / 1024
+        except:
+            # Fallback если статистика недоступна
+            available_memory_gb = 4.0
+            logger.warning("⚠️ Не удалось получить статистику памяти, используем fallback 4GB")
         
         if total_cells > 1000000 and available_memory_gb < 4.0:
             logger.info("⚖️ Большая решетка + мало памяти, используем гибридный режим")
