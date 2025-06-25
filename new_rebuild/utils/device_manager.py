@@ -192,6 +192,30 @@ class DeviceManager:
             except Exception as e:
                 logger.warning(f"   ⚠️ Ошибка получения информации CPU: {str(e)}")
 
+    def get_available_memory_gb(self) -> float:
+        """
+        Возвращает доступную память в ГБ для текущего устройства.
+
+        Returns:
+            Доступная память в ГБ.
+        """
+        if self.device.type == "cuda":
+            try:
+                total_memory = torch.cuda.get_device_properties(self.device).total_memory
+                reserved_memory = torch.cuda.memory_reserved(self.device)
+                available_memory_bytes = total_memory - reserved_memory
+                return available_memory_bytes / (1024**3)
+            except (RuntimeError, AssertionError) as e:
+                logger.warning(f"⚠️ Не удалось получить память GPU: {e}")
+                return 0.0
+        else:
+            # Для CPU используем psutil
+            try:
+                return psutil.virtual_memory().available / (1024**3)
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось получить память CPU: {e}")
+                return 0.0
+
     def ensure_device(self, tensor: torch.Tensor) -> torch.Tensor:
         """
         Гарантированно переносит tensor на правильное устройство
@@ -309,7 +333,7 @@ class DeviceManager:
         return str(self.device)
 
     def is_cuda(self) -> bool:
-        """Проверить использование CUDA"""
+        """Проверяет, используется ли CUDA."""
         return self.device.type == "cuda"
 
     def synchronize(self):
