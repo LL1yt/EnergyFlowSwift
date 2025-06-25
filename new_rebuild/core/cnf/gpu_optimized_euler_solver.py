@@ -318,7 +318,11 @@ class GPUOptimizedEulerSolver(nn.Module):
         
         # Vectorized Euler step
         if torch.is_tensor(dt):
+            dt = self.device_manager.ensure_device(dt)
             dt = dt.unsqueeze(-1)  # [batch, 1] для broadcasting
+        else:
+            # Scalar dt - создаем tensor на правильном устройстве
+            dt = torch.tensor(dt, device=self.device, dtype=states.dtype)
         
         next_states = states + dt * derivatives
         
