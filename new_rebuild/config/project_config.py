@@ -210,6 +210,33 @@ class AdaptiveChunkerConfig:
     processing_priority_low_delta: int = 20
 
 
+@dataclass
+class UnifiedSpatialOptimizerConfig:
+    """Конфигурация унифицированного пространственного оптимизатора"""
+
+    fallback_memory_mb: int = 4000
+    fallback_memory_gb: float = 4.0
+    large_lattice_threshold: int = 1000000
+    min_gpu_memory_gb: float = 4.0
+    max_test_batches: int = 3
+    batch_size_multiplier: int = 1000
+    default_search_radius: float = 10.0
+    neighbors_found_factor: int = 20
+    chunks_processed_div: int = 1000
+    moe_expert_state_size: int = 32
+    moe_expert_count: int = 3
+    moe_connection_neighbors: int = 26
+    cpu_spatial_index_bytes: int = 16
+    cpu_neighbor_cache_neighbors: int = 26
+    cpu_neighbor_cache_bytes: int = 4
+    gpu_spatial_hash_bytes: int = 8
+    gpu_morton_encoder_bytes: int = 4
+    gpu_chunker_memory_fraction: float = 0.1
+    gpu_tensor_overhead_fraction: float = 0.3
+    recommended_gpu_memory_fraction: float = 1.4
+    recommended_system_memory_fraction: float = 1.5
+
+
 # === MoE КОНФИГУРАЦИИ (остаются отдельными для ясности) ===
 
 
@@ -331,6 +358,8 @@ class ProjectConfig:
     euler: EulerSolverConfig = field(default_factory=EulerSolverConfig)
     connection: ConnectionInfoConfig = field(default_factory=ConnectionInfoConfig)
     adaptive_chunker: AdaptiveChunkerConfig = field(default_factory=AdaptiveChunkerConfig)
+    unified_spatial_optimizer: UnifiedSpatialOptimizerConfig = field(default_factory=UnifiedSpatialOptimizerConfig)
+    unified_optimizer: UnifiedSpatialOptimizerConfig = field(default_factory=UnifiedSpatialOptimizerConfig)
 
     # --- Вычисляемые и Runtime-свойства ---
     device_manager: DeviceManager = field(init=False)

@@ -40,7 +40,8 @@ from .unified_spatial_optimizer import (
 # ⚠️ DEPRECATED вспомогательные компоненты (используйте GPU аналоги)
 # from .chunker import LatticeChunker  # DEPRECATED: use AdaptiveGPUChunker
 from .memory_manager import MemoryPoolManager  # Still used
-from .hierarchical_index import HierarchicalSpatialIndex  # Still used
+
+# from .hierarchical_index import HierarchicalSpatialIndex  # Still used
 
 # from .parallel_processor import (
 #     ParallelSpatialProcessor,
@@ -96,7 +97,7 @@ __all__ = [
     # ⚠️ DEPRECATED вспомогательные компоненты
     # "LatticeChunker",  # DEPRECATED: use AdaptiveGPUChunker
     "MemoryPoolManager",  # Still used
-    "HierarchicalSpatialIndex",  # Still used
+    # "HierarchicalSpatialIndex",  # DEPRECATED
     # "ParallelSpatialProcessor",  # DEPRECATED: use GPUSpatialProcessor
     # Конфигурационные классы (из центрального конфига)
     "ChunkInfo",
