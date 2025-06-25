@@ -202,6 +202,7 @@ class AdaptiveChunkerConfig:
     cpu_fallback_available_mb: float = 16000.0
     safe_memory_buffer: float = 0.8
     max_concurrent_chunks: int = 4
+    max_chunks_in_memory: int = 4
     min_chunk_size: int = 8
     chunk_size_fallback_div: int = 8
     optimal_batch_size_small: int = 100

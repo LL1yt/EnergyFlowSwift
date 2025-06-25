@@ -304,9 +304,15 @@ class MoEConnectionProcessor(nn.Module):
         # === 3. GATING NETWORK ===
         expert_outputs_tensor = torch.stack(expert_outputs, dim=1)
 
+        # Создаем neighbor_activity как агрегированную активность соседей
+        if neighbor_states.numel() > 0:
+            neighbor_activity = neighbor_states.mean(dim=0).unsqueeze(0)
+        else:
+            neighbor_activity = torch.zeros_like(current_state.unsqueeze(0))
+
         # Gating network решает, как смешивать результаты
         combined_result, expert_weights = self.gating_network(
-            current_state.unsqueeze(0), expert_outputs_tensor
+            current_state.unsqueeze(0), neighbor_activity, expert_outputs
         )
 
         # Возвращаем временные тензоры в pool

@@ -40,7 +40,7 @@ try:
         GPUSpatialHashingStats,
         GPUMortonEncoder,
     )
-    from .adaptive_chunker import AdaptiveGPUChunker, ChunkProcessingTask
+    from .adaptive_chunker import AdaptiveGPUChunker, ChunkProcessingTask, AdaptiveChunkInfo
 
 except ImportError:
     # Абсолютные импорты для обратной совместимости или прямого запуска
@@ -58,6 +58,7 @@ except ImportError:
         GPUSpatialHashingStats,
         GPUMortonEncoder,
     )
+    from core.lattice.spatial_optimization.adaptive_chunker import AdaptiveGPUChunker, ChunkProcessingTask, AdaptiveChunkInfo
     from new_rebuild.core.lattice.spatial_optimization.adaptive_chunker import (
         AdaptiveGPUChunker,
         ChunkProcessingTask,
@@ -149,7 +150,7 @@ class GPUSpatialProcessor:
         # Chunker инициализируется со своей собственной конфигурацией
         self.chunker = AdaptiveGPUChunker(self.dimensions)
 
-        if self.config.get("log_memory_usage", False):
+        if getattr(self.config, "log_memory_usage", False):
             logger.info("Компоненты GPUSpatialProcessor инициализированы.")
 
         # Интеграционный layer для координации между компонентами
@@ -218,7 +219,7 @@ class GPUSpatialProcessor:
             await self._ensure_chunks_loaded(affected_chunks)
 
             # Выполняем spatial hash поиск
-            neighbor_lists = self.spatial_hash.query_radius_batch(
+            neighbor_lists = self.adaptive_hash.query_radius_batch(
                 query.coordinates, query.radius
             )
 
@@ -340,7 +341,7 @@ class GPUSpatialProcessor:
             indices_tensor = torch.tensor(indices, device=self.device, dtype=torch.long)
 
             # Добавляем в spatial hash
-            self.spatial_hash.insert_batch(coords_tensor, indices_tensor)
+            self.adaptive_hash.insert_batch(coords_tensor, indices_tensor)
 
             # Обновляем статистику chunk'а
             chunk_info.gpu_memory_usage_mb = self._estimate_chunk_gpu_memory(chunk_info)
@@ -404,7 +405,7 @@ class GPUSpatialProcessor:
     def _calculate_cache_hit_rate(self, query: SpatialQuery) -> float:
         """Вычисляет cache hit rate для запроса"""
         # Получаем статистику из spatial hash
-        hash_stats = self.spatial_hash.get_comprehensive_stats()
+        hash_stats = self.adaptive_hash.get_comprehensive_stats()
         return hash_stats.get("spatial_hash", {}).get("cache_hit_rate", 0.0)
 
     def _estimate_chunk_gpu_memory(self, chunk_info: AdaptiveChunkInfo) -> float:
@@ -426,7 +427,7 @@ class GPUSpatialProcessor:
     async def _perform_maintenance_tasks(self):
         """Выполняет периодические задачи обслуживания"""
         # Оптимизация памяти
-        self.spatial_hash.hash_grid.optimize_memory()
+        self.adaptive_hash.hash_grid.optimize_memory()
 
         # Перебалансировка chunk'ов
         self.chunker.rebalance_chunks()
@@ -469,7 +470,7 @@ class GPUSpatialProcessor:
         """Обновляет метрики интеграции компонентов"""
         # Получаем статистику от компонентов
         chunker_stats = self.chunker.get_comprehensive_stats()
-        hash_stats = self.spatial_hash.get_comprehensive_stats()
+        hash_stats = self.adaptive_hash.get_comprehensive_stats()
 
         # Вычисляем общую эффективность памяти
         chunker_efficiency = chunker_stats.get("memory", {}).get(
@@ -599,7 +600,7 @@ class GPUSpatialProcessor:
         """Получить полную статистику производительности"""
         # Собираем статистику от всех компонентов
         chunker_stats = self.chunker.get_comprehensive_stats()
-        hash_stats = self.spatial_hash.get_comprehensive_stats()
+        hash_stats = self.adaptive_hash.get_comprehensive_stats()
         device_stats = self.device_manager.get_memory_stats()
 
         return {
@@ -619,7 +620,7 @@ class GPUSpatialProcessor:
         logger.info("🔧 Запущена принудительная оптимизация производительности")
 
         # Оптимизация spatial hash
-        self.spatial_hash.hash_grid.optimize_memory()
+        self.adaptive_hash.hash_grid.optimize_memory()
 
         # Перебалансировка chunk'ов
         self.chunker.rebalance_chunks()
@@ -650,3 +651,154 @@ class GPUSpatialProcessor:
         self.device_manager.cleanup()
 
         logger.info("✅ GPUSpatialProcessor завершен")
+
+    # === PUBLIC API ===
+    
+    def process_lattice(
+        self,
+        states: torch.Tensor,
+        processor_fn: callable,
+        chunker=None
+    ) -> torch.Tensor:
+        """
+        Обрабатывает решетку с использованием spatial optimization
+        
+        Args:
+            states: Состояния клеток решетки
+            processor_fn: Функция обработки
+            chunker: Chunker для разбивки (опционально)
+            
+        Returns:
+            Обработанные состояния
+        """
+        # Используем наш внутренний chunker если не передан внешний
+        active_chunker = chunker or self.chunker
+        
+        # Инициализируем spatial hash всеми координатами клеток
+        self._populate_spatial_hash(states)
+        
+        # Получаем расписание обработки chunk'ов
+        schedule = active_chunker.get_adaptive_processing_schedule()
+        
+        # Обрабатываем chunk'и согласно расписанию
+        processed_states = states.clone()
+        
+        for batch in schedule:
+            batch_futures = []
+            
+            for chunk_id in batch:
+                # Планируем асинхронную обработку chunk'а
+                future = active_chunker.process_chunk_async(
+                    chunk_id,
+                    "process",
+                    callback=lambda cid, chunk_info: self._process_chunk_with_function(
+                        chunk_info, processed_states, processor_fn
+                    ),
+                    all_states=processed_states
+                )
+                batch_futures.append(future)
+            
+            # Ждем завершения обработки всех chunk'ов в batch'е
+            for future in batch_futures:
+                try:
+                    future.result(timeout=30.0)  # 30 секунд таймаут
+                except Exception as e:
+                    logger.error(f"❌ Ошибка обработки chunk'а: {e}")
+        
+        return processed_states
+    
+    def _process_chunk_with_function(
+        self,
+        chunk_info,
+        all_states: torch.Tensor,
+        processor_fn: callable
+    ) -> str:
+        """Обрабатывает один chunk с заданной функцией"""
+        try:
+            # Получаем индексы клеток chunk'а
+            indices = torch.tensor(
+                chunk_info.cell_indices,
+                device=self.device,
+                dtype=torch.long
+            )
+            
+            # Извлекаем состояния для chunk'а
+            chunk_states = all_states[indices]
+            
+            # Обрабатываем каждую клетку в chunk'е
+            processed_chunk_states = chunk_states.clone()
+            
+            for i, cell_idx in enumerate(indices):
+                cell_state = chunk_states[i:i+1]  # Состояние одной клетки
+                
+                # Получаем координаты клетки
+                cell_coords = self.chunker.pos_helper.to_3d_coordinates(cell_idx.item())
+                
+                # Используем spatial hash для поиска соседей
+                try:
+                    # Конвертируем координаты в tensor для spatial hash
+                    coords_tensor = torch.tensor(
+                        [cell_coords], device=self.device, dtype=torch.float32
+                    )
+                    
+                    # Ищем соседей в радиусе (адаптивный радиус)
+                    config = get_project_config()
+                    search_radius = config.calculate_adaptive_radius()
+                    
+                    neighbor_lists = self.adaptive_hash.query_radius_batch(
+                        coords_tensor, search_radius
+                    )
+                    
+                    neighbor_indices = neighbor_lists[0] if neighbor_lists else torch.empty(
+                        0, device=self.device, dtype=torch.long
+                    )
+                    
+                except Exception as e:
+                    logger.debug(f"⚠️ Не удалось найти соседей для клетки {cell_idx}: {e}")
+                    neighbor_indices = torch.empty(0, device=self.device, dtype=torch.long)
+                
+                # Применяем функцию обработки к одной клетке
+                processed_state = processor_fn(
+                    cell_state, 
+                    torch.tensor([cell_idx], device=self.device, dtype=torch.long),
+                    cell_idx, 
+                    neighbor_indices
+                )
+                
+                processed_chunk_states[i] = processed_state.squeeze(0)
+            
+            # Обновляем состояния в основном тензоре
+            all_states[indices] = processed_chunk_states
+            
+            return f"Chunk {chunk_info.chunk_id} processed successfully"
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка обработки chunk {chunk_info.chunk_id}: {e}")
+            return f"Chunk {chunk_info.chunk_id} processing failed: {e}"
+    
+    def _populate_spatial_hash(self, states: torch.Tensor):
+        """Заполняет spatial hash координатами всех клеток решетки"""
+        total_cells = states.shape[0]
+        
+        # Генерируем все координаты и индексы
+        all_coordinates = []
+        all_indices = []
+        
+        for cell_idx in range(total_cells):
+            coords = self.chunker.pos_helper.to_3d_coordinates(cell_idx)
+            all_coordinates.append(coords)
+            all_indices.append(cell_idx)
+        
+        if all_coordinates:
+            # Конвертируем в tensors
+            coords_tensor = torch.tensor(
+                all_coordinates, device=self.device, dtype=torch.float32
+            )
+            indices_tensor = torch.tensor(
+                all_indices, device=self.device, dtype=torch.long
+            )
+            
+            # Добавляем все координаты в spatial hash
+            self.adaptive_hash.insert_batch(coords_tensor, indices_tensor)
+            
+            logger.debug(f"📍 Spatial hash заполнен: {len(all_coordinates)} клеток")

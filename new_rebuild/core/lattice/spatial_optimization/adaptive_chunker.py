@@ -265,12 +265,13 @@ class AdaptiveGPUChunker:
     """
 
     def __init__(self, dimensions: Coordinates3D, config: dict = None):
-        self.config = config or get_project_config().adaptive_chunker
+        # Всегда используем AdaptiveChunkerConfig из глобальной конфигурации
+        self.config = get_project_config().adaptive_chunker
         self.dimensions = dimensions
         self.pos_helper = Position3D(dimensions)
         self.device_manager = get_device_manager()
         self.memory_predictor = AdaptiveMemoryPredictor()
-        self.scheduler = ChunkScheduler(self.config.get("max_concurrent_chunks"))
+        self.scheduler = ChunkScheduler(self.config.max_concurrent_chunks)
 
         if self.device_manager.is_cuda():
             self.prefetch_events: Dict[int, torch.cuda.Event] = {}
@@ -278,6 +279,16 @@ class AdaptiveGPUChunker:
         self._chunks: List[AdaptiveChunkInfo] = self._create_adaptive_chunks()
         self._neighbor_map: Dict[int, List[int]] = {}
         self._compute_neighbor_chunks()
+        self._optimize_chunk_parameters()
+
+        # Performance monitoring
+        self.performance_stats = {
+            "total_chunks": len(self._chunks),
+            "memory_efficiency": 0.0,
+            "avg_chunk_processing_time_ms": 0.0,
+            "memory_pressure_events": 0,
+            "adaptive_rebalancing_events": 0,
+        }
 
         # Device management
         self.device_manager = get_device_manager()
@@ -285,15 +296,6 @@ class AdaptiveGPUChunker:
 
         # Memory management
         self.memory_manager = get_memory_pool_manager(self.config)
-
-        # Performance monitoring
-        self.performance_stats = {
-            "total_chunks": 0,
-            "memory_efficiency": 0.0,
-            "avg_chunk_processing_time_ms": 0.0,
-            "memory_pressure_events": 0,
-            "adaptive_rebalancing_events": 0,
-        }
 
         logger.info(
             f"🎯 AdaptiveGPUChunker создан: {len(self._chunks)} chunks на {self.device}"
@@ -341,19 +343,13 @@ class AdaptiveGPUChunker:
                     chunks.append(chunk_info)
                     chunk_id += 1
 
-        # Вычисляем соседние chunk'и и оптимизируем
-        self._compute_neighbor_chunks()
-        self._optimize_chunk_parameters()
-
-        self.performance_stats["total_chunks"] = len(chunks)
-
         return chunks
 
     def _calculate_optimal_chunk_size(self, available_memory_mb: float) -> int:
         cfg = get_project_config().adaptive_chunker
         total_cells = np.prod(self.dimensions)
         target_memory_per_chunk_mb = (
-            available_memory_mb * 0.75 / self.config.get("max_chunks_in_memory", 4)
+            available_memory_mb * 0.75 / self.config.max_chunks_in_memory
         )
         memory_per_cell_bytes = cfg.memory_per_cell_base
         cells_per_chunk = int(
@@ -437,7 +433,7 @@ class AdaptiveGPUChunker:
 
     def _compute_neighbor_chunks(self):
         """Вычисляет соседние chunk'и для каждого chunk'а"""
-        overlap = self.config.get("chunk_overlap", 8)
+        overlap = self.config.chunk_overlap if hasattr(self.config, "chunk_overlap") else 8
 
         for chunk in self._chunks:
             neighbor_chunk_ids = []
@@ -511,7 +507,7 @@ class AdaptiveGPUChunker:
         Учитывает приоритеты, использование памяти и зависимости
         """
         available_memory = self.memory_predictor.get_available_memory_mb()
-        max_concurrent = self.config.get("max_chunks_in_memory", 4)
+        max_concurrent = self.config.max_chunks_in_memory
 
         # Сортируем chunk'и по приоритету и memory pressure
         sorted_chunks = sorted(
