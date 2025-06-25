@@ -24,8 +24,18 @@ DEPRECATED → РЕКОМЕНДУЕМАЯ ЗАМЕНА:
 """
 
 # Базовые классы
+# DEPRECATED: используйте UnifiedSpatialOptimizer
 from .spatial_optimizer import SpatialOptimizer
 from .moe_spatial_optimizer import MoESpatialOptimizer
+
+# NEW: Unified Spatial Optimizer
+from .unified_spatial_optimizer import (
+    UnifiedSpatialOptimizer,
+    create_unified_spatial_optimizer,
+    OptimizationConfig,
+    OptimizationMode,
+    estimate_unified_memory_requirements,
+)
 
 # ⚠️ DEPRECATED вспомогательные компоненты (используйте GPU аналоги)
 # from .chunker import LatticeChunker  # DEPRECATED: use AdaptiveGPUChunker
@@ -72,11 +82,17 @@ from .moe_spatial_optimizer import (
 )
 from .spatial_optimizer import create_spatial_optimizer, estimate_memory_requirements
 
-# Экспорты для обратной совместимости
+# Экспорты для обратной совместимости и новые компоненты
 __all__ = [
-    # Основные классы
-    "SpatialOptimizer",  # PARTIALLY DEPRECATED
-    "MoESpatialOptimizer",
+    # DEPRECATED: Основные классы (используйте UnifiedSpatialOptimizer)
+    "SpatialOptimizer",  # DEPRECATED
+    "MoESpatialOptimizer",  # DEPRECATED
+    # NEW: Unified Spatial Optimizer
+    "UnifiedSpatialOptimizer",
+    "create_unified_spatial_optimizer",
+    "OptimizationConfig",
+    "OptimizationMode",
+    "estimate_unified_memory_requirements",
     # ⚠️ DEPRECATED вспомогательные компоненты
     # "LatticeChunker",  # DEPRECATED: use AdaptiveGPUChunker
     "MemoryPoolManager",  # Still used

@@ -27,8 +27,12 @@ from .enums import Face
 from .io import IOPointPlacer
 from .position import Position3D
 
-# Spatial optimization для MoE архитектуры
-from .spatial_optimization import create_moe_spatial_optimizer, MoESpatialOptimizer
+# Unified Spatial optimization для MoE архитектуры
+from .spatial_optimization.unified_spatial_optimizer import (
+    create_unified_spatial_optimizer,
+    OptimizationConfig,
+    OptimizationMode
+)
 
 
 class Lattice3D(nn.Module):
@@ -75,9 +79,19 @@ class Lattice3D(nn.Module):
         self.cell_factory = CellFactory()
         self.cells = self._create_gnn_cells()
 
-        # MoE Spatial Optimizer
-        self.spatial_optimizer = create_moe_spatial_optimizer(
-            dimensions=self.config.lattice_dimensions, device=self.device
+        # Unified Spatial Optimizer с MoE поддержкой
+        spatial_config = OptimizationConfig(
+            mode=OptimizationMode.AUTO,  # Автоматический выбор лучшего режима
+            enable_moe=True,             # Включаем MoE поддержку
+            enable_morton_encoding=True, # Включаем Morton encoding для GPU
+            target_performance_ms=50.0,  # Целевая производительность
+            fallback_enabled=True        # Включаем fallback на CPU при ошибках GPU
+        )
+        
+        # Создаем унифицированный оптимизатор (MoE processor будет добавлен позже в forward)
+        self.spatial_optimizer = create_unified_spatial_optimizer(
+            dimensions=self.config.lattice_dimensions,
+            config=spatial_config
         )
 
         # Размещение I/O точек
@@ -187,28 +201,53 @@ class Lattice3D(nn.Module):
         """
         start_time = time.time()
 
-        # MoE forward pass через spatial optimizer
+        # Создаем MoE processor
         moe_processor = self._create_moe_processor()
-        new_states = self.spatial_optimizer.optimize_moe_forward(
-            states=self.states, moe_processor=moe_processor
-        )
+        
+        # Устанавливаем MoE processor в унифицированный оптимизатор
+        self.spatial_optimizer.moe_processor = moe_processor
+        
+        # Unified Spatial Optimizer автоматически выберет лучший режим обработки
+        optimization_result = self.spatial_optimizer.optimize_lattice_forward(self.states)
+        
+        # Извлекаем новые состояния и дополнительную информацию
+        new_states = optimization_result.new_states
+        
+        # Логируем производительность если включен debug режим
+        if self.config.debug_mode:
+            self.logger.info(
+                f"Spatial optimization: {optimization_result.processing_time_ms:.1f}ms, "
+                f"режим: {optimization_result.mode_used.value}, "
+                f"память: {optimization_result.memory_usage_mb:.1f}MB"
+            )
 
         # Обновляем состояния
         self.states = new_states
 
         # Обновляем статистику
         step_time = time.time() - start_time
-        self._update_performance_stats(step_time)
+        self._update_performance_stats(step_time, optimization_result)
 
         return self.states
 
-    def _update_performance_stats(self, step_time: float):
+    def _update_performance_stats(self, step_time: float, optimization_result=None):
         """Обновляет статистику производительности."""
         self.perf_stats["total_steps"] += 1
         self.perf_stats["total_time"] += step_time
         self.perf_stats["avg_time_per_step"] = (
             self.perf_stats["total_time"] / self.perf_stats["total_steps"]
         )
+        
+        # Добавляем статистику от унифицированного оптимизатора
+        if optimization_result:
+            self.perf_stats["spatial_optimization"] = {
+                "processing_time_ms": optimization_result.processing_time_ms,
+                "mode_used": optimization_result.mode_used.value,
+                "memory_usage_mb": optimization_result.memory_usage_mb,
+                "gpu_utilization": optimization_result.gpu_utilization,
+                "neighbors_found": optimization_result.neighbors_found,
+                "cache_hit_rate": optimization_result.cache_hit_rate
+            }
 
     def get_states(self) -> torch.Tensor:
         """Возвращает текущие состояния клеток."""
@@ -276,15 +315,28 @@ class Lattice3D(nn.Module):
             "output_points": len(self.output_points),
         }
 
-        # Добавляем статистику spatial optimizer
-        if hasattr(self.spatial_optimizer, "get_performance_stats"):
-            stats["spatial_optimizer"] = self.spatial_optimizer.get_performance_stats()
+        # Добавляем расширенную статистику от унифицированного оптимизатора
+        if hasattr(self.spatial_optimizer, "get_comprehensive_stats"):
+            stats["spatial_optimizer"] = self.spatial_optimizer.get_comprehensive_stats()
 
         # Добавляем информацию о клетках
         if hasattr(self.cells, "get_info"):
             stats["cell_info"] = self.cells.get_info()
 
         return stats
+
+    def cleanup(self):
+        """Освобождает ресурсы унифицированного оптимизатора."""
+        if hasattr(self.spatial_optimizer, "cleanup"):
+            self.spatial_optimizer.cleanup()
+            self.logger.info("🧹 Unified Spatial Optimizer ресурсы освобождены")
+
+    def __del__(self):
+        """Деструктор для автоматической очистки ресурсов."""
+        try:
+            self.cleanup()
+        except:
+            pass  # Игнорируем ошибки при деструкции
 
 
 def create_lattice() -> Lattice3D:

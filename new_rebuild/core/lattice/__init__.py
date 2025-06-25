@@ -20,12 +20,22 @@ from .position import Position3D, Coordinates3D, Dimensions3D
 
 # from .spatial_hashing import SpatialHashGrid, MortonEncoder
 from .spatial_optimization import (
+    # DEPRECATED: используйте UnifiedSpatialOptimizer
     SpatialOptimizer,
     create_spatial_optimizer,
     estimate_memory_requirements,
     MoESpatialOptimizer,
     create_moe_spatial_optimizer,
     estimate_moe_memory_requirements,
+)
+
+# NEW: Unified Spatial Optimizer - рекомендуется для новых проектов
+from .spatial_optimization.unified_spatial_optimizer import (
+    UnifiedSpatialOptimizer,
+    create_unified_spatial_optimizer,
+    OptimizationConfig,
+    OptimizationMode,
+    estimate_unified_memory_requirements,
 )
 from .io import IOPointPlacer
 
@@ -59,13 +69,19 @@ __all__ = [
     # Из spatial_hashing.py
     # "SpatialHashGrid",
     # "MortonEncoder",
-    # Из spatial_optimization.py
+    # Из spatial_optimization.py (DEPRECATED)
     "SpatialOptimizer",
     "create_spatial_optimizer",
     "estimate_memory_requirements",
     "MoESpatialOptimizer",
     "create_moe_spatial_optimizer",
     "estimate_moe_memory_requirements",
+    # NEW: Unified Spatial Optimizer
+    "UnifiedSpatialOptimizer",
+    "create_unified_spatial_optimizer",
+    "OptimizationConfig",
+    "OptimizationMode",
+    "estimate_unified_memory_requirements",
     # Из io.py
     "IOPointPlacer",
 ]
