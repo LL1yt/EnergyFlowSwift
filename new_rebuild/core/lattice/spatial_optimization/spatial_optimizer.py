@@ -24,20 +24,31 @@ logger = get_logger(__name__)
 
 class SpatialOptimizer:
     """
-    ⚠️ PARTIALLY DEPRECATED: Базовый класс для пространственной оптимизации
-    =====================================================================
+    🚨 DEPRECATED: Базовый класс для пространственной оптимизации
+    ============================================================
 
-    🚨 ЧАСТИЧНО УСТАРЕЛ: Для новых проектов используйте GPU компоненты!
+    ❌ УСТАРЕЛ: Используйте UnifiedSpatialOptimizer для новых проектов!
 
     Обеспечивает эффективный поиск соседей и основные операции
     для оптимизированной обработки 3D решеток.
 
     РЕКОМЕНДУЕМЫЕ ЗАМЕНЫ:
-    - find_neighbors_optimized() → GPUSpatialProcessor.query_neighbors_sync()
-    - CPU spatial operations → GPU-accelerated versions
+    - SpatialOptimizer → UnifiedSpatialOptimizer
+    - find_neighbors_optimized() → UnifiedSpatialOptimizer.find_neighbors_optimized()
+    - optimize_lattice_forward() → UnifiedSpatialOptimizer.optimize_lattice_forward()
 
-    Класс остается для обратной совместимости и как базовый для MoESpatialOptimizer.
-    Новые проекты должны использовать GPU Spatial Optimization компоненты.
+    МИГРАЦИЯ:
+    ```python
+    # Старый код:
+    optimizer = SpatialOptimizer(dimensions)
+    
+    # Новый код:
+    from .unified_spatial_optimizer import create_unified_spatial_optimizer
+    optimizer = create_unified_spatial_optimizer(dimensions)
+    ```
+
+    Класс остается только для обратной совместимости.
+    ВСЕ НОВЫЕ ПРОЕКТЫ должны использовать UnifiedSpatialOptimizer!
     """
 
     def __init__(self, dimensions: Coordinates3D, config: Optional[dict] = None):

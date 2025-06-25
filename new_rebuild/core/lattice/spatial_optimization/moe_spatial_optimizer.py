@@ -39,10 +39,34 @@ Coordinates3D = Tuple[int, int, int]
 
 class MoESpatialOptimizer(SpatialOptimizer):
     """
-    Spatial Optimizer адаптированный для MoE архитектуры
+    🚨 DEPRECATED: MoE Spatial Optimizer 
+    ===================================
 
+    ❌ УСТАРЕЛ: Используйте UnifiedSpatialOptimizer с MoE поддержкой!
+
+    Spatial Optimizer адаптированный для MoE архитектуры.
     Интегрирует пространственную оптимизацию с реальным MoE Connection Processor
     для максимальной производительности на больших решетках.
+
+    МИГРАЦИЯ:
+    ```python
+    # Старый код:
+    moe_optimizer = MoESpatialOptimizer(dimensions, moe_processor)
+    
+    # Новый код:
+    from .unified_spatial_optimizer import create_unified_spatial_optimizer, OptimizationConfig
+    config = OptimizationConfig(enable_moe=True)
+    optimizer = create_unified_spatial_optimizer(dimensions, config, moe_processor)
+    ```
+
+    ПРЕИМУЩЕСТВА UnifiedSpatialOptimizer:
+    - Автоматический выбор CPU/GPU режима
+    - Лучшая интеграция MoE архитектуры  
+    - Полная GPU-acceleration с Morton encoding
+    - Adaptive performance optimization
+    - Unified API для всех spatial операций
+
+    Класс остается только для обратной совместимости.
     """
 
     def __init__(
