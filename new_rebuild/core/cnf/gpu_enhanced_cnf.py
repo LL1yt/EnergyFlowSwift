@@ -118,6 +118,7 @@ class VectorizedNeuralODE(nn.Module):
             input_size=input_size,
             max_batch_size=batch_size
         )
+        self.to(self.device)
     
     def forward(
         self,
@@ -284,12 +285,12 @@ class GPUEnhancedCNF(nn.Module):
         # Интеграция через solver
         result = self.solver.batch_integrate(
             derivative_fn,
-            current_state.unsqueeze(0),
+            current_state,
             integration_time=1.0,
             num_steps=self.integration_steps
         )
         
-        return result.final_state.squeeze(0)
+        return result.final_state
     
     def _process_connection_batch(
         self,
