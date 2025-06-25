@@ -10,6 +10,7 @@ MoE Processor - упрощенный Mixture of Experts процессор
 import torch
 import torch.nn as nn
 from typing import Dict, List, Optional, Any, Tuple
+from torch.utils.checkpoint import checkpoint
 
 from .gating_network import GatingNetwork
 from .connection_classifier import UnifiedConnectionClassifier
@@ -21,6 +22,7 @@ from ...config import get_project_config
 from ...utils.logging import get_logger, log_cell_forward
 from ...utils.device_manager import get_device_manager
 from ..lattice.position import Position3D
+from ..lattice.spatial_optimization.memory_manager import get_memory_pool_manager
 
 logger = get_logger(__name__)
 
@@ -54,6 +56,7 @@ class MoEConnectionProcessor(nn.Module):
         # === DEVICE MANAGEMENT ===
         self.device_manager = config.get_device_manager()
         self.device = self.device_manager.get_device()
+        self.memory_pool_manager = get_memory_pool_manager()
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
         self.state_size = state_size or config.gnn.state_size
@@ -92,7 +95,7 @@ class MoEConnectionProcessor(nn.Module):
                 integration_steps=config.cnf.integration_steps,
                 batch_processing_mode=config.cnf.batch_processing_mode,
                 max_batch_size=config.cnf.max_batch_size,
-                adaptive_method=config.cnf.adaptive_method
+                adaptive_method=config.cnf.adaptive_method,
             )
         else:
             # Fallback к простому linear если CNF отключен
@@ -209,6 +212,7 @@ class MoEConnectionProcessor(nn.Module):
 
         # === 2. ОБРАБОТКА КАЖДЫМ ЭКСПЕРТОМ ===
         expert_outputs = []
+        tensors_to_return = []
 
         # Local Expert
         local_neighbors = [
@@ -218,20 +222,25 @@ class MoEConnectionProcessor(nn.Module):
             local_neighbor_states = neighbor_states[
                 [neighbor_indices.index(idx) for idx in local_neighbors]
             ]
-            local_result = self.local_expert(
-                current_state.unsqueeze(0), local_neighbor_states.unsqueeze(0)
+
+            def local_expert_wrapper(current, neighbors):
+                res = self.local_expert(current, neighbors)
+                if isinstance(res, dict):
+                    return res.get("output", res.get("new_state", current))
+                return res
+
+            local_output = checkpoint(
+                local_expert_wrapper,
+                current_state.unsqueeze(0),
+                local_neighbor_states.unsqueeze(0),
+                use_reentrant=False,
             )
-            # Извлекаем tensor из результата (может быть dict или tensor)
-            if isinstance(local_result, dict):
-                local_output = local_result.get(
-                    "output", local_result.get("new_state", current_state.unsqueeze(0))
-                )
-            else:
-                local_output = local_result
+
         else:
-            local_output = self.device_manager.allocate_tensor(
+            local_output = self.memory_pool_manager.get_tensor(
                 (1, self.state_size), dtype=current_state.dtype
             )
+            tensors_to_return.append(local_output)
         expert_outputs.append(local_output.squeeze(0))
 
         # Functional Expert
@@ -242,21 +251,25 @@ class MoEConnectionProcessor(nn.Module):
             functional_neighbor_states = neighbor_states[
                 [neighbor_indices.index(idx) for idx in functional_neighbors]
             ]
-            functional_result = self.functional_expert(
-                current_state.unsqueeze(0), functional_neighbor_states.unsqueeze(0)
+
+            def functional_expert_wrapper(current, neighbors):
+                res = self.functional_expert(current, neighbors)
+                if isinstance(res, dict):
+                    return res.get("output", res.get("new_state", current))
+                return res
+
+            functional_output = checkpoint(
+                functional_expert_wrapper,
+                current_state.unsqueeze(0),
+                functional_neighbor_states.unsqueeze(0),
+                use_reentrant=False,
             )
-            # Извлекаем tensor из результата (может быть dict или tensor)
-            if isinstance(functional_result, dict):
-                functional_output = functional_result.get(
-                    "output",
-                    functional_result.get("new_state", current_state.unsqueeze(0)),
-                )
-            else:
-                functional_output = functional_result
+
         else:
-            functional_output = self.device_manager.allocate_tensor(
+            functional_output = self.memory_pool_manager.get_tensor(
                 (1, self.state_size), dtype=current_state.dtype
             )
+            tensors_to_return.append(functional_output)
         expert_outputs.append(functional_output.squeeze(0))
 
         # Distant Expert
@@ -267,45 +280,59 @@ class MoEConnectionProcessor(nn.Module):
             distant_neighbor_states = neighbor_states[
                 [neighbor_indices.index(idx) for idx in distant_neighbors]
             ]
-            if self.enable_cnf:
-                distant_result = self.distant_expert(
-                    current_state.unsqueeze(0), distant_neighbor_states.unsqueeze(0)
-                )
-            else:
-                distant_result = self.distant_expert(
-                    current_state.unsqueeze(0), distant_neighbor_states.unsqueeze(0)
-                )
-            # Извлекаем tensor из результата (может быть dict или tensor)
-            if isinstance(distant_result, dict):
-                distant_output = distant_result.get(
-                    "output",
-                    distant_result.get("new_state", current_state.unsqueeze(0)),
-                )
-            else:
-                distant_output = distant_result
+
+            def distant_expert_wrapper(current, neighbors):
+                res = self.distant_expert(current, neighbors)
+                if isinstance(res, dict):
+                    return res.get("output", res.get("new_state", current))
+                return res
+
+            distant_output = checkpoint(
+                distant_expert_wrapper,
+                current_state.unsqueeze(0),
+                distant_neighbor_states.unsqueeze(0),
+                use_reentrant=False,
+            )
+
         else:
-            distant_output = self.device_manager.allocate_tensor(
+            distant_output = self.memory_pool_manager.get_tensor(
                 (1, self.state_size), dtype=current_state.dtype
             )
+            tensors_to_return.append(distant_output)
         expert_outputs.append(distant_output.squeeze(0))
 
         # === 3. GATING NETWORK ===
-        neighbor_activity = neighbor_states.mean(dim=0)  # Среднее состояние соседей
-        combined_output, expert_weights = self.gating_network(
-            current_state.unsqueeze(0),
-            neighbor_activity.unsqueeze(0),
-            [out.unsqueeze(0) for out in expert_outputs],
+        expert_outputs_tensor = torch.stack(expert_outputs, dim=1)
+
+        # Gating network решает, как смешивать результаты
+        combined_result, expert_weights = self.gating_network(
+            current_state.unsqueeze(0), expert_outputs_tensor
         )
 
+        # Возвращаем временные тензоры в pool
+        for tensor in tensors_to_return:
+            self.memory_pool_manager.return_tensor(tensor)
+
         # === 4. РЕЗУЛЬТАТ ===
-        self._update_stats(classifications, expert_weights.squeeze(0))
+        final_state = combined_result.squeeze(0)
+
+        # Обновляем статистику
+        self._update_stats(classifications, expert_weights)
+
+        log_cell_forward(
+            "MoEConnectionProcessor",
+            input_shapes={
+                "current_state": current_state.shape,
+                "neighbor_states": neighbor_states.shape,
+            },
+            output_shape=final_state.shape,
+            expert_weights=expert_weights.squeeze().tolist(),
+        )
 
         return {
-            "new_state": combined_output.squeeze(0),
-            "expert_weights": expert_weights.squeeze(0),
+            "output": final_state,
+            "expert_weights": expert_weights,
             "classifications": classifications,
-            "expert_outputs": expert_outputs,
-            "neighbor_count": len(neighbor_indices),
         }
 
     def _empty_forward_result(self, current_state: torch.Tensor) -> Dict[str, Any]:

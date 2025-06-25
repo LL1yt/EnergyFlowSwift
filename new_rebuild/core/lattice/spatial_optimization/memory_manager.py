@@ -177,3 +177,16 @@ class MemoryPoolManager:
         self.garbage_collect()
 
         logger.info("🧹 MemoryPoolManager полностью очищен")
+
+
+_memory_pool_manager_instance = None
+
+
+def get_memory_pool_manager(config: dict = None) -> MemoryPoolManager:
+    """
+    Возвращает синглтон-экземпляр MemoryPoolManager.
+    """
+    global _memory_pool_manager_instance
+    if _memory_pool_manager_instance is None:
+        _memory_pool_manager_instance = MemoryPoolManager(config)
+    return _memory_pool_manager_instance
