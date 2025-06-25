@@ -483,11 +483,16 @@ class GPUOptimizedEulerSolver(nn.Module):
         batch_size, state_size = initial_states.shape
         
         target_error = target_error or self.config.error_tolerance
+        # Создаем tensor для target_error на правильном устройстве
+        target_error_tensor = torch.tensor(target_error, device=self.device, dtype=initial_states.dtype)
+        min_dt_tensor = torch.tensor(self.config.min_dt, device=self.device, dtype=initial_states.dtype)
+        max_dt_tensor = torch.tensor(self.config.max_dt, device=self.device, dtype=initial_states.dtype)
+        integration_time_tensor = torch.tensor(integration_time, device=self.device, dtype=initial_states.dtype)
         
         # Инициализация
         current_states = initial_states.clone()
-        current_time = torch.zeros(batch_size, device=self.device)
-        dt = torch.full((batch_size,), self.base_dt.item(), device=self.device)
+        current_time = torch.zeros(batch_size, device=self.device, dtype=initial_states.dtype)
+        dt = torch.full((batch_size,), self.base_dt.item(), device=self.device, dtype=initial_states.dtype)
         
         # Trajectory storage
         trajectory_list = [] if return_trajectory else None
@@ -502,7 +507,7 @@ class GPUOptimizedEulerSolver(nn.Module):
         
         while steps_taken < max_steps and active_mask.any():
             # Оставшееся время для каждой траектории
-            remaining_time = integration_time - current_time
+            remaining_time = integration_time_tensor - current_time
             dt = torch.min(dt, remaining_time)
             
             # Обрабатываем только активные траектории
@@ -539,7 +544,7 @@ class GPUOptimizedEulerSolver(nn.Module):
             error_estimates_list.append(error_per_trajectory.mean().item())
             
             # Маска принятых шагов
-            accept_mask = (error_per_trajectory <= target_error) | (batch_dt <= self.config.min_dt)
+            accept_mask = (error_per_trajectory <= target_error_tensor) | (batch_dt <= min_dt_tensor)
             
             # Обновляем состояния для принятых шагов
             if active_indices is not None:
@@ -568,19 +573,19 @@ class GPUOptimizedEulerSolver(nn.Module):
             
             # Adaptive dt adjustment
             # Увеличиваем dt для малых ошибок
-            increase_mask = error_per_trajectory < target_error / 2
+            increase_mask = error_per_trajectory < target_error_tensor / 2
             decrease_mask = ~accept_mask
             
             new_dt = batch_dt.clone()
             new_dt[increase_mask] = torch.clamp(
                 new_dt[increase_mask] * 1.2, 
-                min=self.config.min_dt, 
-                max=self.config.max_dt
+                min=min_dt_tensor, 
+                max=max_dt_tensor
             )
             new_dt[decrease_mask] = torch.clamp(
                 new_dt[decrease_mask] * 0.5,
-                min=self.config.min_dt,
-                max=self.config.max_dt
+                min=min_dt_tensor,
+                max=max_dt_tensor
             )
             
             # Обновляем dt
@@ -598,7 +603,7 @@ class GPUOptimizedEulerSolver(nn.Module):
                 trajectory_list.append(current_states.clone())
             
             # Обновляем маску активных траекторий
-            active_mask = current_time < integration_time * 0.99
+            active_mask = current_time < integration_time_tensor * 0.99
             
             steps_taken += 1
         
@@ -610,7 +615,7 @@ class GPUOptimizedEulerSolver(nn.Module):
         if return_trajectory and trajectory_list:
             trajectory = torch.stack([initial_states] + trajectory_list, dim=0)
         
-        success = (current_time >= integration_time * 0.95).all().item()
+        success = (current_time >= integration_time_tensor * 0.95).all().item()
         
         result = IntegrationResult(
             final_state=current_states,
