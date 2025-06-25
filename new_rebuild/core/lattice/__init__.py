@@ -19,15 +19,15 @@ from .enums import Face, BoundaryCondition, PlacementStrategy, NeighborStrategy
 from .position import Position3D, Coordinates3D, Dimensions3D
 
 # from .spatial_hashing import SpatialHashGrid, MortonEncoder
-from .spatial_optimization import (
-    # DEPRECATED: используйте UnifiedSpatialOptimizer
-    SpatialOptimizer,
-    create_spatial_optimizer,
-    estimate_memory_requirements,
-    MoESpatialOptimizer,
-    create_moe_spatial_optimizer,
-    estimate_moe_memory_requirements,
-)
+# from .spatial_optimization import (
+# DEPRECATED: используйте UnifiedSpatialOptimizer
+# SpatialOptimizer,
+# create_spatial_optimizer,
+# estimate_memory_requirements,
+# MoESpatialOptimizer,
+# create_moe_spatial_optimizer,
+# estimate_moe_memory_requirements,
+# )
 
 # NEW: Unified Spatial Optimizer - рекомендуется для новых проектов
 from .spatial_optimization.unified_spatial_optimizer import (

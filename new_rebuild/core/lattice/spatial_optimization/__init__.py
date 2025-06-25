@@ -25,8 +25,8 @@ DEPRECATED → РЕКОМЕНДУЕМАЯ ЗАМЕНА:
 
 # Базовые классы
 # DEPRECATED: используйте UnifiedSpatialOptimizer
-from .spatial_optimizer import SpatialOptimizer
-from .moe_spatial_optimizer import MoESpatialOptimizer
+# from .spatial_optimizer import SpatialOptimizer
+# from .moe_spatial_optimizer import MoESpatialOptimizer
 
 # NEW: Unified Spatial Optimizer
 from .unified_spatial_optimizer import (
