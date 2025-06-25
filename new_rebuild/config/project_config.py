@@ -7,7 +7,7 @@
 Основано на принципах из utils/centralized_config.py, но упрощено для clean архитектуры.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple, Dict, Any, Optional, List
 import logging
 import torch
@@ -17,6 +17,62 @@ from typing import Tuple
 
 # Импорт DeviceManager для централизованного управления устройствами
 from ..utils.device_manager import DeviceManager, get_device_manager
+
+
+@dataclass
+class LocalExpertConfig:
+    """Конфигурация для Local Expert"""
+    params: int = 2059
+    type: str = "linear"
+    alpha: float = 0.1
+    beta: float = 0.9
+    neighbor_agg_hidden1: int = 32
+    neighbor_agg_hidden2: int = 16
+    processor_hidden: int = 64
+    max_neighbors_buffer: int = 100
+    use_attention: bool = True
+
+@dataclass
+class FunctionalExpertConfig:
+    """Конфигурация для Functional Expert"""
+    params: int = 8233
+    type: str = "gnn"
+
+@dataclass
+class DistantExpertConfig:
+    """Конфигурация для Distant Expert"""
+    params: int = 4000
+    type: str = "cnf"
+
+@dataclass
+class GatingConfig:
+    """Конфигурация для Gating Network"""
+    state_size: int = 32
+    params: int = 808
+    num_experts: int = 3
+    activation: str = "gelu"
+    hidden_dim: int = 11
+
+@dataclass
+class ExpertConnectionConfig:
+    """Конфигурация для распределения связей по экспертам"""
+    local_ratio: float = 0.10
+    functional_ratio: float = 0.55
+    distant_ratio: float = 0.35
+    local_distance_threshold: float = 1.5
+    functional_distance_threshold: float = 3.0
+    distant_distance_threshold: float = 4.5
+    functional_similarity_threshold: float = 0.3
+
+@dataclass
+class ExpertConfig:
+    """Конфигурация для MoE экспертов"""
+    enable_moe: bool = True
+    gating: GatingConfig = field(default_factory=GatingConfig)
+    local: LocalExpertConfig = field(default_factory=LocalExpertConfig)
+    functional: FunctionalExpertConfig = field(default_factory=FunctionalExpertConfig)
+    distant: DistantExpertConfig = field(default_factory=DistantExpertConfig)
+    connections: ExpertConnectionConfig = field(default_factory=ExpertConnectionConfig)
 
 
 @dataclass
@@ -106,50 +162,53 @@ class ProjectConfig:
     enable_metaplasticity: bool = True
     enable_clustering: bool = False  # пока отключено
 
-    # === MoE ARCHITECTURE (ОСНОВНАЯ АРХИТЕКТУРА) ===
-    enable_moe: bool = True  # Mixture of Experts - основная архитектура
+    # === MoE ARCHITECTУРА (ОСНОВНАЯ АРХИТЕКТУРА) ===
+    expert: ExpertConfig = field(default_factory=ExpertConfig)
 
-    # === GATING NETWORK (заменяет NCA нейрон) ===
-    gating_state_size: int = 32  # размер состояния для gating (= gnn_state_size)
-    gating_params: int = 808  # точно по спецификации
-    gating_num_experts: int = 3  # количество экспертов
-    gating_activation: str = "gelu"  # активация для gating network
-    gating_hidden_dim: int = 11  # скрытый слой для достижения 808 параметров
-
-    # === LOCAL EXPERT PARAMETERS ===
-    local_expert_alpha: float = 0.1  # adaptive weight mixing parameter
-    local_expert_beta: float = 0.9  # residual connection weight
-
-    # Оптимизированная архитектура SimpleLinearExpert
-    local_expert_neighbor_agg_hidden1: int = 32  # первый слой агрегатора
-    local_expert_neighbor_agg_hidden2: int = 16  # второй слой агрегатора
-    local_expert_processor_hidden: int = 64  # скрытый слой процессора
-    local_expert_max_neighbors_buffer: int = 100  # разумный лимит для attention
-    local_expert_use_attention: bool = True  # использовать attention-based агрегацию
-
-    # === ЭКСПЕРТЫ И ИХ ПАРАМЕТРЫ ===
-    # Local Expert (SimpleLinear) - рефлексы
-    local_expert_params: int = 2059  # точно по спецификации
-    local_expert_type: str = "linear"  # тип эксперта
-
-    # Functional Expert (GNN) - основная обработка
-    functional_expert_params: int = 8233  # верхняя граница
-    functional_expert_type: str = "gnn"  # только GNN (без CNF в functional)
-
-    # Distant Expert (CNF) - долгосрочная память
-    distant_expert_params: int = 4000  # верхняя граница для LightweightCNF
-    distant_expert_type: str = "cnf"  # только CNF
-
-    # === РАСПРЕДЕЛЕНИЕ СВЯЗЕЙ ПО ЭКСПЕРТАМ ===
-    local_connections_ratio: float = 0.10  # 10% связей - Local Expert
-    functional_connections_ratio: float = 0.55  # 55% связей - Functional Expert
-    distant_connections_ratio: float = 0.35  # 35% связей - Distant Expert
-
-    # Пороги для классификации связей
-    local_distance_threshold: float = 1.5  # расстояние для local connections
-    functional_distance_threshold: float = 3.0  # максимальное расстояние для functional
-    distant_distance_threshold: float = 4.5  # расстояние для distant connections
-    functional_similarity_threshold: float = 0.3  # порог функциональной схожести
+    # DEPRECATED
+    # enable_moe: bool = True  # Mixture of Experts - основная архитектура
+    #
+    # # === GATING NETWORK (заменяет NCA нейрон) ===
+    # gating_state_size: int = 32  # размер состояния для gating (= gnn_state_size)
+    # gating_params: int = 808  # точно по спецификации
+    # gating_num_experts: int = 3  # количество экспертов
+    # gating_activation: str = "gelu"  # активация для gating network
+    # gating_hidden_dim: int = 11  # скрытый слой для достижения 808 параметров
+    #
+    # # === LOCAL EXPERT PARAMETERS ===
+    # local_expert_alpha: float = 0.1  # adaptive weight mixing parameter
+    # local_expert_beta: float = 0.9  # residual connection weight
+    #
+    # # Оптимизированная архитектура SimpleLinearExpert
+    # local_expert_neighbor_agg_hidden1: int = 32  # первый слой агрегатора
+    # local_expert_neighbor_agg_hidden2: int = 16  # второй слой агрегатора
+    # local_expert_processor_hidden: int = 64  # скрытый слой процессора
+    # local_expert_max_neighbors_buffer: int = 100  # разумный лимит для attention
+    # local_expert_use_attention: bool = True  # использовать attention-based агрегацию
+    #
+    # # === ЭКСПЕРТЫ И ИХ ПАРАМЕТРЫ ===
+    # # Local Expert (SimpleLinear) - рефлексы
+    # local_expert_params: int = 2059  # точно по спецификации
+    # local_expert_type: str = "linear"  # тип эксперта
+    #
+    # # Functional Expert (GNN) - основная обработка
+    # functional_expert_params: int = 8233  # верхняя граница
+    # functional_expert_type: str = "gnn"  # только GNN (без CNF в functional)
+    #
+    # # Distant Expert (CNF) - долгосрочная память
+    # distant_expert_params: int = 4000  # верхняя граница для LightweightCNF
+    # distant_expert_type: str = "cnf"  # только CNF
+    #
+    # # === РАСПРЕДЕЛЕНИЕ СВЯЗЕЙ ПО ЭКСПЕРТАМ ===
+    # local_connections_ratio: float = 0.10  # 10% связей - Local Expert
+    # functional_connections_ratio: float = 0.55  # 55% связей - Functional Expert
+    # distant_connections_ratio: float = 0.35  # 35% связей - Distant Expert
+    #
+    # # Пороги для классификации связей
+    # local_distance_threshold: float = 1.5  # расстояние для local connections
+    # functional_distance_threshold: float = 3.0  # максимальное расстояние для functional
+    # distant_distance_threshold: float = 4.5  # расстояние для distant connections
+    # functional_similarity_threshold: float = 0.3  # порог функциональной схожести
 
     # === DEPRECATED: HYBRID GNN+CNF EXPERT ===
     # hybrid_gnn_cnf_expert_params: int = 12233  # DEPRECATED - слишком сложно
