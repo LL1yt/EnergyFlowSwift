@@ -60,7 +60,11 @@ class FunctionalSimilarityAnalyzer(nn.Module):
 
         # 2. Euclidean similarity в оригинальном пространстве
         euclidean_dist = torch.norm(states1 - states2, dim=-1)
-        max_possible_dist = torch.norm(torch.ones_like(states1), dim=-1)
+
+        # Это значение должно быть скаляром
+        reference_vector = torch.ones(self.state_size, device=states1.device)
+        max_possible_dist = torch.norm(reference_vector)
+
         euclidean_sim = 1.0 - (euclidean_dist / (max_possible_dist + 1e-8))
         euclidean_sim = torch.clamp(euclidean_sim, 0, 1)
 

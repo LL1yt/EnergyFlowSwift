@@ -91,7 +91,7 @@ class UnifiedConnectionClassifier(nn.Module):
         # Создаем валидную маску (исключаем -1 padding)
         valid_mask = neighbor_indices >= 0
 
-        if not valid_mask.any():
+        if valid_mask.sum().item() == 0:  # Используем .sum().item() вместо .any()
             return self._empty_classification_result(batch_size, max_neighbors, device)
 
         # Извлекаем валидные пары
@@ -109,9 +109,9 @@ class UnifiedConnectionClassifier(nn.Module):
         # Функциональные связи: между local и functional_distance_threshold
         functional_candidate_mask = (
             euclidean_distances > self.local_distance_threshold
-        ) & (euclidean_distances <= self.functional_distance_threshold)
+        ) * (euclidean_distances <= self.functional_distance_threshold)
         # Средние связи: между functional_distance и distant_threshold (будут проверены на similarity)
-        middle_mask = (euclidean_distances > self.functional_distance_threshold) & (
+        middle_mask = (euclidean_distances > self.functional_distance_threshold) * (
             euclidean_distances < self.distant_distance_threshold
         )
 
@@ -120,7 +120,7 @@ class UnifiedConnectionClassifier(nn.Module):
         functional_mask_flat = functional_candidate_mask.clone()
 
         # Проверяем средние связи на функциональную близость
-        if middle_mask.any():
+        if middle_mask.sum().item() > 0:  # Используем .sum().item() вместо .any()
             middle_cells = valid_cells[middle_mask]
             middle_neighbors = valid_neighbors[middle_mask]
 

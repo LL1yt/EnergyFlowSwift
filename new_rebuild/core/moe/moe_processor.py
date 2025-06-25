@@ -203,14 +203,17 @@ class MoEConnectionProcessor(nn.Module):
             external_input = self.device_manager.ensure_device(external_input)
 
         # === 1. КЛАССИФИКАЦИЯ СВЯЗЕЙ ===
+        logger.debug(f"[{cell_idx}] Шаг 1: Классификация связей...")
         classifications = self.connection_classifier.classify_connections(
             cell_idx=cell_idx,
             neighbor_indices=neighbor_indices,
             cell_state=current_state,
             neighbor_states=neighbor_states,
         )
+        logger.debug(f"[{cell_idx}] Классификация завершена.")
 
         # === 2. ОБРАБОТКА КАЖДЫМ ЭКСПЕРТОМ ===
+        logger.debug(f"[{cell_idx}] Шаг 2: Обработка экспертами...")
         expert_outputs = []
         tensors_to_return = []
 
@@ -218,10 +221,14 @@ class MoEConnectionProcessor(nn.Module):
         local_neighbors = [
             conn.target_idx for conn in classifications[ConnectionCategory.LOCAL]
         ]
+        logger.debug(f"[{cell_idx}] Local expert, {len(local_neighbors)} соседей.")
         if local_neighbors:
             local_neighbor_states = neighbor_states[
                 [neighbor_indices.index(idx) for idx in local_neighbors]
             ]
+            logger.debug(
+                f"[{cell_idx}] Local neighbor states shape: {local_neighbor_states.shape}"
+            )
 
             def local_expert_wrapper(current, neighbors):
                 res = self.local_expert(current, neighbors)
@@ -235,6 +242,9 @@ class MoEConnectionProcessor(nn.Module):
                 local_neighbor_states.unsqueeze(0),
                 use_reentrant=False,
             )
+            logger.debug(
+                f"[{cell_idx}] Local expert output shape: {local_output.shape}"
+            )
 
         else:
             local_output = self.memory_pool_manager.get_tensor(
@@ -247,10 +257,16 @@ class MoEConnectionProcessor(nn.Module):
         functional_neighbors = [
             conn.target_idx for conn in classifications[ConnectionCategory.FUNCTIONAL]
         ]
+        logger.debug(
+            f"[{cell_idx}] Functional expert, {len(functional_neighbors)} соседей."
+        )
         if functional_neighbors:
             functional_neighbor_states = neighbor_states[
                 [neighbor_indices.index(idx) for idx in functional_neighbors]
             ]
+            logger.debug(
+                f"[{cell_idx}] Functional neighbor states shape: {functional_neighbor_states.shape}"
+            )
 
             def functional_expert_wrapper(current, neighbors):
                 res = self.functional_expert(current, neighbors)
@@ -264,7 +280,9 @@ class MoEConnectionProcessor(nn.Module):
                 functional_neighbor_states.unsqueeze(0),
                 use_reentrant=False,
             )
-
+            logger.debug(
+                f"[{cell_idx}] Functional expert output shape: {functional_output.shape}"
+            )
         else:
             functional_output = self.memory_pool_manager.get_tensor(
                 (1, self.state_size), dtype=current_state.dtype
@@ -272,14 +290,18 @@ class MoEConnectionProcessor(nn.Module):
             tensors_to_return.append(functional_output)
         expert_outputs.append(functional_output.squeeze(0))
 
-        # Distant Expert
+        # Distant Expert (только если CNF включен)
         distant_neighbors = [
             conn.target_idx for conn in classifications[ConnectionCategory.DISTANT]
         ]
-        if distant_neighbors:
+        logger.debug(f"[{cell_idx}] Distant expert, {len(distant_neighbors)} соседей.")
+        if self.enable_cnf and distant_neighbors:
             distant_neighbor_states = neighbor_states[
                 [neighbor_indices.index(idx) for idx in distant_neighbors]
             ]
+            logger.debug(
+                f"[{cell_idx}] Distant neighbor states shape: {distant_neighbor_states.shape}"
+            )
 
             def distant_expert_wrapper(current, neighbors):
                 res = self.distant_expert(current, neighbors)
@@ -293,7 +315,9 @@ class MoEConnectionProcessor(nn.Module):
                 distant_neighbor_states.unsqueeze(0),
                 use_reentrant=False,
             )
-
+            logger.debug(
+                f"[{cell_idx}] Distant expert output shape: {distant_output.shape}"
+            )
         else:
             distant_output = self.memory_pool_manager.get_tensor(
                 (1, self.state_size), dtype=current_state.dtype
@@ -301,28 +325,65 @@ class MoEConnectionProcessor(nn.Module):
             tensors_to_return.append(distant_output)
         expert_outputs.append(distant_output.squeeze(0))
 
-        # === 3. GATING NETWORK ===
-        expert_outputs_tensor = torch.stack(expert_outputs, dim=1)
-
-        # Создаем neighbor_activity как агрегированную активность соседей
-        if neighbor_states.numel() > 0:
-            neighbor_activity = neighbor_states.mean(dim=0).unsqueeze(0)
-        else:
-            neighbor_activity = torch.zeros_like(current_state.unsqueeze(0))
-
-        # Gating network решает, как смешивать результаты
-        combined_result, expert_weights = self.gating_network(
-            current_state.unsqueeze(0), neighbor_activity, expert_outputs
+        # === 3. КОМБИНИРОВАНИЕ РЕЗУЛЬТАТОВ ===
+        logger.debug(
+            f"[{cell_idx}] Шаг 3: Комбинирование результатов. expert_outputs: {[t.shape for t in expert_outputs]}"
         )
+        try:
+            # Предотвращение ошибки с пустыми expert_outputs
+            if not expert_outputs:
+                logger.warning(
+                    f"⚠️ Нет выходов экспертов для клетки {cell_idx}, пропуск GatingNetwork."
+                )
+                final_state = current_state
+                expert_weights = torch.zeros(
+                    1, 3, device=device
+                )  # Возвращаем нулевые веса
+            else:
+                # --- ИСПРАВЛЕНИЕ: Агрегация состояний соседей ---
+                # Усредняем состояния всех соседей для получения единого вектора контекста
+                logger.debug(
+                    f"[{cell_idx}] Агрегация neighbor_states... Shape: {neighbor_states.shape}"
+                )
+                if neighbor_states.numel() > 0:
+                    neighbor_activity = torch.mean(neighbor_states, dim=0, keepdim=True)
+                else:
+                    # Если нет соседей, используем нулевой вектор
+                    neighbor_activity = torch.zeros(
+                        1, self.state_size, device=device, dtype=current_state.dtype
+                    )
+                logger.debug(
+                    f"[{cell_idx}] neighbor_activity shape: {neighbor_activity.shape}"
+                )
 
-        # Возвращаем временные тензоры в pool
-        for tensor in tensors_to_return:
-            self.memory_pool_manager.return_tensor(tensor)
+                # Вызов GatingNetwork с корректными по форме тензорами
+                logger.debug(f"[{cell_idx}] Вызов GatingNetwork...")
+                combined_output, expert_weights = self.gating_network(
+                    current_state=current_state.unsqueeze(0),  # [1, state_size]
+                    neighbor_activity=neighbor_activity,  # [1, state_size]
+                    expert_outputs=expert_outputs,
+                )
+                logger.debug(
+                    f"[{cell_idx}] GatingNetwork завершен. combined_output: {combined_output.shape}, expert_weights: {expert_weights.shape}"
+                )
 
-        # === 4. РЕЗУЛЬТАТ ===
-        final_state = combined_result.squeeze(0)
+                # Residual connection
+                final_state = current_state + combined_output.squeeze(0)
 
-        # Обновляем статистику
+        except Exception as e:
+            logger.error(
+                f"❌ MoE processor CRITICAL error on cell {cell_idx}: {e}",
+                exc_info=True,
+            )
+            # В случае ошибки возвращаем исходное состояние, чтобы не прерывать процесс
+            final_state = current_state
+            expert_weights = torch.zeros(1, 3, device=device)
+
+        # Освобождаем временные тензоры
+        for t in tensors_to_return:
+            self.memory_pool_manager.release_tensor(t)
+
+        # === 4. ОБНОВЛЕНИЕ СТАТИСТИКИ ===
         self._update_stats(classifications, expert_weights)
 
         log_cell_forward(
@@ -336,7 +397,7 @@ class MoEConnectionProcessor(nn.Module):
         )
 
         return {
-            "output": final_state,
+            "new_state": final_state,
             "expert_weights": expert_weights,
             "classifications": classifications,
         }

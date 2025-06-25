@@ -13,7 +13,7 @@ from new_rebuild.core.lattice.spatial_optimization.memory_manager import (
 
 # Configure logger for testing
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
