@@ -67,7 +67,7 @@ def test_vectorized_neural_ode():
     logger.info("🧪 Тест 2: Vectorized Neural ODE")
 
     try:
-        from new_rebuild.core.cnf import VectorizedNeuralODE
+        from new_rebuild.core.cnf import VectorizedNeuralODE, ConnectionType
 
         state_size = 16
         batch_size = 10

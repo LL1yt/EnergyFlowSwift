@@ -108,6 +108,9 @@ class CNFConfig:
     integration_steps: int = 3  # 3-step Euler
     adaptive_step_size: bool = True
     target_params_per_connection: int = 3000
+    batch_processing_mode: str = "ADAPTIVE_BATCH"  # или "batch" если потребуется
+    max_batch_size: int = 1024  # разумный дефолт для GPU/CPU
+    adaptive_method: str = "LIPSCHITZ_BASED"  # или "rk4", "euler", "adaptive" если потребуется
 
 
 @dataclass
@@ -165,6 +168,46 @@ class InitConfig:
 
     seed: int = 42
     initialization_method: str = "xavier"
+
+
+@dataclass
+class EulerSolverConfig:
+    """Глобальная конфигурация для GPU Optimized Euler Solver"""
+    adaptive_method: str = "LIPSCHITZ_BASED"
+    base_dt: float = 0.1
+    min_dt: float = 0.001
+    max_dt: float = 0.5
+    lipschitz_safety_factor: float = 0.8
+    stability_threshold: float = 10.0
+    memory_efficient: bool = True
+    max_batch_size: int = 1000
+    error_tolerance: float = 1e-3
+    enable_profiling: bool = True
+
+
+@dataclass
+class AdaptiveChunkerConfig:
+    """Конфигурация адаптивного чанкера для оптимизации памяти и производительности"""
+
+    optimal_batch_size: int = 1000
+    preferred_device: str = "cuda"
+    memory_per_cell_base: int = 64
+    memory_overhead_factor: float = 1.3
+    max_history: int = 1000
+    min_available_memory_mb: float = 500.0
+    cuda_fallback_available_mb: float = 8000.0
+    cpu_fallback_available_mb: float = 16000.0
+    safe_memory_buffer: float = 0.8
+    max_concurrent_chunks: int = 4
+    min_chunk_size: int = 8
+    chunk_size_fallback_div: int = 8
+    optimal_batch_size_small: int = 100
+    optimal_batch_size_medium: int = 2500
+    optimal_batch_size_large: int = 2500
+    memory_pressure_high: float = 0.8
+    memory_pressure_low: float = 0.3
+    processing_priority_high_delta: int = 10
+    processing_priority_low_delta: int = 20
 
 
 # === MoE КОНФИГУРАЦИИ (остаются отдельными для ясности) ===
@@ -254,6 +297,13 @@ class DeprecatedConfig:
     # effective_neighbors - заменен на calculate_dynamic_neighbors
 
 
+@dataclass
+class ConnectionInfoConfig:
+    """Централизованная конфигурация для информации о связи между клетками"""
+    strength: float = 1.0
+    functional_similarity: Optional[float] = None
+
+
 # === ГЛАВНЫЙ КОНФИГУРАЦИОННЫЙ КЛАСС ===
 
 
@@ -278,6 +328,9 @@ class ProjectConfig:
     init: InitConfig = field(default_factory=InitConfig)
     expert: ExpertConfig = field(default_factory=ExpertConfig)
     deprecated: DeprecatedConfig = field(default_factory=DeprecatedConfig)
+    euler: EulerSolverConfig = field(default_factory=EulerSolverConfig)
+    connection: ConnectionInfoConfig = field(default_factory=ConnectionInfoConfig)
+    adaptive_chunker: AdaptiveChunkerConfig = field(default_factory=AdaptiveChunkerConfig)
 
     # --- Вычисляемые и Runtime-свойства ---
     device_manager: DeviceManager = field(init=False)

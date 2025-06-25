@@ -265,7 +265,7 @@ class GNNCell(BaseCell):
         )
 
         # Логирование параметров
-        if config.debug_mode:
+        if config.logging.debug_mode:
             self._log_parameter_count()
 
     def _log_parameter_count(self):
@@ -321,7 +321,7 @@ class GNNCell(BaseCell):
 
         # Логирование forward pass (только в debug режиме)
         config = get_project_config()
-        if config.debug_mode:
+        if config.logging.debug_mode:
             input_shapes = {
                 "neighbor_states": neighbor_states.shape,
                 "own_state": own_state.shape,

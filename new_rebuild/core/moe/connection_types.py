@@ -10,6 +10,7 @@ Connection Types - типы и структуры данных для класс
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+from ...config.project_config import get_project_config
 
 
 class ConnectionCategory(Enum):
@@ -29,5 +30,12 @@ class ConnectionInfo:
     euclidean_distance: float
     manhattan_distance: float
     category: ConnectionCategory
-    strength: float = 1.0  # Сила связи (может модулироваться STDP)
-    functional_similarity: Optional[float] = None  # Функциональная близость
+    strength: float = None  # Значение по умолчанию берётся из централизованного конфига
+    functional_similarity: Optional[float] = None  # Значение по умолчанию берётся из централизованного конфига
+
+    def __post_init__(self):
+        cfg = get_project_config().connection
+        if self.strength is None:
+            self.strength = cfg.strength
+        if self.functional_similarity is None:
+            self.functional_similarity = cfg.functional_similarity

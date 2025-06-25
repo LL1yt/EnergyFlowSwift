@@ -57,22 +57,6 @@ class AdaptiveMethod(Enum):
 
 
 @dataclass
-class SolverConfig:
-    """Конфигурация GPU Optimized Euler Solver"""
-
-    adaptive_method: AdaptiveMethod = AdaptiveMethod.LIPSCHITZ_BASED
-    base_dt: float = 0.1
-    min_dt: float = 0.001
-    max_dt: float = 0.5
-    lipschitz_safety_factor: float = 0.8
-    stability_threshold: float = 10.0
-    memory_efficient: bool = True
-    max_batch_size: int = 1000
-    error_tolerance: float = 1e-3
-    enable_profiling: bool = True
-
-
-@dataclass
 class IntegrationResult:
     """Результат интеграции с детальной статистикой"""
 
@@ -100,10 +84,13 @@ class GPUOptimizedEulerSolver(nn.Module):
     - Real-time performance monitoring
     """
 
-    def __init__(self, config: Optional[SolverConfig] = None):
+    def __init__(self, config: Optional[Any] = None):
         super().__init__()
 
-        self.config = config or SolverConfig()
+        # Используем централизованный конфиг, если не передан явно
+        if config is None:
+            config = get_project_config().euler
+        self.config = config
         self.device_manager = get_device_manager()
         self.device = self.device_manager.get_device()
 
@@ -765,9 +752,9 @@ class GPUOptimizedEulerSolver(nn.Module):
 
 
 def create_gpu_optimized_euler_solver(
-    adaptive_method: AdaptiveMethod = AdaptiveMethod.LIPSCHITZ_BASED,
-    max_batch_size: int = 1000,
-    memory_efficient: bool = True,
+    adaptive_method: str = None,
+    max_batch_size: int = None,
+    memory_efficient: bool = None,
 ) -> GPUOptimizedEulerSolver:
     """
     Фабричная функция для создания GPU-оптимизированного solver'а
@@ -780,12 +767,19 @@ def create_gpu_optimized_euler_solver(
     Returns:
         Настроенный GPUOptimizedEulerSolver
     """
-    config = SolverConfig(
-        adaptive_method=adaptive_method,
-        max_batch_size=max_batch_size,
-        memory_efficient=memory_efficient,
+    euler_cfg = get_project_config().euler
+    config = type(euler_cfg)(
+        adaptive_method=adaptive_method or euler_cfg.adaptive_method,
+        base_dt=euler_cfg.base_dt,
+        min_dt=euler_cfg.min_dt,
+        max_dt=euler_cfg.max_dt,
+        lipschitz_safety_factor=euler_cfg.lipschitz_safety_factor,
+        stability_threshold=euler_cfg.stability_threshold,
+        memory_efficient=memory_efficient if memory_efficient is not None else euler_cfg.memory_efficient,
+        max_batch_size=max_batch_size or euler_cfg.max_batch_size,
+        error_tolerance=euler_cfg.error_tolerance,
+        enable_profiling=euler_cfg.enable_profiling,
     )
-
     return GPUOptimizedEulerSolver(config)
 
 
