@@ -256,12 +256,7 @@ class VectorizedGNNCell(BaseCell):
 
         # Перенос всех модулей на правильное устройство
         device_manager = get_device_manager()
-        self.message_network = device_manager.transfer_module(self.message_network)
-        
-        if self.aggregator is not None:
-            self.aggregator = device_manager.transfer_module(self.aggregator)
-            
-        self.state_updater = device_manager.transfer_module(self.state_updater)
+        self.to(device_manager.get_device())
 
         if config.logging.debug_mode:
             self._log_parameter_count()
