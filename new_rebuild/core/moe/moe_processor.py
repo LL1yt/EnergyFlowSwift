@@ -376,7 +376,7 @@ class MoEConnectionProcessor(nn.Module):
                 # Вызов GatingNetwork с корректными по форме тензорами
                 logger.debug(f"[{cell_idx}] Вызов GatingNetwork...")
                 combined_output, expert_weights = self.gating_network(
-                    current_state=current_state.unsqueeze(0),  # [1, state_size]
+                    current_state=current_state,  # [1, state_size]
                     neighbor_activity=neighbor_activity,  # [1, state_size]
                     expert_outputs=expert_outputs,
                 )
@@ -448,6 +448,10 @@ class MoEConnectionProcessor(nn.Module):
 
         # Статистика весов экспертов
         weights = expert_weights.detach()
+        # Обрабатываем размерности weights - может быть [3] или [1, 3]
+        if weights.dim() == 2:
+            weights = weights.squeeze(0)  # [1, 3] -> [3]
+        
         self.usage_stats["expert_weights"]["local"] += weights[0].item()
         self.usage_stats["expert_weights"]["functional"] += weights[1].item()
         self.usage_stats["expert_weights"]["distant"] += weights[2].item()
