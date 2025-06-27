@@ -74,11 +74,13 @@ class NeighborConfig:
     base_neighbor_count: int = 26  # Legacy
     max_neighbors: int = 20000  # Биологический лимит
 
-    # Adaptive Radius
+    # Adaptive Radius - ИСПРАВЛЕНО для лучшего распределения связей
     adaptive_radius_enabled: bool = True
-    adaptive_radius_ratio: float = 0.3
+    adaptive_radius_ratio: float = (
+        0.4  # Увеличено с 0.3 до 0.4 для больше DISTANT связей
+    )
     adaptive_radius_max: float = 500.0
-    adaptive_radius_min: float = 0.1
+    adaptive_radius_min: float = 1.0  # Уменьшено с 0.1 до 1.0
 
     # Tiered Topology
     local_tier: float = 0.1
@@ -324,15 +326,47 @@ class GatingConfig:
 
 @dataclass
 class ExpertConnectionConfig:
-    """Конфигурация для распределения связей по экспертам"""
+    """Конфигурация для распределения связей по экспертам - ИСПРАВЛЕНО"""
 
     local_ratio: float = 0.10
     functional_ratio: float = 0.55
     distant_ratio: float = 0.35
-    local_distance_threshold: float = 1.5
-    functional_distance_threshold: float = 3.0
-    distant_distance_threshold: float = 4.5
+    # ИСПРАВЛЕННЫЕ ПОРОГИ для adaptive_radius ~6.0 (15*0.4)
+    local_distance_threshold: float = 1.8  # 30% от радиуса (1.8/6.0)
+    functional_distance_threshold: float = 4.0  # 67% от радиуса (4.0/6.0)
+    distant_distance_threshold: float = 5.5  # 92% от радиуса (5.5/6.0)
     functional_similarity_threshold: float = 0.3
+
+
+@dataclass
+class ConnectionCacheConfig:
+    """Конфигурация для Connection Cache оптимизации"""
+
+    # Основные настройки кэширования
+    enabled: bool = True  # Включить/выключить кэширование связей
+    enable_performance_monitoring: bool = True  # Включить мониторинг производительности
+    enable_detailed_stats: bool = False  # Детальная статистика (может замедлить работу)
+
+    # Настройки автоматического включения/выключения
+    auto_enable_threshold: int = (
+        10000  # Автоматически включать кэш для решеток >10k клеток
+    )
+    auto_disable_threshold: int = (
+        1000  # Автоматически выключать кэш для решеток <1k клеток
+    )
+
+    # Настройки производительности
+    force_cache_rebuild: bool = False  # Принудительно пересоздать кэш при старте
+    save_to_disk: bool = True  # Сохранять кэш на диск
+    load_from_disk: bool = True  # Загружать кэш с диска
+
+    # Настройки памяти
+    max_cache_size_mb: float = 100.0  # Максимальный размер кэша в MB
+    clear_cache_on_memory_pressure: bool = True  # Очищать кэш при нехватке памяти
+
+    # Настройки для малых решеток
+    small_lattice_fallback: bool = True  # Использовать fallback для малых решеток
+    benchmark_small_lattices: bool = False  # Бенчмарк малых решеток (для отладки)
 
 
 @dataclass
@@ -345,6 +379,7 @@ class ExpertConfig:
     functional: FunctionalExpertConfig = field(default_factory=FunctionalExpertConfig)
     distant: DistantExpertConfig = field(default_factory=DistantExpertConfig)
     connections: ExpertConnectionConfig = field(default_factory=ExpertConnectionConfig)
+    cache: ConnectionCacheConfig = field(default_factory=ConnectionCacheConfig)
 
 
 # === КОНФИГУРАЦИЯ ДЛЯ УСТАРЕВШИХ ПАРАМЕТРОВ ===
@@ -619,22 +654,23 @@ class ProjectConfig:
             return min(self.neighbors.max_neighbors, self.total_cells)
 
     def calculate_adaptive_radius(self) -> float:
-        """Вычисляет адаптивный радиус поиска соседей."""
+        """Вычисляет адаптивный радиус поиска соседей с улучшенной логикой."""
         if not self.neighbors.adaptive_radius_enabled:
             return self.neighbors.adaptive_radius_max
 
         max_dimension = max(self.lattice.dimensions)
 
+        # ИСПРАВЛЕННАЯ ЛОГИКА: больше радиус для лучшего распределения связей
         if max_dimension <= 5:
-            adaptive_radius = 1.5
+            adaptive_radius = 2.0  # Было 1.5
         elif max_dimension <= 10:
-            adaptive_radius = 2.0
+            adaptive_radius = 3.5  # Было 2.0
         elif max_dimension <= 27:
-            adaptive_radius = 3.0
+            adaptive_radius = 6.0  # Было 3.0 -> теперь найдет DISTANT связи
         elif max_dimension <= 100:
-            adaptive_radius = 4.0
+            adaptive_radius = 8.0  # Было 4.0
         else:
-            adaptive_radius = min(8.0, 2.0 + math.log10(max_dimension))
+            adaptive_radius = min(12.0, 3.0 + math.log10(max_dimension))  # Было 8.0
 
         return max(
             self.neighbors.adaptive_radius_min,
@@ -726,35 +762,62 @@ class ProjectConfig:
         # Всегда возвращаем векторизованную версию
         return "vectorized_gnn"
 
+    def should_use_connection_cache(self) -> bool:
+        """Определяет, следует ли использовать кэширование связей."""
+        if not self.expert.cache.enabled:
+            return False
 
-# === УПРАВЛЕНИЕ ГЛОБАЛЬНЫМ ЭКЗЕМПЛЯРОМ ===
+        # Автоматическое определение на основе размера решетки
+        if self.total_cells >= self.expert.cache.auto_enable_threshold:
+            return True
+        elif self.total_cells <= self.expert.cache.auto_disable_threshold:
+            return False if self.expert.cache.small_lattice_fallback else True
+        else:
+            return True  # Средние размеры - используем кэш
 
-_global_config: Optional[ProjectConfig] = None
+    def get_connection_cache_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию кэширования связей."""
+        return {
+            "enabled": self.should_use_connection_cache(),
+            "enable_performance_monitoring": self.expert.cache.enable_performance_monitoring,
+            "enable_detailed_stats": self.expert.cache.enable_detailed_stats,
+            "force_cache_rebuild": self.expert.cache.force_cache_rebuild,
+            "save_to_disk": self.expert.cache.save_to_disk,
+            "load_from_disk": self.expert.cache.load_from_disk,
+            "max_cache_size_mb": self.expert.cache.max_cache_size_mb,
+            "clear_cache_on_memory_pressure": self.expert.cache.clear_cache_on_memory_pressure,
+            "small_lattice_fallback": self.expert.cache.small_lattice_fallback,
+            "benchmark_small_lattices": self.expert.cache.benchmark_small_lattices,
+            "total_cells": self.total_cells,
+            "lattice_dimensions": self.lattice.dimensions,
+        }
+
+
+# === ГЛОБАЛЬНАЯ КОНФИГУРАЦИЯ ===
+_global_project_config: Optional["ProjectConfig"] = None
 
 
 def get_project_config() -> "ProjectConfig":
     """
-    Получить глобальный экземпляр конфигурации (Singleton).
+    Получить глобальную конфигурацию проекта.
+    Создает новую если не существует.
     """
-    global _global_config
-    if _global_config is None:
-        _global_config = ProjectConfig()
-    return _global_config
+    global _global_project_config
+    if _global_project_config is None:
+        _global_project_config = ProjectConfig()
+    return _global_project_config
 
 
 def set_project_config(config: "ProjectConfig"):
-    """
-    Установить новую глобальную конфигурацию.
-    Используется в основном для тестирования.
-    """
-    global _global_config
-    _global_config = config
+    """Установить глобальную конфигурацию проекта."""
+    global _global_project_config
+    _global_project_config = config
 
 
 def reset_global_config():
-    """Сбросить глобальную конфигурацию. Полезно в тестах."""
-    global _global_config
-    _global_config = None
+    """Сброс глобальной конфигурации (принудительное пересоздание)."""
+    global _global_project_config
+    _global_project_config = None  # Принудительно сбрасываем
 
 
 # === Утилиты и хелперы (если нужны) ===

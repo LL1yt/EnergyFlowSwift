@@ -72,9 +72,10 @@ class MoEConnectionProcessor(nn.Module):
             "distant": config.neighbors.distant_tier,
         }
 
-        # === КЛАССИФИКАТОР СВЯЗЕЙ ===
+        # === КЛАССИФИКАТОР СВЯЗЕЙ С КЭШИРОВАНИЕМ ===
         self.connection_classifier = UnifiedConnectionClassifier(
-            lattice_dimensions=self.lattice_dimensions
+            lattice_dimensions=self.lattice_dimensions,
+            enable_cache=True,  # Включаем кэширование для оптимизации
         )
 
         # === ЭКСПЕРТЫ ===
@@ -189,17 +190,25 @@ class MoEConnectionProcessor(nn.Module):
                 if "full_lattice_states" in kwargs:
                     full_states = kwargs["full_lattice_states"]
                     neighbor_states = full_states[neighbor_indices]
-                    logger.debug(f"🔍 FALLBACK: извлечено состояния соседей из full_lattice_states, shape={neighbor_states.shape}")
+                    logger.debug(
+                        f"🔍 FALLBACK: извлечено состояния соседей из full_lattice_states, shape={neighbor_states.shape}"
+                    )
                 else:
                     # Если full_lattice_states недоступно, создаем пустые состояния
                     state_size = current_state.shape[-1]
-                    neighbor_states = torch.zeros(len(neighbor_indices), state_size, device=current_state.device)
-                    logger.warning(f"⚠️ FALLBACK: full_lattice_states недоступно, используем нулевые состояния для {len(neighbor_indices)} соседей")
+                    neighbor_states = torch.zeros(
+                        len(neighbor_indices), state_size, device=current_state.device
+                    )
+                    logger.warning(
+                        f"⚠️ FALLBACK: full_lattice_states недоступно, используем нулевые состояния для {len(neighbor_indices)} соседей"
+                    )
             else:
                 logger.warning(
                     f"⚠️ Ни spatial_optimizer, ни neighbor_indices не переданы для клетки {cell_idx}"
                 )
-                neighbor_states = torch.empty(0, current_state.shape[-1], device=current_state.device)
+                neighbor_states = torch.empty(
+                    0, current_state.shape[-1], device=current_state.device
+                )
 
         if len(neighbor_indices) == 0:
             return self._empty_forward_result(current_state)
@@ -235,7 +244,10 @@ class MoEConnectionProcessor(nn.Module):
         logger.debug(f"[{cell_idx}] Local expert, {len(local_neighbors)} соседей.")
         if local_neighbors:
             # Создаем маску для местных соседей
-            local_mask = torch.isin(neighbor_indices, torch.tensor(local_neighbors, device=neighbor_indices.device))
+            local_mask = torch.isin(
+                neighbor_indices,
+                torch.tensor(local_neighbors, device=neighbor_indices.device),
+            )
             # Flatten маску для правильной индексации
             local_mask_flat = local_mask.flatten()
             local_neighbor_states = neighbor_states[local_mask_flat]
@@ -275,7 +287,10 @@ class MoEConnectionProcessor(nn.Module):
         )
         if functional_neighbors:
             # Создаем маску для функциональных соседей
-            functional_mask = torch.isin(neighbor_indices, torch.tensor(functional_neighbors, device=neighbor_indices.device))
+            functional_mask = torch.isin(
+                neighbor_indices,
+                torch.tensor(functional_neighbors, device=neighbor_indices.device),
+            )
             # Flatten маску для правильной индексации
             functional_mask_flat = functional_mask.flatten()
             functional_neighbor_states = neighbor_states[functional_mask_flat]
@@ -312,7 +327,10 @@ class MoEConnectionProcessor(nn.Module):
         logger.debug(f"[{cell_idx}] Distant expert, {len(distant_neighbors)} соседей.")
         if self.enable_cnf and distant_neighbors:
             # Создаем маску для дальних соседей
-            distant_mask = torch.isin(neighbor_indices, torch.tensor(distant_neighbors, device=neighbor_indices.device))
+            distant_mask = torch.isin(
+                neighbor_indices,
+                torch.tensor(distant_neighbors, device=neighbor_indices.device),
+            )
             # Flatten маску для правильной индексации
             distant_mask_flat = distant_mask.flatten()
             distant_neighbor_states = neighbor_states[distant_mask_flat]
@@ -411,9 +429,11 @@ class MoEConnectionProcessor(nn.Module):
             },
             output_shape=final_state.shape,
         )
-        
+
         # Отдельное логирование expert_weights
-        logger.debug(f"[{cell_idx}] Expert weights: {expert_weights.squeeze().tolist()}")
+        logger.debug(
+            f"[{cell_idx}] Expert weights: {expert_weights.squeeze().tolist()}"
+        )
 
         return {
             "new_state": final_state,
@@ -453,7 +473,7 @@ class MoEConnectionProcessor(nn.Module):
         # Обрабатываем размерности weights - может быть [3] или [1, 3]
         if weights.dim() == 2:
             weights = weights.squeeze(0)  # [1, 3] -> [3]
-        
+
         self.usage_stats["expert_weights"]["local"] += weights[0].item()
         self.usage_stats["expert_weights"]["functional"] += weights[1].item()
         self.usage_stats["expert_weights"]["distant"] += weights[2].item()

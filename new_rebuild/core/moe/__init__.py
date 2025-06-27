@@ -34,6 +34,8 @@ MoE (Mixture of Experts) Module для 3D CNN
 from .simple_linear_expert import OptimizedSimpleLinearExpert, SimpleLinearExpert
 from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert, AdaptiveGatingNetwork
 from .moe_processor import MoEConnectionProcessor, GatingNetwork
+from .connection_classifier import UnifiedConnectionClassifier
+from .connection_cache import ConnectionCacheManager
 
 
 # Фабричная функция для создания MoE Connection Processor
@@ -51,6 +53,16 @@ def create_moe_connection_processor(
     return processor
 
 
+# Фабричная функция для создания Connection Classifier с кэшем
+def create_connection_classifier(lattice_dimensions, enable_cache=None, **kwargs):
+    """
+    Создает UnifiedConnectionClassifier с автоматическими настройками кэширования
+    """
+    return UnifiedConnectionClassifier(
+        lattice_dimensions=lattice_dimensions, enable_cache=enable_cache, **kwargs
+    )
+
+
 __all__ = [
     # Эксперты
     "OptimizedSimpleLinearExpert",
@@ -60,6 +72,10 @@ __all__ = [
     # Основная MoE архитектура
     "MoEConnectionProcessor",
     "GatingNetwork",
+    # Connection Classification and Caching
+    "UnifiedConnectionClassifier",
+    "ConnectionCacheManager",
     # Фабричные функции
     "create_moe_connection_processor",
+    "create_connection_classifier",
 ]
