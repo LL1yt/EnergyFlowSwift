@@ -236,7 +236,9 @@ class MoEConnectionProcessor(nn.Module):
         if local_neighbors:
             # Создаем маску для местных соседей
             local_mask = torch.isin(neighbor_indices, torch.tensor(local_neighbors, device=neighbor_indices.device))
-            local_neighbor_states = neighbor_states[local_mask]
+            # Flatten маску для правильной индексации
+            local_mask_flat = local_mask.flatten()
+            local_neighbor_states = neighbor_states[local_mask_flat]
             logger.debug(
                 f"[{cell_idx}] Local neighbor states shape: {local_neighbor_states.shape}"
             )
@@ -274,7 +276,9 @@ class MoEConnectionProcessor(nn.Module):
         if functional_neighbors:
             # Создаем маску для функциональных соседей
             functional_mask = torch.isin(neighbor_indices, torch.tensor(functional_neighbors, device=neighbor_indices.device))
-            functional_neighbor_states = neighbor_states[functional_mask]
+            # Flatten маску для правильной индексации
+            functional_mask_flat = functional_mask.flatten()
+            functional_neighbor_states = neighbor_states[functional_mask_flat]
             logger.debug(
                 f"[{cell_idx}] Functional neighbor states shape: {functional_neighbor_states.shape}"
             )
@@ -309,7 +313,9 @@ class MoEConnectionProcessor(nn.Module):
         if self.enable_cnf and distant_neighbors:
             # Создаем маску для дальних соседей
             distant_mask = torch.isin(neighbor_indices, torch.tensor(distant_neighbors, device=neighbor_indices.device))
-            distant_neighbor_states = neighbor_states[distant_mask]
+            # Flatten маску для правильной индексации
+            distant_mask_flat = distant_mask.flatten()
+            distant_neighbor_states = neighbor_states[distant_mask_flat]
             logger.debug(
                 f"[{cell_idx}] Distant neighbor states shape: {distant_neighbor_states.shape}"
             )
