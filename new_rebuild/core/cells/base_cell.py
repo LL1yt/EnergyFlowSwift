@@ -110,8 +110,8 @@ class CellFactory:
             Экземпляр клетки
         """
         if cell_type == "gnn":
-            from .gnn_cell import GNNCell
+            from .vectorized_gnn_cell import VectorizedGNNCell
 
-            return GNNCell(**config)
+            return VectorizedGNNCell(**config)
         else:
             raise ValueError(f"Unknown cell type: {cell_type}")

@@ -1,39 +1,121 @@
+#!/usr/bin/env python3
 """
-Clean 3D Cellular Neural Network - Cells Module
-===============================================
+Cells Package - клеточные процессоры
+==================================
 
-НОВАЯ АРХИТЕКТУРА: MoE (Mixture of Experts)
-Клетки заменены на экспертов в core/moe/
-
-СТАТУС КОМПОНЕНТОВ:
-- GNNCell: АКТИВНЫЙ (используется в Functional Expert)
-- NCACell: DEPRECATED (заменен на GatingNetwork в MoE)
-- HybridCell*, GMLPCell: DEPRECATED (заменены на MoE)
-- MoE архитектура: в отдельном модуле core/moe/
+Фабрика для автоматического выбора оптимальной версии клетки.
 """
 
-from .base_cell import BaseCell, CellFactory
-from .gnn_cell import GNNCell
+from typing import Any, Dict, Optional
+import logging
 
-# DEPRECATED компоненты (для обратной совместимости)
-"""
+from ..config import get_project_config
+from .base_cell import BaseCell
+
+# Импорты векторизованных компонентов
 try:
-    from .nca_cell import NCACell  # DEPRECATED: заменен на GatingNetwork
+    from .vectorized_gnn_cell import VectorizedGNNCell
 
-    _NCA_AVAILABLE = True
+    VECTORIZED_AVAILABLE = True
 except ImportError:
-    _NCA_AVAILABLE = False
+    VECTORIZED_AVAILABLE = False
+    logging.warning("⚠️  Vectorized components not available - using legacy versions")
 
-try:
-    from .gmlp_cell import GMLPCell  # DEPRECATED: заменен на GNN
+# Импорты legacy компонентов (DEPRECATED)
+# from .gnn_cell import GNNCell  # DEPRECATED - используйте VectorizedGNNCell
 
-    _GMLP_AVAILABLE = True
-except ImportError:
-    _GMLP_AVAILABLE = False
-"""
-# Основные активные компоненты
+logger = logging.getLogger(__name__)
+
+
+def create_cell(cell_type: Optional[str] = None, **kwargs) -> BaseCell:
+    """
+    Фабрика для создания векторизованной клетки
+
+    Args:
+        cell_type: Тип клетки (только 'vectorized_gnn' или 'auto')
+        **kwargs: Параметры для конструктора клетки
+
+    Returns:
+        BaseCell: Экземпляр векторизованной клетки
+    """
+    # Всегда создаем векторизованную версию
+    if cell_type is None or cell_type == "auto" or cell_type == "vectorized_gnn":
+        if not VECTORIZED_AVAILABLE:
+            raise ImportError(
+                "VectorizedGNNCell not available. "
+                "Ensure vectorized components are properly installed."
+            )
+        logger.info("🚀 Creating VectorizedGNNCell for maximum performance")
+        return VectorizedGNNCell(**kwargs)
+
+    # Legacy версии больше не поддерживаются
+    elif cell_type == "gnn":
+        logger.error(
+            "🚨 Legacy GNN Cell is DEPRECATED! Only VectorizedGNNCell is supported."
+        )
+        raise DeprecationWarning(
+            "GNNCell is deprecated and removed. Only VectorizedGNNCell is available."
+        )
+
+    else:
+        raise ValueError(
+            f"Unknown cell type: {cell_type}. Only 'vectorized_gnn' is supported."
+        )
+
+
+def get_recommended_cell_type() -> str:
+    """Возвращает рекомендуемый тип клетки (всегда vectorized_gnn)"""
+    return "vectorized_gnn"
+
+
+def is_vectorized_available() -> bool:
+    """Проверяет доступность векторизованных компонентов"""
+    return VECTORIZED_AVAILABLE
+
+
+def get_performance_comparison() -> Dict[str, Any]:
+    """Возвращает сравнение производительности доступных типов клеток"""
+    config = get_project_config()
+
+    comparison = {
+        "recommended": get_recommended_cell_type(),
+        "total_cells": config.total_cells,
+        "available_types": [],
+    }
+
+    if VECTORIZED_AVAILABLE:
+        comparison["available_types"].append(
+            {
+                "type": "vectorized_gnn",
+                "description": "Vectorized GNN Cell - максимальная производительность",
+                "expected_speedup": "5-800x",
+                "recommended": True,
+            }
+        )
+
+    comparison["available_types"].append(
+        {
+            "type": "gnn",
+            "description": "DEPRECATED: Legacy GNN Cell - используйте VectorizedGNNCell",
+            "expected_speedup": "1x (базовая)",
+            "recommended": False,  # Больше не рекомендуется
+            "deprecated": True,
+        }
+    )
+
+    return comparison
+
+
+# Экспорты
 __all__ = [
     "BaseCell",
-    "GNNCell",  # Единственная активная клетка (для Functional Expert)
-    "CellFactory",
+    # "GNNCell",  # DEPRECATED - удалено из экспорта
+    "create_cell",
+    "get_recommended_cell_type",
+    "is_vectorized_available",
+    "get_performance_comparison",
 ]
+
+# Условный экспорт векторизованных компонентов
+if VECTORIZED_AVAILABLE:
+    __all__.append("VectorizedGNNCell")

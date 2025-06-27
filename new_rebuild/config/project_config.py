@@ -136,6 +136,39 @@ class SpatialOptimConfig:
 
 
 @dataclass
+class VectorizedConfig:
+    """Конфигурация векторизованных компонентов (основные оптимизации производительности)"""
+
+    # Основные настройки векторизации
+    enabled: bool = True  # Использовать векторизованные компоненты по умолчанию
+    force_vectorized: bool = (
+        True  # Принудительно использовать только векторизованные версии
+    )
+
+    # Batch processing настройки
+    adaptive_batch_size: bool = True  # Адаптивный размер батча на основе GPU памяти
+    min_batch_size: int = 100  # Минимальный размер батча
+    max_batch_size: int = 8000  # Максимальный размер батча для GPU
+    cpu_batch_size: int = 1000  # Размер батча для CPU
+
+    # Memory optimization
+    tensor_reuse: bool = True  # Переиспользование тензоров для экономии памяти
+    memory_efficient: bool = True  # Включить memory-efficient режим
+    prefetch_neighbors: bool = True  # Предзагрузка соседей
+
+    # Performance monitoring
+    enable_profiling: bool = True  # Включить профилирование производительности
+    log_performance_stats: bool = True  # Логировать статистику производительности
+    benchmark_mode: bool = False  # Режим бенчмарка (более подробные метрики)
+
+    # Fallback настройки
+    fallback_to_sequential: bool = (
+        False  # Откат к sequential версии при ошибках (ОТКЛЮЧЕНО)
+    )
+    strict_vectorization: bool = True  # Строгий режим: только векторизованные операции
+
+
+@dataclass
 class MemoryConfig:
     """Конфигурация оптимизации памяти"""
 
@@ -257,7 +290,9 @@ class LocalExpertConfig:
     processor_hidden: int = 64
     max_neighbors_buffer: int = 100
     use_attention: bool = True
-    default_batch_size: int = 1  # Batch размер для fallback случаев, когда размерность теряется
+    default_batch_size: int = (
+        1  # Batch размер для fallback случаев, когда размерность теряется
+    )
 
 
 @dataclass
@@ -382,6 +417,7 @@ class ProjectConfig:
         default_factory=UnifiedSpatialOptimizerConfig
     )
     lattice3d: Lattice3DConfig = field(default_factory=Lattice3DConfig)
+    vectorized: VectorizedConfig = field(default_factory=VectorizedConfig)
 
     # --- Вычисляемые и Runtime-свойства ---
     device_manager: DeviceManager = field(init=False)
@@ -414,6 +450,21 @@ class ProjectConfig:
             f"   Lattice: {self.lattice.dimensions} = {self.total_cells} cells"
         )
         logging.info(f"   Device: {self.current_device} (via DeviceManager)")
+
+        # Векторизация статус
+        if self.vectorized.enabled:
+            cell_type = self.get_cell_type()
+            optimal_batch = self.calculate_optimal_batch_size()
+            logging.info(
+                f"🚀 VECTORIZED MODE: {cell_type.upper()} (batch: {optimal_batch})"
+            )
+            if self.vectorized.force_vectorized:
+                logging.info("⚡ Forced vectorization enabled - maximum performance!")
+        else:
+            logging.info(
+                "🐌 Legacy mode - consider enabling vectorization for better performance"
+            )
+
         if self.expert.enabled:
             logging.info("   Architecture: MoE (Mixture of Experts)")
             logging.info(f"   MoE Gating params: {self.expert.gating.params}")
@@ -619,6 +670,61 @@ class ProjectConfig:
             "is_cuda": self.device_manager.is_cuda(),
             "memory_stats": self.device_manager.get_memory_stats(),
         }
+
+    def get_vectorized_config(self) -> Dict[str, Any]:
+        """Получить конфигурацию векторизованных компонентов. Рекомендуется: `config.vectorized`."""
+        return {
+            "enabled": self.vectorized.enabled,
+            "force_vectorized": self.vectorized.force_vectorized,
+            "adaptive_batch_size": self.vectorized.adaptive_batch_size,
+            "optimal_batch_size": self.calculate_optimal_batch_size(),
+            "min_batch_size": self.vectorized.min_batch_size,
+            "max_batch_size": self.vectorized.max_batch_size,
+            "cpu_batch_size": self.vectorized.cpu_batch_size,
+            "tensor_reuse": self.vectorized.tensor_reuse,
+            "memory_efficient": self.vectorized.memory_efficient,
+            "prefetch_neighbors": self.vectorized.prefetch_neighbors,
+            "enable_profiling": self.vectorized.enable_profiling,
+            "log_performance_stats": self.vectorized.log_performance_stats,
+            "benchmark_mode": self.vectorized.benchmark_mode,
+            "fallback_to_sequential": self.vectorized.fallback_to_sequential,
+            "strict_vectorization": self.vectorized.strict_vectorization,
+            "device": self.current_device,
+            "is_cuda": self.device_manager.is_cuda(),
+        }
+
+    def calculate_optimal_batch_size(self) -> int:
+        """Вычисляет оптимальный размер батча для векторизованных операций."""
+        if not self.vectorized.adaptive_batch_size:
+            return (
+                self.vectorized.max_batch_size
+                if self.device_manager.is_cuda()
+                else self.vectorized.cpu_batch_size
+            )
+
+        if self.device_manager.is_cuda():
+            memory_stats = self.device_manager.get_memory_stats()
+            available_mb = memory_stats.get("available_mb", 8000)
+
+            if available_mb > 16000:  # >16GB
+                return min(self.total_cells, self.vectorized.max_batch_size)
+            elif available_mb > 8000:  # >8GB
+                return min(self.total_cells, self.vectorized.max_batch_size // 2)
+            else:  # <8GB
+                return min(self.total_cells, self.vectorized.max_batch_size // 4)
+        else:
+            return min(self.total_cells, self.vectorized.cpu_batch_size)
+
+    def should_use_vectorized(self) -> bool:
+        """Определяет, следует ли использовать векторизованные компоненты."""
+        if self.vectorized.force_vectorized:
+            return True
+        return self.vectorized.enabled
+
+    def get_cell_type(self) -> str:
+        """Возвращает тип клетки для использования (только vectorized)."""
+        # Всегда возвращаем векторизованную версию
+        return "vectorized_gnn"
 
 
 # === УПРАВЛЕНИЕ ГЛОБАЛЬНЫМ ЭКЗЕМПЛЯРОМ ===

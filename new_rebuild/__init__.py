@@ -19,7 +19,7 @@ from .config import ProjectConfig, get_project_config, set_project_config
 
 # Основные компоненты
 try:
-    from .core import BaseCell, NCACell, GNNCell, CellFactory
+    from .core import BaseCell, VectorizedGNNCell, create_cell
 
     _CORE_AVAILABLE = True
 except ImportError:
@@ -48,9 +48,9 @@ if _CORE_AVAILABLE:
     __all__.extend(
         [
             "BaseCell",
-            "NCACell",
-            "GNNCell",
-            "CellFactory",
+            # "NCACell",  # DEPRECATED - удалено
+            "VectorizedGNNCell",  # Векторизованная GNN клетка
+            "create_cell",  # Фабрика клеток
         ]
     )
 

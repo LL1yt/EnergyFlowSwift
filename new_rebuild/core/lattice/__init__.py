@@ -12,6 +12,7 @@
 - `Position3D`, `Coordinates3D`, `Dimensions3D`: Работа с координатами.
 - `MortonEncoder`, `SpatialHashGrid`: Пространственные оптимизации.
 - `IOPointPlacer`: Размещение точек ввода/вывода.
+- `VectorizedSpatialProcessor`: Высокопроизводительная векторизованная обработка.
 """
 
 # Импортируем основные классы и функции
@@ -50,6 +51,62 @@ from .gpu_spatial_hashing import (
     GPUSpatialHashingStats,
 )
 
+# Импорт векторизованного пространственного процессора
+try:
+    from .vectorized_spatial_processor import VectorizedSpatialProcessor
+
+    VECTORIZED_SPATIAL_AVAILABLE = True
+except ImportError:
+    VECTORIZED_SPATIAL_AVAILABLE = False
+
+
+# Фабрика для создания оптимального пространственного процессора
+def create_spatial_processor(dimensions, processor_type: str = "auto", **kwargs):
+    """
+    Фабрика для создания оптимального пространственного процессора
+
+    Args:
+        dimensions: Размерности решетки
+        processor_type: Тип процессора ('vectorized', 'unified', 'auto')
+        **kwargs: Дополнительные параметры
+
+    Returns:
+        Экземпляр пространственного процессора
+    """
+    from ..config import get_project_config
+
+    config = get_project_config()
+
+    # Автоопределение типа
+    if processor_type == "auto":
+        if VECTORIZED_SPATIAL_AVAILABLE and config.vectorized.enabled:
+            processor_type = "vectorized"
+        else:
+            processor_type = "unified"
+
+    if processor_type == "vectorized":
+        if not VECTORIZED_SPATIAL_AVAILABLE:
+            raise ImportError("Vectorized Spatial Processor not available")
+        return VectorizedSpatialProcessor(dimensions, **kwargs)
+
+    elif processor_type == "unified":
+        return create_unified_spatial_optimizer(dimensions, **kwargs)
+
+    else:
+        raise ValueError(f"Unknown processor type: {processor_type}")
+
+
+def get_recommended_spatial_processor() -> str:
+    """Возвращает рекомендуемый тип пространственного процессора"""
+    from ..config import get_project_config
+
+    config = get_project_config()
+
+    if VECTORIZED_SPATIAL_AVAILABLE and config.vectorized.enabled:
+        return "vectorized"
+    return "unified"
+
+
 # Определяем, что будет импортировано при `from . import *`
 __all__ = [
     # Из lattice.py
@@ -84,4 +141,11 @@ __all__ = [
     "estimate_unified_memory_requirements",
     # Из io.py
     "IOPointPlacer",
+    # Фабрики для векторизованных компонентов
+    "create_spatial_processor",
+    "get_recommended_spatial_processor",
 ]
+
+# Условный экспорт векторизованных компонентов
+if VECTORIZED_SPATIAL_AVAILABLE:
+    __all__.append("VectorizedSpatialProcessor")

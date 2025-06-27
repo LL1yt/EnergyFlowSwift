@@ -15,15 +15,15 @@ DEPRECATED:
 """
 
 # Основные компоненты
-from .cells import BaseCell, GNNCell, CellFactory
+from .cells import BaseCell, create_cell, VectorizedGNNCell
 from .lattice import Lattice3D, create_lattice  # NeighborTopology
 
 
 # Основные экспорты - MoE архитектура
 __all__ = [
     "BaseCell",
-    "GNNCell",  # Единственная активная клетка (для Functional Expert)
-    "CellFactory",
+    "VectorizedGNNCell",  # Векторизованная клетка для максимальной производительности
+    "create_cell",  # Фабрика клеток
     "Lattice3D",
     "create_lattice",
 ]

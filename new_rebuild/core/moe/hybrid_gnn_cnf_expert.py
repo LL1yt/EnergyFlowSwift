@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from typing import Optional, Dict, Any, Tuple
 
 from ..cnf.gpu_enhanced_cnf import GPUEnhancedCNF, ConnectionType
-from ..cells.gnn_cell import GNNCell
+from ..cells.vectorized_gnn_cell import VectorizedGNNCell
 from ...config import get_project_config
 from ...utils.logging import get_logger, log_cell_init, log_cell_forward
 
@@ -106,7 +106,7 @@ class HybridGNN_CNF_Expert(nn.Module):
         # === КОМПОНЕНТЫ ГИБРИДНОГО ЭКСПЕРТА ===
 
         # 1. GNN компонент (примерно 60% от общих параметров)
-        self.gnn_component = GNNCell(
+        self.gnn_component = VectorizedGNNCell(
             state_size=self.state_size,
             neighbor_count=self.neighbor_count,
             message_dim=config.gnn.message_dim,
