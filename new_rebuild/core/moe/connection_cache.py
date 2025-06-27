@@ -172,13 +172,8 @@ class ConnectionCacheManager:
             "functional_threshold": self.functional_threshold,
             "distant_threshold": self.distant_threshold,
             "cache_version": self.cache_config.get("cache_version", "2024.1"),
-            "gpu_accelerated": self.use_gpu,
+            # GPU/CPU кэш полностью совместим, убираем GPU из ключа
         }
-
-        # Добавляем GPU информацию для уникальности
-        if self.use_gpu:
-            gpu_name = torch.cuda.get_device_name(0)
-            key_data["gpu_device"] = gpu_name
 
         key_str = str(sorted(key_data.items()))
         return hashlib.md5(key_str.encode()).hexdigest()
@@ -201,13 +196,11 @@ class ConnectionCacheManager:
                 "distant_threshold": self.distant_threshold,
                 "total_cells": self.total_cells,
                 "cache_version": self.cache_config.get("cache_version", "2024.1"),
-                "gpu_accelerated": self.use_gpu,
                 "timestamp": time.time(),
+                # Информационные поля (не влияют на совместимость)
+                "created_with_gpu": self.use_gpu,
+                "creator_device": torch.cuda.get_device_name(0) if self.use_gpu and torch.cuda.is_available() else "CPU",
             }
-
-            # Добавляем GPU информацию
-            if self.use_gpu:
-                cache_data["gpu_device"] = torch.cuda.get_device_name(0)
 
             with open(cache_file, "wb") as f:
                 pickle.dump(cache_data, f)
@@ -232,7 +225,7 @@ class ConnectionCacheManager:
             with open(cache_file, "rb") as f:
                 cache_data = pickle.load(f)
 
-            # Расширенная проверка совместимости
+            # Основная проверка совместимости (GPU/CPU кэш совместим)
             compatibility_checks = [
                 ("adaptive_radius", self.adaptive_radius),
                 ("lattice_dimensions", self.lattice_dimensions),
@@ -240,14 +233,7 @@ class ConnectionCacheManager:
                 ("functional_threshold", self.functional_threshold),
                 ("distant_threshold", self.distant_threshold),
                 ("cache_version", self.cache_config.get("cache_version", "2024.1")),
-                ("gpu_accelerated", self.use_gpu),
             ]
-
-            # Проверяем GPU совместимость
-            if self.use_gpu:
-                compatibility_checks.append(
-                    ("gpu_device", torch.cuda.get_device_name(0))
-                )
 
             for key, expected_value in compatibility_checks:
                 cached_value = cache_data.get(key)
@@ -261,9 +247,17 @@ class ConnectionCacheManager:
             self.cache = cache_data.get("cache", {})
             self.distance_cache = cache_data.get("distance_cache", {})
 
+            # Информационное логирование
+            created_with_gpu = cache_data.get("created_with_gpu", False)
+            creator_device = cache_data.get("creator_device", "Unknown")
+            current_device = "GPU" if self.use_gpu else "CPU"
+
             logger.info(f"✅ Кэш загружен: {cache_file}")
             logger.info(f"   Размер кэша: {len(self.cache)} клеток")
             logger.info(f"   Adaptive radius: {cache_data.get('adaptive_radius')}")
+            logger.info(f"   Создан на: {creator_device}, загружен на: {current_device}")
+            if created_with_gpu and not self.use_gpu:
+                logger.info(f"   🔄 GPU→CPU совместимость: ОК")
 
             return True
 
