@@ -234,9 +234,9 @@ class MoEConnectionProcessor(nn.Module):
         ]
         logger.debug(f"[{cell_idx}] Local expert, {len(local_neighbors)} соседей.")
         if local_neighbors:
-            local_neighbor_states = neighbor_states[
-                [neighbor_indices.index(idx) for idx in local_neighbors]
-            ]
+            # Создаем маску для местных соседей
+            local_mask = torch.isin(neighbor_indices, torch.tensor(local_neighbors, device=neighbor_indices.device))
+            local_neighbor_states = neighbor_states[local_mask]
             logger.debug(
                 f"[{cell_idx}] Local neighbor states shape: {local_neighbor_states.shape}"
             )
@@ -272,9 +272,9 @@ class MoEConnectionProcessor(nn.Module):
             f"[{cell_idx}] Functional expert, {len(functional_neighbors)} соседей."
         )
         if functional_neighbors:
-            functional_neighbor_states = neighbor_states[
-                [neighbor_indices.index(idx) for idx in functional_neighbors]
-            ]
+            # Создаем маску для функциональных соседей
+            functional_mask = torch.isin(neighbor_indices, torch.tensor(functional_neighbors, device=neighbor_indices.device))
+            functional_neighbor_states = neighbor_states[functional_mask]
             logger.debug(
                 f"[{cell_idx}] Functional neighbor states shape: {functional_neighbor_states.shape}"
             )
@@ -307,9 +307,9 @@ class MoEConnectionProcessor(nn.Module):
         ]
         logger.debug(f"[{cell_idx}] Distant expert, {len(distant_neighbors)} соседей.")
         if self.enable_cnf and distant_neighbors:
-            distant_neighbor_states = neighbor_states[
-                [neighbor_indices.index(idx) for idx in distant_neighbors]
-            ]
+            # Создаем маску для дальних соседей
+            distant_mask = torch.isin(neighbor_indices, torch.tensor(distant_neighbors, device=neighbor_indices.device))
+            distant_neighbor_states = neighbor_states[distant_mask]
             logger.debug(
                 f"[{cell_idx}] Distant neighbor states shape: {distant_neighbor_states.shape}"
             )
