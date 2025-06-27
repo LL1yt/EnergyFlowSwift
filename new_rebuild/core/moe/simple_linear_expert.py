@@ -124,8 +124,13 @@ class OptimizedSimpleLinearExpert(nn.Module):
         # 1. Адаптивная агрегация соседей
         if self.use_attention and num_neighbors > 1:
             # Attention-based агрегация (независимо от количества соседей)
-            # current_state: [batch, state_size], neighbor_states: [num_neighbors, state_size]
-            current_expanded = current_state.expand(neighbor_states.shape[0], -1)  # [num_neighbors, state_size]
+            # Нормализуем размерности current_state
+            if current_state.dim() == 3:
+                current_flat = current_state.squeeze(1)  # [1, 1, 32] -> [1, 32]
+            else:
+                current_flat = current_state  # [1, 32]
+            
+            current_expanded = current_flat.expand(neighbor_states.shape[0], -1)  # [num_neighbors, state_size]
             attention_weights = F.softmax(
                 torch.sum(neighbor_states * current_expanded, dim=-1), dim=0
             )  # [num_neighbors]
@@ -140,7 +145,18 @@ class OptimizedSimpleLinearExpert(nn.Module):
         neighbor_features = self.neighbor_aggregator(aggregated_neighbors)
 
         # 3. Объединяем текущее состояние с обработанными соседями
-        combined_input = torch.cat([current_state, neighbor_features], dim=-1)
+        # Нормализуем размерности для конкатенации
+        if current_state.dim() == 3:
+            current_for_concat = current_state.squeeze(1)  # [1, 1, 32] -> [1, 32]
+        else:
+            current_for_concat = current_state  # [1, 32]
+            
+        if neighbor_features.dim() == 3:
+            neighbor_for_concat = neighbor_features.squeeze(1)  # [1, 1, feature_size] -> [1, feature_size]
+        else:
+            neighbor_for_concat = neighbor_features  # [1, feature_size]
+            
+        combined_input = torch.cat([current_for_concat, neighbor_for_concat], dim=-1)
 
         # 4. Основная обработка через фиксированную архитектуру
         processed = self.state_processor(combined_input)
