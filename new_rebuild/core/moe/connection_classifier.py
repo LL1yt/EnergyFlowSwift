@@ -197,7 +197,24 @@ class UnifiedConnectionClassifier(nn.Module):
             neighbor_tensor = torch.tensor([neighbor_indices], device=cell_state.device)
 
         # Создаем полный тензор состояний
-        all_states = torch.cat([cell_state.unsqueeze(0), neighbor_states], dim=0)
+        try:
+            logger.debug(f"🔍 concat debug: cell_state.shape={cell_state.shape}, neighbor_states.shape={neighbor_states.shape}")
+            
+            # Нормализуем размеры для корректной конкатенации
+            # cell_state должен быть [state_size], neighbor_states должен быть [num_neighbors, state_size]
+            if cell_state.dim() == 2:
+                cell_state_normalized = cell_state.squeeze(0)  # [1, 32] -> [32]
+            else:
+                cell_state_normalized = cell_state  # уже [32]
+            
+            # Добавляем batch dimension для concat
+            all_states = torch.cat([cell_state_normalized.unsqueeze(0), neighbor_states], dim=0)
+            logger.debug(f"🔍 concat result: all_states.shape={all_states.shape}")
+        except Exception as e:
+            logger.error(f"❌ concat error: {e}")
+            logger.error(f"🔍 cell_state.shape={cell_state.shape}, neighbor_states.shape={neighbor_states.shape}")
+            logger.error(f"🔍 cell_state_normalized.shape={getattr(locals().get('cell_state_normalized'), 'shape', 'N/A')}")
+            raise
 
         # Вызываем batch версию
         batch_result = self.classify_connections_batch(
