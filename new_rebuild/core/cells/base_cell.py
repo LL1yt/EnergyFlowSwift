@@ -90,28 +90,4 @@ class BaseCell(nn.Module, ABC):
         )
 
 
-class CellFactory:
-    """
-    Фабрика для создания клеток из конфигурации
-
-    Clean архитектура без Legacy зависимостей
-    """
-
-    @staticmethod
-    def create_cell(cell_type: str, config: Dict[str, Any]) -> BaseCell:
-        """
-        Создать клетку по типу и конфигурации
-
-        Args:
-            cell_type: "nca" | "gnn" | "gmlp" (deprecated) | "hybrid"
-            config: конфигурация клетки
-
-        Returns:
-            Экземпляр клетки
-        """
-        if cell_type == "gnn":
-            from .vectorized_gnn_cell import VectorizedGNNCell
-
-            return VectorizedGNNCell(**config)
-        else:
-            raise ValueError(f"Unknown cell type: {cell_type}")
+# DEPRECATED: CellFactory удален. Используйте create_cell() из __init__.py

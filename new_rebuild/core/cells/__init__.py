@@ -9,7 +9,7 @@ Cells Package - клеточные процессоры
 from typing import Any, Dict, Optional
 import logging
 
-from ..config import get_project_config
+from ...config import get_project_config
 from .base_cell import BaseCell
 
 # Импорты векторизованных компонентов

@@ -73,7 +73,7 @@ def create_spatial_processor(dimensions, processor_type: str = "auto", **kwargs)
     Returns:
         Экземпляр пространственного процессора
     """
-    from ..config import get_project_config
+    from ...config import get_project_config
 
     config = get_project_config()
 
@@ -98,7 +98,7 @@ def create_spatial_processor(dimensions, processor_type: str = "auto", **kwargs)
 
 def get_recommended_spatial_processor() -> str:
     """Возвращает рекомендуемый тип пространственного процессора"""
-    from ..config import get_project_config
+    from ...config import get_project_config
 
     config = get_project_config()
 

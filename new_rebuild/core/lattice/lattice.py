@@ -20,7 +20,7 @@ from datetime import datetime
 
 # Импорты из new_rebuild
 from ...config import get_project_config
-from ..cells import CellFactory
+from ..cells import create_cell
 
 # Локальные импорты из lattice модуля
 from .enums import Face
@@ -76,7 +76,6 @@ class Lattice3D(nn.Module):
             )
 
         # Создаем GNN клетки для MoE
-        self.cell_factory = CellFactory()
         self.cells = self._create_gnn_cells()
 
         # Unified Spatial Optimizer с MoE поддержкой
@@ -150,7 +149,7 @@ class Lattice3D(nn.Module):
             "device": self.config.current_device,
             "debug_mode": self.config.logging.debug_mode,
         }
-        cell = self.cell_factory.create_cell("gnn", gnn_config)
+        cell = create_cell("vectorized_gnn", **gnn_config)
         return cell.to(self.device)
 
     def _create_moe_processor(self):
