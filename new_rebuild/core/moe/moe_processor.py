@@ -251,8 +251,8 @@ class MoEConnectionProcessor(nn.Module):
 
             local_output = checkpoint(
                 local_expert_wrapper,
-                current_state.unsqueeze(0),
-                local_neighbor_states.unsqueeze(0),
+                current_state,
+                local_neighbor_states,
                 use_reentrant=False,
             )
             logger.debug(
@@ -291,8 +291,8 @@ class MoEConnectionProcessor(nn.Module):
 
             functional_output = checkpoint(
                 functional_expert_wrapper,
-                current_state.unsqueeze(0),
-                functional_neighbor_states.unsqueeze(0),
+                current_state,
+                functional_neighbor_states,
                 use_reentrant=False,
             )
             logger.debug(
@@ -328,8 +328,8 @@ class MoEConnectionProcessor(nn.Module):
 
             distant_output = checkpoint(
                 distant_expert_wrapper,
-                current_state.unsqueeze(0),
-                distant_neighbor_states.unsqueeze(0),
+                current_state,
+                distant_neighbor_states,
                 use_reentrant=False,
             )
             logger.debug(
