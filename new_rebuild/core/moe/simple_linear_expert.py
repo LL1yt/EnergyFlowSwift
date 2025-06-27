@@ -131,13 +131,19 @@ class OptimizedSimpleLinearExpert(nn.Module):
             else:
                 current_flat = current_state  # [1, 32]
             
+            logger.debug(f"🔍 attention: current_flat.shape={current_flat.shape}, neighbor_states.shape={neighbor_states.shape}")
             current_expanded = current_flat.expand(neighbor_states.shape[0], -1)  # [num_neighbors, state_size]
+            logger.debug(f"🔍 attention: current_expanded.shape={current_expanded.shape}")
+            
             attention_weights = F.softmax(
                 torch.sum(neighbor_states * current_expanded, dim=-1), dim=0
             )  # [num_neighbors]
+            logger.debug(f"🔍 attention: attention_weights.shape={attention_weights.shape}")
+            
             aggregated_neighbors = torch.sum(
                 neighbor_states * attention_weights.unsqueeze(-1), dim=0, keepdim=True
             )  # [1, state_size]
+            logger.debug(f"🔍 attention: результат aggregated_neighbors.shape={aggregated_neighbors.shape}")
         else:
             # Простое усреднение для одного соседа или fallback
             aggregated_neighbors = torch.mean(neighbor_states, dim=0, keepdim=True)
