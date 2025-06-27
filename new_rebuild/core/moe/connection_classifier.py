@@ -201,19 +201,47 @@ class UnifiedConnectionClassifier(nn.Module):
             logger.debug(f"🔍 concat debug: cell_state.shape={cell_state.shape}, neighbor_states.shape={neighbor_states.shape}")
             
             # Нормализуем размеры для корректной конкатенации
-            # cell_state должен быть [state_size], neighbor_states должен быть [num_neighbors, state_size]
-            if cell_state.dim() == 2:
-                cell_state_normalized = cell_state.squeeze(0)  # [1, 32] -> [32]
+            # cell_state должен быть [state_size] или [1, state_size]
+            if cell_state.dim() == 0:
+                raise ValueError(f"cell_state не может быть скаляром, получено: {cell_state.shape}")
+            elif cell_state.dim() == 1:
+                # [state_size] -> [1, state_size]
+                cell_state_normalized = cell_state.unsqueeze(0)
+            elif cell_state.dim() == 2 and cell_state.shape[0] == 1:
+                # [1, state_size] - уже правильный формат
+                cell_state_normalized = cell_state
             else:
-                cell_state_normalized = cell_state  # уже [32]
+                raise ValueError(f"Неожиданная размерность cell_state: {cell_state.shape}, ожидалось [state_size] или [1, state_size]")
             
-            # Добавляем batch dimension для concat
-            all_states = torch.cat([cell_state_normalized.unsqueeze(0), neighbor_states], dim=0)
+            # neighbor_states должен быть [num_neighbors, state_size]
+            if neighbor_states.dim() == 0:
+                raise ValueError(f"neighbor_states не может быть скаляром")
+            elif neighbor_states.dim() == 1:
+                # [state_size] -> [1, state_size] (один сосед)
+                neighbor_states_normalized = neighbor_states.unsqueeze(0)
+            elif neighbor_states.dim() == 2:
+                # [num_neighbors, state_size] - уже правильный формат
+                neighbor_states_normalized = neighbor_states
+            elif neighbor_states.dim() == 3 and neighbor_states.shape[0] == 1:
+                # [1, num_neighbors, state_size] -> [num_neighbors, state_size]
+                neighbor_states_normalized = neighbor_states.squeeze(0)
+            else:
+                raise ValueError(f"Неожиданная размерность neighbor_states: {neighbor_states.shape}, ожидалось [num_neighbors, state_size]")
+            
+            logger.debug(f"🔍 after normalization: cell_state_normalized.shape={cell_state_normalized.shape}, neighbor_states_normalized.shape={neighbor_states_normalized.shape}")
+            
+            # Проверяем совместимость размеров state_size
+            if cell_state_normalized.shape[-1] != neighbor_states_normalized.shape[-1]:
+                raise ValueError(f"Несовместимые размеры state_size: cell={cell_state_normalized.shape[-1]}, neighbors={neighbor_states_normalized.shape[-1]}")
+            
+            # Объединяем: [1, state_size] + [num_neighbors, state_size] -> [1+num_neighbors, state_size]
+            all_states = torch.cat([cell_state_normalized, neighbor_states_normalized], dim=0)
             logger.debug(f"🔍 concat result: all_states.shape={all_states.shape}")
         except Exception as e:
             logger.error(f"❌ concat error: {e}")
             logger.error(f"🔍 cell_state.shape={cell_state.shape}, neighbor_states.shape={neighbor_states.shape}")
-            logger.error(f"🔍 cell_state_normalized.shape={getattr(locals().get('cell_state_normalized'), 'shape', 'N/A')}")
+            logger.error(f"🔍 cell_state_normalized.shape={locals().get('cell_state_normalized', 'не определено')}")
+            logger.error(f"🔍 neighbor_states_normalized.shape={locals().get('neighbor_states_normalized', 'не определено')}")
             raise
 
         # Вызываем batch версию
