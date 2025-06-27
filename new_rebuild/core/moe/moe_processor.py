@@ -185,10 +185,21 @@ class MoEConnectionProcessor(nn.Module):
                 logger.debug(
                     f"🔄 FALLBACK РЕЖИМ: используем переданные соседи для клетки {cell_idx}: {len(neighbor_indices)} соседей"
                 )
+                # В fallback режиме нужно создать neighbor_states из full_lattice_states если доступно
+                if "full_lattice_states" in kwargs:
+                    full_states = kwargs["full_lattice_states"]
+                    neighbor_states = full_states[neighbor_indices]
+                    logger.debug(f"🔍 FALLBACK: извлечено состояния соседей из full_lattice_states, shape={neighbor_states.shape}")
+                else:
+                    # Если full_lattice_states недоступно, создаем пустые состояния
+                    state_size = current_state.shape[-1]
+                    neighbor_states = torch.zeros(len(neighbor_indices), state_size, device=current_state.device)
+                    logger.warning(f"⚠️ FALLBACK: full_lattice_states недоступно, используем нулевые состояния для {len(neighbor_indices)} соседей")
             else:
                 logger.warning(
                     f"⚠️ Ни spatial_optimizer, ни neighbor_indices не переданы для клетки {cell_idx}"
                 )
+                neighbor_states = torch.empty(0, current_state.shape[-1], device=current_state.device)
 
         if len(neighbor_indices) == 0:
             return self._empty_forward_result(current_state)
