@@ -410,8 +410,10 @@ class MoEConnectionProcessor(nn.Module):
                 "neighbor_states": neighbor_states.shape,
             },
             output_shape=final_state.shape,
-            expert_weights=expert_weights.squeeze().tolist(),
         )
+        
+        # Отдельное логирование expert_weights
+        logger.debug(f"[{cell_idx}] Expert weights: {expert_weights.squeeze().tolist()}")
 
         return {
             "new_state": final_state,

@@ -85,8 +85,15 @@ class GatingNetwork(nn.Module):
         expert_weights = self.gating_network(context)  # [batch, num_experts]
 
         # 3. Взвешенное комбинирование результатов экспертов
+        # Приводим expert_outputs к правильному формату [batch, state_size]
+        normalized_outputs = []
+        for output in expert_outputs:
+            if output.dim() == 1:
+                output = output.unsqueeze(0)  # [state_size] -> [1, state_size]
+            normalized_outputs.append(output)
+        
         stacked_outputs = torch.stack(
-            expert_outputs, dim=1
+            normalized_outputs, dim=1
         )  # [batch, num_experts, state_size]
         weights_expanded = expert_weights.unsqueeze(-1)  # [batch, num_experts, 1]
 
