@@ -21,7 +21,7 @@ import time
 from ...config import get_project_config
 from ...utils.logging import get_logger
 from ...utils.device_manager import get_device_manager
-from .position_helper import Position3D
+from .position import Position3D
 from .gpu_spatial_hashing import GPUSpatialHashGrid
 
 logger = get_logger(__name__)
@@ -40,11 +40,9 @@ class VectorizedNeighborFinder:
         self.pos_helper = Position3D(dimensions)
 
         # GPU spatial hash для быстрого поиска
-        device_manager = get_device_manager()
         self.spatial_hash = GPUSpatialHashGrid(
-            cell_size=2.0,
             dimensions=dimensions,
-            device_manager=device_manager,
+            cell_size=2,
         )
 
         # Предвычисленные координаты всех клеток
