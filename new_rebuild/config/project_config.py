@@ -349,7 +349,7 @@ class ConnectionCacheConfig:
 
     # Настройки автоматического включения/выключения
     auto_enable_threshold: int = (
-        10000  # Автоматически включать кэш для решеток >10k клеток
+        3000  # Автоматически включать кэш для решеток >3k клеток
     )
     auto_disable_threshold: int = (
         1000  # Автоматически выключать кэш для решеток <1k клеток
@@ -360,13 +360,23 @@ class ConnectionCacheConfig:
     save_to_disk: bool = True  # Сохранять кэш на диск
     load_from_disk: bool = True  # Загружать кэш с диска
 
+    # GPU оптимизации
+    use_gpu_acceleration: bool = True  # Использовать GPU для pre-computation
+    gpu_batch_size: int = 10000  # Размер батча для GPU вычислений
+    prefer_gpu_for_large_lattices: bool = True  # Предпочитать GPU для больших решеток
+    gpu_memory_fraction: float = 0.8  # Доля GPU памяти для кэширования
+
     # Настройки памяти
-    max_cache_size_mb: float = 100.0  # Максимальный размер кэша в MB
+    max_cache_size_mb: float = 500.0  # Увеличен лимит для больших решеток
     clear_cache_on_memory_pressure: bool = True  # Очищать кэш при нехватке памяти
 
-    # Настройки для малых решеток
+    # Настройки для разных размеров решеток
     small_lattice_fallback: bool = True  # Использовать fallback для малых решеток
     benchmark_small_lattices: bool = False  # Бенчмарк малых решеток (для отладки)
+
+    # Расширенная проверка кэша
+    check_cache_compatibility: bool = True  # Проверять совместимость кэша
+    cache_version: str = "2024.1"  # Версия кэша для совместимости
 
 
 @dataclass
@@ -467,16 +477,21 @@ class ProjectConfig:
         )
         self.current_device = self.device_manager.get_device_str()
 
-        self.total_cells = (
-            self.lattice.dimensions[0]
-            * self.lattice.dimensions[1]
-            * self.lattice.dimensions[2]
-        )
+        # Всегда пересчитываем total_cells на основе текущих размеров
+        self._update_total_cells()
 
         self.max_neighbors = self.calculate_dynamic_neighbors()
 
         if self.logging.debug_mode:
             self.log_initialization()
+
+    def _update_total_cells(self):
+        """Обновляет total_cells на основе текущих размеров решетки"""
+        self.total_cells = (
+            self.lattice.dimensions[0]
+            * self.lattice.dimensions[1]
+            * self.lattice.dimensions[2]
+        )
 
     def log_initialization(self):
         """Вывод информации о конфигурации при инициализации"""
@@ -767,16 +782,26 @@ class ProjectConfig:
         if not self.expert.cache.enabled:
             return False
 
+        # Пересчитываем total_cells на основе текущих размеров решетки
+        current_total_cells = (
+            self.lattice.dimensions[0]
+            * self.lattice.dimensions[1]
+            * self.lattice.dimensions[2]
+        )
+
         # Автоматическое определение на основе размера решетки
-        if self.total_cells >= self.expert.cache.auto_enable_threshold:
+        if current_total_cells >= self.expert.cache.auto_enable_threshold:
             return True
-        elif self.total_cells <= self.expert.cache.auto_disable_threshold:
+        elif current_total_cells <= self.expert.cache.auto_disable_threshold:
             return False if self.expert.cache.small_lattice_fallback else True
         else:
             return True  # Средние размеры - используем кэш
 
     def get_connection_cache_config(self) -> Dict[str, Any]:
         """Получить конфигурацию кэширования связей."""
+        # Обновляем total_cells перед возвратом конфигурации
+        self._update_total_cells()
+
         return {
             "enabled": self.should_use_connection_cache(),
             "enable_performance_monitoring": self.expert.cache.enable_performance_monitoring,

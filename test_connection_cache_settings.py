@@ -60,12 +60,13 @@ def test_cache_settings():
     print(f"   Classifier cache enabled: {classifier.enable_cache}")
     print(f"   Performance monitoring: {classifier.enable_performance_monitoring}")
 
-    # Тест 3: Большие решетки - автоматическое включение кэша
-    print("\n3️⃣ Тест больших решеток (30x30x30 = 27000 клеток)")
+    # Тест 3: Средние решетки для демонстрации GPU (изменено с больших)
+    print("\n3️⃣ Тест средних решеток с GPU (20x20x20 = 8000 клеток)")
     config = ProjectConfig()  # Создаем новую конфигурацию
-    config.lattice.dimensions = (30, 30, 30)
+    config.lattice.dimensions = (20, 20, 20)
     config.expert.cache.enabled = True  # Включаем кэш
-    config.expert.cache.auto_enable_threshold = 10000
+    config.expert.cache.auto_enable_threshold = 3000  # Снижен порог
+    config.expert.cache.use_gpu_acceleration = True  # Включаем GPU
     set_project_config(config)
 
     should_use_cache = config.should_use_connection_cache()

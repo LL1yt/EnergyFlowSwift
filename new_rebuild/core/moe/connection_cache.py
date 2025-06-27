@@ -89,6 +89,14 @@ class ConnectionCacheManager:
         # Инициализируем distance calculator
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
 
+        # GPU настройки
+        self.use_gpu = (
+            self.cache_config.get("use_gpu_acceleration", True)
+            and torch.cuda.is_available()
+        )
+        self.gpu_batch_size = self.cache_config.get("gpu_batch_size", 10000)
+        self.device = torch.device("cuda" if self.use_gpu else "cpu")
+
         # Кэш структуры
         self.cache: Dict[int, Dict[str, List[CachedConnectionInfo]]] = {}
         self.distance_cache: Dict[Tuple[int, int], Dict[str, float]] = {}
@@ -114,9 +122,20 @@ class ConnectionCacheManager:
         logger.info(f"   Performance monitoring: {self.enable_performance_monitoring}")
         logger.info(f"   Detailed stats: {self.enable_detailed_stats}")
 
+        # GPU информация
+        if self.use_gpu:
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            logger.info(f"🚀 GPU acceleration: {gpu_name} ({gpu_memory:.1f}GB)")
+            logger.info(f"   GPU batch size: {self.gpu_batch_size}")
+        else:
+            logger.info("💻 CPU mode: GPU not available or disabled")
+
         # Проверяем нужно ли пересоздать кэш
         if not self._is_cache_valid():
             logger.info("🔄 Кэш устарел, пересоздаем...")
+            if self.use_gpu:
+                logger.info("🚀 Используем GPU для ускорения pre-computation...")
             self.precompute_all_connections(force_rebuild=True)
         else:
             # Загружаем существующий кэш
@@ -152,7 +171,15 @@ class ConnectionCacheManager:
             "local_threshold": self.local_threshold,
             "functional_threshold": self.functional_threshold,
             "distant_threshold": self.distant_threshold,
+            "cache_version": self.cache_config.get("cache_version", "2024.1"),
+            "gpu_accelerated": self.use_gpu,
         }
+
+        # Добавляем GPU информацию для уникальности
+        if self.use_gpu:
+            gpu_name = torch.cuda.get_device_name(0)
+            key_data["gpu_device"] = gpu_name
+
         key_str = str(sorted(key_data.items()))
         return hashlib.md5(key_str.encode()).hexdigest()
 
@@ -163,7 +190,7 @@ class ConnectionCacheManager:
             cache_key = self._get_cache_key()
             cache_file = f"cache/connection_cache_{cache_key}.pkl"
 
-            # Подготавливаем данные для сохранения
+            # Подготавливаем данные для сохранения с полной совместимостью
             cache_data = {
                 "cache": self.cache,
                 "distance_cache": self.distance_cache,
@@ -173,8 +200,14 @@ class ConnectionCacheManager:
                 "functional_threshold": self.functional_threshold,
                 "distant_threshold": self.distant_threshold,
                 "total_cells": self.total_cells,
+                "cache_version": self.cache_config.get("cache_version", "2024.1"),
+                "gpu_accelerated": self.use_gpu,
                 "timestamp": time.time(),
             }
+
+            # Добавляем GPU информацию
+            if self.use_gpu:
+                cache_data["gpu_device"] = torch.cuda.get_device_name(0)
 
             with open(cache_file, "wb") as f:
                 pickle.dump(cache_data, f)
@@ -199,13 +232,30 @@ class ConnectionCacheManager:
             with open(cache_file, "rb") as f:
                 cache_data = pickle.load(f)
 
-            # Проверяем совместимость
-            if (
-                cache_data.get("adaptive_radius") != self.adaptive_radius
-                or cache_data.get("lattice_dimensions") != self.lattice_dimensions
-            ):
-                logger.info("Кэш несовместим с текущими параметрами, пересоздаем")
-                return False
+            # Расширенная проверка совместимости
+            compatibility_checks = [
+                ("adaptive_radius", self.adaptive_radius),
+                ("lattice_dimensions", self.lattice_dimensions),
+                ("local_threshold", self.local_threshold),
+                ("functional_threshold", self.functional_threshold),
+                ("distant_threshold", self.distant_threshold),
+                ("cache_version", self.cache_config.get("cache_version", "2024.1")),
+                ("gpu_accelerated", self.use_gpu),
+            ]
+
+            # Проверяем GPU совместимость
+            if self.use_gpu:
+                compatibility_checks.append(
+                    ("gpu_device", torch.cuda.get_device_name(0))
+                )
+
+            for key, expected_value in compatibility_checks:
+                cached_value = cache_data.get(key)
+                if cached_value != expected_value:
+                    logger.info(
+                        f"Кэш несовместим: {key} {cached_value} != {expected_value}"
+                    )
+                    return False
 
             # Загружаем данные
             self.cache = cache_data.get("cache", {})
@@ -261,8 +311,15 @@ class ConnectionCacheManager:
         if hasattr(self, "_all_neighbors_cache"):
             return self._all_neighbors_cache
 
-        logger.info("🔍 Вычисляем всех соседей...")
+        if self.use_gpu and self.total_cells > 5000:
+            logger.info("🚀 Вычисляем всех соседей на GPU...")
+            return self._compute_all_neighbors_gpu()
+        else:
+            logger.info("🔍 Вычисляем всех соседей на CPU...")
+            return self._compute_all_neighbors_cpu()
 
+    def _compute_all_neighbors_cpu(self) -> Dict[int, List[int]]:
+        """CPU версия вычисления соседей"""
         all_neighbors = {}
         x_dim, y_dim, z_dim = self.lattice_dimensions
 
@@ -303,6 +360,64 @@ class ConnectionCacheManager:
         self._all_neighbors_cache = all_neighbors
         logger.info(f"✅ Вычислены соседи для {len(all_neighbors)} клеток")
         return all_neighbors
+
+    def _compute_all_neighbors_gpu(self) -> Dict[int, List[int]]:
+        """GPU-ускоренная версия вычисления соседей"""
+        try:
+            x_dim, y_dim, z_dim = self.lattice_dimensions
+
+            # Создаем координаты всех клеток на GPU
+            all_indices = torch.arange(self.total_cells, device=self.device)
+
+            x_coords = all_indices % x_dim
+            y_coords = (all_indices // x_dim) % y_dim
+            z_coords = all_indices // (x_dim * y_dim)
+
+            all_coords = torch.stack([x_coords, y_coords, z_coords], dim=1).float()
+
+            logger.info(
+                f"💾 GPU memory для координат: {all_coords.numel() * 4 / 1024**2:.1f}MB"
+            )
+
+            all_neighbors = {}
+            batch_size = min(self.gpu_batch_size, self.total_cells)
+
+            # Обрабатываем батчами для экономии памяти
+            for start_idx in range(0, self.total_cells, batch_size):
+                end_idx = min(start_idx + batch_size, self.total_cells)
+                batch_coords = all_coords[start_idx:end_idx]
+
+                # Вычисляем расстояния до всех других клеток
+                # batch_coords: [batch_size, 3], all_coords: [total_cells, 3]
+                distances = torch.cdist(
+                    batch_coords, all_coords
+                )  # [batch_size, total_cells]
+
+                # Находим соседей в радиусе (исключая саму клетку)
+                for i, cell_idx in enumerate(range(start_idx, end_idx)):
+                    # Маска для соседей в радиусе (исключая саму клетку)
+                    neighbor_mask = (distances[i] <= self.adaptive_radius) & (
+                        distances[i] > 0
+                    )
+                    neighbor_indices = torch.where(neighbor_mask)[0].cpu().tolist()
+                    all_neighbors[cell_idx] = neighbor_indices
+
+                # Освобождаем GPU память
+                del distances
+                torch.cuda.empty_cache()
+
+                if start_idx % (batch_size * 10) == 0:
+                    logger.info(
+                        f"🚀 GPU: обработано {end_idx}/{self.total_cells} клеток"
+                    )
+
+            self._all_neighbors_cache = all_neighbors
+            logger.info(f"✅ GPU: Вычислены соседи для {len(all_neighbors)} клеток")
+            return all_neighbors
+
+        except Exception as e:
+            logger.warning(f"GPU computation failed, falling back to CPU: {e}")
+            return self._compute_all_neighbors_cpu()
 
     def _precompute_cell_connections(
         self, cell_idx: int, neighbor_indices: List[int]

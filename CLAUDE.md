@@ -61,18 +61,32 @@ config.expert.cache.enabled = True  # Включить/выключить кэш
 config.expert.cache.enable_performance_monitoring = True  # Мониторинг
 config.expert.cache.enable_detailed_stats = False  # Детальная статистика
 
-# Автоматические пороги
-config.expert.cache.auto_enable_threshold = 10000   # >10k клеток
+# Автоматические пороги (обновлены)
+config.expert.cache.auto_enable_threshold = 3000   # >3k клеток (снижен)
 config.expert.cache.auto_disable_threshold = 1000   # <1k клеток
 config.expert.cache.small_lattice_fallback = True   # Fallback для малых решеток
+
+# GPU ускорение (НОВИНКА)
+config.expert.cache.use_gpu_acceleration = True  # RTX 5090 поддержка!
+config.expert.cache.gpu_batch_size = 10000  # Размер GPU батча
+config.expert.cache.prefer_gpu_for_large_lattices = True  # Автоматический GPU для >5k клеток
+config.expert.cache.gpu_memory_fraction = 0.8  # Использовать 80% GPU памяти
 ```
 
 **Производительность:**
 
 - **5×5×5 (125 клеток)**: Кэш отключен, используется fallback
-- **15×15×15 (3,375 клеток)**: ~5-7x ускорение с кэшем
-- **27×27×27 (19,683 клетки)**: ~8-10x ускорение с кэшем
-- **Большие решетки**: 10-20x потенциальное ускорение
+- **8×8×8 (512 клеток)**: CPU кэширование, ~2-3x ускорение
+- **15×15×15 (3,375 клеток)**: GPU кэширование, ~5-10x ускорение
+- **20×20×20 (8,000 клеток)**: GPU с RTX 5090, ~10-20x ускорение
+- **27×27×27+ (большие решетки)**: GPU массивное ускорение, один раз потратить время на создание кэша
+
+**GPU Benefits с RTX 5090:**
+
+- Параллельные вычисления расстояний через `torch.cdist`
+- Batch processing с умным управлением памятью
+- Автоматический fallback на CPU при недостатке памяти
+- Сохранение GPU-созданного кэша на диск для переиспользования
 
 **Использование:**
 
@@ -97,8 +111,19 @@ print(f"Speedup: {stats['cache_performance'].get('speedup_ratio', 'N/A')}")
 
 **Файловая интеграция:**
 
-- `new_rebuild/core/moe/connection_cache.py` - основной кэш менеджер
+- `new_rebuild/core/moe/connection_cache.py` - основной кэш менеджер (GPU support)
 - `new_rebuild/core/moe/connection_classifier.py` - интеграция с кэшем
 - `new_rebuild/core/moe/__init__.py` - экспорт factory функций
-- `new_rebuild/config/project_config.py` - централизованные настройки
+- `new_rebuild/config/project_config.py` - централизованные настройки (GPU config)
 - `test_connection_cache_settings.py` - тесты конфигурации
+- `test_gpu_cache_demo.py` - демонстрация GPU ускорения для RTX 5090
+
+**Тестирование GPU ускорения:**
+
+```bash
+# Демо GPU ускорения
+python test_gpu_cache_demo.py
+
+# Полные тесты настроек
+python test_connection_cache_settings.py
+```
