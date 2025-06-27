@@ -181,12 +181,20 @@ class UnifiedConnectionClassifier(nn.Module):
         neighbor_states: torch.Tensor,
     ) -> Dict[ConnectionCategory, List[ConnectionInfo]]:
         """Единичная классификация связей (backward compatibility)"""
-        if not neighbor_indices:
-            return {cat: [] for cat in ConnectionCategory}
+        # Проверяем пустые neighbor_indices (может быть тензором или списком)
+        if torch.is_tensor(neighbor_indices):
+            if neighbor_indices.numel() == 0:
+                return {cat: [] for cat in ConnectionCategory}
+        else:
+            if not neighbor_indices:
+                return {cat: [] for cat in ConnectionCategory}
 
         # Конвертируем в batch формат
         cell_tensor = torch.tensor([cell_idx], device=cell_state.device)
-        neighbor_tensor = torch.tensor([neighbor_indices], device=cell_state.device)
+        if torch.is_tensor(neighbor_indices):
+            neighbor_tensor = neighbor_indices.unsqueeze(0)  # [1, num_neighbors]
+        else:
+            neighbor_tensor = torch.tensor([neighbor_indices], device=cell_state.device)
 
         # Создаем полный тензор состояний
         all_states = torch.cat([cell_state.unsqueeze(0), neighbor_states], dim=0)
