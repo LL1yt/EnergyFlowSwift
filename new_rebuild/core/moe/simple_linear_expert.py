@@ -151,10 +151,20 @@ class OptimizedSimpleLinearExpert(nn.Module):
         else:
             current_for_concat = current_state  # [1, 32]
             
-        if neighbor_features.dim() == 3:
-            neighbor_for_concat = neighbor_features.squeeze(1)  # [1, 1, feature_size] -> [1, feature_size]
-        else:
-            neighbor_for_concat = neighbor_features  # [1, feature_size]
+        # Убираем лишние измерения из neighbor_features более агрессивно
+        neighbor_for_concat = neighbor_features
+        while neighbor_for_concat.dim() > 2:
+            # Находим измерение размера 1 и убираем его
+            dims_to_squeeze = [i for i in range(neighbor_for_concat.dim()) if neighbor_for_concat.shape[i] == 1]
+            if dims_to_squeeze:
+                neighbor_for_concat = neighbor_for_concat.squeeze(dims_to_squeeze[0])
+            else:
+                # Если нет измерений размера 1, принудительно преобразуем
+                neighbor_for_concat = neighbor_for_concat.view(neighbor_for_concat.shape[0], -1)
+                break
+            
+        # Добавляем логирование для отладки
+        logger.debug(f"🔍 Размеры перед конкатенацией: current_for_concat={current_for_concat.shape}, neighbor_for_concat={neighbor_for_concat.shape}")
             
         combined_input = torch.cat([current_for_concat, neighbor_for_concat], dim=-1)
 
