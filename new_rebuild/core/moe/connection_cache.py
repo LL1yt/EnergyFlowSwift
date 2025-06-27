@@ -19,7 +19,7 @@ Connection Cache Manager - Pre-computed кэширование классифи�
 import torch
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 import pickle
 import hashlib
@@ -74,17 +74,18 @@ class ConnectionCacheManager:
 
         # Получаем конфигурацию
         config = get_project_config()
-        self.cache_config = cache_config or config.get_connection_cache_config()
+        if cache_config is None:
+            self.cache_config = asdict(config.cache) if config.cache else {}
+        else:
+            self.cache_config = cache_config
 
         # ИСПРАВЛЕНО: Всегда получаем актуальный adaptive_radius
         self.adaptive_radius = config.calculate_adaptive_radius()
 
         # Пороги для классификации связей
-        self.local_threshold = config.expert.connections.local_distance_threshold
-        self.functional_threshold = (
-            config.expert.connections.functional_distance_threshold
-        )
-        self.distant_threshold = config.expert.connections.distant_distance_threshold
+        self.local_threshold = config.model.local_distance_threshold
+        self.functional_threshold = config.model.functional_distance_threshold
+        self.distant_threshold = config.model.distant_distance_threshold
 
         # Инициализируем distance calculator
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
@@ -102,10 +103,12 @@ class ConnectionCacheManager:
         self.distance_cache: Dict[Tuple[int, int], Dict[str, float]] = {}
 
         # Статистика (включается по настройкам)
-        self.enable_performance_monitoring = self.cache_config[
-            "enable_performance_monitoring"
-        ]
-        self.enable_detailed_stats = self.cache_config["enable_detailed_stats"]
+        self.enable_performance_monitoring = self.cache_config.get(
+            "enable_performance_monitoring", False
+        )
+        self.enable_detailed_stats = self.cache_config.get(
+            "enable_detailed_stats", False
+        )
 
         if self.enable_performance_monitoring:
             self.cache_hits = 0
@@ -199,7 +202,11 @@ class ConnectionCacheManager:
                 "timestamp": time.time(),
                 # Информационные поля (не влияют на совместимость)
                 "created_with_gpu": self.use_gpu,
-                "creator_device": torch.cuda.get_device_name(0) if self.use_gpu and torch.cuda.is_available() else "CPU",
+                "creator_device": (
+                    torch.cuda.get_device_name(0)
+                    if self.use_gpu and torch.cuda.is_available()
+                    else "CPU"
+                ),
             }
 
             with open(cache_file, "wb") as f:
@@ -255,7 +262,9 @@ class ConnectionCacheManager:
             logger.info(f"✅ Кэш загружен: {cache_file}")
             logger.info(f"   Размер кэша: {len(self.cache)} клеток")
             logger.info(f"   Adaptive radius: {cache_data.get('adaptive_radius')}")
-            logger.info(f"   Создан на: {creator_device}, загружен на: {current_device}")
+            logger.info(
+                f"   Создан на: {creator_device}, загружен на: {current_device}"
+            )
             if created_with_gpu and not self.use_gpu:
                 logger.info(f"   🔄 GPU→CPU совместимость: ОК")
 

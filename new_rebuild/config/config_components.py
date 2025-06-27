@@ -16,11 +16,17 @@ import torch
 
 # === ОСНОВНЫЕ КОМПОНЕНТЫ ===
 
-@dataclass 
+
+@dataclass
 class LatticeSettings:
-    """Базовые настройки решетки"""
-    dimensions: Tuple[int, int, int] = (5, 5, 5)
-    
+    """Настройки 3D решетки"""
+
+    dimensions: Tuple[int, int, int] = (10, 10, 10)
+    adaptive_radius_enabled: bool = True
+    adaptive_radius_ratio: float = 0.2
+    adaptive_radius_max: float = 100.0
+    adaptive_radius_min: float = 0.1
+
     @property
     def total_cells(self) -> int:
         return self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
@@ -29,6 +35,7 @@ class LatticeSettings:
 @dataclass
 class ModelSettings:
     """Настройки модели GNN"""
+
     state_size: int = 32
     message_dim: int = 16
     hidden_dim: int = 32
@@ -44,6 +51,7 @@ class ModelSettings:
 @dataclass
 class TrainingSettings:
     """Настройки обучения"""
+
     learning_rate: float = 0.001
     batch_size: int = 32
     max_epochs: int = 1000
@@ -59,6 +67,7 @@ class TrainingSettings:
 @dataclass
 class CNFSettings:
     """Настройки Continuous Normalizing Flows"""
+
     enabled: bool = True
     functional_connections: bool = True
     distant_connections: bool = True
@@ -73,6 +82,7 @@ class CNFSettings:
 @dataclass
 class EulerSettings:
     """Настройки Euler Solver"""
+
     adaptive_method: str = "LIPSCHITZ_BASED"
     base_dt: float = 0.1
     min_dt: float = 0.001
@@ -88,6 +98,7 @@ class EulerSettings:
 @dataclass
 class CacheSettings:
     """Настройки кэширования"""
+
     enabled: bool = True
     enable_performance_monitoring: bool = True
     enable_detailed_stats: bool = False
@@ -103,6 +114,7 @@ class CacheSettings:
 @dataclass
 class SpatialSettings:
     """Настройки пространственной оптимизации"""
+
     chunk_size: int = 64
     chunk_overlap: int = 8
     max_chunks_in_memory: int = 4
@@ -122,6 +134,7 @@ class SpatialSettings:
 @dataclass
 class VectorizedSettings:
     """Настройки векторизации"""
+
     enabled: bool = True
     force_vectorized: bool = True
     chunk_size: int = 1000
@@ -135,6 +148,7 @@ class VectorizedSettings:
 @dataclass
 class DeviceSettings:
     """Настройки устройства"""
+
     prefer_cuda: bool = True
     debug_mode: bool = False
     fallback_cpu: bool = True
@@ -146,6 +160,7 @@ class DeviceSettings:
 @dataclass
 class LoggingSettings:
     """Настройки логирования"""
+
     level: str = "INFO"
     debug_mode: bool = False
     log_to_file: bool = True
@@ -158,6 +173,7 @@ class LoggingSettings:
 @dataclass
 class MemorySettings:
     """Настройки управления памятью"""
+
     optimal_batch_size: int = 1000
     memory_per_cell_base: int = 64
     memory_overhead_factor: float = 1.3
@@ -174,9 +190,11 @@ class MemorySettings:
 
 # === СПЕЦИАЛИЗИРОВАННЫЕ КОМПОНЕНТЫ ===
 
+
 @dataclass
 class ExperimentSettings:
     """Настройки для экспериментов"""
+
     experiment_name: str = "default"
     save_results: bool = True
     results_dir: str = "results"
@@ -190,6 +208,7 @@ class ExperimentSettings:
 @dataclass
 class PerformanceSettings:
     """Настройки производительности"""
+
     enable_jit: bool = False
     use_mixed_precision: bool = False
     gradient_checkpointing: bool = False
@@ -203,6 +222,7 @@ class PerformanceSettings:
 @dataclass
 class ValidationSettings:
     """Настройки валидации"""
+
     validate_config: bool = True
     strict_validation: bool = False
     warn_on_deprecated: bool = True
@@ -213,50 +233,53 @@ class ValidationSettings:
 
 # === ФУНКЦИИ КОМПОЗИЦИИ ===
 
+
 def create_basic_config() -> Dict[str, Any]:
     """Создает базовую конфигурацию с минимальными настройками"""
     return {
-        'lattice': LatticeSettings(),
-        'model': ModelSettings(),
-        'training': TrainingSettings(),
-        'device': DeviceSettings(),
-        'logging': LoggingSettings(),
+        "lattice": LatticeSettings(),
+        "model": ModelSettings(),
+        "training": TrainingSettings(),
+        "device": DeviceSettings(),
+        "logging": LoggingSettings(),
     }
 
 
 def create_research_config() -> Dict[str, Any]:
     """Создает конфигурацию для исследований"""
     config = create_basic_config()
-    config.update({
-        'cnf': CNFSettings(),
-        'euler': EulerSettings(),
-        'cache': CacheSettings(),
-        'spatial': SpatialSettings(),
-        'vectorized': VectorizedSettings(),
-        'experiment': ExperimentSettings(),
-        'performance': PerformanceSettings(),
-    })
+    config.update(
+        {
+            "cnf": CNFSettings(),
+            "euler": EulerSettings(),
+            "cache": CacheSettings(),
+            "spatial": SpatialSettings(),
+            "vectorized": VectorizedSettings(),
+            "experiment": ExperimentSettings(),
+            "performance": PerformanceSettings(),
+        }
+    )
     return config
 
 
 def create_production_config() -> Dict[str, Any]:
     """Создает конфигурацию для production"""
     config = create_research_config()
-    
+
     # Отключаем debug режимы
-    config['device'].debug_mode = False
-    config['logging'].debug_mode = False
-    config['logging'].level = "WARNING"
-    
+    config["device"].debug_mode = False
+    config["logging"].debug_mode = False
+    config["logging"].level = "WARNING"
+
     # Оптимизируем для производительности
-    config['performance'].enable_jit = True
-    config['performance'].use_mixed_precision = True
-    config['performance'].benchmark_mode = True
-    
+    config["performance"].enable_jit = True
+    config["performance"].use_mixed_precision = True
+    config["performance"].benchmark_mode = True
+
     # Ограничиваем ресурсы
-    config['cache'].enable_detailed_stats = False
-    config['logging'].performance_tracking = False
-    
+    config["cache"].enable_detailed_stats = False
+    config["logging"].performance_tracking = False
+
     return config
 
 
@@ -264,34 +287,39 @@ def validate_config_components(config: Dict[str, Any]) -> bool:
     """Валидирует компоненты конфигурации на совместимость"""
     try:
         # Проверяем базовые требования
-        if 'lattice' not in config or 'model' not in config:
+        if "lattice" not in config or "model" not in config:
             return False
-            
-        lattice = config['lattice']
-        model = config['model']
-        
+
+        lattice = config["lattice"]
+        model = config["model"]
+
         # Проверяем размеры
-        if lattice.total_cells > 10000 and not config.get('cache', CacheSettings()).enabled:
+        if (
+            lattice.total_cells > 10000
+            and not config.get("cache", CacheSettings()).enabled
+        ):
             print("WARNING: Large lattice without cache may be slow")
-            
+
         # Проверяем совместимость модели
         if model.state_size < 8:
             print("WARNING: Very small state_size may limit model capacity")
-            
+
         return True
-        
+
     except Exception as e:
         print(f"Config validation error: {e}")
         return False
 
 
-def merge_config_updates(base_config: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+def merge_config_updates(
+    base_config: Dict[str, Any], updates: Dict[str, Any]
+) -> Dict[str, Any]:
     """Безопасно объединяет обновления конфигурации"""
     result = base_config.copy()
-    
+
     for key, value in updates.items():
         if key in result:
-            if hasattr(result[key], '__dict__') and hasattr(value, '__dict__'):
+            if hasattr(result[key], "__dict__") and hasattr(value, "__dict__"):
                 # Обновляем dataclass
                 for attr, new_val in value.__dict__.items():
                     if hasattr(result[key], attr):
@@ -300,5 +328,5 @@ def merge_config_updates(base_config: Dict[str, Any], updates: Dict[str, Any]) -
                 result[key] = value
         else:
             result[key] = value
-    
+
     return result

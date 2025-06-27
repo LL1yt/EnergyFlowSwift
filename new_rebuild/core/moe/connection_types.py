@@ -8,9 +8,9 @@ Connection Types - типы и структуры данных для класс
 """
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Optional
-from ...config.project_config import get_project_config
+from enum import Enum, auto
+from typing import Optional, Dict, List, Any
+from ...config import get_project_config
 
 
 class ConnectionCategory(Enum):
@@ -31,7 +31,9 @@ class ConnectionInfo:
     manhattan_distance: float
     category: ConnectionCategory
     strength: float = None  # Значение по умолчанию берётся из централизованного конфига
-    functional_similarity: Optional[float] = None  # Значение по умолчанию берётся из централизованного конфига
+    functional_similarity: Optional[float] = (
+        None  # Значение по умолчанию берётся из централизованного конфига
+    )
 
     def __post_init__(self):
         cfg = get_project_config().connection

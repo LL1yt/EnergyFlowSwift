@@ -15,6 +15,7 @@ Connection Classifier - классификация связей между кл�
 import torch
 import torch.nn as nn
 from typing import Dict, List, Tuple, Any, Optional
+from dataclasses import asdict
 
 from .connection_types import ConnectionCategory, ConnectionInfo
 from .distance_calculator import DistanceCalculator
@@ -50,17 +51,17 @@ class UnifiedConnectionClassifier(nn.Module):
         config = get_project_config()
 
         self.lattice_dimensions = lattice_dimensions
-        self.state_size = config.gnn.state_size
+        self.state_size = config.model.state_size
 
         # Получаем настройки кэширования из конфигурации
-        cache_config = config.get_connection_cache_config()
+        cache_config = asdict(config.cache) if config.cache else {}
         self.enable_cache = (
-            cache_config["enabled"] if enable_cache is None else enable_cache
+            cache_config.get("enabled", True) if enable_cache is None else enable_cache
         )
-        self.enable_performance_monitoring = cache_config[
-            "enable_performance_monitoring"
-        ]
-        self.enable_detailed_stats = cache_config["enable_detailed_stats"]
+        self.enable_performance_monitoring = cache_config.get(
+            "enable_performance_monitoring", False
+        )
+        self.enable_detailed_stats = cache_config.get("enable_detailed_stats", False)
 
         # Модульные компоненты (для fallback)
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
@@ -78,23 +79,23 @@ class UnifiedConnectionClassifier(nn.Module):
 
         # Learnable пороги для классификации
         self.local_distance_threshold = nn.Parameter(
-            torch.tensor(config.expert.connections.local_distance_threshold)
+            torch.tensor(config.model.local_distance_threshold)
         )
         self.functional_distance_threshold = nn.Parameter(
-            torch.tensor(config.expert.connections.functional_distance_threshold)
+            torch.tensor(config.model.functional_distance_threshold)
         )
         self.distant_distance_threshold = nn.Parameter(
-            torch.tensor(config.expert.connections.distant_distance_threshold)
+            torch.tensor(config.model.distant_distance_threshold)
         )
         self.functional_similarity_threshold = nn.Parameter(
-            torch.tensor(config.expert.connections.functional_similarity_threshold)
+            torch.tensor(config.model.functional_similarity_threshold)
         )
 
         # Целевые пропорции из конфига
         self.target_ratios = {
-            "local": config.neighbors.local_tier,
-            "functional": config.neighbors.functional_tier,
-            "distant": config.neighbors.distant_tier,
+            "local": config.model.local_tier_ratio,
+            "functional": config.model.functional_tier_ratio,
+            "distant": config.model.distant_tier_ratio,
         }
 
         # Статистика использования

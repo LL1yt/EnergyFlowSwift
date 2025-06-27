@@ -75,9 +75,12 @@ class TestGPUOptimizedEulerSolver(unittest.TestCase):
     def test_batch_integrate_chunked(self, mock_batch_integrate):
         """Тестирует чанковую обработку в batch_integrate_chunked"""
         # Настраиваем мок для возврата корректного результата
-        mock_batch_integrate.return_value = IntegrationResult(
-            final_state=torch.rand(10, 32), trajectory=None
-        )
+        def batch_integrate_side_effect(derivative_fn, states, *args, **kwargs):
+            batch_size = states.shape[0]
+            return IntegrationResult(
+                final_state=torch.rand(batch_size, 32), trajectory=None
+            )
+        mock_batch_integrate.side_effect = batch_integrate_side_effect
 
         total_trajectories = 250
         self.solver.config.max_batch_size = 100
