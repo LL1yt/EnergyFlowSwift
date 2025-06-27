@@ -15,10 +15,12 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "new_rebuild"))
 
 import torch
-from new_rebuild.config.project_config import (
-    ProjectConfig,
+from new_rebuild.config import (
     get_project_config,
-    set_project_config,
+    ProjectConfig,
+    ModelSettings,
+    LatticeSettings,
+    EulerSettings,
 )
 from new_rebuild.core.lattice.spatial_optimization import create_moe_spatial_optimizer
 

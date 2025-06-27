@@ -17,7 +17,7 @@ from new_rebuild.core.lattice.spatial_optimization.moe_spatial_optimizer import 
     MoESpatialOptimizer,
 )
 from new_rebuild.core.moe.moe_processor import MoEConnectionProcessor
-from new_rebuild.config.project_config import get_project_config
+from new_rebuild.config import get_project_config
 from new_rebuild.utils.logging import get_logger
 
 logger = get_logger(__name__)

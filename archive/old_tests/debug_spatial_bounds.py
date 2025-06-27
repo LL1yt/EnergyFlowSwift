@@ -16,7 +16,7 @@ from new_rebuild.core.lattice.spatial_optimization.moe_spatial_optimizer import 
     MoESpatialOptimizer,
 )
 from new_rebuild.core.lattice.position import Position3D
-from new_rebuild.config.project_config import get_project_config
+from new_rebuild.config import get_project_config
 
 
 def debug_neighbor_search():

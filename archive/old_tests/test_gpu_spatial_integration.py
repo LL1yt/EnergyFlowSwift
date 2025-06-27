@@ -27,7 +27,7 @@ import time
 from typing import List, Dict, Tuple
 import traceback
 
-from new_rebuild.config.project_config import get_project_config
+from new_rebuild.config import get_project_config
 from new_rebuild.utils.device_manager import get_device_manager
 from new_rebuild.utils.logging import get_logger
 

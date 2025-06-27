@@ -16,7 +16,7 @@ import numpy as np
 from typing import Dict, Any
 
 from new_rebuild.core.moe.connection_classifier import UnifiedConnectionClassifier
-from new_rebuild.config.project_config import get_project_config
+from new_rebuild.config import get_project_config
 from utils.centralized_config import CentralizedConfig
 
 # Инициализируем конфигурацию

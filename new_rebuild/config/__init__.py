@@ -5,16 +5,19 @@ Clean 3D Cellular Neural Network - Configuration Module
 Централизованная система конфигурации для clean архитектуры.
 """
 
-# New simplified configuration (recommended)
+# Новая упрощенная конфигурация является основной
 from .simple_config import (
     SimpleProjectConfig,
-    get_project_config as get_simple_config,
-    set_project_config as set_simple_config,
-    reset_project_config as reset_simple_config,
+    get_project_config,
+    set_project_config,
+    reset_project_config,
     create_simple_config,
     create_research_config_simple,
     create_production_config_simple,
 )
+
+# Экспорт SimpleProjectConfig под основным именем ProjectConfig для совместимости
+ProjectConfig = SimpleProjectConfig
 
 from .config_components import (
     LatticeSettings,
@@ -33,48 +36,23 @@ from .config_components import (
     ValidationSettings,
 )
 
-# Legacy configuration (for backward compatibility)
-from .project_config import (
-    ProjectConfig,
-    LatticeConfig,
-    GNNConfig,
-    TrainingConfig,
-    BiologyConfig,
-    NeighborConfig,
-    PlasticityConfig,
-    CNFConfig,
-    SpatialOptimConfig,
-    MemoryConfig,
-    LoggingConfig,
-    DeviceConfig,
-    InitConfig,
-    ExpertConfig,
-    LocalExpertConfig,
-    FunctionalExpertConfig,
-    DistantExpertConfig,
-    GatingConfig,
-    EulerSolverConfig,
-    AdaptiveChunkerConfig,
-    UnifiedSpatialOptimizerConfig,
-    Lattice3DConfig,
-    get_project_config,
-    set_project_config,
-    reset_global_config,
-)
+# Legacy configuration (больше не используется напрямую)
+# from .project_config_legacy import * # Оставляем для возможной отладки
 
 __all__ = [
-    # New simplified config (recommended)
-    "SimpleProjectConfig",
-    "get_simple_config",
-    "set_simple_config", 
-    "reset_simple_config",
+    # Новая упрощенная конфигурация
+    "ProjectConfig",  # Основной класс конфигурации
+    "SimpleProjectConfig",  # Явный экспорт нового класса
+    "get_project_config",
+    "set_project_config",
+    "reset_project_config",
     "create_simple_config",
     "create_research_config_simple",
     "create_production_config_simple",
-    # New config components
+    # Компоненты конфигурации
     "LatticeSettings",
     "ModelSettings",
-    "TrainingSettings", 
+    "TrainingSettings",
     "CNFSettings",
     "EulerSettings",
     "CacheSettings",
@@ -86,30 +64,4 @@ __all__ = [
     "ExperimentSettings",
     "PerformanceSettings",
     "ValidationSettings",
-    # Legacy config (for backward compatibility)
-    "ProjectConfig",
-    "LatticeConfig",
-    "GNNConfig",
-    "TrainingConfig",
-    "BiologyConfig",
-    "NeighborConfig",
-    "PlasticityConfig",
-    "CNFConfig",
-    "SpatialOptimConfig",
-    "MemoryConfig",
-    "LoggingConfig",
-    "DeviceConfig",
-    "InitConfig",
-    "ExpertConfig",
-    "LocalExpertConfig",
-    "FunctionalExpertConfig",
-    "DistantExpertConfig",
-    "GatingConfig",
-    "EulerSolverConfig",
-    "AdaptiveChunkerConfig",
-    "UnifiedSpatialOptimizerConfig",
-    "Lattice3DConfig",
-    "get_project_config",
-    "set_project_config",
-    "reset_global_config",
 ]

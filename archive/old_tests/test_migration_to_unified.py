@@ -68,7 +68,7 @@ def test_lattice_with_unified_optimizer():
     try:
         # Импортируем нужные компоненты
         from new_rebuild.core.lattice import create_lattice
-        from new_rebuild.config.project_config import get_project_config
+        from new_rebuild.config import get_project_config
 
         # Получаем конфигурацию
         config = get_project_config()

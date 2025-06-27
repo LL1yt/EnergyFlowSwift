@@ -11,7 +11,7 @@ import logging
 # Добавляем путь к проекту
 sys.path.append(".")
 
-from new_rebuild.config.project_config import get_project_config
+from new_rebuild.config import get_project_config
 from new_rebuild.core.moe.moe_connection_processor import MoEConnectionProcessor
 from new_rebuild.core.lattice.spatial_optimization.moe_spatial_optimizer import (
     create_moe_spatial_optimizer,

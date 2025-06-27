@@ -223,8 +223,6 @@ class MoESpatialOptimizationTest:
             cell_coords = optimizer.pos_helper.to_3d_coordinates(cell_idx)
 
             # Адаптивный радиус из централизованной конфигурации
-            from new_rebuild.config.project_config import get_project_config
-
             config = get_project_config()
             adaptive_radius = config.calculate_adaptive_radius()
 

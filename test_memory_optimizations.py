@@ -3,8 +3,9 @@ import torch
 import time
 import logging
 from queue import Queue
+from unittest.mock import patch
 
-from new_rebuild.config import get_project_config, ProjectConfig, LatticeConfig
+from new_rebuild.config import get_project_config, ProjectConfig, LatticeSettings
 from new_rebuild.core.lattice import create_lattice
 from new_rebuild.utils.device_manager import get_device_manager
 from new_rebuild.core.lattice.spatial_optimization.memory_manager import (
@@ -38,7 +39,7 @@ class TestMemoryOptimizations(unittest.TestCase):
     def create_test_config(self):
         """Creates a project config tailored for this test."""
         config = ProjectConfig()
-        config.lattice = LatticeConfig(dimensions=(32, 32, 32))
+        config.lattice = LatticeSettings(dimensions=(32, 32, 32))
         config.expert.enabled = True
         config.gnn.state_size = 32
         config.logging.debug_mode = False
@@ -125,6 +126,28 @@ class TestMemoryOptimizations(unittest.TestCase):
                 )
 
         logger.info("--- Test Finished Successfully ---")
+
+    @patch("new_rebuild.utils.device_manager.DeviceManager.get_memory_stats")
+    def test_adaptive_chunking_high_memory(self, mock_get_memory_stats):
+        # ... existing code ...
+
+        # Устанавливаем новую конфигурацию
+        config = get_project_config()
+        config.lattice = LatticeSettings(dimensions=(32, 32, 32))
+        set_project_config(config)
+
+        # ... existing code ...
+
+    @patch("new_rebuild.utils.device_manager.DeviceManager.get_memory_stats")
+    def test_adaptive_chunking_low_memory(self, mock_get_memory_stats):
+        # ... existing code ...
+
+        # Устанавливаем новую конфигурацию
+        config = get_project_config()
+        config.lattice = LatticeSettings(dimensions=(64, 64, 64))
+        set_project_config(config)
+
+        # ... existing code ...
 
 
 if __name__ == "__main__":

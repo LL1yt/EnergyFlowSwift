@@ -22,7 +22,7 @@ from new_rebuild.utils.device_manager import (
     get_device_manager,
     reset_device_manager,
 )
-from new_rebuild.config.project_config import ProjectConfig, get_project_config
+from new_rebuild.config import ProjectConfig, get_project_config
 from new_rebuild.core.moe.moe_processor import MoEConnectionProcessor
 
 

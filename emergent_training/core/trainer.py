@@ -36,6 +36,8 @@ from core.cell_prototype.architectures.minimal_nca_cell import (
     create_nca_cell_from_config,
 )
 
+from new_rebuild.config import ProjectConfig, get_project_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +60,11 @@ class EmergentCubeTrainer(nn.Module):
     Orchestrates the emergent training process for the 3D Cellular Neural Network.
     """
 
-    def __init__(self, config: EmergentTrainingConfig, device: Optional[str] = None):
+    def __init__(
+        self,
+        config: EmergentTrainingConfig,
+        project_config: Optional[ProjectConfig] = None,
+    ):
         super().__init__()
 
         # --- Enhanced Initialization Logging ---
@@ -78,9 +84,8 @@ class EmergentCubeTrainer(nn.Module):
         # --- End of Logging ---
 
         self.config = config
-        self._device = torch.device(
-            device or ("cuda" if torch.cuda.is_available() else "cpu")
-        )
+        self.project_config = project_config or get_project_config()
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self._initialize_components()
         self.to(self._device)
@@ -125,67 +130,14 @@ class EmergentCubeTrainer(nn.Module):
             state_size = self.config.gmlp_config.get("state_size", 32)
 
         # 3D Lattice with proper cell configuration
-        lattice_config = LatticeConfig(dimensions=self.config.cube_dimensions)
-
-        # Pass cell configuration to lattice so it creates the right cell type
-        if self.config.enable_nca:
-            # ИСПРАВЛЕНО: Создаем правильную структуру конфигурации для minimal_nca_cell
-            nca_cell_config = {
-                "state_size": state_size,
-                "neighbor_count": 26,
-                "hidden_dim": (
-                    self.config.nca_config.get("hidden_dim", 3)
-                    if self.config.nca_config
-                    else 3
-                ),
-                "external_input_size": (
-                    self.config.nca_config.get("external_input_size", 1)
-                    if self.config.nca_config
-                    else 1
-                ),
-                "activation": (
-                    self.config.nca_config.get("activation", "tanh")
-                    if self.config.nca_config
-                    else "tanh"
-                ),
-                "target_params": (
-                    self.config.nca_config.get("target_params")
-                    if hasattr(self.config, "nca_config") and self.config.nca_config
-                    else None
-                ),
-                "dropout": 0.0,
-                "use_memory": False,
-                "enable_lattice_scaling": False,
-            }
-
-            # Create cell_config для NCA в правильном формате
-            cell_config = {
-                "prototype_name": "minimal_nca_cell",  # Указываем архитектуру
-                "minimal_nca_cell": nca_cell_config,  # Конфигурация для архитектуры
-            }
-        else:
-            # Create cell_config for gMLP
-            logger.info(
-                f"ERROR: мы больше не использыем gMLP для создания клетки нейрона @ \n"
-            )
-            raise NotImplementedError(
-                "gMLP path in EmergentCubeTrainer is disabled. "
-                "The only supported architecture is currently 'minimal_nca_cell'. "
-                "Enable NCA or implement the new gmlp_opt_connections path."
-            )
-
-        lattice_config.cell_config = cell_config
-        self.lattice = Lattice3D(lattice_config)
-
-        # Move lattice to device manually since it's not passed in constructor
-        self.lattice = self.lattice.to(self.device)
+        self._initialize_lattice()
 
         # Loss function
         self.loss_fn = EmergentMultiObjectiveLoss(self.config).to(self.device)
 
         # Spatial propagation module
         self.propagation = EmergentSpatialPropagation(
-            self.config.cube_dimensions, state_size
+            self.project_config.lattice.dimensions, state_size
         ).to(self.device)
 
         # NCA module (separate from cell - this is for additional NCA processing)
@@ -217,7 +169,7 @@ class EmergentCubeTrainer(nn.Module):
 
             self.nca = NeuralCellularAutomata(
                 nca_config_obj,
-                cube_dimensions=self.config.cube_dimensions,
+                cube_dimensions=self.project_config.lattice.dimensions,
                 state_size=state_size,
             ).to(self.device)
         else:
@@ -228,6 +180,15 @@ class EmergentCubeTrainer(nn.Module):
 
         # GradScaler for mixed precision
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.config.mixed_precision)
+
+    def _initialize_lattice(self):
+        """Initializes the 3D lattice."""
+        # Используем directamente project_config
+        self.project_config.lattice.dimensions = self.config.cube_dimensions
+        self.lattice = Lattice3D(config=self.project_config)
+        self.logger.info(
+            f"Lattice initialized with dimensions {self.project_config.lattice.dimensions}"
+        )
 
     def forward(self, surface_embeddings: torch.Tensor) -> Dict[str, torch.Tensor]:
         """
@@ -261,7 +222,7 @@ class EmergentCubeTrainer(nn.Module):
         # This is a placeholder for the complex logic of mapping a flat embedding
         # to the 3D surface of the cube.
         batch_size = surface_embeddings.shape[0]
-        D, H, W = self.config.cube_dimensions
+        D, H, W = self.project_config.lattice.dimensions
         state_size = self.config.gmlp_config.get("state_size", 32)
 
         # Simplified: Project to the right total size and reshape
@@ -272,7 +233,7 @@ class EmergentCubeTrainer(nn.Module):
         projected_surface = projection_layer(surface_embeddings)
 
         # Reshape to fit the front face
-        surface_tensor = projected_surface.view(batch_size, state_size, H, W)
+        surface_tensor = projected_surface.view(batch_size, state_size, D, H, W)
 
         # Create full cube and place the surface on the front face (depth=0)
         full_cube = torch.zeros(batch_size, state_size, D, H, W, device=self.device)

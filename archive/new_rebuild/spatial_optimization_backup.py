@@ -30,7 +30,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 import gc
 
-from new_rebuild.config import project_config
+from new_rebuild.config import get_project_config
 
 from .spatial_hashing import MortonEncoder, SpatialHashGrid, Coordinates3D
 from .position import Position3D, Coordinates3D

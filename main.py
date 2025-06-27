@@ -26,13 +26,18 @@ sys.path.insert(0, str(project_root))
 try:
     # [OK] Модуль cell_prototype готов!
     from core import CellPrototype, create_cell_from_config
-    
+
     # [OK] Модуль lattice_3d готов с I/O стратегией!
     from core.lattice_3d import (
-        Lattice3D, LatticeConfig, PlacementStrategy, IOPointPlacer, Face,
-        load_lattice_config, create_lattice_from_config
+        Lattice3D,
+        LatticeConfig,
+        PlacementStrategy,
+        IOPointPlacer,
+        Face,
+        load_lattice_config,
+        create_lattice_from_config,
     )
-    
+
     # from core.signal_propagation import SignalPropagator
     # from data.embedding_loader import EmbeddingLoader
     # from data.data_visualization import Visualizer
@@ -40,36 +45,47 @@ try:
     # from inference.prediction import Predictor
     # from utils.config_manager import ConfigManager
     # from utils.logger import setup_logger
-    
+
     print("[INFO] Инициализация системы...")
     print("[OK] Модуль cell_prototype загружен успешно!")
     print("[OK] Модуль lattice_3d с I/O стратегией загружен успешно!")
     print("[WARNING]  Остальные модули пока не реализованы")
-    
+
 except ImportError as e:
     print(f"[WARNING]  Модуль не найден: {e}")
     print("[IDEA] Это нормально на начальной стадии разработки")
+
+from new_rebuild.config import (
+    ProjectConfig,
+    LatticeSettings,
+    ModelSettings,
+    TrainingSettings,
+    DeviceSettings,
+    LoggingSettings,
+    get_project_config,
+    set_project_config,
+)
 
 
 def setup_project_structure():
     """
     Создает необходимые директории для проекта
-    
+
     Биологическая аналогия: Подготавливаем "питательную среду" для роста нашей нейронной ткани
     """
     print("🏗️  Настройка структуры проекта...")
-    
+
     # Директории, которые должны существовать
     directories = [
-        "logs",           # Для записи происходящих процессов
-        "checkpoints",    # Для сохранения промежуточных результатов
-        "data/train",     # Обучающие данные
-        "data/test",      # Тестовые данные
-        "data/embeddings", # Входные эмбединги
-        "outputs",        # Результаты работы
-        "visualizations", # Сохраненные графики и анимации
+        "logs",  # Для записи происходящих процессов
+        "checkpoints",  # Для сохранения промежуточных результатов
+        "data/train",  # Обучающие данные
+        "data/test",  # Тестовые данные
+        "data/embeddings",  # Входные эмбединги
+        "outputs",  # Результаты работы
+        "visualizations",  # Сохраненные графики и анимации
     ]
-    
+
     for dir_path in directories:
         os.makedirs(dir_path, exist_ok=True)
         print(f"  [OK] Создана директория: {dir_path}")
@@ -78,32 +94,35 @@ def setup_project_structure():
 def load_configuration(config_path="config/main_config.yaml"):
     """
     Загружает конфигурацию проекта через ConfigManager
-    
+
     Параметры:
         config_path (str): Путь к файлу конфигурации
-        
+
     Возвращает:
         ConfigManager: Настроенный менеджер конфигурации
     """
     print(f"[GEAR]  Инициализация ConfigManager из {config_path}...")
-    
+
     try:
-        from utils.config_manager import create_config_manager, set_global_config_manager
-        
+        from utils.config_manager import (
+            create_config_manager,
+            set_global_config_manager,
+        )
+
         # Создаем ConfigManager
         config = create_config_manager(
-            base_config=config_path,
-            environment="development",
-            enable_hot_reload=True
+            base_config=config_path, environment="development", enable_hot_reload=True
         )
-        
+
         # Устанавливаем как глобальный
         set_global_config_manager(config)
-        
+
         print("  [OK] ConfigManager инициализирован успешно")
         print(f"  [DATA] Загружено секций: {len(config.get_config())}")
-        print(f"  [MAGNIFY] Обнаружено модульных конфигураций: {config.get_stats()['config_loads']}")
-        
+        print(
+            f"  [MAGNIFY] Обнаружено модульных конфигураций: {config.get_stats()['config_loads']}"
+        )
+
         return config
     except Exception as e:
         print(f"  [ERROR] Ошибка инициализации ConfigManager: {e}")
@@ -113,55 +132,56 @@ def load_configuration(config_path="config/main_config.yaml"):
 def setup_logging(config):
     """
     Настраивает систему логирования
-    
+
     Параметры:
         config (ConfigManager): Менеджер конфигурации проекта
     """
     print("[WRITE] Настройка системы логирования...")
-    
+
     # Создаем директорию для логов если её нет
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
-    
+
     # Получаем настройки логирования из ConfigManager
-    log_level = config.get_config('logging', 'level', 'INFO')
-    log_to_file = config.get_config('logging', 'log_to_file', True)
-    log_file = config.get_config('logging', 'log_file', 'logs/main.log')
-    log_to_console = config.get_config('logging', 'log_to_console', True)
-    
+    log_level = config.get_config("logging", "level", "INFO")
+    log_to_file = config.get_config("logging", "log_to_file", True)
+    log_file = config.get_config("logging", "log_file", "logs/main.log")
+    log_to_console = config.get_config("logging", "log_to_console", True)
+
     # Настраиваем логгер
     handlers = []
-    
+
     if log_to_file:
-        handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
-    
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+
     if log_to_console:
         handlers.append(logging.StreamHandler(sys.stdout))
-    
+
     logging.basicConfig(
         level=getattr(logging, log_level.upper(), logging.INFO),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=handlers
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=handlers,
     )
-    
+
     logger = logging.getLogger(__name__)
     logger.info("[OK] Система логирования настроена")
     logger.info(f"[DATA] Уровень логирования: {log_level}")
     logger.info(f"[FOLDER] Файл логов: {log_file if log_to_file else 'отключен'}")
-    
+
     return logger
 
 
 def demonstrate_concept():
     """
     Демонстрирует основную концепцию проекта с помощью простого примера
-    
+
     Биологическая аналогия: Показываем, как одна клетка превращается в ткань
     """
     print("\n🧬 ДЕМОНСТРАЦИЯ КОНЦЕПЦИИ")
     print("=" * 50)
-    
-    print("""
+
+    print(
+        """
     🆕 ОБНОВЛЕНО: Теперь с пропорциональной I/O стратегией!
     
     Представьте, что у нас есть 3D куб размером 8x8x8 = 512 клеток.
@@ -196,8 +216,9 @@ def demonstrate_concept():
     • Обрабатывает их своей мини-нейросетью  
     • Передает результат дальше
     • Все клетки используют ОДИНАКОВЫЕ веса!
-    """)
-    
+    """
+    )
+
     print("\n[IDEA] Ключевые преимущества:")
     print("  🔹 Параметрическая эффективность: учим только 1 прототип")
     print("  🔹 Биологическая правдоподобность: как в коре мозга")
@@ -213,12 +234,12 @@ def demonstrate_io_strategy():
     """
     print("\n🆕 ДЕМОНСТРАЦИЯ I/O СТРАТЕГИИ")
     print("=" * 40)
-    
+
     try:
         import torch
-        
+
         print("[TARGET] Сравнение различных стратегий размещения...")
-        
+
         # Тестируем разные размеры решеток
         sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32)]
         strategies = [
@@ -227,91 +248,109 @@ def demonstrate_io_strategy():
             ("Случайная", PlacementStrategy.RANDOM),
             ("Полная грань", PlacementStrategy.FULL_FACE),
         ]
-        
-        print(f"\n{'Размер':>12} | {'Стратегия':>15} | {'I/O точек':>10} | {'Покрытие':>9}")
+
+        print(
+            f"\n{'Размер':>12} | {'Стратегия':>15} | {'I/O точек':>10} | {'Покрытие':>9}"
+        )
         print("-" * 60)
-        
+
         for size in sizes:
             face_area = size[0] * size[1]
-            
+
             for name, strategy in strategies:
                 try:
                     placer = IOPointPlacer(
                         lattice_dimensions=size,
                         strategy=strategy,
                         config={
-                            'coverage_ratio': {'min_percentage': 8.0, 'max_percentage': 12.0},
-                            'absolute_limits': {'min_points': 5, 'max_points': 0}
+                            "coverage_ratio": {
+                                "min_percentage": 8.0,
+                                "max_percentage": 12.0,
+                            },
+                            "absolute_limits": {"min_points": 5, "max_points": 0},
                         },
-                        seed=42
+                        seed=42,
                     )
-                    
+
                     input_points = placer.get_input_points(Face.FRONT)
                     coverage = len(input_points) / face_area * 100
-                    
+
                     size_str = f"{size[0]}×{size[1]}×{size[2]}"
-                    print(f"{size_str:>12} | {name:>15} | {len(input_points):>8}   | {coverage:>6.1f}%")
-                    
+                    print(
+                        f"{size_str:>12} | {name:>15} | {len(input_points):>8}   | {coverage:>6.1f}%"
+                    )
+
                 except Exception as e:
-                    print(f"{size[0]}×{size[1]}×{size[2]:>12} | {name:>15} | {'ERROR':>10} | {'---':>9}")
-        
+                    print(
+                        f"{size[0]}×{size[1]}×{size[2]:>12} | {name:>15} | {'ERROR':>10} | {'---':>9}"
+                    )
+
         print("\n🧬 Создание реальной 3D решетки с I/O стратегией...")
-        
+
         # Создаем конфигурацию с пропорциональной I/O стратегией
         config = LatticeConfig(
             dimensions=(8, 8, 8),
             boundary_conditions="walls",
             placement_strategy=PlacementStrategy.PROPORTIONAL,
             io_strategy_config={
-                'coverage_ratio': {'min_percentage': 8.0, 'max_percentage': 12.0},
-                'absolute_limits': {'min_points': 5, 'max_points': 25},
-                'seed': 42
-            }
+                "coverage_ratio": {"min_percentage": 8.0, "max_percentage": 12.0},
+                "absolute_limits": {"min_points": 5, "max_points": 25},
+                "seed": 42,
+            },
         )
-        
+
         # Создаем решетку
         lattice = create_lattice_from_config()  # Использует default config
-        
+
         # Получаем информацию о I/O точках
         io_info = lattice.get_io_point_info()
-        
+
         print(f"  [OK] 3D решетка создана: {config.dimensions}")
         print(f"  [DATA] Всего клеток: {config.total_cells}")
-        print(f"  [PIN] Входных точек: {io_info['input_points']['count']} ({io_info['input_points']['coverage_percentage']:.1f}%)")
-        print(f"  [PIN] Выходных точек: {io_info['output_points']['count']} ({io_info['output_points']['coverage_percentage']:.1f}%)")
-        
+        print(
+            f"  [PIN] Входных точек: {io_info['input_points']['count']} ({io_info['input_points']['coverage_percentage']:.1f}%)"
+        )
+        print(
+            f"  [PIN] Выходных точек: {io_info['output_points']['count']} ({io_info['output_points']['coverage_percentage']:.1f}%)"
+        )
+
         # Тестируем forward pass с пропорциональными точками
-        num_input_points = io_info['input_points']['count']
+        num_input_points = io_info["input_points"]["count"]
         input_size = lattice.cell_prototype.input_size
         external_inputs = torch.randn(num_input_points, input_size)
-        
+
         print(f"  [REFRESH] Тестируем forward pass...")
         print(f"  📥 Входные данные: {external_inputs.shape}")
-        
+
         # Выполняем прямой проход
         with torch.no_grad():
             output_states = lattice.forward(external_inputs)
             io_output = lattice.get_output_states()
-        
+
         print(f"  📤 Все состояния: {output_states.shape}")
         print(f"  📤 I/O выходы: {io_output.shape}")
-        print(f"  [TARGET] Диапазон выходов: [{io_output.min():.3f}, {io_output.max():.3f}]")
-        
+        print(
+            f"  [TARGET] Диапазон выходов: [{io_output.min():.3f}, {io_output.max():.3f}]"
+        )
+
         # Сравнение с полной гранью
         full_face_points = 8 * 8  # 64 точки для полной грани
         efficiency_gain = full_face_points / num_input_points
-        
+
         print(f"\n[IDEA] Эффективность:")
         print(f"  🔸 Полная грань: {full_face_points} точек")
         print(f"  🔸 Пропорциональная: {num_input_points} точек")
         print(f"  🔸 Ускорение: {efficiency_gain:.1f}x меньше I/O точек")
-        print(f"  🔸 Экономия памяти: {(1 - num_input_points/full_face_points)*100:.1f}%")
-        
+        print(
+            f"  🔸 Экономия памяти: {(1 - num_input_points/full_face_points)*100:.1f}%"
+        )
+
         return True
-        
+
     except Exception as e:
         print(f"  [ERROR] Ошибка демонстрации I/O стратегии: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -322,24 +361,25 @@ def run_simple_test():
     """
     print("\n🧪 ПРОСТОЙ ТЕСТ СИСТЕМЫ")
     print("=" * 30)
-    
+
     # Проверяем доступность PyTorch
     try:
         import torch
+
         print(f"  [OK] PyTorch доступен (версия: {torch.__version__})")
-        
+
         # Проверяем доступность GPU
         if torch.cuda.is_available():
             print(f"  [OK] GPU доступен: {torch.cuda.get_device_name(0)}")
         else:
             print("  ℹ️  GPU недоступен, будем использовать CPU")
-            
+
     except ImportError:
         print("  [ERROR] PyTorch не установлен")
         return False
-    
+
     # Проверяем другие библиотеки
-    libraries = ['numpy', 'matplotlib', 'yaml']
+    libraries = ["numpy", "matplotlib", "yaml"]
     for lib in libraries:
         try:
             __import__(lib)
@@ -347,72 +387,76 @@ def run_simple_test():
         except ImportError:
             print(f"  [ERROR] {lib} не установлен")
             return False
-    
+
     # Демонстрируем РЕАЛЬНЫЙ модуль cell_prototype
     print("\n🧬 ТЕСТИРУЕМ РЕАЛЬНУЮ КЛЕТКУ CELL_PROTOTYPE...")
     try:
         # Получаем глобальный ConfigManager
         from utils.config_manager import get_global_config_manager
+
         config_manager = get_global_config_manager()
-        
+
         if config_manager:
             # Получаем конфигурацию cell_prototype
-            cell_config = config_manager.get_config('cell_prototype')
+            cell_config = config_manager.get_config("cell_prototype")
             if cell_config:
                 real_cell = create_cell_from_config(cell_config)
                 print(f"  [OK] Реальная клетка создана: {real_cell}")
-                
+
                 # Создаем тестовые данные
                 batch_size = 2
-                neighbor_states = torch.randn(batch_size, 6, cell_config['state_size'])
-                own_state = torch.randn(batch_size, cell_config['state_size'])
-                external_input = torch.randn(batch_size, cell_config['input_size'])
-                
+                neighbor_states = torch.randn(batch_size, 6, cell_config["state_size"])
+                own_state = torch.randn(batch_size, cell_config["state_size"])
+                external_input = torch.randn(batch_size, cell_config["input_size"])
+
                 # Тестируем forward pass
                 with torch.no_grad():
                     new_state = real_cell(neighbor_states, own_state, external_input)
-                
+
                 print(f"  [DATA] Входное состояние: {own_state[0].numpy()}")
                 print(f"  [DATA] Новое состояние:   {new_state[0].numpy()}")
-                print(f"  [DATA] Диапазон выхода:   [{new_state.min():.3f}, {new_state.max():.3f}]")
-                
+                print(
+                    f"  [DATA] Диапазон выхода:   [{new_state.min():.3f}, {new_state.max():.3f}]"
+                )
+
                 # Показываем информацию о модели
                 info = real_cell.get_info()
                 print(f"  [INFO] Параметров в модели: {info['total_parameters']}")
                 print(f"  [INFO] Размер модели: {info['model_size_mb']:.2f} MB")
-                
+
                 print("  [OK] Тест реальной клетки прошел успешно!")
             else:
                 print("  [WARNING]  Конфигурация cell_prototype не найдена")
-            
+
         else:
             print("  [WARNING]  Конфигурация недоступна, используем простую заглушку")
-            
+
             # Fallback к простой клетке если конфигурация не загрузилась
             import torch.nn as nn
-            
+
             class SimpleCell(nn.Module):
                 def __init__(self):
                     super().__init__()
                     self.layer = nn.Linear(3, 2)
                     self.activation = nn.Tanh()
-                    
+
                 def forward(self, x):
                     return self.activation(self.layer(x))
-            
+
             cell = SimpleCell()
             test_input = torch.randn(1, 3)
             output = cell(test_input)
-            
+
             print(f"  [OK] Простая клетка создана")
             print(f"  [DATA] Вход: {test_input.detach().numpy().flatten()}")
             print(f"  [DATA] Выход: {output.detach().numpy().flatten()}")
-        
+
         return True
-        
+
     except Exception as e:
         print(f"  [ERROR] Ошибка тестирования клетки: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -420,54 +464,60 @@ def run_simple_test():
 def main():
     """
     Главная функция программы
-    
+
     Управляет всем жизненным циклом приложения:
     1. Настройка окружения
-    2. Загрузка конфигурации  
+    2. Загрузка конфигурации
     3. Инициализация модулей
     4. Запуск основной логики
     """
     print("[START] ЗАПУСК 3D КЛЕТОЧНОЙ НЕЙРОННОЙ СЕТИ")
     print("=" * 50)
-    
+
     # Парсим аргументы командной строки
     parser = argparse.ArgumentParser(description="3D Cellular Neural Network")
-    parser.add_argument("--config", default="config/main_config.yaml", 
-                       help="Путь к файлу конфигурации")
-    parser.add_argument("--mode", choices=["demo", "train", "test"], default="demo",
-                       help="Режим работы: demo/train/test")
-    parser.add_argument("--debug", action="store_true", 
-                       help="Режим отладки")
-    
+    parser.add_argument(
+        "--config", default="config/main_config.yaml", help="Путь к файлу конфигурации"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["demo", "train", "test"],
+        default="demo",
+        help="Режим работы: demo/train/test",
+    )
+    parser.add_argument("--debug", action="store_true", help="Режим отладки")
+
     args = parser.parse_args()
-    
+
     # Настраиваем структуру проекта
     setup_project_structure()
-    
+
     # Загружаем конфигурацию
     config = load_configuration(args.config)
     if config is None:
         print("[ERROR] Не удалось загрузить конфигурацию. Завершение работы.")
         return 1
-    
+
     # Настраиваем логирование
     logger = setup_logging(config)
-    
+
     # Демонстрируем концепцию
     demonstrate_concept()
-    
+
     # 🆕 Демонстрируем новую I/O стратегию
     if not demonstrate_io_strategy():
-        print("\n[WARNING]  Демонстрация I/O стратегии не удалась. Продолжаем с базовыми тестами...")
-    
+        print(
+            "\n[WARNING]  Демонстрация I/O стратегии не удалась. Продолжаем с базовыми тестами..."
+        )
+
     # Запускаем тест системы
     if not run_simple_test():
         print("\n[ERROR] Тесты системы не прошли. Проверьте установку зависимостей.")
         return 1
-    
+
     print(f"\n[TARGET] РЕЖИМ РАБОТЫ: {args.mode.upper()}")
     print("=" * 30)
-    
+
     if args.mode == "demo":
         print("[INFO] Режим демонстрации")
         print("  • Показываем основные концепции")
@@ -475,30 +525,39 @@ def main():
         print("  • Выполняем простые тесты")
         print("  • Готовимся к реальной разработке")
         print("\n[IDEA] Следующий шаг: интеграция с signal_propagation модулем")
-        
+
     elif args.mode == "train":
         print("[GRADUATE] Режим обучения (пока не реализован)")
         print("  • Будет загружать данные")
         print("  • Будет обучать модель")
         print("  • Будет сохранять чекпоинты")
-        
+
     elif args.mode == "test":
         print("🧪 Режим тестирования (пока не реализован)")
         print("  • Будет загружать обученную модель")
         print("  • Будет делать предсказания")
         print("  • Будет оценивать качество")
-    
+
     print("\n[OK] СИСТЕМА ГОТОВА К РАЗРАБОТКЕ!")
     print("📖 Следуйте плану в PROJECT_PLAN.md")
     print("[CONFIG] Настройки в config/main_config.yaml")
-    
+
+    # Инициализация конфигурации через новую систему
+    project_config = get_project_config()
+    project_config.lattice = LatticeSettings(dimensions=(10, 10, 10))
+    # Другие настройки можно установить здесь, если нужно
+    set_project_config(project_config)
+
+    # Создание решетки с использованием глобальной конфигурации
+    lattice = Lattice3D()
+
     return 0
 
 
 if __name__ == "__main__":
     """
     Точка входа в программу
-    
+
     Запускается когда файл выполняется напрямую (не импортируется)
     """
     exit_code = main()

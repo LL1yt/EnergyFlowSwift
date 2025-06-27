@@ -7,11 +7,12 @@
 import torch
 import numpy as np
 from new_rebuild.core.moe.connection_classifier import UnifiedConnectionClassifier
-from new_rebuild.config.project_config import (
+from new_rebuild.config import (
     get_project_config,
-    reset_global_config,
-    set_project_config,
     ProjectConfig,
+    ModelSettings,
+    LatticeSettings,
+    EulerSettings,
 )
 
 # Настройка конфигурации
