@@ -647,6 +647,17 @@ class UnifiedConnectionClassifier(nn.Module):
                 "cache_enabled": False,
                 "fallback_mode": True,
                 "performance_monitoring": self.enable_performance_monitoring,
+                "detailed_stats": self.enable_detailed_stats,
+                "cache_size_mb": 0,
+                "cached_cells": 0,
+                "cache_hit_rate": 0.0,
+                "cache_hits": 0,
+                "cache_misses": 0,
+                "avg_cache_time": 0.0,
+                "total_cache_time": 0.0,
+                "total_fallback_time": 0.0,
+                "total_classifications": 0,
+                "speedup_ratio": 1.0,
             }
 
         return stats

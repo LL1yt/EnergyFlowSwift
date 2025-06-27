@@ -57,6 +57,22 @@ class AdaptiveMethod(Enum):
 
 
 @dataclass
+class SolverConfig:
+    """Конфигурация для GPU Optimized Euler Solver (для обратной совместимости)"""
+    
+    adaptive_method: str = "LIPSCHITZ_BASED"
+    base_dt: float = 0.1
+    min_dt: float = 0.001
+    max_dt: float = 0.5
+    lipschitz_safety_factor: float = 0.8
+    stability_threshold: float = 10.0
+    memory_efficient: bool = True
+    max_batch_size: int = 1000
+    error_tolerance: float = 1e-3
+    enable_profiling: bool = True
+
+
+@dataclass
 class IntegrationResult:
     """Результат интеграции с детальной статистикой"""
 
@@ -680,6 +696,192 @@ class GPUOptimizedEulerSolver(nn.Module):
             memory_usage_mb=0.0,  # TODO: track memory
         )
 
+        return result
+
+    def _calculate_adaptive_batch_size(self, total_trajectories: int) -> int:
+        """
+        Вычисляет оптимальный размер батча на основе доступной памяти
+        
+        Args:
+            total_trajectories: общее количество траекторий для обработки
+            
+        Returns:
+            optimal_batch_size: оптимальный размер батча
+        """
+        try:
+            # Получаем статистику памяти
+            memory_stats = self.device_manager.get_memory_stats()
+            available_memory_mb = memory_stats.get("available_mb", 1000)
+            
+            # Базовые оценки памяти на траекторию (в MB)
+            memory_per_trajectory = 0.1  # базовая оценка
+            if hasattr(self.config, 'state_size'):
+                memory_per_trajectory = self.config.state_size * 4 / (1024 * 1024)  # 4 bytes per float32
+            
+            # Оставляем 20% памяти в резерве
+            usable_memory_mb = available_memory_mb * 0.8
+            
+            # Вычисляем максимальный batch size на основе памяти
+            memory_based_batch_size = int(usable_memory_mb / memory_per_trajectory)
+            
+            # Ограничиваем конфигурацией
+            max_config_batch_size = getattr(self.config, 'max_batch_size', 1000)
+            
+            # Выбираем оптимальный размер
+            optimal_batch_size = min(
+                memory_based_batch_size,
+                max_config_batch_size,
+                total_trajectories
+            )
+            
+            # Минимальный размер батча
+            optimal_batch_size = max(optimal_batch_size, 1)
+            
+            logger.debug(f"Adaptive batch size: {optimal_batch_size} "
+                        f"(memory: {memory_based_batch_size}, "
+                        f"config: {max_config_batch_size}, "
+                        f"total: {total_trajectories})")
+            
+            return optimal_batch_size
+            
+        except Exception as e:
+            logger.warning(f"Error calculating adaptive batch size: {e}, using default")
+            return min(getattr(self.config, 'max_batch_size', 1000), total_trajectories)
+
+    def batch_integrate_chunked(
+        self,
+        derivative_fn: Callable,
+        initial_states: torch.Tensor,
+        integration_time: float = 1.0,
+        num_steps: int = 3,
+        return_trajectory: bool = False,
+        adaptive_batch_size: bool = True,
+        *args,
+        **kwargs,
+    ) -> IntegrationResult:
+        """
+        Chunked batch интеграция с адаптивными размерами батчей
+        
+        Автоматически разбивает большие наборы траекторий на оптимальные батчи
+        на основе доступной памяти.
+        
+        Args:
+            derivative_fn: функция производной
+            initial_states: [total_trajectories, state_size] - все начальные состояния
+            integration_time: время интеграции
+            num_steps: количество шагов
+            return_trajectory: возвращать полную траекторию
+            adaptive_batch_size: использовать адаптивные размеры батчей
+            
+        Returns:
+            IntegrationResult с объединенными результатами всех батчей
+        """
+        initial_states = self.device_manager.ensure_device(initial_states)
+        total_trajectories, state_size = initial_states.shape
+        
+        # Определяем размер батча
+        if adaptive_batch_size:
+            batch_size = self._calculate_adaptive_batch_size(total_trajectories)
+        else:
+            batch_size = getattr(self.config, 'max_batch_size', 1000)
+            
+        # Если все помещается в один батч
+        if total_trajectories <= batch_size:
+            return self.batch_integrate(
+                derivative_fn, initial_states, integration_time, 
+                num_steps, return_trajectory, *args, **kwargs
+            )
+        
+        # Chunked processing
+        start_time = time.time()
+        
+        # Подготовка для сбора результатов
+        final_states_list = []
+        trajectory_list = [] if return_trajectory else None
+        
+        # Агрегированная статистика
+        total_integration_time_ms = 0.0
+        total_steps_taken = 0
+        total_adaptive_adjustments = 0
+        total_stability_violations = 0
+        total_memory_usage_mb = 0.0
+        all_lipschitz_estimates = []
+        all_error_estimates = []
+        
+        # Обработка по батчам
+        num_chunks = (total_trajectories + batch_size - 1) // batch_size
+        
+        for chunk_idx in range(num_chunks):
+            start_idx = chunk_idx * batch_size
+            end_idx = min((chunk_idx + 1) * batch_size, total_trajectories)
+            
+            chunk_states = initial_states[start_idx:end_idx]
+            
+            logger.debug(f"Processing chunk {chunk_idx + 1}/{num_chunks}: "
+                        f"trajectories {start_idx}-{end_idx} ({chunk_states.shape[0]} total)")
+            
+            # Интеграция для текущего батча
+            chunk_result = self.batch_integrate(
+                derivative_fn, chunk_states, integration_time,
+                num_steps, return_trajectory, *args, **kwargs
+            )
+            
+            # Сохраняем результаты
+            final_states_list.append(chunk_result.final_state)
+            if return_trajectory and chunk_result.trajectory is not None:
+                trajectory_list.append(chunk_result.trajectory)
+            
+            # Агрегируем статистику
+            total_integration_time_ms += chunk_result.integration_time_ms
+            total_steps_taken += chunk_result.steps_taken
+            total_adaptive_adjustments += chunk_result.adaptive_adjustments
+            total_stability_violations += chunk_result.stability_violations
+            total_memory_usage_mb += chunk_result.memory_usage_mb
+            
+            if chunk_result.lipschitz_estimates:
+                all_lipschitz_estimates.extend(chunk_result.lipschitz_estimates)
+            if chunk_result.error_estimates:
+                all_error_estimates.extend(chunk_result.error_estimates)
+                
+        # Объединяем результаты
+        final_states = torch.cat(final_states_list, dim=0)
+        
+        trajectory = None
+        if return_trajectory and trajectory_list:
+            # trajectory_list содержит [num_chunks, steps+1, chunk_batch_size, state_size]
+            # Нужно объединить по chunk_batch_size dimension
+            trajectory = torch.cat(trajectory_list, dim=1)  # [steps+1, total_trajectories, state_size]
+        
+        # Финальная статистика
+        overall_time_ms = (time.time() - start_time) * 1000
+        
+        # Создаем результат
+        result = IntegrationResult(
+            final_state=final_states,
+            trajectory=trajectory,
+            integration_time_ms=overall_time_ms,
+            steps_taken=total_steps_taken,
+            adaptive_adjustments=total_adaptive_adjustments,
+            stability_violations=total_stability_violations,
+            lipschitz_estimates=all_lipschitz_estimates,
+            error_estimates=all_error_estimates,
+            success=True,
+            memory_usage_mb=total_memory_usage_mb,
+        )
+        
+        # Обновляем глобальную статистику
+        self._update_performance_stats(
+            overall_time_ms,
+            total_steps_taken,
+            total_adaptive_adjustments,
+            total_stability_violations,
+            total_trajectories,
+            total_memory_usage_mb,
+        )
+        
+        logger.info(f"Chunked integration completed: {num_chunks} chunks, "
+                   f"{total_trajectories} trajectories, {overall_time_ms:.1f}ms total")
+        
         return result
 
     def _update_performance_stats(
