@@ -21,6 +21,7 @@ from typing import Optional, Dict, Any, Tuple
 from .base_cell import BaseCell
 from ...config import get_project_config
 from ...utils.logging import get_logger
+from ...utils.device_manager import get_device_manager
 
 logger = get_logger(__name__)
 
@@ -252,6 +253,15 @@ class VectorizedGNNCell(BaseCell):
             message_dim=self.message_dim,
             external_input_size=self.external_input_size,
         )
+
+        # Перенос всех модулей на правильное устройство
+        device_manager = get_device_manager()
+        self.message_network = device_manager.transfer_module(self.message_network)
+        
+        if self.aggregator is not None:
+            self.aggregator = device_manager.transfer_module(self.aggregator)
+            
+        self.state_updater = device_manager.transfer_module(self.state_updater)
 
         if config.logging.debug_mode:
             self._log_parameter_count()
