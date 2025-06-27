@@ -193,13 +193,14 @@ class VectorizedSpatialProcessor:
         """
         start_time = time.time()
 
+        # Убеждаемся что все тензоры на правильном устройстве
         states = self.device_manager.ensure_device(states)
         total_cells, state_size = states.shape
 
         logger.info(f"🚀 Vectorized processing {total_cells:,} cells...")
 
-        # Создаем выходной тензор
-        new_states = torch.empty_like(states)
+        # Создаем выходной тензор на том же устройстве
+        new_states = torch.empty_like(states, device=self.device)
 
         # Обрабатываем батчами для оптимизации памяти
         num_batches = (
@@ -220,13 +221,20 @@ class VectorizedSpatialProcessor:
                 batch_cell_indices, self.search_radius, self.max_neighbors
             )
 
-            # Извлекаем состояния для батча
-            batch_states = states[batch_cell_indices]  # [batch_size, state_size]
+            # Извлекаем состояния для батча и переносим на правильное устройство
+            batch_states = states[batch_cell_indices].to(
+                self.device
+            )  # [batch_size, state_size]
 
             # Извлекаем состояния соседей (векторизованно)
             batch_neighbor_states = self._get_neighbor_states_vectorized(
                 states, neighbor_indices, neighbor_mask
             )
+
+            # Убеждаемся что все тензоры на одном устройстве
+            batch_neighbor_states = batch_neighbor_states.to(self.device)
+            neighbor_indices = neighbor_indices.to(self.device)
+            neighbor_mask = neighbor_mask.to(self.device)
 
             # Обрабатываем весь батч сразу через cell_processor
             batch_new_states = cell_processor(
@@ -239,7 +247,7 @@ class VectorizedSpatialProcessor:
             )
 
             # Записываем результаты
-            new_states[batch_start:batch_end] = batch_new_states
+            new_states[batch_start:batch_end] = batch_new_states.to(self.device)
 
         # Обновляем статистику
         processing_time = time.time() - start_time

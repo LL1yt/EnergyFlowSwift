@@ -292,6 +292,10 @@ class VectorizedGNNCell(BaseCell):
         batch_size = own_state.shape[0]
         device = own_state.device
 
+        # Убеждаемся что все тензоры на одном устройстве
+        neighbor_states = neighbor_states.to(device)
+        own_state = own_state.to(device)
+
         # Валидация размерностей
         if neighbor_states.dim() == 2:
             neighbor_states = neighbor_states.unsqueeze(0)
@@ -301,16 +305,18 @@ class VectorizedGNNCell(BaseCell):
             external_input = torch.zeros(
                 batch_size, self.external_input_size, device=device
             )
-        elif external_input.shape[-1] != self.external_input_size:
-            if external_input.shape[-1] < self.external_input_size:
-                padding = torch.zeros(
-                    batch_size,
-                    self.external_input_size - external_input.shape[-1],
-                    device=device,
-                )
-                external_input = torch.cat([external_input, padding], dim=-1)
-            else:
-                external_input = external_input[:, : self.external_input_size]
+        else:
+            external_input = external_input.to(device)
+            if external_input.shape[-1] != self.external_input_size:
+                if external_input.shape[-1] < self.external_input_size:
+                    padding = torch.zeros(
+                        batch_size,
+                        self.external_input_size - external_input.shape[-1],
+                        device=device,
+                    )
+                    external_input = torch.cat([external_input, padding], dim=-1)
+                else:
+                    external_input = external_input[:, : self.external_input_size]
 
         # === ВЕКТОРИЗОВАННЫЙ MESSAGE PASSING ===
 
@@ -319,6 +325,7 @@ class VectorizedGNNCell(BaseCell):
 
         # 2. Модуляция через STDP веса (векторизованно)
         if connection_weights is not None:
+            connection_weights = connection_weights.to(device)
             # [batch, neighbor_count] → [batch, neighbor_count, 1]
             stdp_weights = connection_weights.unsqueeze(-1)
             messages = messages * stdp_weights
