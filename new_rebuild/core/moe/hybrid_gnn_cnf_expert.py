@@ -185,9 +185,16 @@ class HybridGNN_CNF_Expert(nn.Module):
             }
 
         # 1. Вычисляем активность соседей для gating
-        neighbor_activity = torch.mean(
-            torch.abs(neighbor_states), dim=1
-        )  # [batch, state_size]
+        if neighbor_states.dim() == 3:
+            # [batch, num_neighbors, state_size] -> [batch, state_size]
+            neighbor_activity = torch.mean(
+                torch.abs(neighbor_states), dim=1
+            )  # [batch, state_size]
+        else:
+            # [num_neighbors, state_size] -> [1, state_size]
+            neighbor_activity = torch.mean(
+                torch.abs(neighbor_states), dim=0, keepdim=True
+            )  # [1, state_size]
 
         # 2. Адаптивное переключение GNN vs CNF
         gating_weight = self.adaptive_gating(
