@@ -124,15 +124,17 @@ class OptimizedSimpleLinearExpert(nn.Module):
         # 1. Адаптивная агрегация соседей
         if self.use_attention and num_neighbors > 1:
             # Attention-based агрегация (независимо от количества соседей)
+            # current_state: [batch, state_size], neighbor_states: [num_neighbors, state_size]
+            current_expanded = current_state.expand(neighbor_states.shape[0], -1)  # [num_neighbors, state_size]
             attention_weights = F.softmax(
-                torch.sum(neighbor_states * current_state.unsqueeze(1), dim=-1), dim=1
-            )
+                torch.sum(neighbor_states * current_expanded, dim=-1), dim=0
+            )  # [num_neighbors]
             aggregated_neighbors = torch.sum(
-                neighbor_states * attention_weights.unsqueeze(-1), dim=1
-            )
+                neighbor_states * attention_weights.unsqueeze(-1), dim=0, keepdim=True
+            )  # [1, state_size]
         else:
             # Простое усреднение для одного соседа или fallback
-            aggregated_neighbors = torch.mean(neighbor_states, dim=1)
+            aggregated_neighbors = torch.mean(neighbor_states, dim=0, keepdim=True)
 
         # 2. Обработка агрегированных соседей через фиксированную сеть
         neighbor_features = self.neighbor_aggregator(aggregated_neighbors)
