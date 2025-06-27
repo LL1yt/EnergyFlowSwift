@@ -122,6 +122,7 @@ class OptimizedSimpleLinearExpert(nn.Module):
             return self.normalization(current_state)
 
         # 1. Адаптивная агрегация соседей
+        logger.debug(f"🔍 use_attention={self.use_attention}, num_neighbors={num_neighbors}")
         if self.use_attention and num_neighbors > 1:
             # Attention-based агрегация (независимо от количества соседей)
             # Нормализуем размерности current_state
@@ -142,7 +143,9 @@ class OptimizedSimpleLinearExpert(nn.Module):
             aggregated_neighbors = torch.mean(neighbor_states, dim=0, keepdim=True)
 
         # 2. Обработка агрегированных соседей через фиксированную сеть
+        logger.debug(f"🔍 aggregated_neighbors.shape={aggregated_neighbors.shape}")
         neighbor_features = self.neighbor_aggregator(aggregated_neighbors)
+        logger.debug(f"🔍 neighbor_features после aggregator.shape={neighbor_features.shape}")
 
         # 3. Объединяем текущее состояние с обработанными соседями
         # Нормализуем размерности для конкатенации
