@@ -46,6 +46,7 @@ class OptimizedSimpleLinearExpert(nn.Module):
 
         self.state_size = state_size
         self.target_params = local_config.params  # Из конфига
+        self.default_batch_size = local_config.default_batch_size
 
         # === ФИКСИРОВАННАЯ АРХИТЕКТУРА ===
 
@@ -115,7 +116,19 @@ class OptimizedSimpleLinearExpert(nn.Module):
         Returns:
             new_state: [batch, state_size] - обновленное состояние
         """
-        batch_size, num_neighbors, _ = neighbor_states.shape
+        # Обрабатываем размерности neighbor_states
+        if neighbor_states.dim() == 3:
+            _, num_neighbors, _ = neighbor_states.shape
+        elif neighbor_states.dim() == 2:
+            # neighbor_states имеет размер [num_neighbors, state_size]
+            # Это нормально для одиночной обработки (без batch)
+            logger.warning(f"⚠️ 2 размерность neighbor_states, возможно потерян batch_size, используем default_batch_size={self.default_batch_size} ")
+            num_neighbors, _ = neighbor_states.shape
+            batch_size = self.default_batch_size
+        else:
+            # Неожиданная размерность - логируем для отладки
+            logger.warning(f"⚠️ Неожиданная размерность neighbor_states: {neighbor_states.shape}")
+            num_neighbors = neighbor_states.shape[0] if neighbor_states.numel() > 0 else 0
 
         if num_neighbors == 0:
             # Нет соседей - возвращаем нормализованное состояние

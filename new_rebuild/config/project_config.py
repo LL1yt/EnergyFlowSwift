@@ -257,6 +257,7 @@ class LocalExpertConfig:
     processor_hidden: int = 64
     max_neighbors_buffer: int = 100
     use_attention: bool = True
+    default_batch_size: int = 1  # Batch размер для fallback случаев, когда размерность теряется
 
 
 @dataclass
