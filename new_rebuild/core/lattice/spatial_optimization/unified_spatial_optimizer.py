@@ -362,7 +362,10 @@ class UnifiedSpatialOptimizer:
                     return current_state.squeeze(0)
 
             except Exception as e:
-                logger.warning(f"⚠️ MoE processor error: {e}")
+                import traceback
+                logger.error(f"⚠️ MoE processor error: {e}")
+                logger.error(f"📍 Full traceback:\n{traceback.format_exc()}")
+                logger.error(f"🔍 Context: cell_idx={cell_idx}, current_state.shape={getattr(current_state, 'shape', 'N/A')}")
                 return (
                     current_state.squeeze(0)
                     if current_state.dim() > 1

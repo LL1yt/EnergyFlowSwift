@@ -85,11 +85,21 @@ class UnifiedConnectionClassifier(nn.Module):
         Returns:
             Dict с масками для каждого типа связей
         """
-        batch_size, max_neighbors = neighbor_indices.shape
-        device = cell_indices.device
+        try:
+            logger.debug(f"🔍 classify_connections_batch: входные данные - cell_indices.shape={cell_indices.shape}, neighbor_indices.shape={neighbor_indices.shape}, states.shape={states.shape}")
+            logger.debug(f"🔍 cell_indices.dtype={cell_indices.dtype}, neighbor_indices.dtype={neighbor_indices.dtype}, states.dtype={states.dtype}")
+            
+            batch_size, max_neighbors = neighbor_indices.shape
+            device = cell_indices.device
 
-        # Создаем валидную маску (исключаем -1 padding)
-        valid_mask = neighbor_indices >= 0
+            # Создаем валидную маску (исключаем -1 padding)
+            valid_mask = neighbor_indices >= 0
+            logger.debug(f"🔍 valid_mask.shape={valid_mask.shape}, valid_mask.dtype={valid_mask.dtype}")
+        except Exception as e:
+            import traceback
+            logger.error(f"❌ ОШИБКА в classify_connections_batch (начало): {e}")
+            logger.error(f"📍 Traceback:\n{traceback.format_exc()}")
+            raise
 
         if valid_mask.sum().item() == 0:  # Используем .sum().item() вместо .any()
             return self._empty_classification_result(batch_size, max_neighbors, device)

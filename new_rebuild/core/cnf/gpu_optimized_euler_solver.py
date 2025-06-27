@@ -312,7 +312,7 @@ class GPUOptimizedEulerSolver(nn.Module):
             "invalid_ratio": invalid_mask.float().mean().item(),
         }
 
-        if invalid_mask.any():
+        if invalid_mask.sum().item() > 0:
             logger.warning(
                 f"Invalid derivatives detected: {invalid_mask.sum().item()}/{batch_size}"
             )
@@ -336,7 +336,7 @@ class GPUOptimizedEulerSolver(nn.Module):
             next_states
         ).any(dim=-1)
 
-        if result_invalid_mask.any():
+        if result_invalid_mask.sum().item() > 0:
             logger.warning(
                 f"Invalid next_states detected: {result_invalid_mask.sum().item()}/{batch_size}"
             )
@@ -546,13 +546,13 @@ class GPUOptimizedEulerSolver(nn.Module):
         # Маска активных траекторий
         active_mask = torch.ones(batch_size, dtype=torch.bool, device=self.device)
 
-        while steps_taken < max_steps and active_mask.any():
+        while steps_taken < max_steps and active_mask.sum().item() > 0:
             # Оставшееся время для каждой траектории
             remaining_time = integration_time_tensor - current_time
             dt = torch.min(dt, remaining_time)
 
             # Обрабатываем только активные траектории
-            if not active_mask.all():
+            if active_mask.sum().item() < batch_size:
                 active_indices = torch.where(active_mask)[0]
                 batch_current_states = current_states[active_indices]
                 batch_dt = dt[active_indices]
