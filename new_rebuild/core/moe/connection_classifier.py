@@ -190,11 +190,11 @@ class UnifiedConnectionClassifier(nn.Module):
         result = {cat: [] for cat in ConnectionCategory}
 
         for i, neighbor_idx in enumerate(neighbor_indices):
-            if batch_result["local_mask"][0, i]:
+            if batch_result["local_mask"][0, i].item():
                 category = ConnectionCategory.LOCAL
-            elif batch_result["functional_mask"][0, i]:
+            elif batch_result["functional_mask"][0, i].item():
                 category = ConnectionCategory.FUNCTIONAL
-            elif batch_result["distant_mask"][0, i]:
+            elif batch_result["distant_mask"][0, i].item():
                 category = ConnectionCategory.DISTANT
             else:
                 continue  # Исключенный сосед
