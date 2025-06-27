@@ -319,6 +319,11 @@ class GNNCell(BaseCell):
         batch_size = own_state.shape[0]
         device = own_state.device
 
+        # Обработка размерностей neighbor_states
+        if neighbor_states.dim() == 2:
+            # [num_neighbors, state_size] -> [1, num_neighbors, state_size]
+            neighbor_states = neighbor_states.unsqueeze(0)
+
         # Логирование forward pass (только в debug режиме)
         config = get_project_config()
         if config.logging.debug_mode:
