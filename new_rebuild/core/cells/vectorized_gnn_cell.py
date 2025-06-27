@@ -295,7 +295,7 @@ class VectorizedGNNCell(BaseCell):
             new_states: [batch, state_size] - новые состояния
         """
         batch_size = own_state.shape[0]
-        device = own_state.device
+        device = next(self.parameters()).device
 
         # Убеждаемся что все тензоры на одном устройстве
         neighbor_states = neighbor_states.to(device)
