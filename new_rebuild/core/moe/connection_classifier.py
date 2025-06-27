@@ -134,16 +134,44 @@ class UnifiedConnectionClassifier(nn.Module):
             middle_cells = valid_cells[middle_mask]
             middle_neighbors = valid_neighbors[middle_mask]
 
-            cell_states = states[middle_cells]
-            neighbor_states = states[middle_neighbors]
+            # Валидация индексов перед доступом к states
+            max_index = states.shape[0] - 1
+            valid_middle_cells = middle_cells <= max_index
+            valid_middle_neighbors = middle_neighbors <= max_index
+            
+            if not (valid_middle_cells.all() and valid_middle_neighbors.all()):
+                logger.warning(f"⚠️ Неправильные индексы: cells max={middle_cells.max().item()}, neighbors max={middle_neighbors.max().item()}, states size={states.shape[0]}")
+                # Фильтруем только валидные индексы
+                valid_pairs = valid_middle_cells & valid_middle_neighbors
+                if valid_pairs.sum().item() == 0:
+                    logger.warning("⚠️ Нет валидных пар для функциональной проверки")
+                    # Пропускаем функциональную проверку средних связей
+                else:
+                    middle_cells = middle_cells[valid_pairs]
+                    middle_neighbors = middle_neighbors[valid_pairs]
+                    cell_states = states[middle_cells]
+                    neighbor_states = states[middle_neighbors]
+                    
+                    similarities = self.similarity_analyzer(cell_states, neighbor_states)
+                    high_similarity = similarities > self.functional_similarity_threshold
+                    
+                    # Добавляем средние связи с высокой функциональной близостью к functional
+                    middle_indices = torch.where(middle_mask)[0]
+                    valid_middle_indices = middle_indices[valid_pairs]
+                    functional_additions = valid_middle_indices[high_similarity]
+                    functional_mask_flat[functional_additions] = True
+            else:
+                cell_states = states[middle_cells]
+                neighbor_states = states[middle_neighbors]
+                
+                similarities = self.similarity_analyzer(cell_states, neighbor_states)
+                high_similarity = similarities > self.functional_similarity_threshold
+                
+                # Добавляем средние связи с высокой функциональной близостью к functional
+                middle_indices = torch.where(middle_mask)[0]
+                functional_additions = middle_indices[high_similarity]
+                functional_mask_flat[functional_additions] = True
 
-            similarities = self.similarity_analyzer(cell_states, neighbor_states)
-            high_similarity = similarities > self.functional_similarity_threshold
-
-            # Добавляем средние связи с высокой функциональной близостью к functional
-            middle_indices = torch.where(middle_mask)[0]
-            functional_middle_indices = middle_indices[high_similarity]
-            functional_mask_flat[functional_middle_indices] = True
 
         # 4. Восстанавливаем форму масок
         local_mask = torch.zeros(
