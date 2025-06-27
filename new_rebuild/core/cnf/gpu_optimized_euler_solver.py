@@ -33,7 +33,7 @@ from enum import Enum
 try:
     from ...utils.logging import get_logger
     from ...utils.device_manager import get_device_manager
-    from ...config.project_config import get_project_config
+    from ...config import get_project_config
 except ImportError:
     # Fallback для прямого запуска
     import sys
@@ -42,7 +42,7 @@ except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     from utils.logging import get_logger
     from utils.device_manager import get_device_manager
-    from config.project_config import get_project_config
+    from config import get_project_config
 
 logger = get_logger(__name__)
 

@@ -30,7 +30,7 @@ import asyncio
 
 try:
     # Относительные импорты для использования в качестве модуля
-    from ....config.project_config import get_project_config
+    from ....config import get_project_config
     from ....utils.logging import get_logger
     from ....utils.device_manager import get_device_manager
     from ..position import Position3D
@@ -48,7 +48,7 @@ except ImportError:
     import os
 
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
-    from config.project_config import get_project_config
+    from config import get_project_config
     from utils.logging import get_logger
     from utils.device_manager import get_device_manager
     from core.lattice.position import Position3D

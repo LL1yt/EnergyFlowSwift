@@ -27,7 +27,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 
-from ....config import get_project_config, UnifiedSpatialOptimizerConfig
+from ....config import get_project_config
 from ....utils.logging import get_logger
 from ....utils.device_manager import get_device_manager
 from ..position import Position3D

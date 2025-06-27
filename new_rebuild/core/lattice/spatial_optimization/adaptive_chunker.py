@@ -25,7 +25,7 @@ import threading
 from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor, Future
 
-from ....config import get_project_config, AdaptiveChunkerConfig
+from ....config import get_project_config
 from ..position import Position3D
 from ....utils.logging import get_logger
 from ....utils.device_manager import get_device_manager

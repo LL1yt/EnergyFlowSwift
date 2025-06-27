@@ -10,7 +10,7 @@ MemoryPoolManager обеспечивает эффективное использ
 import torch
 import gc
 from typing import Dict, List, Tuple
-from ....config.project_config import get_project_config
+from ....config import get_project_config
 from ....utils.logging import get_logger
 from ....utils.device_manager import get_device_manager
 

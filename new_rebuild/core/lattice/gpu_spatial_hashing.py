@@ -24,7 +24,7 @@ from dataclasses import dataclass
 import math
 
 try:
-    from ...config.project_config import get_project_config
+    from ...config import get_project_config
     from ...utils.device_manager import get_device_manager
     from ...utils.logging import get_logger
 except ImportError:
@@ -33,7 +33,7 @@ except ImportError:
     import os
 
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-    from config.project_config import get_project_config
+    from config import get_project_config
     from utils.device_manager import get_device_manager
     from utils.logging import get_logger
 
