@@ -57,22 +57,6 @@ class AdaptiveMethod(Enum):
 
 
 @dataclass
-class SolverConfig:
-    """Конфигурация для GPU Optimized Euler Solver (для обратной совместимости)"""
-    
-    adaptive_method: str = "LIPSCHITZ_BASED"
-    base_dt: float = 0.1
-    min_dt: float = 0.001
-    max_dt: float = 0.5
-    lipschitz_safety_factor: float = 0.8
-    stability_threshold: float = 10.0
-    memory_efficient: bool = True
-    max_batch_size: int = 1000
-    error_tolerance: float = 1e-3
-    enable_profiling: bool = True
-
-
-@dataclass
 class IntegrationResult:
     """Результат интеграции с детальной статистикой"""
 
