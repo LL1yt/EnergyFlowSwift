@@ -98,13 +98,20 @@ def test_trainer_basic():
     # Тест forward pass
     print("\n--- Тест Forward Pass ---")
     trainer.embedding_transformer.eval()
-    trainer.moe_processor.eval()
+    trainer.lattice.eval()
 
     with torch.no_grad():
         batch = next(iter(dataloader))
         input_emb, target_emb = batch
         input_emb = input_emb.to(trainer.device)
         target_emb = target_emb.to(trainer.device)
+        
+        print(f"Input embedding shape: {input_emb.shape}")
+        
+        # Проверяем преобразование эмбедингов
+        surface_emb = trainer.embedding_transformer.transform_to_cube(input_emb)
+        print(f"Surface embedding shape after transform: {surface_emb.shape}")
+        print(f"Expected shape for lattice_mapper: [batch_size, {config.embedding.cube_embedding_dim}]")
 
         # Forward pass через весь pipeline
         losses = trainer._forward_pass(input_emb, target_emb)

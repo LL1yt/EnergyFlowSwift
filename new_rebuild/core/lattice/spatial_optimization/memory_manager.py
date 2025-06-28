@@ -27,27 +27,23 @@ class MemoryPoolManager:
 
     def __init__(self, config: dict = None):
         if config is None:
-            # Получаем конфигурацию из нового SimpleProjectConfig
+            # Получаем конфигурацию из проекта - без fallback!
             project_config = get_project_config()
-            if hasattr(project_config, "spatial") and project_config.spatial:
-                self.config = {
-                    "garbage_collect_frequency": project_config.spatial.garbage_collect_frequency,
-                    "memory_pool_size_gb": project_config.spatial.memory_pool_size_gb,
-                    "chunk_size": project_config.spatial.chunk_size,
-                    "max_chunks_in_memory": project_config.spatial.max_chunks_in_memory,
-                    "enable_profiling": project_config.spatial.enable_profiling,
-                    "log_memory_usage": project_config.spatial.log_memory_usage,
-                }
-            else:
-                # Fallback конфигурация
-                self.config = {
-                    "garbage_collect_frequency": 100,
-                    "memory_pool_size_gb": 8.0,
-                    "chunk_size": 64,
-                    "max_chunks_in_memory": 4,
-                    "enable_profiling": True,
-                    "log_memory_usage": True,
-                }
+            if not hasattr(project_config, "spatial") or project_config.spatial is None:
+                raise ValueError(
+                    "MemoryPoolManager требует настроенную spatial конфигурацию! "
+                    "Убедитесь, что config.spatial настроен в SimpleProjectConfig."
+                )
+            
+            spatial_cfg = project_config.spatial
+            self.config = {
+                "garbage_collect_frequency": spatial_cfg.garbage_collect_frequency,
+                "memory_pool_size_gb": spatial_cfg.memory_pool_size_gb,
+                "chunk_size": spatial_cfg.chunk_size,
+                "max_chunks_in_memory": spatial_cfg.max_chunks_in_memory,
+                "enable_profiling": spatial_cfg.enable_profiling,
+                "log_memory_usage": spatial_cfg.log_memory_usage,
+            }
         else:
             self.config = config
 

@@ -80,14 +80,34 @@ class AdaptiveMemoryPredictor:
     def __init__(self):
         self.device_manager = get_device_manager()
         self.historical_usage = []
-        cfg = get_project_config().adaptive_chunker
-        self.max_history = cfg.max_history
-        self.memory_per_cell_base = cfg.memory_per_cell_base
-        self.memory_overhead_factor = cfg.memory_overhead_factor
-        self.min_available_memory_mb = cfg.min_available_memory_mb
-        self.cuda_fallback_available_mb = cfg.cuda_fallback_available_mb
-        self.cpu_fallback_available_mb = cfg.cpu_fallback_available_mb
-        self.safe_memory_buffer = cfg.safe_memory_buffer
+        config = get_project_config()
+        
+        # Проверяем наличие необходимых конфигураций - без fallback!
+        if not hasattr(config, "adaptive_chunker") or config.adaptive_chunker is None:
+            raise ValueError(
+                "AdaptiveMemoryPredictor требует настроенную adaptive_chunker конфигурацию! "
+                "Убедитесь, что config.adaptive_chunker настроен в SimpleProjectConfig."
+            )
+        
+        if not hasattr(config, "memory") or config.memory is None:
+            raise ValueError(
+                "AdaptiveMemoryPredictor требует настроенную memory конфигурацию! "
+                "Убедитесь, что config.memory настроен в SimpleProjectConfig."
+            )
+        
+        chunker_cfg = config.adaptive_chunker
+        memory_cfg = config.memory
+        
+        # Из adaptive_chunker config
+        self.max_history = chunker_cfg.max_history
+        
+        # Из memory config  
+        self.memory_per_cell_base = memory_cfg.memory_per_cell_base
+        self.memory_overhead_factor = memory_cfg.memory_overhead_factor
+        self.min_available_memory_mb = memory_cfg.min_available_memory_mb
+        self.cuda_fallback_available_mb = memory_cfg.cuda_fallback_available_mb
+        self.cpu_fallback_available_mb = memory_cfg.cpu_fallback_available_mb
+        self.safe_memory_buffer = memory_cfg.safe_memory_buffer
 
     def predict_chunk_memory(self, chunk_info: AdaptiveChunkInfo) -> float:
         """
@@ -132,17 +152,16 @@ class AdaptiveMemoryPredictor:
     def get_available_memory_mb(self) -> float:
         """Получает доступную GPU память"""
         device_stats = self.device_manager.get_memory_stats()
-        cfg = get_project_config().adaptive_chunker
         if self.device_manager.is_cuda():
             available_mb = device_stats.get(
-                "available_mb", cfg.cuda_fallback_available_mb
+                "available_mb", self.cuda_fallback_available_mb
             )
         else:
             available_mb = device_stats.get(
-                "available_mb", cfg.cpu_fallback_available_mb
+                "available_mb", self.cpu_fallback_available_mb
             )
-        safe_available_mb = available_mb * cfg.safe_memory_buffer
-        return max(cfg.min_available_memory_mb, safe_available_mb)
+        safe_available_mb = available_mb * self.safe_memory_buffer
+        return max(self.min_available_memory_mb, safe_available_mb)
 
 
 class ChunkScheduler:
@@ -295,7 +314,7 @@ class AdaptiveGPUChunker:
         self.device = self.device_manager.get_device()
 
         # Memory management
-        self.memory_manager = get_memory_pool_manager(self.config)
+        self.memory_manager = get_memory_pool_manager()  # Пусть сам получает конфигурацию
 
         logger.info(
             f"🎯 AdaptiveGPUChunker создан: {len(self._chunks)} chunks на {self.device}"
@@ -346,21 +365,23 @@ class AdaptiveGPUChunker:
         return chunks
 
     def _calculate_optimal_chunk_size(self, available_memory_mb: float) -> int:
-        cfg = get_project_config().adaptive_chunker
+        config = get_project_config()
+        memory_cfg = config.memory
+        
         total_cells = np.prod(self.dimensions)
         target_memory_per_chunk_mb = (
             available_memory_mb * 0.75 / self.config.max_chunks_in_memory
         )
-        memory_per_cell_bytes = cfg.memory_per_cell_base
+        memory_per_cell_bytes = memory_cfg.memory_per_cell_base
         cells_per_chunk = int(
             target_memory_per_chunk_mb * 1024**2 / memory_per_cell_bytes
         )
         if cells_per_chunk <= 0:
-            chunk_size = max(self.dimensions) // cfg.chunk_size_fallback_div
+            chunk_size = max(self.dimensions) // memory_cfg.chunk_size_fallback_div
         else:
-            chunk_size = max(cfg.min_chunk_size, int(cells_per_chunk ** (1 / 3)))
+            chunk_size = max(self.config.min_chunk_size, int(cells_per_chunk ** (1 / 3)))
         max_chunk_size = max(self.dimensions) // 2
-        min_chunk_size = cfg.min_chunk_size
+        min_chunk_size = self.config.min_chunk_size
         optimal_size = max(min_chunk_size, min(chunk_size, max_chunk_size))
 
         logger.debug(
@@ -377,7 +398,6 @@ class AdaptiveGPUChunker:
         end: Coordinates3D,
         available_memory_mb: float,
     ) -> AdaptiveChunkInfo:
-        cfg = get_project_config().adaptive_chunker
 
         # Вычисляем клетки в chunk'е
         cell_indices = []
@@ -403,8 +423,8 @@ class AdaptiveGPUChunker:
             last_access_time=time.time(),
             access_frequency=0,
             processing_priority=self._calculate_initial_priority(start, end),
-            optimal_batch_size=min(cfg.optimal_batch_size, num_cells),
-            preferred_device=cfg.preferred_device,
+            optimal_batch_size=min(self.config.optimal_batch_size, num_cells),
+            preferred_device=self.config.preferred_device,
             memory_pressure_level=min(1.0, memory_size_mb / available_memory_mb),
         )
 
@@ -463,26 +483,25 @@ class AdaptiveGPUChunker:
         )
 
     def _optimize_chunk_parameters(self):
-        cfg = get_project_config().adaptive_chunker
         for chunk in self._chunks:
             # Оптимизируем batch size на основе размера chunk'а
             num_cells = len(chunk.cell_indices)
 
-            if num_cells < cfg.optimal_batch_size_small:
+            if num_cells < self.config.optimal_batch_size_small:
                 chunk.optimal_batch_size = num_cells
-            elif num_cells < cfg.optimal_batch_size_medium:
+            elif num_cells < self.config.optimal_batch_size_medium:
                 chunk.optimal_batch_size = num_cells // 4
             else:
-                chunk.optimal_batch_size = cfg.optimal_batch_size_large
+                chunk.optimal_batch_size = self.config.optimal_batch_size_large
 
             # Устанавливаем приоритет на основе memory pressure
-            if chunk.memory_pressure_level > cfg.memory_pressure_high:
+            if chunk.memory_pressure_level > self.config.memory_pressure_high:
                 chunk.processing_priority = max(
-                    1, chunk.processing_priority - cfg.processing_priority_low_delta
+                    1, chunk.processing_priority - self.config.processing_priority_low_delta
                 )
-            elif chunk.memory_pressure_level < cfg.memory_pressure_low:
+            elif chunk.memory_pressure_level < self.config.memory_pressure_low:
                 chunk.processing_priority = min(
-                    100, chunk.processing_priority + cfg.processing_priority_high_delta
+                    100, chunk.processing_priority + self.config.processing_priority_high_delta
                 )
 
     def get_chunk_by_coords(self, coords: Coordinates3D) -> AdaptiveChunkInfo:

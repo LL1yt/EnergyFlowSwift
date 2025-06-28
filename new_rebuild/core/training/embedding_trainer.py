@@ -147,9 +147,10 @@ class EmbeddingTrainer(TrainingInterface):
         self.optimizer = optim.AdamW(
             trainable_params, lr=1e-4, weight_decay=1e-5  # Conservative learning rate
         )
-
+        
         total_params = sum(p.numel() for p in trainable_params)
         logger.info(f"Общее количество обучаемых параметров: {total_params:,}")
+
 
         # 6. Scheduler для learning rate
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
@@ -274,18 +275,26 @@ class EmbeddingTrainer(TrainingInterface):
         Поток: Teacher Embeddings → Surface → 3D Lattice → Emergent Dynamics → Surface → Teacher Embeddings
         """
 
-        # 1. Teacher → Cube Surface (768D → 64D для 8×8 поверхности)
+        # 1. Teacher → Cube Surface (768D → 8×8 для 8×8×8 куба)
         surface_embeddings = self.embedding_transformer.transform_to_cube(input_embeddings)
+        
+        # Преобразуем 3D surface в плоский вектор для lattice_mapper
+        batch_size = surface_embeddings.shape[0]
+        surface_embeddings_flat = surface_embeddings.view(batch_size, -1)  # [batch, 64]
 
         # 2. Surface → 3D Lattice initialization
-        lattice_states = self.lattice_mapper(surface_embeddings)
+        lattice_states = self.lattice_mapper(surface_embeddings_flat)
         
         # 3. Сохраняем начальные состояния для loss'а согласованности
         initial_states = lattice_states.clone()
 
         # 4. Emergent dynamics (несколько шагов через MoE)
+        # Устанавливаем начальные состояния в решетку
+        self.lattice.states = lattice_states
+        
         for step in range(self.lattice_settings.lattice_steps):
-            lattice_states = self.lattice.forward(lattice_states)
+            # Выполняем шаг решетки (обновляет внутренние состояния)
+            lattice_states = self.lattice.forward()
             
             # Проверка сходимости (опционально)
             if step > 0 and self._check_convergence(lattice_states, initial_states):
@@ -293,10 +302,16 @@ class EmbeddingTrainer(TrainingInterface):
                 break
 
         # 5. 3D Lattice → Surface extraction
-        final_surface = self.lattice_extractor(lattice_states)
+        final_surface = self.lattice_extractor(lattice_states)  # [batch, 64]
+        
+        # Преобразуем плоский вектор обратно в 2D surface для transformer
+        # Для куба 8×8×8, поверхность имеет размер 8×8 = 64
+        surface_size_1d = final_surface.shape[1]  # 64
+        surface_size_2d = int(surface_size_1d ** 0.5)  # 8
+        final_surface_2d = final_surface.view(batch_size, surface_size_2d, surface_size_2d)  # [batch, 8, 8]
 
-        # 6. Surface → Teacher embeddings (64D → 768D обратно)
-        output_embeddings = self.embedding_transformer.transform_from_cube(final_surface)
+        # 6. Surface → Teacher embeddings (8×8 → 768D обратно)
+        output_embeddings = self.embedding_transformer.transform_from_cube(final_surface_2d)
 
         # 7. Вычисление loss'ов (включая пространственную согласованность)
         losses = self._compute_losses(

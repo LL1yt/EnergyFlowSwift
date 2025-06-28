@@ -110,24 +110,22 @@ class EmbeddingToLatticeMapper(nn.Module):
         volume_indices = self.get_volume_indices()
         
         # Преобразуем эмбединги в состояния клеток
-        surface_states = self.embedding_to_state(surface_embeddings)
+        surface_states = self.embedding_to_state(surface_embeddings)  # [batch, state_size]
         
         # Добавляем позиционное кодирование
         surface_states = self.positional_encoding(surface_states, surface_indices)
         
         # Размещаем на поверхностных клетках
-        # Для простоты распределяем состояния равномерно по поверхности
+        # Дублируем состояние на все поверхностные клетки
         num_surface_cells = len(surface_indices)
-        if surface_states.shape[1] == 1:
-            # Если у нас один эмбединг, дублируем на все поверхностные клетки
-            lattice_states[:, surface_indices] = surface_states.expand(
-                batch_size, num_surface_cells, self.state_size
-            )
-        else:
-            # Интерполируем эмбединги на поверхностные клетки
-            lattice_states[:, surface_indices] = self._interpolate_to_surface(
-                surface_states, num_surface_cells
-            )
+        
+        # Расширяем состояния для всех поверхностных клеток
+        surface_states_expanded = surface_states.unsqueeze(1).expand(
+            batch_size, num_surface_cells, self.state_size
+        )  # [batch, num_surface_cells, state_size]
+        
+        # Размещаем на поверхности решетки
+        lattice_states[:, surface_indices] = surface_states_expanded
         
         # Инициализируем внутренние клетки
         volume_states = self.volume_initializer(

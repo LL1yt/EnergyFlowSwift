@@ -444,7 +444,7 @@ class MoEConnectionProcessor(nn.Module):
 
         # Освобождаем временные тензоры
         for t in tensors_to_return:
-            self.memory_pool_manager.release_tensor(t)
+            self.memory_pool_manager.return_tensor(t)
 
         # === 4. ОБНОВЛЕНИЕ СТАТИСТИКИ ===
         self._update_stats(classifications, expert_weights)

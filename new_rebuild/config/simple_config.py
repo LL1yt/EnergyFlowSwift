@@ -24,10 +24,13 @@ from .config_components import (
     EulerSettings,
     CacheSettings,
     SpatialSettings,
+    UnifiedOptimizerSettings,
     VectorizedSettings,
+    InitSettings,
     DeviceSettings,
     LoggingSettings,
     MemorySettings,
+    AdaptiveChunkerSettings,
     ExperimentSettings,
     PerformanceSettings,
     ValidationSettings,
@@ -55,6 +58,7 @@ class SimpleProjectConfig:
     lattice: LatticeSettings = field(default_factory=LatticeSettings)
     model: ModelSettings = field(default_factory=ModelSettings)
     training: TrainingSettings = field(default_factory=TrainingSettings)
+    init: InitSettings = field(default_factory=InitSettings)
     device: DeviceSettings = field(default_factory=DeviceSettings)
     logging: LoggingSettings = field(default_factory=LoggingSettings)
 
@@ -63,8 +67,10 @@ class SimpleProjectConfig:
     euler: Optional[EulerSettings] = field(default_factory=EulerSettings)
     cache: Optional[CacheSettings] = field(default_factory=CacheSettings)
     spatial: Optional[SpatialSettings] = field(default_factory=SpatialSettings)
+    unified_optimizer: Optional[UnifiedOptimizerSettings] = field(default_factory=UnifiedOptimizerSettings)
     vectorized: Optional[VectorizedSettings] = field(default_factory=VectorizedSettings)
     memory: Optional[MemorySettings] = field(default_factory=MemorySettings)
+    adaptive_chunker: Optional[AdaptiveChunkerSettings] = field(default_factory=AdaptiveChunkerSettings)
 
     # Экспериментальные компоненты
     experiment: Optional[ExperimentSettings] = None
@@ -245,7 +251,7 @@ class SimpleProjectConfig:
         result = {}
 
         # Основные компоненты
-        for field_name in ["lattice", "model", "training", "device", "logging"]:
+        for field_name in ["lattice", "model", "training", "init", "device", "logging"]:
             component = getattr(self, field_name)
             result[field_name] = (
                 component.__dict__ if hasattr(component, "__dict__") else component
@@ -257,8 +263,10 @@ class SimpleProjectConfig:
             "euler",
             "cache",
             "spatial",
+            "unified_optimizer",
             "vectorized",
             "memory",
+            "adaptive_chunker",
             "experiment",
             "performance",
             "validation",

@@ -36,6 +36,10 @@ class LatticeSettings:
         1.0  # - это промежуток от 65% до 100% связей(0.35 от максимального радиуса для конкретной решетки); связано с distant_distance_ratio, так что важно не забыть их так же изменить
     )
     functional_similarity_threshold: float = 0.3
+    
+    # Настройки пространственной оптимизации (для MoE архитектуры)
+    enable_morton_encoding: bool = True
+    target_performance_ms: float = 16.67  # Target 60 FPS
 
     @property
     def total_cells(self) -> int:
@@ -289,6 +293,24 @@ class SpatialSettings:
 
 
 @dataclass
+class UnifiedOptimizerSettings:
+    """Настройки унифицированного оптимизатора"""
+    
+    performance_monitoring_enabled: bool = True
+    detailed_timing: bool = False
+    cache_statistics: bool = True
+    memory_tracking: bool = True
+    optimization_mode: str = "auto"  # auto, aggressive, balanced, conservative
+    adaptive_mode_switching: bool = True
+    target_performance_threshold_ms: float = 16.67  # 60 FPS
+    fallback_threshold_ms: float = 33.33  # 30 FPS
+    
+    # Для создания optimization result
+    neighbors_found_factor: float = 0.5  # коэффициент для расчета найденных соседей
+    chunks_processed_div: int = 64  # делитель для расчета обработанных чанков
+
+
+@dataclass
 class VectorizedSettings:
     """Настройки векторизации"""
 
@@ -301,6 +323,16 @@ class VectorizedSettings:
     batch_norm_enabled: bool = True
     dropout_rate: float = 0.1
 
+
+@dataclass
+class InitSettings:
+    """Настройки инициализации"""
+    
+    seed: int = 42
+    reproducible: bool = True
+    init_method: str = "xavier"  # xavier, kaiming, normal, uniform
+    gain: float = 1.0
+    
 
 @dataclass
 class DeviceSettings:
@@ -343,6 +375,34 @@ class MemorySettings:
     max_chunks_in_memory: int = 4
     min_chunk_size: int = 8
     chunk_size_fallback_div: int = 8
+
+
+@dataclass
+class AdaptiveChunkerSettings:
+    """Настройки адаптивного разбиения на чанки для GPU обработки"""
+    
+    max_chunks_in_memory: int = 8
+    max_concurrent_chunks: int = 4
+    chunk_overlap: int = 8
+    min_chunk_size: int = 32
+    max_chunk_size: int = 256
+    memory_safety_factor: float = 0.75
+    enable_prefetching: bool = True
+    prefetch_queue_size: int = 2
+    max_history: int = 1000  # для AdaptiveMemoryPredictor
+    
+    # Для AdaptiveChunkInfo
+    optimal_batch_size: int = 1000
+    preferred_device: str = "auto"  # auto, cuda, cpu
+    
+    # Для оптимизации параметров чанков
+    optimal_batch_size_small: int = 100
+    optimal_batch_size_medium: int = 500
+    optimal_batch_size_large: int = 1000
+    memory_pressure_high: float = 0.8
+    memory_pressure_low: float = 0.3
+    processing_priority_low_delta: int = 10
+    processing_priority_high_delta: int = 10
 
 
 # === СПЕЦИАЛИЗИРОВАННЫЕ КОМПОНЕНТЫ ===

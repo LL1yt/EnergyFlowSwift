@@ -58,7 +58,7 @@ class ConnectionType(Enum):
 class OptimizationConfig:
     """Конфигурация для UnifiedSpatialOptimizer"""
 
-    enable_moe: bool = True
+    # MoE всегда включен в этой архитектуре
     enable_morton_encoding: bool = True
     enable_adaptive_chunking: bool = True
     max_memory_gb: float = 8.0
@@ -550,20 +550,18 @@ def estimate_unified_memory_requirements(
         "gpu_tensor_overhead_gb": cell_states_gb * cfg.gpu_tensor_overhead_fraction,
     }
 
-    # MoE компоненты (если включены)
-    moe_requirements = {}
-    if config.enable_moe:
-        moe_requirements = {
-            "moe_expert_states_gb": total_cells
-            * cfg.moe_expert_state_size
-            * 4
-            * cfg.moe_expert_count
-            / (1024**3),
-            "moe_connection_classification_gb": total_cells
-            * cfg.moe_connection_neighbors
-            * 4
-            / (1024**3),
-        }
+    # MoE компоненты (всегда включены)
+    moe_requirements = {
+        "moe_expert_states_gb": total_cells
+        * cfg.moe_expert_state_size
+        * 4
+        * cfg.moe_expert_count
+        / (1024**3),
+        "moe_connection_classification_gb": total_cells
+        * cfg.moe_connection_neighbors
+        * 4
+        / (1024**3),
+    }
 
     # Общие требования
     base_memory = cell_states_gb
