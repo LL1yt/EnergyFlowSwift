@@ -22,6 +22,7 @@ Text → DistilBERT → EmbeddingTransformer → MoE Cube → EmbeddingTransform
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 from pathlib import Path
 import time
@@ -40,6 +41,12 @@ from ..common.interfaces import (
 from ..common.embedding_transformer import EmbeddingTransformer
 from ..inference.text_decoder import SimpleTextDecoder, JointTextDecoder
 from ..moe import create_moe_connection_processor
+from ..lattice.lattice import Lattice3D
+from .embedding_lattice_mapper import (
+    create_embedding_lattice_mapper, 
+    create_lattice_embedding_extractor,
+    EmbeddingLatticeSettings
+)
 
 logger = get_logger(__name__)
 
@@ -90,20 +97,26 @@ class EmbeddingTrainer(TrainingInterface):
             f"EmbeddingTransformer: {self.embedding_transformer.get_parameter_count()} параметров"
         )
 
-        # 2. MoE Connection Processor (основной куб)
+        # 2. Lattice Integration Components
         lattice_dims = (
             self.config.training_embedding.test_lattice_dim,
             self.config.training_embedding.test_lattice_dim,
             self.config.training_embedding.test_lattice_dim,
         )
-
-        self.moe_processor = create_moe_connection_processor(
-            dimensions=lattice_dims,
-            state_size=self.config.model.state_size,
-            device=self.device,
-            config=self.config,
-        )
-        logger.info(f"MoE Processor для решетки {lattice_dims}")
+        
+        # Обновляем конфигурацию решетки
+        self.config.lattice.dimensions = lattice_dims
+        
+        # Маппер эмбедингов в решетку
+        self.lattice_mapper = create_embedding_lattice_mapper(self.config).to(self.device)
+        
+        # 3D решетка с MoE архитектурой
+        self.lattice = Lattice3D(self.config).to(self.device)
+        
+        # Экстрактор эмбедингов из решетки
+        self.lattice_extractor = create_lattice_embedding_extractor(self.config).to(self.device)
+        
+        logger.info(f"Lattice3D создана: {lattice_dims}, total_cells={np.prod(lattice_dims)}")
 
         # 3. Text Decoder (Cube → Text)
         if self.config.training_embedding.test_mode:
@@ -114,13 +127,17 @@ class EmbeddingTrainer(TrainingInterface):
 
         logger.info(f"Text Decoder: {type(self.text_decoder).__name__}")
 
-        # 4. Оптимизатор для всех trainable компонентов
+        # 4. Настройки динамики решетки
+        self.lattice_settings = EmbeddingLatticeSettings()
+        
+        # 5. Оптимизатор для всех trainable компонентов
         trainable_params = list(self.embedding_transformer.parameters())
+        trainable_params.extend(list(self.lattice_mapper.parameters()))
+        trainable_params.extend(list(self.lattice.parameters()))
+        trainable_params.extend(list(self.lattice_extractor.parameters()))
+        
         if hasattr(self.text_decoder, "parameters"):
             trainable_params.extend(list(self.text_decoder.parameters()))
-
-        # MoE компоненты тоже обучаемые
-        trainable_params.extend(list(self.moe_processor.parameters()))
 
         self.optimizer = optim.AdamW(
             trainable_params, lr=1e-4, weight_decay=1e-5  # Conservative learning rate
@@ -129,7 +146,7 @@ class EmbeddingTrainer(TrainingInterface):
         total_params = sum(p.numel() for p in trainable_params)
         logger.info(f"Общее количество обучаемых параметров: {total_params:,}")
 
-        # 5. Scheduler для learning rate
+        # 6. Scheduler для learning rate
         self.scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
             self.optimizer, T_0=10, T_mult=2
         )
@@ -142,7 +159,9 @@ class EmbeddingTrainer(TrainingInterface):
             optimizer = self.optimizer
 
         self.embedding_transformer.train()
-        self.moe_processor.train()
+        self.lattice_mapper.train()
+        self.lattice.train()
+        self.lattice_extractor.train()
         if hasattr(self.text_decoder, "train"):
             self.text_decoder.train()
 
@@ -152,6 +171,8 @@ class EmbeddingTrainer(TrainingInterface):
             "similarity": 0.0,
             "diversity": 0.0,
             "emergence": 0.0,
+            "lattice": 0.0,
+            "spatial": 0.0,
             "count": 0,
         }
 
@@ -193,7 +214,9 @@ class EmbeddingTrainer(TrainingInterface):
             # Gradient clipping для стабильности
             torch.nn.utils.clip_grad_norm_(
                 [p for p in self.embedding_transformer.parameters()]
-                + [p for p in self.moe_processor.parameters()],
+                + [p for p in self.lattice_mapper.parameters()]
+                + [p for p in self.lattice.parameters()]
+                + [p for p in self.lattice_extractor.parameters()],
                 max_norm=1.0,
             )
 
@@ -243,27 +266,46 @@ class EmbeddingTrainer(TrainingInterface):
         """
         Полный forward pass через всю архитектуру
 
-        Поток: Teacher Embeddings → Cube → Teacher Embeddings → Text
+        Поток: Teacher Embeddings → Surface → 3D Lattice → Emergent Dynamics → Surface → Teacher Embeddings
         """
 
-        # 1. Teacher → Cube (768D → 64D для 8×8 поверхности)
-        cube_embeddings = self.embedding_transformer.transform_to_cube(input_embeddings)
+        # 1. Teacher → Cube Surface (768D → 64D для 8×8 поверхности)
+        surface_embeddings = self.embedding_transformer.transform_to_cube(input_embeddings)
 
-        # 2. Куб обработка через MoE
-        # Используем специальный метод для обработки эмбедингов
-        processed_embeddings = self.moe_processor.forward_embeddings(cube_embeddings)
+        # 2. Surface → 3D Lattice initialization
+        lattice_states = self.lattice_mapper(surface_embeddings)
+        
+        # 3. Сохраняем начальные состояния для loss'а согласованности
+        initial_states = lattice_states.clone()
 
-        # 3. Cube → Teacher (64D → 768D обратно)
-        output_embeddings = self.embedding_transformer.transform_from_cube(
-            processed_embeddings
-        )
+        # 4. Emergent dynamics (несколько шагов через MoE)
+        for step in range(self.lattice_settings.lattice_steps):
+            lattice_states = self.lattice.forward(lattice_states)
+            
+            # Проверка сходимости (опционально)
+            if step > 0 and self._check_convergence(lattice_states, initial_states):
+                logger.debug(f"Сходимость достигнута на шаге {step}")
+                break
 
-        # 4. Вычисление loss'ов
+        # 5. 3D Lattice → Surface extraction
+        final_surface = self.lattice_extractor(lattice_states)
+
+        # 6. Surface → Teacher embeddings (64D → 768D обратно)
+        output_embeddings = self.embedding_transformer.transform_from_cube(final_surface)
+
+        # 7. Вычисление loss'ов (включая пространственную согласованность)
         losses = self._compute_losses(
-            input_embeddings, output_embeddings, target_embeddings, texts
+            input_embeddings, output_embeddings, target_embeddings, texts,
+            initial_states, lattice_states
         )
 
         return losses
+    
+    def _check_convergence(self, current_states: torch.Tensor, 
+                          initial_states: torch.Tensor) -> bool:
+        """Проверка сходимости динамики решетки"""
+        diff = torch.norm(current_states - initial_states, dim=-1).mean()
+        return diff < self.lattice_settings.convergence_threshold
 
     def _compute_losses(
         self,
@@ -271,6 +313,8 @@ class EmbeddingTrainer(TrainingInterface):
         output_embeddings: torch.Tensor,
         target_embeddings: torch.Tensor,
         texts: Optional[List[str]] = None,
+        initial_lattice_states: Optional[torch.Tensor] = None,
+        final_lattice_states: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """Вычисление всех компонентов loss функции"""
 
@@ -314,15 +358,55 @@ class EmbeddingTrainer(TrainingInterface):
             emergence_loss * self.config.training_embedding.emergence_loss_weight
         )
 
-        # 5. Общий loss
+        # 5. Lattice Dynamics Loss (если есть состояния решетки)
+        if initial_lattice_states is not None and final_lattice_states is not None:
+            # Поощряем контролируемые изменения в решетке
+            lattice_change = torch.norm(final_lattice_states - initial_lattice_states, dim=-1)
+            lattice_loss = lattice_change.mean()  # Не слишком большие изменения
+            losses["lattice"] = lattice_loss * self.lattice_settings.lattice_loss_weight
+            
+            # Пространственная согласованность
+            spatial_loss = self._compute_spatial_consistency_loss(final_lattice_states)
+            losses["spatial"] = spatial_loss * self.lattice_settings.spatial_consistency_weight
+
+        # 6. Общий loss
         losses["total"] = sum(losses.values())
 
         return losses
+    
+    def _compute_spatial_consistency_loss(self, lattice_states: torch.Tensor) -> torch.Tensor:
+        """
+        Вычисление loss'а пространственной согласованности
+        
+        Поощряет схожие состояния у соседних клеток.
+        """
+        batch_size, total_cells, state_size = lattice_states.shape
+        
+        # Простая аппроксимация: соседние клетки должны иметь похожие состояния
+        # Для куба 8×8×8 берем ближайших соседей по индексам
+        consistency_loss = 0.0
+        num_comparisons = 0
+        
+        # Сравниваем каждую клетку с ее непосредственными соседями
+        lattice_dim = round(total_cells ** (1/3))  # Предполагаем кубическую решетку
+        
+        for i in range(min(100, total_cells)):  # Ограничиваем для производительности
+            for j in range(i+1, min(i+27, total_cells)):  # Проверяем соседей
+                diff = torch.norm(lattice_states[:, i] - lattice_states[:, j], dim=-1)
+                consistency_loss += diff.mean()
+                num_comparisons += 1
+        
+        if num_comparisons > 0:
+            consistency_loss /= num_comparisons
+            
+        return consistency_loss
 
     def validate_epoch(self, dataloader: DataLoader, **kwargs) -> Dict[str, float]:
         """Валидация одной эпохи"""
         self.embedding_transformer.eval()
-        self.moe_processor.eval()
+        self.lattice_mapper.eval()
+        self.lattice.eval()
+        self.lattice_extractor.eval()
         if hasattr(self.text_decoder, "eval"):
             self.text_decoder.eval()
 
@@ -332,6 +416,8 @@ class EmbeddingTrainer(TrainingInterface):
             "similarity": 0.0,
             "diversity": 0.0,
             "emergence": 0.0,
+            "lattice": 0.0,
+            "spatial": 0.0,
             "count": 0,
         }
 
@@ -426,10 +512,10 @@ class EmbeddingTrainer(TrainingInterface):
         """Получение сводки по обучению"""
         return {
             "device": str(self.device),
-            "total_parameters": sum(
-                p.numel() for p in self.embedding_transformer.parameters()
-            )
-            + sum(p.numel() for p in self.moe_processor.parameters()),
+            "total_parameters": sum(p.numel() for p in self.embedding_transformer.parameters())
+            + sum(p.numel() for p in self.lattice_mapper.parameters())
+            + sum(p.numel() for p in self.lattice.parameters())
+            + sum(p.numel() for p in self.lattice_extractor.parameters()),
             "training_history": self.training_history,
             "performance_stats": {
                 "avg_forward_time": sum(self.performance_stats["forward_times"])

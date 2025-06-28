@@ -40,6 +40,27 @@ class LatticeSettings:
     @property
     def total_cells(self) -> int:
         return self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
+    
+    @property
+    def max_radius(self) -> float:
+        """Максимальный радиус для данной решетки"""
+        max_dim = max(self.dimensions)
+        return max_dim * self.adaptive_radius_ratio
+    
+    @property
+    def local_distance_threshold(self) -> float:
+        """Автоматический расчет порога для local связей"""
+        return self.max_radius * self.local_distance_ratio
+    
+    @property
+    def functional_distance_threshold(self) -> float:
+        """Автоматический расчет порога для functional связей"""
+        return self.max_radius * self.functional_distance_ratio
+    
+    @property
+    def distant_distance_threshold(self) -> float:
+        """Автоматический расчет порога для distant связей"""
+        return self.max_radius * self.distant_distance_ratio
 
 
 @dataclass
@@ -70,9 +91,9 @@ class NeighborSettings:
 
     # Adaptive Radius настройки
     adaptive_radius_enabled: bool = True
-    adaptive_radius_ratio: float = 0.4
+    adaptive_radius_ratio: float = 0.2
     adaptive_radius_max: float = 500.0
-    adaptive_radius_min: float = 1.0
+    adaptive_radius_min: float = 0.1
 
     # Tiered Topology - пропорции связей по типам
     local_tier: float = (
@@ -85,15 +106,21 @@ class NeighborSettings:
         0.35  # 35% связей; связано с distant_distance_ratio, так что важно не забыть их так же изменить
     )
 
-    # Пороги расстояний для классификации - вообще эти пороги должны вычисляться автоматически в зависимости от lattice_dimensions, который определяет максимальный радиус для этой решетки и исходя из жтого радиуса мы вычисляем эти значения, испольщуя local_distance_ratio, functional_distance_ratio, distant_distance_ratio соответственно
-    # но пока что мы используем фиксированные значения для тестов и оптимизации, далее нужно будет в идеале переделать этот класс так, чтобы он автоматически вычислял эти пороги в зависимости от lattice_dimensions
-    local_distance_threshold: float = 1.8
-    functional_distance_threshold: float = 4.0
-    distant_distance_threshold: float = 5.5
+    # Пороги расстояний теперь вычисляются автоматически из LatticeSettings
+    # через метод get_distance_thresholds(lattice_settings)
     functional_similarity_threshold: float = 0.3
 
     # Локальная сетка для тестов и оптимизации
     local_grid_cell_size: int = 8
+    
+    def get_distance_thresholds(self, lattice_settings: "LatticeSettings") -> Dict[str, float]:
+        """Получение автоматически вычисленных порогов расстояний"""
+        return {
+            "local": lattice_settings.local_distance_threshold,
+            "functional": lattice_settings.functional_distance_threshold,
+            "distant": lattice_settings.distant_distance_threshold,
+            "functional_similarity": self.functional_similarity_threshold
+        }
 
 
 @dataclass
