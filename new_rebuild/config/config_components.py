@@ -19,7 +19,9 @@ import torch
 class LatticeSettings:
     """Настройки 3D решетки"""
 
-    dimensions: Tuple[int, int, int] = (10, 10, 10)
+    # dimensions: Tuple[int, int, int] = (10, 10, 10)
+    dimensions: Tuple[int, int, int] = (8, 8, 8) # для прогоночных тестов
+    # dimensions: Tuple[int, int, int] = (37, 37, 37)  # Для тестов с большой решеткой
     adaptive_radius_enabled: bool = True
     adaptive_radius_ratio: float = 0.2
     adaptive_radius_max: float = 100.0
@@ -385,7 +387,8 @@ class AdaptiveChunkerSettings:
     max_concurrent_chunks: int = 4
     chunk_overlap: int = 8
     min_chunk_size: int = 32
-    max_chunk_size: int = 256
+    # max_chunk_size: int = 256
+    max_chunk_size: int = 64  # Для тестовых (8,8,8) решеток
     memory_safety_factor: float = 0.75
     enable_prefetching: bool = True
     prefetch_queue_size: int = 2
@@ -415,10 +418,8 @@ class EmbeddingSettings:
     # Основные параметры
     teacher_model: str = "distilbert-base-uncased"
     teacher_embedding_dim: int = 768
-    cube_surface_dim: int = 8  # Для куба 8×8×8
-    # cube_surface_dim: int = 37  # Для куба 37×37×37
-    cube_embedding_dim: int = 64  # 8×8
-    # cube_embedding_dim: int = 1369  # 37×37
+    # cube_surface_dim и cube_embedding_dim вычисляются автоматически 
+    # на основе lattice.dimensions через computed properties
 
     # Параметры преобразования
     transformation_type: str = "linear"  # linear, attention, autoencoder, hierarchical

@@ -36,8 +36,8 @@ class EmbeddingTransformer(nn.Module, EmbeddingProcessor):
         
         # Размерности
         self.teacher_dim = config.embedding.teacher_embedding_dim
-        self.cube_dim = config.embedding.cube_embedding_dim
-        self.surface_dim = config.embedding.cube_surface_dim
+        self.cube_dim = config.cube_embedding_dim
+        self.surface_dim = config.cube_surface_dim
         
         # Проверяем соответствие размерностей
         expected_cube_dim = self.surface_dim ** 2

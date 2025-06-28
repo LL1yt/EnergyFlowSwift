@@ -189,11 +189,23 @@ class Lattice3D(nn.Module):
         """
         start_time = time.time()
 
+        self.logger.info(f"🚀 LATTICE FORWARD: states shape {self.states.shape}")
+        self.logger.info(f"🚀 LATTICE DIMENSIONS: {self.config.lattice.dimensions}")
+
         # Создаем MoE processor
         moe_processor = self._create_moe_processor()
 
         # Устанавливаем MoE processor в унифицированный оптимизатор
         self.spatial_optimizer.moe_processor = moe_processor
+
+        # DEBUG: Проверяем размерности
+        import numpy as np
+        expected_cells = np.prod(self.config.lattice.dimensions)
+        actual_cells = self.states.shape[1] if self.states.dim() > 1 else self.states.shape[0]
+        if expected_cells != actual_cells:
+            self.logger.error(f"❌ DIMENSION MISMATCH: Expected {expected_cells} cells from lattice {self.config.lattice.dimensions}, but states has {actual_cells} cells")
+            self.logger.error(f"States shape: {self.states.shape}")
+            raise RuntimeError(f"Lattice dimensions mismatch: expected {expected_cells} cells, got {actual_cells}")
 
         # Unified Spatial Optimizer автоматически выберет лучший режим обработки
         optimization_result = self.spatial_optimizer.optimize_lattice_forward(

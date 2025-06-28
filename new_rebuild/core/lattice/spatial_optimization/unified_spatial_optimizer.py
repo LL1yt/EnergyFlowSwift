@@ -299,6 +299,10 @@ class UnifiedSpatialOptimizer:
         """
         start_time = time.time()
         num_cells = states.shape[0]
+        
+        logger.info(f"🔧 UNIFIED OPTIMIZER: processing {num_cells} cells")
+        logger.info(f"🔧 OPTIMIZER DIMENSIONS: {self.dimensions}")
+        logger.info(f"🔧 INPUT STATES SHAPE: {states.shape}")
 
         # Определяем функцию обработки
         if processor_fn is None:

@@ -59,7 +59,7 @@ class EmbeddingToLatticeMapper(nn.Module):
         super().__init__()
         self.config = config
         self.lattice_dims = config.lattice.dimensions  # (8, 8, 8)
-        self.surface_dim = config.embedding.cube_embedding_dim  # 64 for 8×8
+        self.surface_dim = config.cube_embedding_dim  # Вычисляется автоматически
         self.state_size = config.model.state_size  # 32
         
         # Настройки маппинга
@@ -326,7 +326,7 @@ class LatticeToEmbeddingExtractor(nn.Module):
         super().__init__()
         self.config = config
         self.lattice_dims = config.lattice.dimensions
-        self.surface_dim = config.embedding.cube_embedding_dim  # 64
+        self.surface_dim = config.cube_embedding_dim  # Вычисляется автоматически
         self.state_size = config.model.state_size  # 32
         
         # Настройки извлечения

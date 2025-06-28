@@ -74,13 +74,19 @@ def test_trainer_basic():
     """Базовый тест инициализации и forward pass"""
     print("\n=== БАЗОВЫЙ ТЕСТ EMBEDDING TRAINER ===")
 
-    # Конфигурация для быстрого теста
+    # Настраиваем логирование на DEBUG уровень
+    import logging
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s - %(name)s - %(message)s')
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    # Используем централизованную конфигурацию
     config = SimpleProjectConfig()
     config.training_embedding.test_mode = True
-    config.training_embedding.test_lattice_dim = 8  # Малый куб 8×8×8
     config.training_embedding.test_quick_iterations = 5
+    config.logging.debug_mode = True  # Включаем debug логи
 
-    # Инициализация тренера
+    # Инициализация тренера (все размеры берутся из централизованного конфига)
     trainer = create_embedding_trainer(config)
 
     print(f"✓ Тренер инициализирован на устройстве: {trainer.device}")
@@ -111,7 +117,7 @@ def test_trainer_basic():
         # Проверяем преобразование эмбедингов
         surface_emb = trainer.embedding_transformer.transform_to_cube(input_emb)
         print(f"Surface embedding shape after transform: {surface_emb.shape}")
-        print(f"Expected shape for lattice_mapper: [batch_size, {config.embedding.cube_embedding_dim}]")
+        print(f"Expected shape for lattice_mapper: [batch_size, {config.cube_embedding_dim}]")
 
         # Forward pass через весь pipeline
         losses = trainer._forward_pass(input_emb, target_emb)

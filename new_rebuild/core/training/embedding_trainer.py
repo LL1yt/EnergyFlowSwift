@@ -103,14 +103,8 @@ class EmbeddingTrainer(TrainingInterface):
         )
 
         # 2. Lattice Integration Components
-        lattice_dims = (
-            self.config.training_embedding.test_lattice_dim,
-            self.config.training_embedding.test_lattice_dim,
-            self.config.training_embedding.test_lattice_dim,
-        )
-        
-        # Обновляем конфигурацию решетки
-        self.config.lattice.dimensions = lattice_dims
+        # Используем размеры из централизованной конфигурации
+        lattice_dims = self.config.lattice.dimensions
         
         # Маппер эмбедингов в решетку
         self.lattice_mapper = create_embedding_lattice_mapper(self.config).to(self.device)
@@ -290,9 +284,14 @@ class EmbeddingTrainer(TrainingInterface):
 
         # 4. Emergent dynamics (несколько шагов через MoE)
         # Устанавливаем начальные состояния в решетку
+        logger.info(f"🔧 Setting lattice states: {lattice_states.shape}")
+        logger.info(f"🔧 Lattice config dimensions: {self.config.lattice.dimensions}")
+        logger.info(f"🔧 Expected cells: {self.config.lattice.total_cells}")
+        
         self.lattice.states = lattice_states
         
         for step in range(self.lattice_settings.lattice_steps):
+            logger.debug(f"🔄 Lattice step {step}")
             # Выполняем шаг решетки (обновляет внутренние состояния)
             lattice_states = self.lattice.forward()
             

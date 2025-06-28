@@ -155,7 +155,7 @@ class SimpleProjectConfig:
             logging.info(f"   🌊 CNF: enabled ({self.cnf.adaptive_method})")
         if self.embedding:
             logging.info(
-                f"   🎯 Embeddings: {self.embedding.teacher_model} ({self.embedding.teacher_embedding_dim}D → {self.embedding.cube_embedding_dim}D)"
+                f"   🎯 Embeddings: {self.embedding.teacher_model} ({self.embedding.teacher_embedding_dim}D → {self.cube_embedding_dim}D)"
             )
 
     @property
@@ -172,6 +172,35 @@ class SimpleProjectConfig:
     def max_neighbors(self) -> int:
         """Максимальное количество соседей (для обратной совместимости)"""
         return self.neighbors.max_neighbors if self.neighbors else 20000
+
+    @property
+    def cube_surface_dim(self) -> int:
+        """Размерность поверхности куба (первые две размерности решетки)"""
+        return self.lattice.dimensions[0]  # Предполагаем кубическую решетку
+
+    @property
+    def cube_embedding_dim(self) -> int:
+        """Размерность поверхностных эмбедингов (surface_dim²)"""
+        surface_dim = self.cube_surface_dim
+        return surface_dim * surface_dim
+
+    @property
+    def effective_max_chunk_size(self) -> int:
+        """Эффективный максимальный размер chunk'а для текущей решетки"""
+        config_max = self.adaptive_chunker.max_chunk_size if self.adaptive_chunker else 64
+        # Для малых решеток ограничиваем chunk размером в 1/4 решетки по каждой оси
+        max_dim = max(self.lattice.dimensions)
+        quarter_lattice = max_dim // 4
+        return min(config_max, max(quarter_lattice, 4))  # минимум 4 клетки
+
+    @property  
+    def effective_min_chunk_size(self) -> int:
+        """Эффективный минимальный размер chunk'а для текущей решетки"""
+        config_min = self.adaptive_chunker.min_chunk_size if self.adaptive_chunker else 32
+        # Для малых решеток делаем min_chunk_size = 1/8 от максимального измерения
+        max_dim = max(self.lattice.dimensions)
+        eighth_lattice = max(max_dim // 8, 2)  # минимум 2 клетки
+        return min(config_min, eighth_lattice)
 
     def calculate_adaptive_radius(self) -> float:
         """

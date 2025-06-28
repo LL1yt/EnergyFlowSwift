@@ -715,6 +715,11 @@ class GPUSpatialProcessor:
     ) -> str:
         """Обрабатывает один chunk с заданной функцией"""
         try:
+            # DEBUG: Логируем размерности
+            logger.debug(f"🔧 CHUNK PROCESSING: all_states shape {all_states.shape}")
+            logger.debug(f"🔧 CHUNK INDICES count: {len(chunk_info.cell_indices)}")
+            logger.debug(f"🔧 CHUNK INDICES range: {min(chunk_info.cell_indices)} - {max(chunk_info.cell_indices)}")
+            
             # Получаем индексы клеток chunk'а
             indices = torch.tensor(
                 chunk_info.cell_indices,
@@ -722,14 +727,45 @@ class GPUSpatialProcessor:
                 dtype=torch.long
             )
             
-            # Извлекаем состояния для chunk'а
-            chunk_states = all_states[indices]
+            # ИСПРАВЛЯЕМ индексирование: all_states имеет shape [batch, cells, features]
+            # Индексы chunk_info.cell_indices относятся к cells dimension (второй размерности)
+            logger.debug(f"🔍 INDEXING DEBUG: all_states.shape={all_states.shape}, indices.shape={indices.shape}")
+            logger.debug(f"🔍 INDICES SAMPLE: {indices[:5].tolist()} ... {indices[-5:].tolist()}")
+            
+            if all_states.dim() == 3:  # [batch, cells, features]
+                batch_size, num_cells, features = all_states.shape
+                max_cell_index = num_cells - 1
+                
+                logger.debug(f"🔍 BATCH INDEXING: batch_size={batch_size}, num_cells={num_cells}, max_index={max_cell_index}")
+                
+                if torch.any(indices > max_cell_index):
+                    invalid_indices = indices[indices > max_cell_index]
+                    logger.error(f"❌ INVALID CELL INDICES: {invalid_indices.tolist()} > {max_cell_index}")
+                    logger.error(f"❌ All states shape: {all_states.shape}")
+                    raise RuntimeError(f"Cell index out of bounds: max valid cell index is {max_cell_index}")
+                
+                logger.debug(f"🔍 BEFORE INDEXING: about to do all_states[:, indices, :]")
+                # Извлекаем состояния для chunk'а: [:, indices, :] - все батчи, выбранные клетки, все фичи
+                chunk_states = all_states[:, indices, :]  # [batch, chunk_cells, features]
+                logger.debug(f"🔍 AFTER INDEXING: chunk_states.shape={chunk_states.shape}")
+                
+            else:  # Fallback для других форматов
+                max_index = all_states.shape[0] - 1
+                if torch.any(indices > max_index):
+                    invalid_indices = indices[indices > max_index]
+                    logger.error(f"❌ INVALID INDICES: {invalid_indices.tolist()} > {max_index}")
+                    raise RuntimeError(f"Index out of bounds: max valid index is {max_index}")
+                
+                chunk_states = all_states[indices]
             
             # Обрабатываем каждую клетку в chunk'е
             processed_chunk_states = chunk_states.clone()
             
             for i, cell_idx in enumerate(indices):
-                cell_state = chunk_states[i:i+1]  # Состояние одной клетки
+                if all_states.dim() == 3:  # [batch, cells, features]
+                    cell_state = chunk_states[:, i:i+1, :]  # [batch, 1, features] - состояние одной клетки для всех батчей
+                else:
+                    cell_state = chunk_states[i:i+1]  # Fallback
                 
                 # Получаем координаты клетки
                 cell_coords = self.chunker.pos_helper.to_3d_coordinates(cell_idx.item())
@@ -765,10 +801,16 @@ class GPUSpatialProcessor:
                     neighbor_indices
                 )
                 
-                processed_chunk_states[i] = processed_state.squeeze(0)
+                if all_states.dim() == 3:  # [batch, cells, features]
+                    processed_chunk_states[:, i, :] = processed_state.squeeze(1)  # Убираем размерность клетки
+                else:
+                    processed_chunk_states[i] = processed_state.squeeze(0)
             
             # Обновляем состояния в основном тензоре
-            all_states[indices] = processed_chunk_states
+            if all_states.dim() == 3:  # [batch, cells, features]
+                all_states[:, indices, :] = processed_chunk_states
+            else:
+                all_states[indices] = processed_chunk_states
             
             return f"Chunk {chunk_info.chunk_id} processed successfully"
             

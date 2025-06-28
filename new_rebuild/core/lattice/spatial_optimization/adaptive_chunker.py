@@ -335,6 +335,11 @@ class AdaptiveGPUChunker:
         x_chunks = max(1, (x_dim + optimal_chunk_size - 1) // optimal_chunk_size)
         y_chunks = max(1, (y_dim + optimal_chunk_size - 1) // optimal_chunk_size)
         z_chunks = max(1, (z_dim + optimal_chunk_size - 1) // optimal_chunk_size)
+        
+        logger.info(
+            f"🔧 CHUNKER GRID: {x_chunks}×{y_chunks}×{z_chunks} = {x_chunks*y_chunks*z_chunks} chunks "
+            f"for lattice {self.dimensions} with chunk_size {optimal_chunk_size}"
+        )
 
         chunk_id = 0
         chunks = []
@@ -358,6 +363,11 @@ class AdaptiveGPUChunker:
                         (end_x, end_y, end_z),
                         available_memory_mb,
                     )
+                    
+                    logger.debug(
+                        f"📦 CHUNK {chunk_id}: size={len(chunk_info.cell_indices)} cells, "
+                        f"coords=({start_x},{start_y},{start_z})-({end_x},{end_y},{end_z})"
+                    )
 
                     chunks.append(chunk_info)
                     chunk_id += 1
@@ -380,13 +390,19 @@ class AdaptiveGPUChunker:
             chunk_size = max(self.dimensions) // memory_cfg.chunk_size_fallback_div
         else:
             chunk_size = max(self.config.min_chunk_size, int(cells_per_chunk ** (1 / 3)))
-        max_chunk_size = max(self.dimensions) // 2
-        min_chunk_size = self.config.min_chunk_size
+        # Используем эффективные размеры chunk'ов из конфигурации
+        config = get_project_config()
+        effective_max_chunk_size = config.effective_max_chunk_size
+        effective_min_chunk_size = config.effective_min_chunk_size
+        
+        max_chunk_size = max(effective_max_chunk_size, effective_min_chunk_size)
+        min_chunk_size = effective_min_chunk_size
         optimal_size = max(min_chunk_size, min(chunk_size, max_chunk_size))
 
-        logger.debug(
-            f"📏 Optimal chunk size: {optimal_size} "
-            f"(available_memory={available_memory_mb:.1f}MB, cells_per_chunk={cells_per_chunk})"
+        logger.info(
+            f"📏 CHUNK SIZE CALCULATION: optimal={optimal_size}, "
+            f"effective_min={effective_min_chunk_size}, effective_max={effective_max_chunk_size}, "
+            f"computed_chunk={chunk_size}, memory={available_memory_mb:.1f}MB"
         )
 
         return optimal_size
