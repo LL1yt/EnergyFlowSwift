@@ -11,6 +11,14 @@ import torch
 import time
 import sys
 import os
+import logging
+
+# Настройка логирования для отладки
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
+)
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 

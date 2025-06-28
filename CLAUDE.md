@@ -17,7 +17,7 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 
 Директория `new_rebuild` содержит основную, переработанную архитектуру проекта.
 
-- **`new_rebuild/config/`**: config_components.py - модульные компоненты через композицию simple_config.py - упрощенная SimpleProjectConfig.
+- **`new_rebuild/config/`**: config_components.py - модульные компоненты через композицию simple_config.py - упрощенная SimpleProjectConfig. (старый конфиг: archive/new_rebuild/project_config_legacy.py)
 - **`new_rebuild/core/`**: Ядро архитектуры, включающее:
   - **`cells/`**: Определения различных типов клеток.
   - **`cnf/`**: Компоненты для Continuous Normalizing Flows.

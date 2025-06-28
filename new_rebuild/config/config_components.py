@@ -27,6 +27,12 @@ class LatticeSettings:
     adaptive_radius_max: float = 100.0
     adaptive_radius_min: float = 0.1
 
+    # Новые параметры для классификации соединений
+    local_distance_ratio: float = 0.1
+    functional_distance_ratio: float = 0.75
+    distant_distance_ratio: float = 1.0
+    functional_similarity_threshold: float = 0.3
+
     @property
     def total_cells(self) -> int:
         return self.dimensions[0] * self.dimensions[1] * self.dimensions[2]

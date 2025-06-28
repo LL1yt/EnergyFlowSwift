@@ -25,6 +25,8 @@ import pickle
 import hashlib
 import os
 import time
+import logging
+import math
 
 from .connection_types import ConnectionCategory, ConnectionInfo
 from .distance_calculator import DistanceCalculator
@@ -82,10 +84,16 @@ class ConnectionCacheManager:
         # ИСПРАВЛЕНО: Всегда получаем актуальный adaptive_radius
         self.adaptive_radius = config.calculate_adaptive_radius()
 
-        # Пороги для классификации связей
-        self.local_threshold = config.model.local_distance_threshold
-        self.functional_threshold = config.model.functional_distance_threshold
-        self.distant_threshold = config.model.distant_distance_threshold
+        # Пороги для классификации связей, вычисляемые на основе adaptive_radius
+        self.local_threshold = (
+            self.adaptive_radius * config.lattice.local_distance_ratio
+        )
+        self.functional_threshold = (
+            self.adaptive_radius * config.lattice.functional_distance_ratio
+        )
+        self.distant_threshold = (
+            self.adaptive_radius * config.lattice.distant_distance_ratio
+        )
 
         # Инициализируем distance calculator
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
@@ -101,6 +109,7 @@ class ConnectionCacheManager:
         # Кэш структуры
         self.cache: Dict[int, Dict[str, List[CachedConnectionInfo]]] = {}
         self.distance_cache: Dict[Tuple[int, int], Dict[str, float]] = {}
+        self.is_precomputed = False
 
         # Статистика (включается по настройкам)
         self.enable_performance_monitoring = self.cache_config.get(
@@ -134,36 +143,73 @@ class ConnectionCacheManager:
         else:
             logger.info("💻 CPU mode: GPU not available or disabled")
 
-        # Проверяем нужно ли пересоздать кэш
-        if not self._is_cache_valid():
-            logger.info("🔄 Кэш устарел, пересоздаем...")
-            if self.use_gpu:
-                logger.info("🚀 Используем GPU для ускорения pre-computation...")
-            self.precompute_all_connections(force_rebuild=True)
-        else:
-            # Загружаем существующий кэш
-            self.precompute_all_connections(force_rebuild=False)
-
-    def _is_cache_valid(self) -> bool:
-        """Проверяет актуальность кэша"""
-        cache_key = self._get_cache_key()
-        cache_file = f"cache/connection_cache_{cache_key}.pkl"
-
-        if not os.path.exists(cache_file):
-            return False
-
-        # Проверяем что кэш создан с текущими параметрами
+    def _load_cache_from_disk(self) -> bool:
+        """
+        Загрузка кэша с диска с полной проверкой совместимости.
+        Returns:
+            True если кэш успешно загружен, иначе False.
+        """
         try:
-            with open(cache_file, "rb") as f:
-                cached_data = pickle.load(f)
-                cached_radius = cached_data.get("adaptive_radius", 0)
-                cached_dimensions = cached_data.get("lattice_dimensions", ())
+            cache_key = self._get_cache_key()
+            cache_file = f"cache/connection_cache_{cache_key}.pkl"
 
-                return (
-                    cached_radius == self.adaptive_radius
-                    and cached_dimensions == self.lattice_dimensions
-                )
-        except:
+            if not os.path.exists(cache_file):
+                logger.info(f"Кэш файл не найден: {cache_file}")
+                return False
+
+            with open(cache_file, "rb") as f:
+                cache_data = pickle.load(f)
+
+            # Детальная проверка совместимости
+            is_compatible = True
+            checks = {
+                "lattice_dimensions": self.lattice_dimensions,
+                "adaptive_radius": self.adaptive_radius,
+                "local_threshold": self.local_threshold,
+                "functional_threshold": self.functional_threshold,
+                "distant_threshold": self.distant_threshold,
+                "cache_version": self.cache_config.get("cache_version", "2024.1"),
+            }
+            if logger.level == logging.DEBUG:
+                logger.debug("--- Проверка совместимости кэша ---")
+
+            for key, expected_value in checks.items():
+                cached_value = cache_data.get(key)
+                if isinstance(expected_value, float):
+                    if not math.isclose(
+                        cached_value if isinstance(cached_value, float) else -1.0,
+                        expected_value,
+                        rel_tol=1e-9,
+                        abs_tol=1e-9,
+                    ):
+                        if logger.level == logging.DEBUG:
+                            logger.debug(
+                                f"❌ НЕ СОВПАДАЕТ (float): {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
+                            )
+                        is_compatible = False
+                elif cached_value != expected_value:
+                    if logger.level == logging.DEBUG:
+                        logger.debug(
+                            f"❌ НЕ СОВПАДАЕТ: {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
+                        )
+                    is_compatible = False
+                else:
+                    if logger.level == logging.DEBUG:
+                        logger.debug(f"✅ Совпадает: {key} = {cached_value}")
+
+            if not is_compatible:
+                logger.info("Кэш несовместим. Требуется пересоздание.")
+                return False
+
+            # Если все проверки прошли, загружаем данные
+            self.cache = cache_data["cache"]
+            self.distance_cache = cache_data["distance_cache"]
+            self.total_cells = cache_data["total_cells"]
+            logger.info(f"✅ Кэш совместим и успешно загружен с диска: {cache_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки кэша: {e}")
             return False
 
     def _get_cache_key(self) -> str:
@@ -177,6 +223,8 @@ class ConnectionCacheManager:
             "cache_version": self.cache_config.get("cache_version", "2024.1"),
             # GPU/CPU кэш полностью совместим, убираем GPU из ключа
         }
+        if logger.level == logging.DEBUG:
+            logger.debug(f"🔑 Cache key data: {key_data}")
 
         key_str = str(sorted(key_data.items()))
         return hashlib.md5(key_str.encode()).hexdigest()
@@ -219,73 +267,22 @@ class ConnectionCacheManager:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения кэша: {e}")
 
-    def _load_cache_from_disk(self) -> bool:
-        """Загрузка кэша с диска с проверкой совместимости"""
-        try:
-            cache_key = self._get_cache_key()
-            cache_file = f"cache/connection_cache_{cache_key}.pkl"
-
-            if not os.path.exists(cache_file):
-                logger.info(f"Кэш файл не найден: {cache_file}")
-                return False
-
-            with open(cache_file, "rb") as f:
-                cache_data = pickle.load(f)
-
-            # Основная проверка совместимости (GPU/CPU кэш совместим)
-            compatibility_checks = [
-                ("adaptive_radius", self.adaptive_radius),
-                ("lattice_dimensions", self.lattice_dimensions),
-                ("local_threshold", self.local_threshold),
-                ("functional_threshold", self.functional_threshold),
-                ("distant_threshold", self.distant_threshold),
-                ("cache_version", self.cache_config.get("cache_version", "2024.1")),
-            ]
-
-            for key, expected_value in compatibility_checks:
-                cached_value = cache_data.get(key)
-                if cached_value != expected_value:
-                    logger.info(
-                        f"Кэш несовместим: {key} {cached_value} != {expected_value}"
-                    )
-                    return False
-
-            # Загружаем данные
-            self.cache = cache_data.get("cache", {})
-            self.distance_cache = cache_data.get("distance_cache", {})
-
-            # Информационное логирование
-            created_with_gpu = cache_data.get("created_with_gpu", False)
-            creator_device = cache_data.get("creator_device", "Unknown")
-            current_device = "GPU" if self.use_gpu else "CPU"
-
-            logger.info(f"✅ Кэш загружен: {cache_file}")
-            logger.info(f"   Размер кэша: {len(self.cache)} клеток")
-            logger.info(f"   Adaptive radius: {cache_data.get('adaptive_radius')}")
-            logger.info(
-                f"   Создан на: {creator_device}, загружен на: {current_device}"
-            )
-            if created_with_gpu and not self.use_gpu:
-                logger.info(f"   🔄 GPU→CPU совместимость: ОК")
-
-            return True
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка загрузки кэша: {e}")
-            return False
-
     def precompute_all_connections(self, force_rebuild: bool = False):
         """
-        Pre-compute все связи для решетки
-
-        Args:
-            force_rebuild: Принудительно пересчитать даже если кэш есть
+        Основной метод для предвычисления всех связей.
+        Использует GPU для ускорения если доступно.
         """
-        if not force_rebuild and self._load_cache_from_disk():
-            logger.info("✅ Кэш классификации связей загружен с диска")
+        if self.is_precomputed and not force_rebuild:
+            logger.info("✅ Кэш уже в памяти, переиспользование.")
             return
 
-        logger.info("🔄 Pre-computing классификация связей...")
+        if not force_rebuild and self._load_cache_from_disk():
+            self.is_precomputed = True
+            return
+
+        # --- Логика пересоздания кэша ---
+        logger.info("🔄 Пересоздание кэша классификации связей...")
+        rebuild_start_time = time.time()
 
         # Получаем список всех соседей для каждой клетки
         all_neighbors = self._compute_all_neighbors()
@@ -307,7 +304,11 @@ class ConnectionCacheManager:
         # Сохраняем кэш на диск
         self._save_cache_to_disk()
 
+        self.is_precomputed = True
         logger.info(f"✅ Pre-compute завершен для {len(self.cache)} клеток")
+        logger.info(
+            f"   Время пересоздания: {time.time() - rebuild_start_time:.2f} секунд"
+        )
 
     def _compute_all_neighbors(self) -> Dict[int, List[int]]:
         """Вычисляет всех соседей для каждой клетки в радиусе adaptive_radius"""

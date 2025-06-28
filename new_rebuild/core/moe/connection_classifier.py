@@ -77,26 +77,42 @@ class UnifiedConnectionClassifier(nn.Module):
         else:
             self.cache_manager = None
 
-        # Learnable пороги для классификации
-        self.local_distance_threshold = nn.Parameter(
-            torch.tensor(config.model.local_distance_threshold)
+        # ИСПРАВЛЕНО: Пороги теперь не обучаемые, а вычисляются из конфига
+        # Это обеспечивает консистентность с ConnectionCacheManager
+        self.adaptive_radius = config.calculate_adaptive_radius()
+        self.local_distance_threshold = (
+            self.adaptive_radius * config.lattice.local_distance_ratio
         )
-        self.functional_distance_threshold = nn.Parameter(
-            torch.tensor(config.model.functional_distance_threshold)
+        self.functional_distance_threshold = (
+            self.adaptive_radius * config.lattice.functional_distance_ratio
         )
-        self.distant_distance_threshold = nn.Parameter(
-            torch.tensor(config.model.distant_distance_threshold)
+        self.distant_distance_threshold = (
+            self.adaptive_radius * config.lattice.distant_distance_ratio
         )
-        self.functional_similarity_threshold = nn.Parameter(
-            torch.tensor(config.model.functional_similarity_threshold)
+        self.functional_similarity_threshold = (
+            config.lattice.functional_similarity_threshold
         )
 
-        # Целевые пропорции из конфига
-        self.target_ratios = {
-            "local": config.model.local_tier_ratio,
-            "functional": config.model.functional_tier_ratio,
-            "distant": config.model.distant_tier_ratio,
-        }
+        # Закомментировано: learnable-пороги и target-ratios устарели
+        # self.local_distance_threshold = nn.Parameter(
+        #     torch.tensor(1.8) # Пример значения
+        # )
+        # self.functional_distance_threshold = nn.Parameter(
+        #     torch.tensor(4.0) # Пример значения
+        # )
+        # self.distant_distance_threshold = nn.Parameter(
+        #     torch.tensor(5.5) # Пример значения
+        # )
+        # self.functional_similarity_threshold = nn.Parameter(
+        #     torch.tensor(0.3) # Пример значения
+        # )
+        #
+        # # Целевые пропорции из конфига (УСТАРЕЛО)
+        # self.target_ratios = {
+        #     "local": 0.1,
+        #     "functional": 0.55,
+        #     "distant": 0.35,
+        # }
 
         # Статистика использования
         self.reset_stats()
@@ -174,7 +190,7 @@ class UnifiedConnectionClassifier(nn.Module):
                     cell_indices=cell_indices,
                     neighbor_indices=neighbor_indices,
                     states=states,
-                    functional_similarity_threshold=self.functional_similarity_threshold.item(),
+                    functional_similarity_threshold=self.functional_similarity_threshold,
                 )
 
                 if self.enable_performance_monitoring:
@@ -390,7 +406,7 @@ class UnifiedConnectionClassifier(nn.Module):
                         else neighbor_indices.tolist()
                     ),
                     states=all_states,
-                    functional_similarity_threshold=self.functional_similarity_threshold.item(),
+                    functional_similarity_threshold=self.functional_similarity_threshold,
                 )
 
                 # ИСПРАВЛЕНО: Обновляем статистику при cache hit
@@ -581,10 +597,10 @@ class UnifiedConnectionClassifier(nn.Module):
             "total_connections": total,
             "total_classifications": self.usage_stats["total_classifications"],
             "thresholds": {
-                "local_distance": self.local_distance_threshold.item(),
-                "functional_distance": self.functional_distance_threshold.item(),
-                "distant_distance": self.distant_distance_threshold.item(),
-                "functional_similarity": self.functional_similarity_threshold.item(),
+                "local_distance": self.local_distance_threshold,
+                "functional_distance": self.functional_distance_threshold,
+                "distant_distance": self.distant_distance_threshold,
+                "functional_similarity": self.functional_similarity_threshold,
             },
         }
 
