@@ -25,6 +25,9 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
   - **`moe/`**: Компоненты Mixture of Experts.
 - **`new_rebuild/utils/`**: Вспомогательные утилиты, такие как управление устройствами (`device_manager.py`) и логирование (`logging.py`).
 
+new_rebuild/docs/plan_training.md - план реализации тренеровки куба
+new_rebuild/docs/todo.md - моменты на будущее, что бы не забыть
+
 ### Принципы работы
 
 **приоритет на скорость**
