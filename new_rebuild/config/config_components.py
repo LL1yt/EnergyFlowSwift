@@ -224,6 +224,11 @@ class EmbeddingSettings:
     decoder_model: str = "distilbert"  # Модель для декодирования обратно в текст
     decoder_cache_enabled: bool = True
     max_decode_length: int = 512
+    
+    # Локальное кэширование моделей (для RTX 5090)
+    local_models_dir: str = "models/local_cache"
+    auto_download_models: bool = True  # Автоматически загружать если нет локально
+    prefer_local_models: bool = True  # Предпочитать локальные модели
 
 
 @dataclass

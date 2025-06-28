@@ -17,6 +17,7 @@ from pathlib import Path
 
 from ...utils.logging import get_logger, LogContext
 from ...utils.device_manager import get_device_manager
+from ...utils.model_cache import get_model_cache_manager
 from ...config.simple_config import SimpleProjectConfig
 
 logger = get_logger(__name__)
@@ -209,32 +210,56 @@ class SimpleTextDecoder(nn.Module):
             self.cache.load(str(cache_path))
             self.cache_path = cache_path
         
+        # Менеджер локальных моделей
+        self.model_cache_manager = get_model_cache_manager(config)
+        
         # Инициализация модели декодера будет lazy
         self._decoder_model = None
         self._tokenizer = None
         
         gpu_info = f" (GPU: {self.use_gpu_acceleration}, batch: {self.gpu_batch_size})"
-        self.logger.info(f"🔤 SimpleTextDecoder initialized (cache: {self.cache_enabled}){gpu_info}")
+        local_info = f" (local: {config.embedding.prefer_local_models})"
+        self.logger.info(f"🔤 SimpleTextDecoder initialized (cache: {self.cache_enabled}){gpu_info}{local_info}")
     
     def _init_decoder_model(self):
-        """Lazy инициализация модели декодера"""
+        """Lazy инициализация модели декодера с поддержкой локального кэша"""
         if self._decoder_model is not None:
             return
             
         try:
             from transformers import AutoTokenizer, AutoModel
             
-            self._tokenizer = AutoTokenizer.from_pretrained(self.decoder_model_name)
-            self._decoder_model = AutoModel.from_pretrained(self.decoder_model_name)
+            # Получаем путь к модели (локальный или для загрузки)
+            model_path = self.model_cache_manager.get_model_path(self.decoder_model_name)
             
-            # Переносим на устройство
+            if model_path is None:
+                self.logger.error(f"Failed to get model path for {self.decoder_model_name}")
+                self._decoder_model = "dummy"
+                self._tokenizer = "dummy"
+                return
+            
+            self.logger.info(f"🔄 Loading model from: {model_path}")
+            
+            # Загружаем токенизатор и модель
+            self._tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self._decoder_model = AutoModel.from_pretrained(model_path)
+            
+            # Переносим на устройство (RTX 5090)
             self._decoder_model = self.device_manager.transfer_module(self._decoder_model)
             self._decoder_model.eval()  # Для inference
             
-            self.logger.info(f"Decoder model {self.decoder_model_name} loaded")
+            # Информация о загруженной модели
+            is_local = not model_path.startswith('http') and '/' not in model_path.replace('\\', '/')
+            source_info = "local cache" if is_local else "online"
+            self.logger.info(f"✅ Decoder model loaded from {source_info}: {self.decoder_model_name}")
             
         except ImportError:
             self.logger.warning("transformers not available, using dummy decoder")
+            self._decoder_model = "dummy"
+            self._tokenizer = "dummy"
+        except Exception as e:
+            self.logger.error(f"Failed to load decoder model: {e}")
+            self.logger.info("Falling back to dummy decoder")
             self._decoder_model = "dummy"
             self._tokenizer = "dummy"
     
