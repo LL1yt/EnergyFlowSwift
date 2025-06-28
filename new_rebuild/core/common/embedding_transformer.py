@@ -277,7 +277,7 @@ def test_embedding_transformer(config: SimpleProjectConfig, batch_size: int = 4)
     
     # Создаем тестовые данные
     teacher_embeddings = torch.randn(batch_size, config.embedding.teacher_embedding_dim)
-    teacher_embeddings = device_manager.transfer_tensor(teacher_embeddings)
+    teacher_embeddings = device_manager.ensure_device(teacher_embeddings)
     
     # Прямое преобразование
     cube_embeddings = transformer.transform_to_cube(teacher_embeddings)
