@@ -221,7 +221,9 @@ class EmbeddingSettings:
     max_cache_size_gb: float = 10.0
 
     # Декодирование
-    decoder_model: str = "distilbert"  # Модель для декодирования обратно в текст
+    decoder_model: str = (
+        "distilbert-base-uncased"  # Модель для декодирования обратно в текст
+    )
     decoder_cache_enabled: bool = True
     max_decode_length: int = 512
     
