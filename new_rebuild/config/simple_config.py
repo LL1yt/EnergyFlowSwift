@@ -31,6 +31,8 @@ from .config_components import (
     ExperimentSettings,
     PerformanceSettings,
     ValidationSettings,
+    EmbeddingSettings,
+    TrainingEmbeddingSettings,
     create_basic_config,
     create_research_config,
     validate_config_components,
@@ -66,6 +68,10 @@ class SimpleProjectConfig:
     experiment: Optional[ExperimentSettings] = None
     performance: Optional[PerformanceSettings] = None
     validation: Optional[ValidationSettings] = None
+    
+    # Компоненты для работы с эмбедингами
+    embedding: Optional[EmbeddingSettings] = field(default_factory=EmbeddingSettings)
+    training_embedding: Optional[TrainingEmbeddingSettings] = field(default_factory=TrainingEmbeddingSettings)
 
     # Runtime компоненты (вычисляются автоматически)
     device_manager: Optional[DeviceManager] = field(init=False, default=None)
@@ -129,6 +135,8 @@ class SimpleProjectConfig:
             )
         if self.cnf and self.cnf.enabled:
             logging.info(f"   🌊 CNF: enabled ({self.cnf.adaptive_method})")
+        if self.embedding:
+            logging.info(f"   🎯 Embeddings: {self.embedding.teacher_model} ({self.embedding.teacher_embedding_dim}D → {self.embedding.cube_embedding_dim}D)")
 
     @property
     def total_cells(self) -> int:
@@ -235,6 +243,8 @@ class SimpleProjectConfig:
             "experiment",
             "performance",
             "validation",
+            "embedding",
+            "training_embedding",
         ]:
             component = getattr(self, field_name)
             if component is not None:

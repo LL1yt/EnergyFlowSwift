@@ -198,6 +198,75 @@ class MemorySettings:
 
 
 @dataclass
+class EmbeddingSettings:
+    """Настройки для работы с эмбедингами"""
+    # Основные параметры
+    teacher_model: str = "distilbert-base-uncased"
+    teacher_embedding_dim: int = 768
+    cube_surface_dim: int = 37  # Для куба 37×37×37
+    cube_embedding_dim: int = 1369  # 37×37
+    
+    # Параметры преобразования
+    transformation_type: str = "linear"  # linear, attention, autoencoder, hierarchical
+    use_layer_norm: bool = True
+    dropout_rate: float = 0.1
+    use_residual_connections: bool = True
+    
+    # Кэширование
+    cache_embeddings: bool = True
+    cache_dir: str = "cache/embeddings"
+    max_cache_size_gb: float = 10.0
+    
+    # Декодирование
+    decoder_model: str = "distilbert"  # Модель для декодирования обратно в текст
+    decoder_cache_enabled: bool = True
+    max_decode_length: int = 512
+
+
+@dataclass 
+class TrainingEmbeddingSettings:
+    """Расширенные настройки обучения для эмбедингов"""
+    # Фазы обучения
+    warmup_epochs: int = 10
+    main_epochs: int = 100
+    fine_tune_epochs: int = 50
+    
+    # Loss функции и веса
+    reconstruction_loss_weight: float = 1.0
+    similarity_loss_weight: float = 0.5
+    diversity_loss_weight: float = 0.1
+    emergence_loss_weight: float = 0.2
+    
+    # Curriculum learning
+    use_curriculum_learning: bool = True
+    curriculum_start_difficulty: float = 0.1
+    curriculum_end_difficulty: float = 1.0
+    curriculum_schedule: str = "linear"  # linear, exponential, cosine
+    
+    # Параметры батчей
+    embedding_batch_size: int = 32
+    gradient_accumulation_steps: int = 4
+    
+    # Улучшенная валидация (пункт 5)
+    enable_semantic_validation: bool = True
+    enable_probing_tasks: bool = True
+    probing_tasks: List[str] = None  # ["sentiment", "ner", "pos"]
+    visualization_enabled: bool = False
+    visualization_frequency: int = 10  # каждые N эпох
+    
+    # Тестовые параметры (закомментируем после тестов)
+    test_mode: bool = True
+    test_lattice_dim: int = 37
+    test_dataset_size: int = 1000
+    test_validation_split: float = 0.2
+    test_quick_iterations: int = 10  # Для быстрой проверки
+    
+    def __post_init__(self):
+        if self.probing_tasks is None:
+            self.probing_tasks = ["sentiment", "similarity"]
+
+
+@dataclass
 class ExperimentSettings:
     """Настройки для экспериментов"""
 
