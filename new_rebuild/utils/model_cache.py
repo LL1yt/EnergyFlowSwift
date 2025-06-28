@@ -103,18 +103,23 @@ class ModelCacheManager:
         """
         local_path = self._get_model_path(model_name)
         
-        # Предпочитаем локальную модель
-        if self.prefer_local and self.is_model_cached(model_name):
+        # Сначала проверяем кэш
+        is_cached = self.is_model_cached(model_name)
+        
+        # Предпочитаем локальную модель если она есть
+        if self.prefer_local and is_cached:
             self.logger.info(f"📁 Using cached model: {local_path}")
             return str(local_path)
         
         # Если нет локальной и включена автозагрузка
-        if self.auto_download and not self.is_model_cached(model_name):
+        if self.auto_download and not is_cached:
+            self.logger.info(f"🔄 Model not cached, downloading: {model_name}")
             if self._download_model(model_name):
+                self.logger.info(f"📁 Now using cached model: {local_path}")
                 return str(local_path)
         
-        # Возвращаем оригинальное имя для загрузки из интернета
-        if not self.prefer_local:
+        # Если prefer_local=False или загрузка не удалась
+        if not self.prefer_local or not is_cached:
             self.logger.info(f"🌐 Using online model: {model_name}")
             return model_name
         

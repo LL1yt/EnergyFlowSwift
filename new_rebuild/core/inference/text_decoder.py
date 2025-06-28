@@ -249,7 +249,9 @@ class SimpleTextDecoder(nn.Module):
             self._decoder_model.eval()  # Для inference
             
             # Информация о загруженной модели
-            is_local = not model_path.startswith('http') and '/' not in model_path.replace('\\', '/')
+            is_local = (Path(model_path).exists() and 
+                       not model_path.startswith('http') and 
+                       'local_cache' in model_path)
             source_info = "local cache" if is_local else "online"
             self.logger.info(f"✅ Decoder model loaded from {source_info}: {self.decoder_model_name}")
             
@@ -563,8 +565,14 @@ class JointTextDecoder(nn.Module):
         
         results = []
         for i in range(logits.size(0)):
+            # Безопасное получение токенов
+            if top_tokens.dim() > 1:
+                tokens_slice = top_tokens[i][:5].tolist()
+            else:
+                tokens_slice = [top_tokens[i].item()]
+            
             # Заглушка декодирования
-            results.append(f"[Joint decoded: tokens {top_tokens[i][:5].tolist()}]")
+            results.append(f"[Joint decoded: tokens {tokens_slice}]")
         
         return results
     
