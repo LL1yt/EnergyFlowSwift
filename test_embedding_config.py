@@ -7,6 +7,14 @@
 в централизованную конфигурацию.
 """
 
+import logging
+
+# Настраиваем базовое логирование
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 from new_rebuild.config.simple_config import get_project_config, SimpleProjectConfig
 from new_rebuild.utils.logging import get_logger
 
