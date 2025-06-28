@@ -33,6 +33,8 @@ from .config_components import (
     ValidationSettings,
     EmbeddingSettings,
     TrainingEmbeddingSettings,
+    NeighborSettings,
+    ExpertSettings,
     create_basic_config,
     create_research_config,
     validate_config_components,
@@ -68,10 +70,16 @@ class SimpleProjectConfig:
     experiment: Optional[ExperimentSettings] = None
     performance: Optional[PerformanceSettings] = None
     validation: Optional[ValidationSettings] = None
-    
+
     # Компоненты для работы с эмбедингами
     embedding: Optional[EmbeddingSettings] = field(default_factory=EmbeddingSettings)
-    training_embedding: Optional[TrainingEmbeddingSettings] = field(default_factory=TrainingEmbeddingSettings)
+    training_embedding: Optional[TrainingEmbeddingSettings] = field(
+        default_factory=TrainingEmbeddingSettings
+    )
+
+    # MoE компоненты
+    neighbors: Optional[NeighborSettings] = field(default_factory=NeighborSettings)
+    expert: Optional[ExpertSettings] = field(default_factory=ExpertSettings)
 
     # Runtime компоненты (вычисляются автоматически)
     device_manager: Optional[DeviceManager] = field(init=False, default=None)
@@ -82,6 +90,10 @@ class SimpleProjectConfig:
         self.device_manager = get_device_manager(
             prefer_cuda=self.device.prefer_cuda, debug_mode=self.device.debug_mode
         )
+
+        # Связываем cache с expert settings
+        if self.expert and self.cache:
+            self.expert.cache = self.cache
 
         # Валидация конфигурации если включена
         if self.validation and self.validation.validate_config:
@@ -136,7 +148,9 @@ class SimpleProjectConfig:
         if self.cnf and self.cnf.enabled:
             logging.info(f"   🌊 CNF: enabled ({self.cnf.adaptive_method})")
         if self.embedding:
-            logging.info(f"   🎯 Embeddings: {self.embedding.teacher_model} ({self.embedding.teacher_embedding_dim}D → {self.embedding.cube_embedding_dim}D)")
+            logging.info(
+                f"   🎯 Embeddings: {self.embedding.teacher_model} ({self.embedding.teacher_embedding_dim}D → {self.embedding.cube_embedding_dim}D)"
+            )
 
     @property
     def total_cells(self) -> int:
@@ -147,6 +161,11 @@ class SimpleProjectConfig:
     def current_device(self) -> str:
         """Текущее устройство"""
         return self.device_manager.get_device_str() if self.device_manager else "cpu"
+
+    @property
+    def max_neighbors(self) -> int:
+        """Максимальное количество соседей (для обратной совместимости)"""
+        return self.neighbors.max_neighbors if self.neighbors else 20000
 
     def calculate_adaptive_radius(self) -> float:
         """
@@ -245,6 +264,8 @@ class SimpleProjectConfig:
             "validation",
             "embedding",
             "training_embedding",
+            "neighbors",
+            "expert",
         ]:
             component = getattr(self, field_name)
             if component is not None:

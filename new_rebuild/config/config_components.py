@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Компоненты конфигурации для Clean 3D Cellular Neural Network
-===========================================================
+Модульные компоненты конфигурации для 3D Cellular Neural Network
+==============================================================
 
-Модульные компоненты конфигурации, используемые через композицию
-вместо глубокой вложенности dataclass'ов.
-
-Принцип: Простота > Сложность. Каждый компонент независим и переиспользуем.
+Использует композицию вместо наследования для гибкости настроек.
+Каждый компонент отвечает за свою область функциональности.
 """
 
-from dataclasses import dataclass
-from typing import Tuple, Dict, Any, Optional, List
+from dataclasses import dataclass, field
+from typing import Tuple, Dict, Any, List, Optional
 import torch
 
 
@@ -28,9 +26,15 @@ class LatticeSettings:
     adaptive_radius_min: float = 0.1
 
     # Новые параметры для классификации соединений
-    local_distance_ratio: float = 0.1
-    functional_distance_ratio: float = 0.75
-    distant_distance_ratio: float = 1.0
+    local_distance_ratio: float = (
+        0.1  # - это промежуток от 0 до 10% связей(0.1 от максимального радиуса для конкретной решетки); связано с local_distance_ratio, так что важно не забыть их так же изменить
+    )
+    functional_distance_ratio: float = (
+        0.65  # - это промежуток от 10% до 65% связей(0.55 от максимального радиуса для конкретной решетки); связано с functional_distance_ratio, так что важно не забыть их так же изменить
+    )
+    distant_distance_ratio: float = (
+        1.0  # - это промежуток от 65% до 100% связей(0.35 от максимального радиуса для конкретной решетки); связано с distant_distance_ratio, так что важно не забыть их так же изменить
+    )
     functional_similarity_threshold: float = 0.3
 
     @property
@@ -52,6 +56,126 @@ class ModelSettings:
     use_attention: bool = True
     aggregation: str = "attention"
     num_layers: int = 1
+
+
+@dataclass
+class NeighborSettings:
+    """Настройки поиска и классификации соседей"""
+
+    # Стратегия поиска соседей
+    finding_strategy: str = "tiered"
+    dynamic_count: bool = True
+    base_neighbor_count: int = 26
+    max_neighbors: int = 20000  # Биологический лимит
+
+    # Adaptive Radius настройки
+    adaptive_radius_enabled: bool = True
+    adaptive_radius_ratio: float = 0.4
+    adaptive_radius_max: float = 500.0
+    adaptive_radius_min: float = 1.0
+
+    # Tiered Topology - пропорции связей по типам
+    local_tier: float = (
+        0.1  # 10% связей; связано с local_distance_ratio, так что важно не забыть их так же изменить
+    )
+    functional_tier: float = (
+        0.55  # 55% связей; связано с functional_distance_ratio, так что важно не забыть их так же изменить
+    )
+    distant_tier: float = (
+        0.35  # 35% связей; связано с distant_distance_ratio, так что важно не забыть их так же изменить
+    )
+
+    # Пороги расстояний для классификации - вообще эти пороги должны вычисляться автоматически в зависимости от lattice_dimensions, который определяет максимальный радиус для этой решетки и исходя из жтого радиуса мы вычисляем эти значения, испольщуя local_distance_ratio, functional_distance_ratio, distant_distance_ratio соответственно
+    # но пока что мы используем фиксированные значения для тестов и оптимизации, далее нужно будет в идеале переделать этот класс так, чтобы он автоматически вычислял эти пороги в зависимости от lattice_dimensions
+    local_distance_threshold: float = 1.8
+    functional_distance_threshold: float = 4.0
+    distant_distance_threshold: float = 5.5
+    functional_similarity_threshold: float = 0.3
+
+    # Локальная сетка для тестов и оптимизации
+    local_grid_cell_size: int = 8
+
+
+@dataclass
+class LocalExpertSettings:
+    """Настройки для Local Expert"""
+
+    params: int = 2059
+    type: str = "linear"
+    alpha: float = 0.1
+    beta: float = 0.9
+    neighbor_agg_hidden1: int = 32
+    neighbor_agg_hidden2: int = 16
+    processor_hidden: int = 64
+    max_neighbors_buffer: int = 100
+    use_attention: bool = True
+    default_batch_size: int = 1
+
+
+@dataclass
+class FunctionalExpertSettings:
+    """Настройки для Functional Expert"""
+
+    params: int = 8000
+    type: str = "hybrid_gnn_cnf"
+    gnn_ratio: float = 0.6  # 60% параметров для GNN
+    cnf_ratio: float = 0.4  # 40% параметров для CNF
+    use_attention: bool = True
+    message_dim: int = 16
+    hidden_dim: int = 32
+    integration_steps: int = 3
+    adaptive_step_size: bool = True
+
+
+@dataclass
+class DistantExpertSettings:
+    """Настройки для Distant Expert (CNF)"""
+
+    params: int = 4000
+    type: str = "cnf"
+    integration_steps: int = 3
+    adaptive_step_size: bool = True
+    batch_processing_mode: str = "ADAPTIVE_BATCH"
+    max_batch_size: int = 1024
+    adaptive_method: str = "LIPSCHITZ_BASED"
+    memory_efficient: bool = True
+
+
+@dataclass
+class GatingNetworkSettings:
+    """Настройки для Gating Network"""
+
+    params: int = 808
+    state_size: int = 32
+    num_experts: int = 3
+    hidden_dim: int = 64
+    activation: str = "softmax"
+    use_temperature: bool = True
+    temperature: float = 1.0
+
+
+@dataclass
+class ExpertSettings:
+    """Настройки для всех экспертов MoE системы"""
+
+    local: LocalExpertSettings = field(default_factory=LocalExpertSettings)
+    functional: FunctionalExpertSettings = field(
+        default_factory=FunctionalExpertSettings
+    )
+    distant: DistantExpertSettings = field(default_factory=DistantExpertSettings)
+    gating: GatingNetworkSettings = field(default_factory=GatingNetworkSettings)
+
+    # Настройки кэширования связей
+    cache: "CacheSettings" = None  # Будет инициализировано позже
+
+    # Пропорции распределения связей
+    connection_ratios: Dict[str, float] = field(
+        default_factory=lambda: {
+            "local": 0.1,
+            "functional": 0.55,
+            "distant": 0.35,
+        }  # - это пропорции распределения связей; связано с connection_ratios, так что важно не забыть их так же изменить
+    )
 
 
 @dataclass
@@ -226,7 +350,7 @@ class EmbeddingSettings:
     )
     decoder_cache_enabled: bool = True
     max_decode_length: int = 512
-    
+
     # Локальное кэширование моделей (для RTX 5090)
     local_models_dir: str = "models/local_cache"
     auto_download_models: bool = True  # Автоматически загружать если нет локально
@@ -335,15 +459,23 @@ def create_basic_config() -> Dict[str, Any]:
 def create_research_config() -> Dict[str, Any]:
     """Создает конфигурацию для исследований"""
     config = create_basic_config()
+
+    # Инициализируем expert settings с правильной ссылкой на cache
+    cache_settings = CacheSettings()
+    expert_settings = ExpertSettings()
+    expert_settings.cache = cache_settings
+
     config.update(
         {
             "cnf": CNFSettings(),
             "euler": EulerSettings(),
-            "cache": CacheSettings(),
+            "cache": cache_settings,
             "spatial": SpatialSettings(),
             "vectorized": VectorizedSettings(),
             "experiment": ExperimentSettings(),
             "performance": PerformanceSettings(),
+            "neighbors": NeighborSettings(),
+            "expert": expert_settings,
         }
     )
     return config

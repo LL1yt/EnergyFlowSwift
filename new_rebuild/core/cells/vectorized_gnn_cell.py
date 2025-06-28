@@ -224,14 +224,16 @@ class VectorizedGNNCell(BaseCell):
         config = get_project_config()
 
         # Параметры с fallback на конфиг
-        self.state_size = state_size or config.gnn.state_size
-        self.neighbor_count = neighbor_count or config.gnn.neighbor_count
-        self.message_dim = message_dim or config.gnn.message_dim
-        self.hidden_dim = hidden_dim or config.gnn.hidden_dim
-        self.external_input_size = external_input_size or config.gnn.external_input_size
-        self.activation = activation or config.gnn.activation
-        self.target_params = target_params or config.gnn.target_params
-        self.use_attention = use_attention or config.gnn.use_attention
+        self.state_size = state_size or config.model.state_size
+        self.neighbor_count = neighbor_count or config.model.neighbor_count
+        self.message_dim = message_dim or config.model.message_dim
+        self.hidden_dim = hidden_dim or config.model.hidden_dim
+        self.external_input_size = (
+            external_input_size or config.model.external_input_size
+        )
+        self.activation = activation or config.model.activation
+        self.target_params = target_params or config.model.target_params
+        self.use_attention = use_attention or config.model.use_attention
 
         # Инициализация векторизованных компонентов
         self.message_network = VectorizedMessageNetwork(

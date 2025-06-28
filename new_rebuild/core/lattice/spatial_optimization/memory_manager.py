@@ -26,7 +26,30 @@ class MemoryPoolManager:
     """
 
     def __init__(self, config: dict = None):
-        self.config = config or get_project_config().get_spatial_optim_config()
+        if config is None:
+            # Получаем конфигурацию из нового SimpleProjectConfig
+            project_config = get_project_config()
+            if hasattr(project_config, "spatial") and project_config.spatial:
+                self.config = {
+                    "garbage_collect_frequency": project_config.spatial.garbage_collect_frequency,
+                    "memory_pool_size_gb": project_config.spatial.memory_pool_size_gb,
+                    "chunk_size": project_config.spatial.chunk_size,
+                    "max_chunks_in_memory": project_config.spatial.max_chunks_in_memory,
+                    "enable_profiling": project_config.spatial.enable_profiling,
+                    "log_memory_usage": project_config.spatial.log_memory_usage,
+                }
+            else:
+                # Fallback конфигурация
+                self.config = {
+                    "garbage_collect_frequency": 100,
+                    "memory_pool_size_gb": 8.0,
+                    "chunk_size": 64,
+                    "max_chunks_in_memory": 4,
+                    "enable_profiling": True,
+                    "log_memory_usage": True,
+                }
+        else:
+            self.config = config
 
         # Используем DeviceManager для консистентного управления устройствами
         self.device_manager = get_device_manager()

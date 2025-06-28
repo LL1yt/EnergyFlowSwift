@@ -138,14 +138,14 @@ class Lattice3D(nn.Module):
         Создает GNN клетки для MoE архитектуры.
         """
         gnn_config = {
-            "state_size": self.config.gnn.state_size,
-            "message_dim": self.config.gnn.message_dim,
-            "hidden_dim": self.config.gnn.hidden_dim,
-            "neighbor_count": self.config.gnn.neighbor_count,
-            "external_input_size": self.config.gnn.external_input_size,
-            "activation": self.config.gnn.activation,
-            "target_params": self.config.gnn.target_params,
-            "use_attention": self.config.gnn.use_attention,
+            "state_size": self.config.model.state_size,
+            "message_dim": self.config.model.message_dim,
+            "hidden_dim": self.config.model.hidden_dim,
+            "neighbor_count": self.config.model.neighbor_count,
+            "external_input_size": self.config.model.external_input_size,
+            "activation": self.config.model.activation,
+            "target_params": self.config.model.target_params,
+            "use_attention": self.config.model.use_attention,
             "device": self.config.current_device,
             "debug_mode": self.config.logging.debug_mode,
         }
@@ -158,7 +158,7 @@ class Lattice3D(nn.Module):
 
         return create_moe_connection_processor(
             dimensions=self.config.lattice.dimensions,
-            state_size=self.config.gnn.state_size,
+            state_size=self.config.model.state_size,
             device=self.device,
         )
 
@@ -169,7 +169,7 @@ class Lattice3D(nn.Module):
         state_size = (
             self.cells.state_size
             if hasattr(self.cells, "state_size")
-            else self.config.gnn.state_size
+            else self.config.model.state_size
         )
 
         dims = (self.pos_helper.total_positions, state_size)

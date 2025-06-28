@@ -30,7 +30,7 @@ class GatingNetwork(nn.Module):
 
         config = get_project_config()
 
-        self.state_size = state_size or config.gnn.state_size
+        self.state_size = state_size or config.model.state_size
         self.num_experts = num_experts
         self.target_params = config.expert.gating.params
 
@@ -91,7 +91,7 @@ class GatingNetwork(nn.Module):
             if output.dim() == 1:
                 output = output.unsqueeze(0)  # [state_size] -> [1, state_size]
             normalized_outputs.append(output)
-        
+
         stacked_outputs = torch.stack(
             normalized_outputs, dim=1
         )  # [batch, num_experts, state_size]

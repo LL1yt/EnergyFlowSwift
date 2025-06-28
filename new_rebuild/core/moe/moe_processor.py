@@ -47,30 +47,44 @@ class MoEConnectionProcessor(nn.Module):
         lattice_dimensions: Optional[Tuple[int, int, int]] = None,
         neighbor_count: Optional[int] = None,
         enable_cnf: Optional[bool] = None,
+        config: Optional[Any] = None,
         **kwargs,
     ):
         super().__init__()
 
-        config = get_project_config()
+        if config is None:
+            config = get_project_config()
 
         # === DEVICE MANAGEMENT ===
-        self.device_manager = config.get_device_manager()
+        self.device_manager = config.device_manager
         self.device = self.device_manager.get_device()
         self.memory_pool_manager = get_memory_pool_manager()
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
-        self.state_size = state_size or config.gnn.state_size
+        self.state_size = state_size or config.model.state_size
         self.lattice_dimensions = lattice_dimensions or config.lattice.dimensions
         self.adaptive_radius = config.calculate_adaptive_radius()
-        self.max_neighbors = config.max_neighbors
+        # Используем neighbor_count из model settings как max_neighbors
+        self.max_neighbors = getattr(
+            config, "max_neighbors", config.model.neighbor_count
+        )
         self.enable_cnf = enable_cnf if enable_cnf is not None else config.cnf.enabled
 
         # Конфигурация распределения связей: 10%/55%/35%
-        self.connection_ratios = {
-            "local": config.neighbors.local_tier,
-            "functional": config.neighbors.functional_tier,
-            "distant": config.neighbors.distant_tier,
-        }
+        # Используем fallback значения если neighbors не определен
+        if hasattr(config, "neighbors") and config.neighbors:
+            self.connection_ratios = {
+                "local": config.neighbors.local_tier,
+                "functional": config.neighbors.functional_tier,
+                "distant": config.neighbors.distant_tier,
+            }
+        else:
+            # Fallback значения
+            self.connection_ratios = {
+                "local": 0.1,
+                "functional": 0.55,
+                "distant": 0.35,
+            }
 
         # === КЛАССИФИКАТОР СВЯЗЕЙ С КЭШИРОВАНИЕМ ===
         self.connection_classifier = UnifiedConnectionClassifier(
@@ -81,11 +95,25 @@ class MoEConnectionProcessor(nn.Module):
         # === ЭКСПЕРТЫ ===
         self.local_expert = SimpleLinearExpert(state_size=self.state_size)
 
+        # Используем fallback значения для параметров экспертов
+        functional_params = 8000  # Default value
+        distant_params = 4000  # Default value
+
+        if hasattr(config, "expert") and config.expert:
+            if hasattr(config.expert, "functional") and config.expert.functional:
+                functional_params = getattr(
+                    config.expert.functional, "params", functional_params
+                )
+            if hasattr(config.expert, "distant") and config.expert.distant:
+                distant_params = getattr(
+                    config.expert.distant, "params", distant_params
+                )
+
         self.functional_expert = HybridGNN_CNF_Expert(
             state_size=self.state_size,
             neighbor_count=self.max_neighbors,
-            target_params=config.expert.functional.params,
-            cnf_params=config.expert.distant.params,
+            target_params=functional_params,
+            cnf_params=distant_params,
         )
 
         # 3. Distant Expert - долгосрочная память (LightweightCNF)
@@ -535,3 +563,54 @@ class MoEConnectionProcessor(nn.Module):
             ),
             "total": sum(p.numel() for p in self.parameters()),
         }
+
+    def forward_embeddings(self, embeddings: torch.Tensor) -> torch.Tensor:
+        """
+        Упрощенный forward для обработки эмбедингов без решетки
+
+        Args:
+            embeddings: [batch_size, embedding_dim] - входные эмбединги
+
+        Returns:
+            processed_embeddings: [batch_size, embedding_dim] - обработанные эмбединги
+        """
+        batch_size, embedding_dim = embeddings.shape
+        device = embeddings.device
+
+        # Для простоты используем только functional expert
+        # который может работать с произвольными состояниями
+        processed_batch = []
+
+        for i in range(batch_size):
+            current_embedding = embeddings[i : i + 1]  # [1, embedding_dim]
+
+            # Создаем "соседей" из других эмбедингов в batch'е
+            neighbor_indices = [j for j in range(batch_size) if j != i]
+            if len(neighbor_indices) > 0:
+                neighbor_embeddings = embeddings[
+                    neighbor_indices
+                ]  # [batch_size-1, embedding_dim]
+            else:
+                neighbor_embeddings = torch.zeros(0, embedding_dim, device=device)
+
+            # Используем functional expert для обработки
+            if neighbor_embeddings.shape[0] > 0:
+                try:
+                    result = self.functional_expert(
+                        current_state=current_embedding,
+                        neighbor_states=neighbor_embeddings,
+                        external_input=None,
+                    )
+                    if isinstance(result, dict):
+                        processed_embedding = result.get("new_state", current_embedding)
+                    else:
+                        processed_embedding = result
+                except Exception as e:
+                    logger.warning(f"Functional expert failed for embedding {i}: {e}")
+                    processed_embedding = current_embedding
+            else:
+                processed_embedding = current_embedding
+
+            processed_batch.append(processed_embedding)
+
+        return torch.cat(processed_batch, dim=0)

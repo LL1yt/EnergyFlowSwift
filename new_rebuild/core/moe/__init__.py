@@ -40,13 +40,13 @@ from .connection_cache import ConnectionCacheManager
 
 # Фабричная функция для создания MoE Connection Processor
 def create_moe_connection_processor(
-    dimensions=None, state_size=None, device=None, **kwargs
+    dimensions=None, state_size=None, device=None, config=None, **kwargs
 ):
     """
     Создает MoE Connection Processor с нужными параметрами
     """
     processor = MoEConnectionProcessor(
-        state_size=state_size, lattice_dimensions=dimensions, **kwargs
+        state_size=state_size, lattice_dimensions=dimensions, config=config, **kwargs
     )
     if device is not None:
         processor = processor.to(device)

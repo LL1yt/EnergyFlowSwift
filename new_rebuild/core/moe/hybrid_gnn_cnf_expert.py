@@ -94,7 +94,7 @@ class HybridGNN_CNF_Expert(nn.Module):
         config = get_project_config()
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
-        self.state_size = state_size or config.gnn.state_size
+        self.state_size = state_size or config.model.state_size
         self.neighbor_count = (
             neighbor_count
             if neighbor_count is not None
@@ -109,10 +109,10 @@ class HybridGNN_CNF_Expert(nn.Module):
         self.gnn_component = VectorizedGNNCell(
             state_size=self.state_size,
             neighbor_count=self.neighbor_count,
-            message_dim=config.gnn.message_dim,
-            hidden_dim=config.gnn.hidden_dim,
-            external_input_size=config.gnn.external_input_size,
-            use_attention=config.gnn.use_attention,
+            message_dim=config.model.message_dim,
+            hidden_dim=config.model.hidden_dim,
+            external_input_size=config.model.external_input_size,
+            use_attention=config.model.use_attention,
         )
 
         # 2. CNF компонент (примерно 25% от общих параметров)
@@ -204,7 +204,9 @@ class HybridGNN_CNF_Expert(nn.Module):
         # 3. GNN обработка
         if external_input is None:
             external_input = torch.zeros(
-                batch_size, config.gnn.external_input_size, device=current_state.device
+                batch_size,
+                config.model.external_input_size,
+                device=current_state.device,
             )
 
         gnn_result = self.gnn_component(
