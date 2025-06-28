@@ -40,7 +40,7 @@ class TestMemoryOptimizations(unittest.TestCase):
         """Creates a project config tailored for this test."""
         config = ProjectConfig()
         config.lattice = LatticeSettings(dimensions=(32, 32, 32))
-        config.expert.enabled = True
+        # Expert архитектура всегда включена в новой версии
         config.gnn.state_size = 32
         config.logging.debug_mode = False
         return config

@@ -56,13 +56,6 @@ class Lattice3D(nn.Module):
         self.pos_helper = Position3D(self.config.lattice.dimensions)
         self.logger = logging.getLogger(__name__)
 
-        # Проверяем что используется MoE архитектура
-        if not self.config.expert.enabled:
-            raise ValueError(
-                f"Lattice3D теперь поддерживает только MoE архитектуру. "
-                f"Включите 'expert.enabled' в конфигурации."
-            )
-
         # Логирование инициализации
         from ...utils.logging import log_init
 

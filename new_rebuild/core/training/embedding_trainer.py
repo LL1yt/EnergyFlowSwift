@@ -61,6 +61,11 @@ class EmbeddingTrainer(TrainingInterface):
 
     def __init__(self, config: SimpleProjectConfig):
         self.config = config
+        
+        # Устанавливаем глобальную конфигурацию для компонентов, использующих get_project_config()
+        from ...config import set_project_config
+        set_project_config(config)
+        
         self.device_manager = DeviceManager(config.device)
         self.device = self.device_manager.device
 
@@ -110,8 +115,8 @@ class EmbeddingTrainer(TrainingInterface):
         # Маппер эмбедингов в решетку
         self.lattice_mapper = create_embedding_lattice_mapper(self.config).to(self.device)
         
-        # 3D решетка с MoE архитектурой
-        self.lattice = Lattice3D(self.config).to(self.device)
+        # 3D решетка с MoE архитектурой (Lattice3D теперь использует get_project_config())
+        self.lattice = Lattice3D().to(self.device)
         
         # Экстрактор эмбедингов из решетки
         self.lattice_extractor = create_lattice_embedding_extractor(self.config).to(self.device)
