@@ -240,6 +240,68 @@ def test_batch_processing():
     logger.info("✅ Batch processing test passed!")
 
 
+def test_gpu_performance():
+    """Тест GPU производительности для RTX 5090"""
+    logger.info("\n=== Тест GPU производительности (RTX 5090) ===")
+    
+    config = get_project_config()
+    decoder = SimpleTextDecoder(config)
+    
+    if not decoder.use_gpu_acceleration:
+        logger.info("⚠️  GPU acceleration not available, skipping GPU tests")
+        return
+    
+    logger.info(f"🚀 GPU acceleration enabled (batch size: {decoder.gpu_batch_size})")
+    
+    # Тест больших батчей для использования GPU оптимизаций
+    large_batch_sizes = [32, 64, 128, 256, 512]
+    
+    import time
+    
+    for batch_size in large_batch_sizes:
+        logger.info(f"\nТест большого батча: {batch_size}")
+        
+        embeddings = torch.randn(batch_size, 768)
+        
+        # Замеряем время
+        start_time = time.time()
+        decoded_texts = decoder.decode_embeddings(embeddings)
+        elapsed = time.time() - start_time
+        
+        assert len(decoded_texts) == batch_size
+        throughput = batch_size / elapsed
+        
+        logger.info(f"  ✓ Decoded {batch_size} embeddings in {elapsed:.3f}s ({throughput:.1f} emb/s)")
+        
+        # Показываем примеры GPU-декодирования
+        for i, text in enumerate(decoded_texts[:2]):
+            logger.info(f"    GPU[{i}]: '{text}'")
+    
+    # Тест повторного декодирования (кэш)
+    logger.info(f"\nТест кэширования для GPU:")
+    large_embeddings = torch.randn(128, 768)
+    
+    # Первый раз
+    start_time = time.time()
+    first_decode = decoder.decode_embeddings(large_embeddings)
+    first_time = time.time() - start_time
+    
+    # Второй раз (кэш)
+    start_time = time.time()
+    second_decode = decoder.decode_embeddings(large_embeddings)
+    second_time = time.time() - start_time
+    
+    speedup = first_time / second_time if second_time > 0 else float('inf')
+    logger.info(f"  First decode: {first_time:.3f}s")
+    logger.info(f"  Cached decode: {second_time:.3f}s") 
+    logger.info(f"  Cache speedup: {speedup:.1f}x")
+    
+    cache_stats = decoder.get_cache_stats()
+    logger.info(f"  Cache stats: {cache_stats}")
+    
+    logger.info("✅ GPU performance test passed!")
+
+
 if __name__ == "__main__":
     logger.info("🚀 Запуск тестов TextDecoder")
     
@@ -250,6 +312,7 @@ if __name__ == "__main__":
     test_decoder_factory()
     test_cache_persistence()
     test_batch_processing()
+    test_gpu_performance()  # Новый тест для RTX 5090
     
     logger.info("\n🎉 Все тесты TextDecoder завершены успешно!")
     
