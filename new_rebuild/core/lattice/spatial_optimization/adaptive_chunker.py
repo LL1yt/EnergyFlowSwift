@@ -611,9 +611,28 @@ class AdaptiveGPUChunker:
             indices = torch.tensor(
                 chunk_info.cell_indices, device="cpu", dtype=torch.long
             )
-            chunk_info.prefetched_data = all_states[indices].to(
-                self.device_manager.get_device(), non_blocking=True
-            )
+            
+            # Handle batch dimension properly
+            if all_states.dim() == 3:  # [batch, cells, features]
+                batch_size, num_cells, features = all_states.shape
+                max_cell_index = num_cells - 1
+                
+                # Validate indices
+                if torch.any(indices > max_cell_index):
+                    invalid_indices = indices[indices > max_cell_index]
+                    logger.error(f"❌ INVALID CELL INDICES in prefetch: {invalid_indices.tolist()} > {max_cell_index}")
+                    raise RuntimeError(f"Cell index out of bounds in prefetch: max valid cell index is {max_cell_index}")
+                
+                # Extract states for all batches: [:, indices, :]
+                chunk_info.prefetched_data = all_states[:, indices, :].to(
+                    self.device_manager.get_device(), non_blocking=True
+                )
+            else:
+                # Fallback for 2D tensors [cells, features]
+                chunk_info.prefetched_data = all_states[indices].to(
+                    self.device_manager.get_device(), non_blocking=True
+                )
+                
             self.prefetch_events[chunk_id].record()
 
     def process_chunk_async(

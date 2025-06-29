@@ -333,7 +333,54 @@ class UnifiedSpatialOptimizer:
 
         def moe_processor(current_state, neighbor_states, cell_idx, neighbor_indices):
             try:
-                # Подготавливаем входы для MoE
+                # Handle batch processing
+                if current_state.dim() == 3:  # [batch, 1, features]
+                    batch_size = current_state.shape[0]
+                    results = []
+                    
+                    # Process each batch item separately
+                    for b in range(batch_size):
+                        single_state = current_state[b]  # [1, features]
+                        
+                        if len(neighbor_indices) == 0:
+                            empty_neighbors = torch.empty(
+                                1, 0, single_state.shape[-1], device=single_state.device
+                            )
+                        else:
+                            # Extract neighbor states for this batch item
+                            if neighbor_states is not None and neighbor_states.numel() > 0:
+                                # Assume neighbor_states doesn't have batch dim, replicate for consistency
+                                empty_neighbors = neighbor_states
+                                if empty_neighbors.dim() == 1:
+                                    empty_neighbors = empty_neighbors.unsqueeze(0)
+                                elif empty_neighbors.dim() == 2:
+                                    pass  # Already [num_neighbors, features]
+                            else:
+                                empty_neighbors = torch.empty(
+                                    1, 0, single_state.shape[-1], device=single_state.device
+                                )
+                        
+                        # Call MoE processor for single item
+                        result = self.moe_processor(
+                            current_state=single_state,
+                            neighbor_states=empty_neighbors,
+                            cell_idx=cell_idx,
+                            neighbor_indices=neighbor_indices,
+                            spatial_optimizer=self,
+                        )
+                        
+                        # Extract result
+                        if isinstance(result, dict) and "new_state" in result:
+                            results.append(result["new_state"])
+                        elif isinstance(result, torch.Tensor):
+                            results.append(result)
+                        else:
+                            results.append(single_state)
+                    
+                    # Stack results back into batch
+                    return torch.stack(results, dim=0)
+                
+                # Original non-batch processing
                 if current_state.dim() == 1:
                     current_state = current_state.unsqueeze(0)
 

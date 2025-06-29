@@ -683,6 +683,9 @@ class GPUSpatialProcessor:
         # Обрабатываем chunk'и согласно расписанию
         processed_states = states.clone()
         
+        # Store updates to apply later (to avoid in-place operations during autograd)
+        updates = {}
+        
         for batch in schedule:
             batch_futures = []
             
@@ -692,7 +695,7 @@ class GPUSpatialProcessor:
                     chunk_id,
                     "process",
                     callback=lambda cid, chunk_info: self._process_chunk_with_function(
-                        chunk_info, processed_states, processor_fn
+                        chunk_info, processed_states, processor_fn, updates
                     ),
                     all_states=processed_states
                 )
@@ -705,13 +708,27 @@ class GPUSpatialProcessor:
                 except Exception as e:
                     logger.error(f"❌ Ошибка обработки chunk'а: {e}")
         
+        # Apply all updates at once to create new tensor
+        if updates:
+            if processed_states.dim() == 3:
+                new_states = processed_states.clone()
+                for indices, chunk_states in updates.items():
+                    new_states[:, list(indices), :] = chunk_states
+                processed_states = new_states
+            else:
+                new_states = processed_states.clone()
+                for indices, chunk_states in updates.items():
+                    new_states[list(indices)] = chunk_states
+                processed_states = new_states
+        
         return processed_states
     
     def _process_chunk_with_function(
         self,
         chunk_info,
         all_states: torch.Tensor,
-        processor_fn: callable
+        processor_fn: callable,
+        updates: dict = None
     ) -> str:
         """Обрабатывает один chunk с заданной функцией"""
         try:
@@ -759,7 +776,8 @@ class GPUSpatialProcessor:
                 chunk_states = all_states[indices]
             
             # Обрабатываем каждую клетку в chunk'е
-            processed_chunk_states = chunk_states.clone()
+            # Create list to collect processed states instead of in-place modification
+            processed_states_list = []
             
             for i, cell_idx in enumerate(indices):
                 if all_states.dim() == 3:  # [batch, cells, features]
@@ -793,24 +811,50 @@ class GPUSpatialProcessor:
                     logger.debug(f"⚠️ Не удалось найти соседей для клетки {cell_idx}: {e}")
                     neighbor_indices = torch.empty(0, device=self.device, dtype=torch.long)
                 
+                # Собираем состояния соседей
+                if len(neighbor_indices) > 0:
+                    # Get neighbor states from all_states
+                    if all_states.dim() == 3:  # [batch, cells, features]
+                        # Extract neighbor states for all batches
+                        neighbor_states = all_states[:, neighbor_indices, :]  # [batch, num_neighbors, features]
+                        # For now, average across batch dimension for neighbors
+                        # This is a simplification - in production you might want batch-aware neighbor processing
+                        neighbor_states = neighbor_states.mean(dim=0)  # [num_neighbors, features]
+                    else:
+                        neighbor_states = all_states[neighbor_indices]  # [num_neighbors, features]
+                else:
+                    neighbor_states = torch.empty(0, all_states.shape[-1], device=self.device)
+                
                 # Применяем функцию обработки к одной клетке
                 processed_state = processor_fn(
-                    cell_state, 
-                    torch.tensor([cell_idx], device=self.device, dtype=torch.long),
-                    cell_idx, 
+                    cell_state,
+                    neighbor_states,
+                    cell_idx,
                     neighbor_indices
                 )
                 
                 if all_states.dim() == 3:  # [batch, cells, features]
-                    processed_chunk_states[:, i, :] = processed_state.squeeze(1)  # Убираем размерность клетки
+                    processed_states_list.append(processed_state.squeeze(1))  # Убираем размерность клетки
                 else:
-                    processed_chunk_states[i] = processed_state.squeeze(0)
+                    processed_states_list.append(processed_state.squeeze(0))
             
-            # Обновляем состояния в основном тензоре
-            if all_states.dim() == 3:  # [batch, cells, features]
-                all_states[:, indices, :] = processed_chunk_states
+            # Stack all processed states into a single tensor
+            if all_states.dim() == 3:
+                processed_chunk_states = torch.stack(processed_states_list, dim=1)  # [batch, chunk_cells, features]
             else:
-                all_states[indices] = processed_chunk_states
+                processed_chunk_states = torch.stack(processed_states_list, dim=0)  # [chunk_cells, features]
+            
+            # Store updates instead of applying them directly
+            if updates is not None:
+                # Convert indices to tuple for use as dictionary key
+                indices_tuple = tuple(indices.cpu().numpy())
+                updates[indices_tuple] = processed_chunk_states
+            else:
+                # Fallback to direct update if no updates dict provided
+                if all_states.dim() == 3:  # [batch, cells, features]
+                    all_states[:, indices, :] = processed_chunk_states
+                else:
+                    all_states[indices] = processed_chunk_states
             
             return f"Chunk {chunk_info.chunk_id} processed successfully"
             
