@@ -16,6 +16,8 @@ import json
 import logging
 from typing import Dict, List, Any
 
+from new_rebuild.config import SimpleProjectConfig
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -199,11 +201,47 @@ def test_embedding_trainer_creation() -> Dict[str, Any]:
         
         # Переключаем в тестовый режим для быстрой проверки
         config.training_embedding.test_mode = True
-        config.lattice.dimensions = (4, 4, 4)  # Маленький куб для теста
+        # config.lattice.dimensions = (4, 4, 4)  # НЕ переопределяем размер
+        # Используем размер из центрального конфига
         
         trainer = EmbeddingTrainer(config)
         result["success"] = True
         result["total_parameters"] = sum(p.numel() for p in trainer.model.parameters() if p.requires_grad)
+        
+    except Exception as e:
+        result["error"] = str(e)
+    
+    return result
+
+
+def check_dynamic_neighbors_quick(config: SimpleProjectConfig) -> Dict[str, Any]:
+    """Быстрая проверка динамических соседей"""
+    result = {"success": False, "error": None}
+    
+    try:
+        # Проверяем основные настройки
+        neighbor_count = config.model.neighbor_count
+        dynamic_enabled = getattr(config.neighbors, 'dynamic_count', False) if hasattr(config, 'neighbors') and config.neighbors else False
+        
+        # Вычисляем характеристики решетки
+        dimensions = config.lattice.dimensions
+        max_radius = config.lattice.max_radius
+        local_threshold = config.lattice.local_distance_threshold
+        functional_threshold = config.lattice.functional_distance_threshold
+        
+        result.update({
+            "success": True,
+            "neighbor_count_setting": neighbor_count,
+            "dynamic_enabled": dynamic_enabled,
+            "lattice_dimensions": dimensions,
+            "max_radius": round(max_radius, 2),
+            "thresholds": {
+                "local": round(local_threshold, 2),
+                "functional": round(functional_threshold, 2)
+            },
+            "is_dynamic": neighbor_count == -1,
+            "legacy_detected": neighbor_count in [6, 26]
+        })
         
     except Exception as e:
         result["error"] = str(e)
@@ -307,7 +345,35 @@ def main():
     else:
         print(f"❌ Central config failed: {config_check.get('error')}")
     
-    # 5. Тестируем новый dataset loader
+    # 5. Проверяем динамические соседи
+    print("\n🎯 Checking dynamic neighbors...")
+    if config_check["success"]:
+        config = SimpleProjectConfig()
+        neighbors_check = check_dynamic_neighbors_quick(config)
+        all_checks["dynamic_neighbors"] = neighbors_check
+        
+        if neighbors_check["success"]:
+            print("✅ Dynamic neighbors analysis completed")
+            print(f"   📏 Lattice: {neighbors_check['lattice_dimensions']}")
+            print(f"   🎯 Max radius: {neighbors_check['max_radius']}")
+            print(f"   🔵 Local threshold: {neighbors_check['thresholds']['local']}")
+            print(f"   🟡 Functional threshold: {neighbors_check['thresholds']['functional']}")
+            
+            if neighbors_check["is_dynamic"]:
+                print("   ✅ Dynamic neighbor count enabled (neighbor_count = -1)")
+            elif neighbors_check["legacy_detected"]:
+                print(f"   ❌ Legacy neighbor count detected: {neighbors_check['neighbor_count_setting']}")
+            else:
+                print(f"   ℹ️ Static neighbor count: {neighbors_check['neighbor_count_setting']}")
+                
+            if neighbors_check["dynamic_enabled"]:
+                print("   ✅ Dynamic count enabled in NeighborSettings")
+        else:
+            print(f"❌ Dynamic neighbors check failed: {neighbors_check.get('error')}")
+    else:
+        print("⏭️ Skipping (config failed)")
+    
+    # 6. Тестируем новый dataset loader
     print("\n🔄 Testing new unified dataset loader...")
     loader_test = test_new_dataset_loader()
     all_checks["dataset_loader"] = loader_test
@@ -322,7 +388,7 @@ def main():
     else:
         print(f"❌ Dataset loader failed: {loader_test.get('error')}")
     
-    # 6. Тестируем EmbeddingTrainer
+    # 7. Тестируем EmbeddingTrainer
     print("\n🧠 Testing EmbeddingTrainer creation...")
     trainer_test = test_embedding_trainer_creation()
     all_checks["trainer"] = trainer_test
@@ -349,6 +415,8 @@ def main():
          dataset_check["cache_embeddings"]["available"], "Datasets"),
         (len(deps_check["missing_modules"]) == 0, "Dependencies"),
         (config_check["success"], "Central Config"),
+        (all_checks.get("dynamic_neighbors", {}).get("success", False) and 
+         not all_checks.get("dynamic_neighbors", {}).get("legacy_detected", False), "Dynamic Neighbors"),
         (loader_test["success"], "Dataset Loader"),
         (trainer_test["success"], "EmbeddingTrainer")
     ]

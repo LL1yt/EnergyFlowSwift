@@ -63,10 +63,39 @@
       "\u2705 Correct lattice size for first training"
     ]
   },
+  "dynamic_neighbors": {
+    "success": true,
+    "error": null,
+    "neighbor_count_setting": -1,
+    "dynamic_enabled": true,
+    "lattice_dimensions": [
+      8,
+      8,
+      8
+    ],
+    "max_radius": 1.6,
+    "thresholds": {
+      "local": 0.16,
+      "functional": 1.04
+    },
+    "is_dynamic": true,
+    "legacy_detected": false
+  },
   "dataset_loader": {
-    "success": false,
-    "error": "No module named 'new_rebuild.core.config'",
-    "sample_count": 0
+    "success": true,
+    "error": null,
+    "sample_count": 876,
+    "embedding_dim": 768,
+    "source_distribution": {
+      "prepared_embeddings": 800,
+      "cache_embeddings": 54,
+      "dialogue_cache": 22
+    },
+    "embedding_dim_ok": true,
+    "batch_shape": [
+      16,
+      768
+    ]
   },
   "trainer": {
     "success": true,

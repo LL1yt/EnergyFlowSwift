@@ -19,7 +19,7 @@ from typing import List, Dict, Tuple, Optional, Union
 import random
 from dataclasses import dataclass
 
-from ...config import SimpleProjectConfig
+from ....config import SimpleProjectConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -326,7 +326,7 @@ def main():
     print("=" * 50)
     
     # Используем центральную конфигурацию
-    from ...config import SimpleProjectConfig
+    from ....config import SimpleProjectConfig
     config = SimpleProjectConfig()
     
     # Ограничиваем для быстрого теста

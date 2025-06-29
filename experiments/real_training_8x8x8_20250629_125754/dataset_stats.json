@@ -1,0 +1,14 @@
+{
+  "total_samples": 1332997,
+  "embedding_dim": 768,
+  "source_distribution": {
+    "prepared_embeddings": 1329452,
+    "cache_embeddings": 2887,
+    "dialogue_cache": 658
+  },
+  "type_distribution": {
+    "prepared": 1329452,
+    "cache": 2887,
+    "dialogue": 658
+  }
+}

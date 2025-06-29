@@ -1,0 +1,341 @@
+{
+  "config_check": {
+    "legacy_check": {
+      "issues": [],
+      "warnings": [
+        "\u2705 Dynamic neighbor count enabled (neighbor_count = -1)",
+        "\u2705 Dynamic count enabled in NeighborSettings"
+      ],
+      "legacy_check_passed": true
+    },
+    "size_check": {
+      "lattice_dimensions": [
+        8,
+        8,
+        8
+      ],
+      "total_cells": 512,
+      "target_embedding_dim": 64,
+      "expected_target_dim": 64,
+      "consistency_issues": [],
+      "dimensions_consistent": true
+    }
+  },
+  "neighbor_analysis": {
+    "lattice_info": {
+      "dimensions": [
+        8,
+        8,
+        8
+      ],
+      "total_cells": 512,
+      "max_radius": 1.6,
+      "thresholds": {
+        "local": 0.16000000000000003,
+        "functional": 1.04,
+        "distant": 1.6
+      }
+    },
+    "sample_analysis": [
+      {
+        "cell_position": [
+          0,
+          0,
+          0
+        ],
+        "total_neighbors": 511,
+        "tier_counts": {
+          "local": 0,
+          "functional": 3,
+          "distant": 508
+        },
+        "tier_percentages": {
+          "local": 0.0,
+          "functional": 0.5870841487279843,
+          "distant": 99.412915851272
+        },
+        "closest_neighbors": {
+          "local": [],
+          "functional": [
+            [
+              [
+                0,
+                0,
+                1
+              ],
+              1.0
+            ],
+            [
+              [
+                0,
+                1,
+                0
+              ],
+              1.0
+            ],
+            [
+              [
+                1,
+                0,
+                0
+              ],
+              1.0
+            ]
+          ],
+          "distant": [
+            [
+              [
+                0,
+                1,
+                1
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                1,
+                0,
+                1
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                1,
+                1,
+                0
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                1,
+                1,
+                1
+              ],
+              1.7320508075688772
+            ],
+            [
+              [
+                0,
+                0,
+                2
+              ],
+              2.0
+            ]
+          ]
+        },
+        "distance_stats": {
+          "min": 1.0,
+          "max": 12.12435565298214,
+          "avg": 6.923818326811435
+        }
+      },
+      {
+        "cell_position": [
+          4,
+          4,
+          4
+        ],
+        "total_neighbors": 511,
+        "tier_counts": {
+          "local": 0,
+          "functional": 6,
+          "distant": 505
+        },
+        "tier_percentages": {
+          "local": 0.0,
+          "functional": 1.1741682974559686,
+          "distant": 98.82583170254404
+        },
+        "closest_neighbors": {
+          "local": [],
+          "functional": [
+            [
+              [
+                3,
+                4,
+                4
+              ],
+              1.0
+            ],
+            [
+              [
+                4,
+                3,
+                4
+              ],
+              1.0
+            ],
+            [
+              [
+                4,
+                4,
+                3
+              ],
+              1.0
+            ],
+            [
+              [
+                4,
+                4,
+                5
+              ],
+              1.0
+            ],
+            [
+              [
+                4,
+                5,
+                4
+              ],
+              1.0
+            ]
+          ],
+          "distant": [
+            [
+              [
+                3,
+                3,
+                4
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                3,
+                4,
+                3
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                3,
+                4,
+                5
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                3,
+                5,
+                4
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                4,
+                3,
+                3
+              ],
+              1.4142135623730951
+            ]
+          ]
+        },
+        "distance_stats": {
+          "min": 1.0,
+          "max": 6.928203230275509,
+          "avg": 3.898983608340776
+        }
+      },
+      {
+        "cell_position": [
+          7,
+          7,
+          7
+        ],
+        "total_neighbors": 511,
+        "tier_counts": {
+          "local": 0,
+          "functional": 3,
+          "distant": 508
+        },
+        "tier_percentages": {
+          "local": 0.0,
+          "functional": 0.5870841487279843,
+          "distant": 99.412915851272
+        },
+        "closest_neighbors": {
+          "local": [],
+          "functional": [
+            [
+              [
+                6,
+                7,
+                7
+              ],
+              1.0
+            ],
+            [
+              [
+                7,
+                6,
+                7
+              ],
+              1.0
+            ],
+            [
+              [
+                7,
+                7,
+                6
+              ],
+              1.0
+            ]
+          ],
+          "distant": [
+            [
+              [
+                6,
+                6,
+                7
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                6,
+                7,
+                6
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                7,
+                6,
+                6
+              ],
+              1.4142135623730951
+            ],
+            [
+              [
+                6,
+                6,
+                6
+              ],
+              1.7320508075688772
+            ],
+            [
+              [
+                5,
+                7,
+                7
+              ],
+              2.0
+            ]
+          ]
+        },
+        "distance_stats": {
+          "min": 1.0,
+          "max": 12.12435565298214,
+          "avg": 6.92381832681143
+        }
+      }
+    ]
+  },
+  "analysis_timestamp": "2025-01-01T00:00:00"
+}
