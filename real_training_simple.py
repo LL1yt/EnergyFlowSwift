@@ -44,43 +44,8 @@ def run_training_epoch(trainer: EmbeddingTrainer, dataloader, epoch: int, experi
     logger.info(f"\n🚀 Starting Epoch {epoch + 1}")
     epoch_start_time = time.time()
     
-    # Training phase
-    trainer.model.train()
-    train_losses = {"total": 0.0, "reconstruction": 0.0, "similarity": 0.0, "diversity": 0.0, "emergence": 0.0}
-    num_batches = 0
-    
-    for batch_idx, batch in enumerate(dataloader):
-        batch_start_time = time.time()
-        
-        # Извлекаем эмбеддинги из батча
-        embeddings = batch['embedding']  # [batch_size, 768]
-        
-        # Прогоняем через trainer
-        try:
-            losses = trainer.train_step(embeddings)
-            
-            # Обновляем статистику
-            for key in train_losses.keys():
-                if key in losses:
-                    train_losses[key] += losses[key]
-            
-            num_batches += 1
-            
-            # Логируем каждые log_interval батчей (из конфига)
-            log_interval = trainer.config.training_embedding.log_interval
-            if (batch_idx + 1) % log_interval == 0:
-                batch_time = time.time() - batch_start_time
-                current_loss = losses.get('total', 0.0)
-                logger.info(f"  Batch {batch_idx + 1:3d}: loss={current_loss:.6f}, time={batch_time:.2f}s")
-                
-        except Exception as e:
-            logger.error(f"Error in batch {batch_idx}: {e}")
-            continue
-    
-    # Усредняем loss'ы
-    if num_batches > 0:
-        for key in train_losses.keys():
-            train_losses[key] /= num_batches
+    # Use trainer's train_epoch method directly
+    train_losses = trainer.train_epoch(dataloader)
     
     epoch_time = time.time() - epoch_start_time
     
@@ -95,7 +60,6 @@ def run_training_epoch(trainer: EmbeddingTrainer, dataloader, epoch: int, experi
         "epoch": epoch + 1,
         "train_losses": train_losses,
         "epoch_time": epoch_time,
-        "num_batches": num_batches,
         "timestamp": datetime.now().isoformat()
     }
     
