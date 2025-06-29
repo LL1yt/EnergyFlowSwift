@@ -136,14 +136,16 @@ def test_training_epoch(trainer, dataloader):
     """Тест полного цикла обучения одной эпохи"""
     print("\n--- Тест Training Epoch ---")
 
-    # Сохраняем начальные веса для проверки обновления
-    initial_params = {}
-    for name, param in trainer.embedding_transformer.named_parameters():
-        if param.requires_grad:
-            initial_params[name] = param.data.clone()
+    # Enable anomaly detection to find the exact operation causing the issue
+    with torch.autograd.set_detect_anomaly(False):
+        # Сохраняем начальные веса для проверки обновления
+        initial_params = {}
+        for name, param in trainer.embedding_transformer.named_parameters():
+            if param.requires_grad:
+                initial_params[name] = param.data.clone()
 
-    # Запуск тренировки эпохи
-    train_losses = trainer.train_epoch(dataloader)
+        # Запуск тренировки эпохи
+        train_losses = trainer.train_epoch(dataloader)
 
     print(f"✓ Эпоха обучения завершена")
     print(f"  Total Loss: {train_losses['total']:.6f}")

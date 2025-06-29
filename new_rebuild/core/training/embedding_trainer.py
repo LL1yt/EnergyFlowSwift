@@ -483,7 +483,9 @@ class EmbeddingTrainer(TrainingInterface):
 
         checkpoint = {
             "embedding_transformer": self.embedding_transformer.state_dict(),
-            "moe_processor": self.moe_processor.state_dict(),
+            "lattice": self.lattice.state_dict(),
+            "lattice_mapper": self.lattice_mapper.state_dict(),
+            "lattice_extractor": self.lattice_extractor.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "scheduler": self.scheduler.state_dict(),
             "training_history": self.training_history,
@@ -504,10 +506,12 @@ class EmbeddingTrainer(TrainingInterface):
         if not checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint не найден: {checkpoint_path}")
 
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
 
         self.embedding_transformer.load_state_dict(checkpoint["embedding_transformer"])
-        self.moe_processor.load_state_dict(checkpoint["moe_processor"])
+        self.lattice.load_state_dict(checkpoint["lattice"])
+        self.lattice_mapper.load_state_dict(checkpoint["lattice_mapper"])
+        self.lattice_extractor.load_state_dict(checkpoint["lattice_extractor"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         self.scheduler.load_state_dict(checkpoint["scheduler"])
 

@@ -50,3 +50,6 @@ codeql-action-3.28.13
 
 # models
 models/
+
+# Miscellaneous
+*.pth

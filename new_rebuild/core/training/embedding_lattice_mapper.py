@@ -245,10 +245,7 @@ class VolumeStateInitializer(nn.Module):
         surface_mean = surface_states.mean(dim=1, keepdim=True)  # [batch, 1, state_size]
         
         # Генерируем состояния для каждой внутренней клетки
-        volume_states = torch.zeros(
-            batch_size, num_volume, self.state_size,
-            device=surface_states.device, dtype=surface_states.dtype
-        )
+        volume_states_list = []
         
         for i, vol_idx in enumerate(volume_indices):
             # Получаем координаты клетки
@@ -262,11 +259,23 @@ class VolumeStateInitializer(nn.Module):
             # Генерируем состояние на основе поверхности и позиции
             base_state = self.state_generator(surface_mean.squeeze(1))  # [batch, state_size]
             
-            # Добавляем позиционную информацию
+            # Добавляем позиционную информацию (избегаем in-place операции)
             if pos_encoding.shape[-1] <= self.state_size:
-                base_state[:, :pos_encoding.shape[-1]] += pos_encoding
+                # Create a new tensor instead of modifying in-place
+                modified_state = base_state.clone()
+                modified_state[:, :pos_encoding.shape[-1]] = modified_state[:, :pos_encoding.shape[-1]] + pos_encoding
+                base_state = modified_state
             
-            volume_states[:, i] = base_state
+            volume_states_list.append(base_state.unsqueeze(1))  # [batch, 1, state_size]
+        
+        # Stack all volume states
+        if volume_states_list:
+            volume_states = torch.cat(volume_states_list, dim=1)  # [batch, num_volume, state_size]
+        else:
+            volume_states = torch.zeros(
+                batch_size, 0, self.state_size,
+                device=surface_states.device, dtype=surface_states.dtype
+            )
         
         return volume_states
     
