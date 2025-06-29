@@ -9,6 +9,7 @@ MoE Processor - упрощенный Mixture of Experts процессор
 
 import torch
 import torch.nn as nn
+import logging
 from typing import Dict, List, Optional, Any, Tuple
 from torch.utils.checkpoint import checkpoint
 
@@ -154,22 +155,23 @@ class MoEConnectionProcessor(nn.Module):
         spatial_optimizer=None,
         **kwargs,
     ) -> Dict[str, Any]:
-        # DEBUG: Comprehensive input logging
-        logger.info(f"🔍 MoE FORWARD called for cell {cell_idx}")
-        logger.info(f"🔍 current_state.shape={current_state.shape}")
-        logger.info(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
-        # Safe logging for neighbor_indices (could be list or tensor)
-        if neighbor_indices is not None:
-            if isinstance(neighbor_indices, torch.Tensor):
-                logger.info(f"🔍 neighbor_indices=tensor({neighbor_indices.tolist()}), len={neighbor_indices.numel()}")
+        # DEBUG: Reduced logging - only log for specific problematic cells
+        if cell_idx in [223, 256, 260, 320] or logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"🔍 MoE FORWARD called for cell {cell_idx}")
+            logger.debug(f"🔍 current_state.shape={current_state.shape}")
+            logger.debug(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
+            # Safe logging for neighbor_indices (could be list or tensor)
+            if neighbor_indices is not None:
+                if isinstance(neighbor_indices, torch.Tensor):
+                    logger.debug(f"🔍 neighbor_indices=tensor({neighbor_indices.tolist()}), len={neighbor_indices.numel()}")
+                else:
+                    logger.debug(f"🔍 neighbor_indices={neighbor_indices}, len={len(neighbor_indices)}")
             else:
-                logger.info(f"🔍 neighbor_indices={neighbor_indices}, len={len(neighbor_indices)}")
-        else:
-            logger.info("🔍 neighbor_indices=None, len=0")
-        logger.info(f"🔍 spatial_optimizer={spatial_optimizer is not None}")
-        logger.info(f"🔍 kwargs keys={list(kwargs.keys())}")
-        if 'full_lattice_states' in kwargs:
-            logger.info(f"🔍 full_lattice_states.shape={kwargs['full_lattice_states'].shape}")
+                logger.debug("🔍 neighbor_indices=None, len=0")
+            logger.debug(f"🔍 spatial_optimizer={spatial_optimizer is not None}")
+            logger.debug(f"🔍 kwargs keys={list(kwargs.keys())}")
+            if 'full_lattice_states' in kwargs:
+                logger.debug(f"🔍 full_lattice_states.shape={kwargs['full_lattice_states'].shape}")
         """
         Основной forward pass с упрощенной логикой
 
@@ -243,8 +245,8 @@ class MoEConnectionProcessor(nn.Module):
                 )
             
             full_states = kwargs["full_lattice_states"]
-            logger.info(f"🔍 BEFORE extraction: full_states.shape={full_states.shape}")
-            logger.info(f"🔍 neighbor_indices for cell {cell_idx}: {neighbor_indices}")
+            logger.debug(f"🔍 BEFORE extraction: full_states.shape={full_states.shape}")
+            logger.debug(f"🔍 neighbor_indices for cell {cell_idx}: {neighbor_indices}")
             
             # Правильное извлечение состояний соседей с учетом batch dimension
             # Преобразуем neighbor_indices в list если это tensor
@@ -263,7 +265,7 @@ class MoEConnectionProcessor(nn.Module):
             else:
                 raise RuntimeError(f"Неожиданная размерность full_lattice_states: {full_states.shape}")
             
-            logger.info(
+            logger.debug(
                 f"✅ Извлечены состояния соседей из full_lattice_states для клетки {cell_idx}, shape={neighbor_states.shape}"
             )
 

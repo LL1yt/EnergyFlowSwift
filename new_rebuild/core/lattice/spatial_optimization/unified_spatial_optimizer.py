@@ -300,9 +300,9 @@ class UnifiedSpatialOptimizer:
         start_time = time.time()
         num_cells = states.shape[0]
         
-        logger.info(f"🔧 UNIFIED OPTIMIZER: processing {num_cells} cells")
-        logger.info(f"🔧 OPTIMIZER DIMENSIONS: {self.dimensions}")
-        logger.info(f"🔧 INPUT STATES SHAPE: {states.shape}")
+        logger.debug(f"🔧 UNIFIED OPTIMIZER: processing {num_cells} cells")
+        logger.debug(f"🔧 OPTIMIZER DIMENSIONS: {self.dimensions}")
+        logger.debug(f"🔧 INPUT STATES SHAPE: {states.shape}")
 
         # Определяем функцию обработки
         if processor_fn is None:
@@ -333,21 +333,23 @@ class UnifiedSpatialOptimizer:
 
         def moe_processor(current_state, neighbor_states, cell_idx, neighbor_indices):
             try:
-                # DEBUG: Comprehensive logging
-                logger.info(f"🔍 MoE processor called - cell_idx={cell_idx}")
-                logger.info(f"🔍 current_state.shape={current_state.shape}")
-                logger.info(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
-                logger.info(f"🔍 neighbor_indices={neighbor_indices}")
-                logger.info(f"🔍 len(neighbor_indices)={len(neighbor_indices)}")
-                if full_lattice_states is not None:
-                    logger.info(f"🔍 full_lattice_states.shape={full_lattice_states.shape}")
-                else:
-                    logger.info("🔍 full_lattice_states=None")
+                # DEBUG: Reduced logging - only log errors and warnings
+                if cell_idx in [223, 256, 260, 320]:
+                    logger.debug(f"🔍 MoE processor called - cell_idx={cell_idx}")
+                    logger.debug(f"🔍 current_state.shape={current_state.shape}")
+                    logger.debug(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
+                    logger.debug(f"🔍 neighbor_indices={neighbor_indices}")
+                    if isinstance(neighbor_indices, (list, torch.Tensor)):
+                        logger.debug(f"🔍 len(neighbor_indices)={len(neighbor_indices) if isinstance(neighbor_indices, list) else neighbor_indices.numel()}")
+                    if full_lattice_states is not None:
+                        logger.debug(f"🔍 full_lattice_states.shape={full_lattice_states.shape}")
+                    else:
+                        logger.debug("🔍 full_lattice_states=None")
                 
                 # ВРЕМЕННОЕ РЕШЕНИЕ: обеспечиваем что у каждой клетки есть хотя бы она сама как сосед
                 neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
                 if neighbor_count == 0:
-                    logger.warning(f"⚠️ Клетка {cell_idx} не имеет соседей, добавляем саму себя")
+                    # logger.warning(f"⚠️ Клетка {cell_idx} не имеет соседей, добавляем саму себя")
                     if isinstance(neighbor_indices, torch.Tensor):
                         neighbor_indices = torch.tensor([cell_idx], device=neighbor_indices.device, dtype=neighbor_indices.dtype)
                     else:

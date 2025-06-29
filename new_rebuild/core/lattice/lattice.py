@@ -77,10 +77,15 @@ class Lattice3D(nn.Module):
             target_performance_ms=self.config.lattice.target_performance_ms,
         )
 
-        # Создаем унифицированный оптимизатор (MoE processor будет добавлен позже в forward)
+        # Создаем MoE processor один раз при инициализации
+        self.moe_processor = self._create_moe_processor()
+        
+        # Создаем унифицированный оптимизатор с MoE processor
         self.spatial_optimizer = create_unified_spatial_optimizer(
             dimensions=self.config.lattice.dimensions, config=spatial_config
         )
+        # Устанавливаем MoE processor в унифицированный оптимизатор
+        self.spatial_optimizer.moe_processor = self.moe_processor
 
         # Размещение I/O точек
         from .enums import PlacementStrategy
@@ -192,11 +197,7 @@ class Lattice3D(nn.Module):
         self.logger.info(f"🚀 LATTICE FORWARD: states shape {self.states.shape}")
         self.logger.info(f"🚀 LATTICE DIMENSIONS: {self.config.lattice.dimensions}")
 
-        # Создаем MoE processor
-        moe_processor = self._create_moe_processor()
-
-        # Устанавливаем MoE processor в унифицированный оптимизатор
-        self.spatial_optimizer.moe_processor = moe_processor
+        # MoE processor уже создан при инициализации
 
         # DEBUG: Проверяем размерности
         import numpy as np

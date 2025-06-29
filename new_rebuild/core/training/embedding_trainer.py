@@ -286,14 +286,13 @@ class EmbeddingTrainer(TrainingInterface):
 
         # 4. Emergent dynamics (несколько шагов через MoE)
         # Устанавливаем начальные состояния в решетку
-        logger.info(f"🔧 Setting lattice states: {lattice_states.shape}")
-        logger.info(f"🔧 Lattice config dimensions: {self.config.lattice.dimensions}")
-        logger.info(f"🔧 Expected cells: {self.config.lattice.total_cells}")
+        logger.debug(f"🔧 Setting lattice states: {lattice_states.shape}")
+        logger.debug(f"🔧 Lattice config dimensions: {self.config.lattice.dimensions}")
+        logger.debug(f"🔧 Expected cells: {self.config.lattice.total_cells}")
         
         self.lattice.states = lattice_states
         
         for step in range(self.lattice_settings.lattice_steps):
-            logger.debug(f"🔄 Lattice step {step}")
             # Выполняем шаг решетки (обновляет внутренние состояния)
             lattice_states = self.lattice.forward()
             
@@ -363,8 +362,12 @@ class EmbeddingTrainer(TrainingInterface):
         )
 
         # 3. Diversity Loss (поощрение разнообразия выходов)
-        output_mean = output_embeddings.mean(dim=0)
-        diversity_loss = -torch.var(output_embeddings, dim=0).mean()
+        # Для batch_size=1 diversity loss не имеет смысла
+        if output_embeddings.shape[0] > 1:
+            output_mean = output_embeddings.mean(dim=0)
+            diversity_loss = -torch.var(output_embeddings, dim=0).mean()
+        else:
+            diversity_loss = torch.tensor(0.0, device=output_embeddings.device)
         losses["diversity"] = (
             diversity_loss * self.config.training_embedding.diversity_weight
         )

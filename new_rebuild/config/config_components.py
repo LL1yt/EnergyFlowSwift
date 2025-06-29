@@ -472,7 +472,7 @@ class TrainingEmbeddingSettings:
     test_mode: bool = False               # РЕАЛЬНОЕ ОБУЧЕНИЕ
     
     # Эпохи обучения для реального training
-    num_epochs: int = 50                  # Основные эпохи для первого эксперимента
+    num_epochs: int = 5                   # Основные эпохи для первого эксперимента
     # warmup_epochs: int = 10             # Старые настройки
     # main_epochs: int = 100
     # fine_tune_epochs: int = 50
@@ -525,7 +525,7 @@ class TrainingEmbeddingSettings:
     # Эти параметры используются только когда test_mode = True
     test_lattice_dim: int = 8
     # test_lattice_dim: int = 37
-    test_dataset_size: int = 658  # Для прогоночного обучения используем только 658 сэмплов (из dialogue cache)
+    test_dataset_size: int = 5  # Для прогоночного обучения используем только 658 сэмплов (из dialogue cache)
     # test_dataset_size: int = 1000  # Старое значение для быстрых тестов
     test_validation_split: float = 0.2
     test_quick_iterations: int = 10

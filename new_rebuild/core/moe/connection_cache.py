@@ -504,7 +504,8 @@ class ConnectionCacheManager:
             Классифицированные связи по категориям
         """
         if cell_idx not in self.cache:
-            logger.warning(f"Кэш не найден для клетки {cell_idx}")
+            # Временно убираем спам предупреждений
+            # logger.warning(f"Кэш не найден для клетки {cell_idx}")
             return {cat: [] for cat in ConnectionCategory}
 
         cached_data = self.cache[cell_idx]
