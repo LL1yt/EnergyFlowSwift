@@ -101,10 +101,8 @@ def main():
     
     # Создание датасета (используем настройки из конфига)
     logger.info("📂 Loading unified dataset...")
-    if config.training_embedding.test_mode:
-        max_samples = config.training_embedding.test_dataset_size
-    else:
-        max_samples = None  # Загружаем все доступные данные
+    # Для прогоночного обучения используем только 658 сэмплов (из dialogue cache)
+    max_samples = config.training_embedding.test_dataset_size
     
     dataloader, dataset_stats = create_training_dataloader(
         config=config,

@@ -154,6 +154,22 @@ class MoEConnectionProcessor(nn.Module):
         spatial_optimizer=None,
         **kwargs,
     ) -> Dict[str, Any]:
+        # DEBUG: Comprehensive input logging
+        logger.info(f"🔍 MoE FORWARD called for cell {cell_idx}")
+        logger.info(f"🔍 current_state.shape={current_state.shape}")
+        logger.info(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
+        # Safe logging for neighbor_indices (could be list or tensor)
+        if neighbor_indices is not None:
+            if isinstance(neighbor_indices, torch.Tensor):
+                logger.info(f"🔍 neighbor_indices=tensor({neighbor_indices.tolist()}), len={neighbor_indices.numel()}")
+            else:
+                logger.info(f"🔍 neighbor_indices={neighbor_indices}, len={len(neighbor_indices)}")
+        else:
+            logger.info("🔍 neighbor_indices=None, len=0")
+        logger.info(f"🔍 spatial_optimizer={spatial_optimizer is not None}")
+        logger.info(f"🔍 kwargs keys={list(kwargs.keys())}")
+        if 'full_lattice_states' in kwargs:
+            logger.info(f"🔍 full_lattice_states.shape={kwargs['full_lattice_states'].shape}")
         """
         Основной forward pass с упрощенной логикой
 
@@ -205,40 +221,55 @@ class MoEConnectionProcessor(nn.Module):
                         0, full_states.shape[1], device=full_states.device
                     )
             else:
-                logger.warning(
-                    f"⚠️ spatial_optimizer передан, но full_lattice_states отсутствует - fallback к переданным соседям"
+                raise RuntimeError(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: spatial_optimizer передан для клетки {cell_idx}, "
+                    f"но full_lattice_states отсутствует. Согласно CLAUDE.md fallback'и запрещены."
                 )
         else:
-            # Fallback только если spatial_optimizer не передан
-            if len(neighbor_indices) > 0:
-                logger.debug(
-                    f"🔄 FALLBACK РЕЖИМ: используем переданные соседи для клетки {cell_idx}: {len(neighbor_indices)} соседей"
+            # По правилам CLAUDE.md - никаких fallback'ов, proper error handling
+            # Проверяем длину neighbor_indices (может быть list или tensor)
+            neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
+            if neighbor_count == 0:
+                raise RuntimeError(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Для клетки {cell_idx} не переданы ни spatial_optimizer, ни neighbor_indices. "
+                    f"Согласно CLAUDE.md fallback'и запрещены - исправьте интеграцию."
                 )
-                # В fallback режиме нужно создать neighbor_states из full_lattice_states если доступно
-                if "full_lattice_states" in kwargs:
-                    full_states = kwargs["full_lattice_states"]
-                    neighbor_states = full_states[neighbor_indices]
-                    logger.debug(
-                        f"🔍 FALLBACK: извлечено состояния соседей из full_lattice_states, shape={neighbor_states.shape}"
-                    )
-                else:
-                    # Если full_lattice_states недоступно, создаем пустые состояния
-                    state_size = current_state.shape[-1]
-                    neighbor_states = torch.zeros(
-                        len(neighbor_indices), state_size, device=current_state.device
-                    )
-                    logger.warning(
-                        f"⚠️ FALLBACK: full_lattice_states недоступно, используем нулевые состояния для {len(neighbor_indices)} соседей"
-                    )
+            
+            # Если neighbor_indices переданы, требуем full_lattice_states
+            if "full_lattice_states" not in kwargs:
+                raise RuntimeError(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Для клетки {cell_idx} переданы neighbor_indices={neighbor_indices}, "
+                    f"но отсутствует full_lattice_states. Требуется полная интеграция без fallback'ов."
+                )
+            
+            full_states = kwargs["full_lattice_states"]
+            logger.info(f"🔍 BEFORE extraction: full_states.shape={full_states.shape}")
+            logger.info(f"🔍 neighbor_indices for cell {cell_idx}: {neighbor_indices}")
+            
+            # Правильное извлечение состояний соседей с учетом batch dimension
+            # Преобразуем neighbor_indices в list если это tensor
+            if isinstance(neighbor_indices, torch.Tensor):
+                neighbor_indices_list = neighbor_indices.tolist()
             else:
-                logger.warning(
-                    f"⚠️ Ни spatial_optimizer, ни neighbor_indices не переданы для клетки {cell_idx}"
-                )
-                neighbor_states = torch.empty(
-                    0, current_state.shape[-1], device=current_state.device
-                )
+                neighbor_indices_list = neighbor_indices
+            
+            if full_states.dim() == 3:  # [batch, num_cells, state_size]
+                # Извлекаем состояния соседей для каждого элемента в batch
+                # Но поскольку connection classifier ожидает [num_neighbors, state_size],
+                # мы берем только первый элемент batch'а
+                neighbor_states = full_states[0, neighbor_indices_list, :]  # [num_neighbors, state_size]
+            elif full_states.dim() == 2:  # [num_cells, state_size]
+                neighbor_states = full_states[neighbor_indices_list]  # [num_neighbors, state_size]
+            else:
+                raise RuntimeError(f"Неожиданная размерность full_lattice_states: {full_states.shape}")
+            
+            logger.info(
+                f"✅ Извлечены состояния соседей из full_lattice_states для клетки {cell_idx}, shape={neighbor_states.shape}"
+            )
 
-        if len(neighbor_indices) == 0:
+        # Проверяем количество соседей (может быть list или tensor)
+        neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
+        if neighbor_count == 0:
             return self._empty_forward_result(current_state)
 
         batch_size = 1

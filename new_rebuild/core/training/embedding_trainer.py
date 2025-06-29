@@ -183,7 +183,9 @@ class EmbeddingTrainer(TrainingInterface):
 
             # Извлечение данных из батча
             if isinstance(batch, dict):
-                input_embeddings = batch["embeddings"].to(self.device)
+                # Handle both 'embedding' (from dataloader) and 'embeddings' (legacy)
+                key = "embedding" if "embedding" in batch else "embeddings"
+                input_embeddings = batch[key].to(self.device)
                 target_embeddings = batch.get("target_embeddings", input_embeddings).to(
                     self.device
                 )
@@ -345,7 +347,7 @@ class EmbeddingTrainer(TrainingInterface):
         )
         losses["reconstruction"] = (
             reconstruction_loss
-            * self.config.training_embedding.reconstruction_loss_weight
+            * self.config.training_embedding.reconstruction_weight
         )
 
         # 2. Similarity Loss (cosine similarity preservation)
@@ -357,14 +359,14 @@ class EmbeddingTrainer(TrainingInterface):
         )
         similarity_loss = nn.functional.mse_loss(output_sim, input_sim)
         losses["similarity"] = (
-            similarity_loss * self.config.training_embedding.similarity_loss_weight
+            similarity_loss * self.config.training_embedding.similarity_weight
         )
 
         # 3. Diversity Loss (поощрение разнообразия выходов)
         output_mean = output_embeddings.mean(dim=0)
         diversity_loss = -torch.var(output_embeddings, dim=0).mean()
         losses["diversity"] = (
-            diversity_loss * self.config.training_embedding.diversity_loss_weight
+            diversity_loss * self.config.training_embedding.diversity_weight
         )
 
         # 4. Emergence Loss (поощрение эмерджентного поведения)
@@ -374,7 +376,7 @@ class EmbeddingTrainer(TrainingInterface):
             identity_loss + 1e-8
         )  # Логарифмическое поощрение различий
         losses["emergence"] = (
-            emergence_loss * self.config.training_embedding.emergence_loss_weight
+            emergence_loss * self.config.training_embedding.emergence_weight
         )
 
         # 5. Lattice Dynamics Loss (если есть состояния решетки)
@@ -444,7 +446,9 @@ class EmbeddingTrainer(TrainingInterface):
             for batch in dataloader:
                 # Аналогично train_epoch, но без backward pass
                 if isinstance(batch, dict):
-                    input_embeddings = batch["embeddings"].to(self.device)
+                    # Handle both 'embedding' (from dataloader) and 'embeddings' (legacy)
+                    key = "embedding" if "embedding" in batch else "embeddings"
+                    input_embeddings = batch[key].to(self.device)
                     target_embeddings = batch.get(
                         "target_embeddings", input_embeddings
                     ).to(self.device)

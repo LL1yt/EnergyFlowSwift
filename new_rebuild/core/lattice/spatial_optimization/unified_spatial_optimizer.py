@@ -307,7 +307,7 @@ class UnifiedSpatialOptimizer:
         # Определяем функцию обработки
         if processor_fn is None:
             if self.moe_processor:
-                processor_fn = self._create_moe_processor_fn()
+                processor_fn = self._create_moe_processor_fn(full_lattice_states=states)
             else:
                 processor_fn = self._create_default_processor_fn()
 
@@ -328,11 +328,30 @@ class UnifiedSpatialOptimizer:
 
         return result
 
-    def _create_moe_processor_fn(self) -> Callable:
+    def _create_moe_processor_fn(self, full_lattice_states: torch.Tensor = None) -> Callable:
         """Создает processor function для MoE архитектуры"""
 
         def moe_processor(current_state, neighbor_states, cell_idx, neighbor_indices):
             try:
+                # DEBUG: Comprehensive logging
+                logger.info(f"🔍 MoE processor called - cell_idx={cell_idx}")
+                logger.info(f"🔍 current_state.shape={current_state.shape}")
+                logger.info(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
+                logger.info(f"🔍 neighbor_indices={neighbor_indices}")
+                logger.info(f"🔍 len(neighbor_indices)={len(neighbor_indices)}")
+                if full_lattice_states is not None:
+                    logger.info(f"🔍 full_lattice_states.shape={full_lattice_states.shape}")
+                else:
+                    logger.info("🔍 full_lattice_states=None")
+                
+                # ВРЕМЕННОЕ РЕШЕНИЕ: обеспечиваем что у каждой клетки есть хотя бы она сама как сосед
+                neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
+                if neighbor_count == 0:
+                    logger.warning(f"⚠️ Клетка {cell_idx} не имеет соседей, добавляем саму себя")
+                    if isinstance(neighbor_indices, torch.Tensor):
+                        neighbor_indices = torch.tensor([cell_idx], device=neighbor_indices.device, dtype=neighbor_indices.dtype)
+                    else:
+                        neighbor_indices = [cell_idx]
                 # Handle batch processing
                 if current_state.dim() == 3:  # [batch, 1, features]
                     batch_size = current_state.shape[0]
@@ -367,6 +386,7 @@ class UnifiedSpatialOptimizer:
                             cell_idx=cell_idx,
                             neighbor_indices=neighbor_indices,
                             spatial_optimizer=self,
+                            full_lattice_states=full_lattice_states,
                         )
                         
                         # Extract result
@@ -402,6 +422,7 @@ class UnifiedSpatialOptimizer:
                     cell_idx=cell_idx,
                     neighbor_indices=neighbor_indices,
                     spatial_optimizer=self,
+                    full_lattice_states=full_lattice_states,
                 )
 
                 # Извлекаем результат

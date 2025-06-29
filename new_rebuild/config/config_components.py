@@ -525,7 +525,8 @@ class TrainingEmbeddingSettings:
     # Эти параметры используются только когда test_mode = True
     test_lattice_dim: int = 8
     # test_lattice_dim: int = 37
-    test_dataset_size: int = 1000
+    test_dataset_size: int = 658  # Для прогоночного обучения используем только 658 сэмплов (из dialogue cache)
+    # test_dataset_size: int = 1000  # Старое значение для быстрых тестов
     test_validation_split: float = 0.2
     test_quick_iterations: int = 10
 
