@@ -1,0 +1,68 @@
+{
+  "gpu": {
+    "cuda_available": true,
+    "gpu_count": 1,
+    "gpu_names": [
+      "NVIDIA GeForce RTX 5090"
+    ],
+    "memory_info": {
+      "gpu_0": {
+        "name": "NVIDIA GeForce RTX 5090",
+        "total_memory_gb": 31.84,
+        "allocated_gb": 0.0,
+        "reserved_gb": 0.0,
+        "free_gb": 31.84
+      }
+    }
+  },
+  "datasets": {
+    "dialogue_cache": {
+      "available": true,
+      "count": 30
+    },
+    "prepared_embeddings": {
+      "available": true,
+      "count": 4
+    },
+    "cache_embeddings": {
+      "available": true,
+      "count": 92
+    },
+    "snli_generator": {
+      "available": true
+    }
+  },
+  "dependencies": {
+    "missing_modules": [],
+    "available_modules": [
+      "torch",
+      "numpy",
+      "datasets",
+      "transformers",
+      "pathlib",
+      "json",
+      "logging"
+    ]
+  },
+  "components": {
+    "available_components": [
+      "new_rebuild.config",
+      "new_rebuild.core.training",
+      "new_rebuild.core.cells",
+      "new_rebuild.core.lattice",
+      "new_rebuild.core.moe",
+      "new_rebuild.utils.device_manager",
+      "new_rebuild.utils.logging"
+    ],
+    "missing_components": []
+  },
+  "dataset_loader": {
+    "success": false,
+    "error": "No module named 'simple_embedding_fallback'",
+    "sample_count": 0
+  },
+  "trainer": {
+    "success": true,
+    "error": null
+  }
+}

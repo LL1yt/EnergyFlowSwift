@@ -1,0 +1,121 @@
+{
+  "dialogue_analysis": {
+    "dialogue_files": 30,
+    "sample_structure": {
+      "questions": {
+        "shape": [
+          4,
+          768
+        ],
+        "dtype": "torch.float32"
+      },
+      "answers": {
+        "shape": [
+          4,
+          768
+        ],
+        "dtype": "torch.float32"
+      },
+      "metadata": {
+        "type": "<class 'list'>",
+        "length": 4
+      }
+    }
+  },
+  "embeddings_analysis": {
+    "embedding_files": 4,
+    "samples": [
+      {
+        "file": "large_embedding_dataset_20250610_172311.pt",
+        "type": "dict",
+        "keys": [
+          "question_embeddings",
+          "answer_embeddings",
+          "teacher_model",
+          "timestamp",
+          "size"
+        ],
+        "question_embeddings": {
+          "shape": [
+            400,
+            768
+          ],
+          "dtype": "torch.float32"
+        },
+        "answer_embeddings": {
+          "shape": [
+            400,
+            768
+          ],
+          "dtype": "torch.float32"
+        }
+      },
+      {
+        "file": "snli_embeddings_109788pairs_distilbert-base-uncased_20250610_212453.pt",
+        "type": "dict",
+        "keys": [
+          "question_embeddings",
+          "answer_embeddings",
+          "teacher_model",
+          "timestamp",
+          "size",
+          "dataset_info",
+          "sample_pairs"
+        ],
+        "question_embeddings": {
+          "shape": [
+            109788,
+            768
+          ],
+          "dtype": "torch.float32"
+        },
+        "answer_embeddings": {
+          "shape": [
+            109788,
+            768
+          ],
+          "dtype": "torch.float32"
+        }
+      },
+      {
+        "file": "snli_embeddings_549048pairs_distilbert-base-uncased_20250610_223323.pt",
+        "type": "dict",
+        "keys": [
+          "question_embeddings",
+          "answer_embeddings",
+          "teacher_model",
+          "timestamp",
+          "size",
+          "dataset_info",
+          "sample_pairs"
+        ],
+        "question_embeddings": {
+          "shape": [
+            549048,
+            768
+          ],
+          "dtype": "torch.float32"
+        },
+        "answer_embeddings": {
+          "shape": [
+            549048,
+            768
+          ],
+          "dtype": "torch.float32"
+        }
+      }
+    ]
+  },
+  "snli_generator": {
+    "snli_script_exists": true,
+    "path": "generate_snli_embedding_dataset.py"
+  },
+  "cache_embeddings": {
+    "cache_files_count": 92,
+    "sample_shape": [
+      94,
+      4096
+    ],
+    "sample_dtype": "torch.float16"
+  }
+}

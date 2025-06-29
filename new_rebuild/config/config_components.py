@@ -73,12 +73,23 @@ class LatticeSettings:
 class ModelSettings:
     """Настройки модели GNN"""
 
-    state_size: int = 32
-    message_dim: int = 16
-    hidden_dim: int = 32
-    neighbor_count: int = 26
-    external_input_size: int = 8
-    target_params: int = 8000
+    # === РАЗМЕРЫ ДЛЯ РЕАЛЬНОГО ОБУЧЕНИЯ 8x8x8 ===
+    state_size: int = 64            # Увеличено для emergent behavior
+    message_dim: int = 32           # Больше для лучшего обмена информацией
+    hidden_dim: int = 128           # Для RTX 5090 можем позволить больше
+    # hidden_dim: int = 32          # Старое значение для маленьких тестов
+    
+    # === ДИНАМИЧЕСКИЙ NEIGHBOR COUNT ===
+    # neighbor_count: int = 26      # Статическое значение - DEPRECATED
+    neighbor_count: int = -1        # -1 означает динамическое определение
+    # Для 8x8x8 куба будет ~26 соседей, для больших кубов больше
+    
+    external_input_size: int = 16   # Увеличено для эмбеддингов
+    # external_input_size: int = 8  # Старое значение
+    
+    target_params: int = 50000      # Увеличено для реального обучения  
+    # target_params: int = 8000     # Старое значение для быстрых тестов
+    
     activation: str = "gelu"
     use_attention: bool = True
     aggregation: str = "attention"
@@ -92,7 +103,7 @@ class NeighborSettings:
     # Стратегия поиска соседей
     finding_strategy: str = "tiered"
     dynamic_count: bool = True
-    base_neighbor_count: int = 26
+    # base_neighbor_count: int = 26
     max_neighbors: int = 20000  # Биологический лимит
 
     # Adaptive Radius настройки
@@ -415,22 +426,29 @@ class AdaptiveChunkerSettings:
 class EmbeddingSettings:
     """Настройки для работы с эмбедингами"""
 
-    # Основные параметры
+    # === НАСТРОЙКИ ДЛЯ РЕАЛЬНОГО ОБУЧЕНИЯ ===
     teacher_model: str = "distilbert-base-uncased"
-    teacher_embedding_dim: int = 768
-    # cube_surface_dim и cube_embedding_dim вычисляются автоматически 
-    # на основе lattice.dimensions через computed properties
+    input_dim: int = 768                  # DistilBERT dimension
+    output_dim: int = 64                  # Для куба 8x8x8 (512/8 = 64)
+    teacher_embedding_dim: int = 768      # Старая совместимость
+    
+    # Параметры проекции для real training
+    use_projection: bool = True
+    projection_layers: List[int] = field(default_factory=lambda: [768, 256, 64])
+    # projection_layers: List[int] = field(default_factory=lambda: [768, 128, 64])  # Альтернатива
 
     # Параметры преобразования
     transformation_type: str = "linear"  # linear, attention, autoencoder, hierarchical
     use_layer_norm: bool = True
-    dropout_rate: float = 0.1
+    dropout_rate: float = 0.1             # Для стабильности
+    # dropout_rate: float = 0.2           # Более агрессивное при overfitting
     use_residual_connections: bool = True
 
-    # Кэширование
+    # === КЭШИРОВАНИЕ ДЛЯ RTX 5090 ===
     cache_embeddings: bool = True
     cache_dir: str = "cache/embeddings"
-    max_cache_size_gb: float = 10.0
+    max_cache_size_gb: float = 24.0       # Увеличено для RTX 5090
+    # max_cache_size_gb: float = 10.0     # Старое значение
 
     # Декодирование
     decoder_model: str = (
@@ -449,41 +467,67 @@ class EmbeddingSettings:
 class TrainingEmbeddingSettings:
     """Расширенные настройки обучения для эмбедингов"""
 
-    # Фазы обучения
-    warmup_epochs: int = 10
-    main_epochs: int = 100
-    fine_tune_epochs: int = 50
+    # === НАСТРОЙКИ ДЛЯ РЕАЛЬНОГО ОБУЧЕНИЯ 8x8x8 ===
+    # test_mode: bool = True              # ТЕСТОВЫЙ РЕЖИМ
+    test_mode: bool = False               # РЕАЛЬНОЕ ОБУЧЕНИЕ
+    
+    # Эпохи обучения для реального training
+    num_epochs: int = 50                  # Основные эпохи для первого эксперимента
+    # warmup_epochs: int = 10             # Старые настройки
+    # main_epochs: int = 100
+    # fine_tune_epochs: int = 50
+    
+    # Интервалы сохранения и валидации
+    validation_interval: int = 1          # Валидация каждую эпоху
+    save_checkpoint_every: int = 5        # Checkpoint каждые 5 эпох
+    log_interval: int = 10                # Лог каждые 10 батчей
+    early_stopping_patience: int = 10     # Early stopping
+    
+    # === LOSS WEIGHTS ДЛЯ РЕАЛЬНОГО ОБУЧЕНИЯ ===
+    reconstruction_weight: float = 1.0    # Основная задача
+    similarity_weight: float = 0.5        # Семантическая похожесть  
+    diversity_weight: float = 0.2         # Разнообразие представлений
+    emergence_weight: float = 0.1         # Emergent behavior
+    
+    # Старые названия для совместимости (DEPRECATED)
+    # reconstruction_loss_weight: float = 1.0
+    # similarity_loss_weight: float = 0.5
+    # diversity_loss_weight: float = 0.1
+    # emergence_loss_weight: float = 0.2
 
-    # Loss функции и веса
-    reconstruction_loss_weight: float = 1.0
-    similarity_loss_weight: float = 0.5
-    diversity_loss_weight: float = 0.1
-    emergence_loss_weight: float = 0.2
+    # === СПЕЦИФИЧНЫЕ ПАРАМЕТРЫ ДЛЯ ЭМБЕДДИНГОВ ===
+    target_embedding_dim: int = 64        # Сжимаем 768 → 64 для куба 8x8x8
+    teacher_model: str = "distilbert-base-uncased"
+    use_teacher_forcing: bool = True
+    lattice_steps: int = 5                # Количество шагов распространения
 
     # Curriculum learning
-    use_curriculum_learning: bool = True
+    use_curriculum_learning: bool = False  # Отключено для первого эксперимента
+    # use_curriculum_learning: bool = True # Включить после успешных тестов
     curriculum_start_difficulty: float = 0.1
     curriculum_end_difficulty: float = 1.0
-    curriculum_schedule: str = "linear"  # linear, exponential, cosine
+    curriculum_schedule: str = "linear"
 
-    # Параметры батчей
-    embedding_batch_size: int = 32
-    gradient_accumulation_steps: int = 4
+    # === БАТЧИ ДЛЯ RTX 5090 ===
+    embedding_batch_size: int = 16        # Оптимально для 32GB памяти
+    # embedding_batch_size: int = 32      # Старое значение
+    gradient_accumulation_steps: int = 2  # Уменьшено для стабильности
 
-    # Улучшенная валидация (пункт 5)
+    # Валидация
     enable_semantic_validation: bool = True
-    enable_probing_tasks: bool = True
-    probing_tasks: List[str] = None  # ["sentiment", "ner", "pos"]
+    enable_probing_tasks: bool = False    # Отключено для первого эксперимента
+    # enable_probing_tasks: bool = True   # Включить после стабилизации
+    probing_tasks: List[str] = None
     visualization_enabled: bool = False
-    visualization_frequency: int = 10  # каждые N эпох
+    visualization_frequency: int = 10
 
-    # Тестовые параметры (закомментируем после тестов)
-    test_mode: bool = True
+    # === ТЕСТОВЫЕ ПАРАМЕТРЫ (ВРЕМЕННО) ===
+    # Эти параметры используются только когда test_mode = True
     test_lattice_dim: int = 8
     # test_lattice_dim: int = 37
     test_dataset_size: int = 1000
     test_validation_split: float = 0.2
-    test_quick_iterations: int = 10  # Для быстрой проверки
+    test_quick_iterations: int = 10
 
     def __post_init__(self):
         if self.probing_tasks is None:
