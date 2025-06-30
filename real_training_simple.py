@@ -113,7 +113,6 @@ def main():
     
     dataloader, dataset_stats = create_training_dataloader(
         config=config,
-        max_samples_per_source=max_samples,
         shuffle=True
     )
     

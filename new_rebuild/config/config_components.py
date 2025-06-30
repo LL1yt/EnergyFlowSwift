@@ -367,7 +367,7 @@ class DeviceSettings:
 class LoggingSettings:
     """Настройки логирования"""
 
-    level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level: str = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     # level: str = "DEBUG"  # Для тестов можно использовать DEBUG
     debug_mode: bool = False  # По умолчанию используем level, а не debug_mode
     log_to_file: bool = True

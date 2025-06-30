@@ -18,8 +18,7 @@ trainer = EmbeddingTrainer(config)
 
 # Create minimal dataloader
 dataloader, stats = create_training_dataloader(
-    config, 
-    max_samples_per_source=50,  # Небольшое количество для теста
+    config,
     shuffle=True
 )
 
