@@ -292,7 +292,9 @@ def setup_logging(
     console_handler.setFormatter(formatter)
 
     # Добавляем фильтры (БЕЗ дедупликации)
-    console_handler.addFilter(DebugModeFilter(debug_mode))
+    # ИСПРАВЛЕНО: Не применяем DebugModeFilter если пользователь явно указал DEBUG уровень
+    if not (level and level.upper() == "DEBUG"):
+        console_handler.addFilter(DebugModeFilter(debug_mode))
     # НЕ добавляем AntiDuplicationFilter - может скрыть реальные проблемы
 
     root_logger.addHandler(console_handler)
