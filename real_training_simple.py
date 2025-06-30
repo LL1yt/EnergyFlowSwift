@@ -81,19 +81,19 @@ def run_training_epoch(trainer: EmbeddingTrainer, dataloader, epoch: int, experi
 def main():
     """Главная функция для запуска реального обучения"""
     
-    print("🚀 STARTING REAL 3D CELLULAR NEURAL NETWORK TRAINING")
-    print("Using CENTRAL CONFIG ONLY (new_rebuild.config)")
-    print("=" * 60)
+    logger.info("🚀 STARTING REAL 3D CELLULAR NEURAL NETWORK TRAINING")
+    logger.info("Using CENTRAL CONFIG ONLY (new_rebuild.config)")
+    logger.info("=" * 60)
     
 
     
     # Проверяем что включен режим реального обучения
     if config.training_embedding.test_mode:
         logger.warning("⚠️ test_mode=True in config! Switch to real training mode in config_components.py")
-        print("\n❌ CONFIGURATION ERROR:")
-        print("test_mode=True in central config!")
-        print("Edit new_rebuild/config/config_components.py:")
-        print("  Change: test_mode: bool = False")
+        logger.error("\n❌ CONFIGURATION ERROR:")
+        logger.error("test_mode=True in central config!")
+        logger.error("Edit new_rebuild/config/config_components.py:")
+        logger.error("  Change: test_mode: bool = False")
         return
     
     logger.info("✅ Real training mode enabled")
@@ -197,11 +197,11 @@ def main():
     with open(experiment_dir / "experiment_summary.json", 'w') as f:
         json.dump(summary, f, indent=2)
     
-    print(f"\n🎉 TRAINING COMPLETED!")
-    print(f"📊 Experiment results saved to: {experiment_dir}")
-    print(f"🏆 Best loss achieved: {best_loss:.6f}")
-    print(f"📈 Total samples processed: {dataset_stats.total_samples}")
-    print(f"\n🚀 Ready for analysis and next steps!")
+    logger.info(f"\n🎉 TRAINING COMPLETED!")
+    logger.info(f"📊 Experiment results saved to: {experiment_dir}")
+    logger.info(f"🏆 Best loss achieved: {best_loss:.6f}")
+    logger.info(f"📈 Total samples processed: {dataset_stats.total_samples}")
+    logger.info(f"\n🚀 Ready for analysis and next steps!")
 
 
 if __name__ == "__main__":

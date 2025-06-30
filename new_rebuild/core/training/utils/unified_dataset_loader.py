@@ -321,8 +321,10 @@ def create_training_dataloader(
 
 def main():
     """Тестируем unified dataset loader"""
-    print("🧪 TESTING UNIFIED DATASET LOADER")
-    print("=" * 50)
+    from ....utils.logging import get_logger
+    logger = get_logger(__name__)
+    logger.info("🧪 TESTING UNIFIED DATASET LOADER")
+    logger.info("=" * 50)
     
     # Используем центральную конфигурацию
     from ....config import SimpleProjectConfig
@@ -338,28 +340,28 @@ def main():
         shuffle=True
     )
     
-    print(f"\n📊 DATASET STATISTICS:")
-    print(f"Total samples: {stats.total_samples}")
-    print(f"Embedding dim: {stats.embedding_dim}")
-    print(f"Source distribution: {stats.source_distribution}")
-    print(f"Type distribution: {stats.type_distribution}")
+    logger.info(f"\n📊 DATASET STATISTICS:")
+    logger.info(f"Total samples: {stats.total_samples}")
+    logger.info(f"Embedding dim: {stats.embedding_dim}")
+    logger.info(f"Source distribution: {stats.source_distribution}")
+    logger.info(f"Type distribution: {stats.type_distribution}")
     
     # Тестируем загрузку нескольких батчей
-    print(f"\n🔄 TESTING BATCH LOADING:")
+    logger.info(f"\n🔄 TESTING BATCH LOADING:")
     for i, batch in enumerate(dataloader):
         embeddings = batch['embedding']  # [batch_size, embedding_dim]
         metadata = batch['metadata']  # List of dicts
         
-        print(f"Batch {i+1}:")
-        print(f"  Embeddings shape: {embeddings.shape}")
-        print(f"  Embeddings dtype: {embeddings.dtype}")
-        print(f"  Metadata samples: {len(metadata)}")
+        logger.info(f"Batch {i+1}:")
+        logger.info(f"  Embeddings shape: {embeddings.shape}")
+        logger.info(f"  Embeddings dtype: {embeddings.dtype}")
+        logger.info(f"  Metadata samples: {len(metadata)}")
         
         if i >= 2:  # Тестируем только первые 3 батча
             break
     
-    print(f"\n✅ Unified Dataset Loader test completed!")
-    print(f"📈 Ready for real training with {stats.total_samples} samples")
+    logger.info(f"\n✅ Unified Dataset Loader test completed!")
+    logger.info(f"📈 Ready for real training with {stats.total_samples} samples")
 
 
 if __name__ == "__main__":

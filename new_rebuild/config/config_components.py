@@ -645,21 +645,19 @@ def validate_config_components(config: Dict[str, Any]) -> bool:
         lattice = config["lattice"]
         model = config["model"]
 
-        # Проверяем размеры
-        if (
-            lattice.total_cells > 10000
-            and not config.get("cache", CacheSettings()).enabled
-        ):
-            print("WARNING: Large lattice without cache may be slow")
+        from ..utils.logging import get_logger
+        logger = get_logger(__name__)
+        if lattice.total_cells > 10000 and not config.get("cache", CacheSettings()).enabled:
+            logger.warning("WARNING: Large lattice without cache may be slow")
 
         # Проверяем совместимость модели
         if model.state_size < 8:
-            print("WARNING: Very small state_size may limit model capacity")
+            logger.warning("WARNING: Very small state_size may limit model capacity")
 
         return True
 
     except Exception as e:
-        print(f"Config validation error: {e}")
+        logger.error(f"Config validation error: {e}")
         return False
 
 
