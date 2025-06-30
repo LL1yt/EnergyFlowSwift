@@ -14,6 +14,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 
+
+def convert_tensors_to_json(obj):
+    """Convert PyTorch tensors to JSON-serializable values."""
+    if isinstance(obj, torch.Tensor):
+        return obj.item() if obj.numel() == 1 else obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: convert_tensors_to_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_tensors_to_json(item) for item in obj]
+    else:
+        return obj
+
 from new_rebuild.config import SimpleProjectConfig
 from new_rebuild.core.training import EmbeddingTrainer
 from new_rebuild.core.training.utils import create_training_dataloader
@@ -67,7 +79,7 @@ def run_training_epoch(trainer: EmbeddingTrainer, dataloader, epoch: int, experi
     
     metrics = {
         "epoch": epoch + 1,
-        "train_losses": train_losses,
+        "train_losses": convert_tensors_to_json(train_losses),
         "epoch_time": epoch_time,
         "timestamp": datetime.now().isoformat()
     }
@@ -180,8 +192,8 @@ def main():
     summary = {
         "experiment_name": experiment_name,
         "total_epochs": epoch + 1,
-        "best_loss": best_loss,
-        "final_loss": current_loss,
+        "best_loss": convert_tensors_to_json(best_loss),
+        "final_loss": convert_tensors_to_json(current_loss),
         "dataset_samples": dataset_stats.total_samples,
         "config_summary": {
             "lattice_size": config.lattice.dimensions,
