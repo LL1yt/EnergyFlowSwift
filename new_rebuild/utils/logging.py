@@ -23,21 +23,21 @@ import hashlib
 
 class UTF8StreamHandler(logging.StreamHandler):
     """Custom StreamHandler that handles UTF-8 encoding for Windows console."""
-    
+
     def emit(self, record):
         try:
             msg = self.format(record)
             stream = self.stream
             # Handle encoding for Windows console
-            if hasattr(stream, 'buffer') and hasattr(stream.buffer, 'write'):
+            if hasattr(stream, "buffer") and hasattr(stream.buffer, "write"):
                 # Use buffer for binary write with UTF-8 encoding
-                stream.buffer.write((msg + self.terminator).encode('utf-8'))
+                stream.buffer.write((msg + self.terminator).encode("utf-8"))
                 stream.buffer.flush()
             else:
                 # Fallback: replace problematic characters
-                safe_msg = msg.encode('ascii', errors='replace').decode('ascii')
+                safe_msg = msg.encode("ascii", errors="replace").decode("ascii")
                 stream.write(safe_msg + self.terminator)
-                if hasattr(stream, 'flush'):
+                if hasattr(stream, "flush"):
                     stream.flush()
         except Exception:
             self.handleError(record)
@@ -207,7 +207,14 @@ class DebugModeFilter(logging.Filter):
 
         # Важные DEBUG сообщения (содержат специальные маркеры)
         message = record.getMessage()
-        important_markers = ["[START] INIT", "[OK]", "[ERROR]", "[WARN]", "ERROR", "CRITICAL"]
+        important_markers = [
+            "[START] INIT",
+            "[OK]",
+            "[ERROR]",
+            "[WARN]",
+            "ERROR",
+            "CRITICAL",
+        ]
 
         return any(marker in message for marker in important_markers)
 
@@ -235,7 +242,7 @@ def setup_logging(
     # Очищаем существующие handlers
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
-    
+
     # Также очищаем handlers у всех существующих логгеров
     for name in list(logging.Logger.manager.loggerDict.keys()):
         logger = logging.getLogger(name)
@@ -253,17 +260,17 @@ def setup_logging(
             "INFO": logging.INFO,
             "WARNING": logging.WARNING,
             "ERROR": logging.ERROR,
-            "CRITICAL": logging.CRITICAL
+            "CRITICAL": logging.CRITICAL,
         }
         log_level = level_map.get(level.upper(), logging.INFO)
     else:
         # По умолчанию INFO
         log_level = logging.INFO
-    
+
     # Устанавливаем уровень
     root_logger.setLevel(log_level)
     console_level = log_level
-    
+
     # Отключаем propagation проблемных логгеров
     logging.getLogger("new_rebuild").propagate = True
 
@@ -292,7 +299,7 @@ def setup_logging(
 
     # File handler (если указан файл)
     if log_file:
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)  # В файл пишем все
         file_handler.setFormatter(formatter)
         # В файл тоже НЕ применяем дедупликацию
@@ -331,12 +338,12 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
             name = "unknown"
 
     logger = logging.getLogger(name)
-    
+
     # Убеждаемся что logger использует UTF-8 handler через propagation
     if not logger.handlers and logger.parent:
         # Если у логгера нет своих handlers, он будет использовать parent handlers
         logger.propagate = True
-    
+
     return logger
 
 
