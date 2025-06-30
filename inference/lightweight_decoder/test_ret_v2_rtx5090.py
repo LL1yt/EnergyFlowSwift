@@ -1,5 +1,5 @@
 """
-🧪 RTX 5090 COMPATIBILITY TEST - Resource-Efficient Transformer v2.0
+[TEST] RTX 5090 COMPATIBILITY TEST - Resource-Efficient Transformer v2.0
 
 RADICAL OPTIMIZATION TEST:
 - Target: <800K parameters vs 62M baseline

@@ -1,14 +1,14 @@
 """
-🧪 GENERATIVE DECODER INTEGRATION TEST - Stage 2.1 Validation
+[TEST] GENERATIVE DECODER INTEGRATION TEST - Stage 2.1 Validation
 
 TESTING SCOPE:
 - [OK] GenerativeDecoder initialization with RET v2.1
-- 🧪 Parameter target achievement (≤800K)
-- 🧪 RTX 5090 compatibility validation  
-- 🧪 Memory reduction effectiveness (≥60% target)
-- 🧪 Generation quality (BLEU score improvement)
-- 🧪 API consistency with PhraseBankDecoder
-- 🧪 Performance benchmarking vs baseline
+- [TEST] Parameter target achievement (≤800K)
+- [TEST] RTX 5090 compatibility validation  
+- [TEST] Memory reduction effectiveness (≥60% target)
+- [TEST] Generation quality (BLEU score improvement)
+- [TEST] API consistency with PhraseBankDecoder
+- [TEST] Performance benchmarking vs baseline
 
 CRITICAL SUCCESS CRITERIA:
 - Parameters ≤ 800K (RET v2.1: 722K [OK])
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 class GenerativeDecoderIntegrationTest(unittest.TestCase):
     """
-    🧪 Comprehensive GenerativeDecoder Integration Test Suite
+    [TEST] Comprehensive GenerativeDecoder Integration Test Suite
     
     Tests all critical aspects of GenerativeDecoder Stage 2.1 integration
     """
@@ -87,7 +87,7 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         # Performance baselines
         self.baseline_memory = self._get_memory_usage()
         
-        logger.info(f"🧪 GenerativeDecoder Integration Test setup complete")
+        logger.info(f"[TEST] GenerativeDecoder Integration Test setup complete")
         logger.info(f"   Device: {self.device}")
         logger.info(f"   Architecture: {self.config.architecture_type}")
         logger.info(f"   Baseline memory: {self.baseline_memory:.2f} MB")
@@ -410,7 +410,7 @@ def run_comprehensive_integration_test():
     """
     
     print("=" * 60)
-    print("🧪 GENERATIVE DECODER INTEGRATION TEST SUITE")
+    print("[TEST] GENERATIVE DECODER INTEGRATION TEST SUITE")
     print("=" * 60)
     print(f"Phase 2.7 Stage 2.1 - GenerativeDecoder + RET v2.1")
     print()

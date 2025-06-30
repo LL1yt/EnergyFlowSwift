@@ -1,5 +1,5 @@
 """
-🧪 RTX 5090 COMPATIBILITY TEST - Resource-Efficient Transformer
+[TEST] RTX 5090 COMPATIBILITY TEST - Resource-Efficient Transformer
 
 Специальный тест для проверки:
 - RTX 5090 edge optimization compatibility

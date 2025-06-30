@@ -85,7 +85,7 @@ class HyperparameterOptimizer:
         # Setup logging
         self._setup_logging()
         
-        print(f"🔬 HyperparameterOptimizer initialized")
+        print(f"[SCIENCE] HyperparameterOptimizer initialized")
         print(f"   Target Q→A similarity: {self.config.target_qa_similarity:.1%}")
         print(f"   Max experiments: {self.config.max_experiments}")
         print(f"   Grid search space: {self._calculate_search_space_size()} configurations")
@@ -123,7 +123,7 @@ class HyperparameterOptimizer:
         core_results = self._run_core_parameter_search()
         
         # Phase 2: Advanced parameter optimization
-        print("\n🔬 Phase 2: Advanced Parameter Optimization")
+        print("\n[SCIENCE] Phase 2: Advanced Parameter Optimization")
         advanced_results = self._run_advanced_parameter_search(core_results)
         
         # Phase 3: Architecture optimization
@@ -186,7 +186,7 @@ class HyperparameterOptimizer:
     
     def _run_advanced_parameter_search(self, core_results: Dict) -> Dict[str, any]:
         """Phase 2: Оптимизация advanced параметров"""
-        print("🔬 Optimizing loss weights and advanced parameters...")
+        print("[SCIENCE] Optimizing loss weights and advanced parameters...")
         
         base_config = core_results["config"]
         best_advanced_config = base_config
@@ -232,7 +232,7 @@ class HyperparameterOptimizer:
                         self.best_qa_similarity = result['qa_similarity']
                         return {"config": test_config, "qa_similarity": result['qa_similarity']}
         
-        print(f"🔬 Advanced search complete. Best: {best_advanced_similarity:.1%}")
+        print(f"[SCIENCE] Advanced search complete. Best: {best_advanced_similarity:.1%}")
         return {"config": best_advanced_config, "qa_similarity": best_advanced_similarity}
     
     def _run_architecture_optimization(self, advanced_results: Dict) -> Dict[str, any]:
@@ -320,7 +320,7 @@ class HyperparameterOptimizer:
         self.current_experiment += 1
         start_time = time.time()
         
-        print(f"  🧪 Experiment {self.current_experiment}: {experiment_name}")
+        print(f"  [TEST] Experiment {self.current_experiment}: {experiment_name}")
         
         try:
             # Создание training system

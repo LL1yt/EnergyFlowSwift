@@ -484,7 +484,7 @@ class EnhancedConfigValidator(ConfigValidator):
     def clear_cache(self):
         """Очистка кэша валидации"""
         self._validation_cache.clear()
-        self.logger.info(f"🧹 Cleared validation cache for {self.section_name}")
+        self.logger.info(f"[CLEAN] Cleared validation cache for {self.section_name}")
     
     def get_validation_stats(self) -> Dict[str, Any]:
         """Статистика валидации"""

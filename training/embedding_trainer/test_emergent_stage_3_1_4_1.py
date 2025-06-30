@@ -1,5 +1,5 @@
 """
-🧪 Test Suite: Stage 3.1.4.1 Emergent Training Infrastructure
+[TEST] Test Suite: Stage 3.1.4.1 Emergent Training Infrastructure
 =============================================================
 
 Comprehensive testing для emergent processing системы:
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 def test_system_initialization():
     """Тест 1: Инициализация emergent training системы"""
-    print("\n🧪 ТЕСТ 1: System Initialization")
+    print("\n[TEST] ТЕСТ 1: System Initialization")
     print("=" * 50)
     
     try:
@@ -108,7 +108,7 @@ def test_system_initialization():
 
 def test_full_cube_gradient_flow():
     """Тест 2: Full cube gradient flow verification"""
-    print("\n🧪 ТЕСТ 2: Full Cube Gradient Flow")
+    print("\n[TEST] ТЕСТ 2: Full Cube Gradient Flow")
     print("=" * 50)
     
     try:
@@ -217,7 +217,7 @@ def test_full_cube_gradient_flow():
 
 def test_multi_objective_loss():
     """Тест 3: Multi-objective loss function"""
-    print("\n🧪 ТЕСТ 3: Multi-Objective Loss Function")
+    print("\n[TEST] ТЕСТ 3: Multi-Objective Loss Function")
     print("=" * 50)
     
     try:
@@ -293,7 +293,7 @@ def test_multi_objective_loss():
 
 def test_spatial_propagation():
     """Тест 4: Spatial propagation system"""
-    print("\n🧪 ТЕСТ 4: Spatial Propagation System")
+    print("\n[TEST] ТЕСТ 4: Spatial Propagation System")
     print("=" * 50)
     
     try:
@@ -361,7 +361,7 @@ def test_spatial_propagation():
 
 def test_training_step_integration():
     """Тест 5: Full training step integration"""
-    print("\n🧪 ТЕСТ 5: Training Step Integration")
+    print("\n[TEST] ТЕСТ 5: Training Step Integration")
     print("=" * 50)
     
     try:
@@ -434,7 +434,7 @@ def test_training_step_integration():
 
 def test_emergent_behavior_indicators():
     """Тест 6: Emergent behavior indicators"""
-    print("\n🧪 ТЕСТ 6: Emergent Behavior Indicators")
+    print("\n[TEST] ТЕСТ 6: Emergent Behavior Indicators")
     print("=" * 50)
     
     try:

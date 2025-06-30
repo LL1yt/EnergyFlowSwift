@@ -132,7 +132,7 @@ class AdvancedTokenizer:
         self.token_to_id = {**self.special_tokens, **self.word_tokens}
         self.id_to_token = {v: k for k, v in self.token_to_id.items()}
         
-        logger.info(f"🔤 AdvancedTokenizer initialized with {len(self.token_to_id)} tokens")
+        logger.info(f"[TEXT] AdvancedTokenizer initialized with {len(self.token_to_id)} tokens")
     
     def encode(self, text: str) -> List[int]:
         """Simple text encoding"""
@@ -567,7 +567,7 @@ class GenerativeDecoder(nn.Module):
         self.decoder_model.load_state_dict(checkpoint['model_state_dict'])
         self.generation_stats = checkpoint.get('generation_stats', self.generation_stats)
         
-        logger.info(f"📂 Model loaded from {path}")
+        logger.info(f"[DIRECTORY] Model loaded from {path}")
 
 
 def create_generative_decoder(

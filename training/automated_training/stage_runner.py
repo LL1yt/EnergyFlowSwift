@@ -77,7 +77,7 @@ class TrainingStageRunner:
             temp_config_path = self._generate_temp_config(stage_config)
             if not temp_config_path:
                 logger.error(
-                    f"❌ Stage {stage_config.stage} failed: Could not generate temp config."
+                    f"[ERROR] Stage {stage_config.stage} failed: Could not generate temp config."
                 )
                 return None
 
@@ -90,7 +90,7 @@ class TrainingStageRunner:
 
             if self.verbose:
                 logger.info(
-                    f"🔄 Starting Stage {stage_config.stage}: {stage_config.description}"
+                    f"[SYNC] Starting Stage {stage_config.stage}: {stage_config.description}"
                 )
                 logger.info(
                     f"   Dataset: {stage_config.dataset_limit:,} samples, {stage_config.epochs} epochs"
@@ -110,7 +110,7 @@ class TrainingStageRunner:
 
             if result is None:
                 logger.error(
-                    f"❌ Stage {stage_config.stage} failed after {actual_time:.1f}min"
+                    f"[ERROR] Stage {stage_config.stage} failed after {actual_time:.1f}min"
                 )
                 return None
 
@@ -119,7 +119,7 @@ class TrainingStageRunner:
             )
 
         except Exception as e:
-            logger.error(f"❌ Stage {stage_config.stage} exception: {e}")
+            logger.error(f"[ERROR] Stage {stage_config.stage} exception: {e}")
             return None
         finally:
             # Очищаем временные файлы
@@ -209,7 +209,7 @@ class TrainingStageRunner:
         """
         PHASE 4 CRITICAL: Принудительно применяет hybrid NCA+gMLP архитектуру
         """
-        logger.info("🔧 PHASE 4: Applying hybrid NCA+gMLP architecture...")
+        logger.info("[TOOL] PHASE 4: Applying hybrid NCA+gMLP architecture...")
 
         # 1. Устанавливаем hybrid mode
         config_data["architecture"] = {
@@ -278,7 +278,7 @@ class TrainingStageRunner:
             }
         )
 
-        logger.info("✅ PHASE 4: Hybrid architecture configuration applied!")
+        logger.info("[OK] PHASE 4: Hybrid architecture configuration applied!")
         logger.info(f"   - Architecture: hybrid NCA+gMLP")
         logger.info(f"   - Lattice: 16×16×16 = 4096 cells")
         logger.info(f"   - Neighbors: 26 (3D Moore)")
@@ -324,7 +324,7 @@ class TrainingStageRunner:
         if optimization_section:
             config_data["optimization"] = optimization_section
             logger.info(
-                f"🔧 Applied memory optimizations: {stage_config.memory_optimizations}"
+                f"[TOOL] Applied memory optimizations: {stage_config.memory_optimizations}"
             )
 
     def _apply_progressive_scaling(
@@ -370,10 +370,10 @@ class TrainingStageRunner:
                 config_data["training"]["gradient_checkpointing"] = True
 
             logger.info(
-                f"🚀 GPU configuration enabled: {torch.cuda.get_device_name(0)}"
+                f"[START] GPU configuration enabled: {torch.cuda.get_device_name(0)}"
             )
         else:
-            logger.warning("⚠️  CUDA not available - using CPU")
+            logger.warning("[WARN]  CUDA not available - using CPU")
             if "training" not in config_data:
                 config_data["training"] = {}
             config_data["training"]["device"] = "cpu"
@@ -406,10 +406,10 @@ class TrainingStageRunner:
                 config_data["training"]["gradient_checkpointing"] = True
 
             logger.info(
-                f"🚀 GPU configuration enabled: {torch.cuda.get_device_name(0)}"
+                f"[START] GPU configuration enabled: {torch.cuda.get_device_name(0)}"
             )
         else:
-            logger.warning("⚠️  CUDA not available - using CPU")
+            logger.warning("[WARN]  CUDA not available - using CPU")
             if "training" not in config_data:
                 config_data["training"] = {}
             config_data["training"]["device"] = "cpu"
@@ -476,7 +476,7 @@ class TrainingStageRunner:
 
         if process_result["return_code"] != 0:
             logger.error(
-                f"❌ Stage {config.stage} failed (exit code: {process_result['return_code']})"
+                f"[ERROR] Stage {config.stage} failed (exit code: {process_result['return_code']})"
             )
             stderr_lines = process_result["stderr"].split("\n")
             if stderr_lines:
@@ -508,7 +508,7 @@ class TrainingStageRunner:
             final_similarity = None
 
         if final_similarity or actual_time > estimated_time * 1.5:
-            logger.warning(f"✅ Stage {config.stage}: {actual_time:.1f}min")
+            logger.warning(f"[OK] Stage {config.stage}: {actual_time:.1f}min")
             if final_similarity:
                 logger.warning(f"   Similarity: {final_similarity:.3f}")
 

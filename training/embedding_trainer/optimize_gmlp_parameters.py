@@ -121,7 +121,7 @@ def optimize_gmlp_config() -> Dict[str, Any]:
 
 def test_optimized_config(config: Dict[str, Any]):
     """Test optimized configuration"""
-    print(f"\n🧪 Testing Optimized Configuration")
+    print(f"\n[TEST] Testing Optimized Configuration")
     print("=" * 40)
     
     try:

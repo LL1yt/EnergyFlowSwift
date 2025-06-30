@@ -113,7 +113,7 @@ class OptimizationConfig:
 
 class AdvancedQualityAssessment:
     """
-    🔬 ПРОДВИНУТАЯ СИСТЕМА ОЦЕНКИ КАЧЕСТВА
+    [SCIENCE] ПРОДВИНУТАЯ СИСТЕМА ОЦЕНКИ КАЧЕСТВА
     
     Stage 2.3 enhancement для GenerativeDecoder:
     - Реальные BLEU/ROUGE/BERTScore метрики
@@ -144,7 +144,7 @@ class AdvancedQualityAssessment:
         else:
             self.bert_model = None
         
-        logger.info("🔬 AdvancedQualityAssessment инициализирована")
+        logger.info("[SCIENCE] AdvancedQualityAssessment инициализирована")
     
     def assess_comprehensive_quality(self, 
                                    generated_text: str, 
@@ -590,7 +590,7 @@ class GenerationParameterOptimizer:
             
             # Early stopping
             if patience_counter >= self.config.patience:
-                logger.info(f"🛑 Early stopping на iteration {iteration} (patience={self.config.patience})")
+                logger.info(f"[STOP] Early stopping на iteration {iteration} (patience={self.config.patience})")
                 break
         
         # Финальные результаты
@@ -766,7 +766,7 @@ def create_quality_optimizer(target_bleu: float = 0.45,
 
 if __name__ == "__main__":
     # Тестирование системы
-    print("🔬 Testing Quality Optimization System...")
+    print("[SCIENCE] Testing Quality Optimization System...")
     
     # Test quality assessment
     assessor = AdvancedQualityAssessment(OptimizationConfig())

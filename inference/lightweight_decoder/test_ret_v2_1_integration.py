@@ -1,12 +1,12 @@
 """
-🧪 RET v2.1 ULTRA-COMPACT - Integration Test Suite
+[TEST] RET v2.1 ULTRA-COMPACT - Integration Test Suite
 
 TESTING SCOPE:
 - [OK] Parameter target achievement (722K / 800K)
-- 🧪 RTX 5090 optimization effectiveness  
-- 🧪 Memory reduction validation (60% target)
-- 🧪 Speed performance maintenance
-- 🧪 Integration with GenerativeDecoder
+- [TEST] RTX 5090 optimization effectiveness  
+- [TEST] Memory reduction validation (60% target)
+- [TEST] Speed performance maintenance
+- [TEST] Integration with GenerativeDecoder
 
 CRITICAL SUCCESS CRITERIA:
 - Parameters ≤ 800K (ACHIEVED: 722K [OK])
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 class RETv21IntegrationTest(unittest.TestCase):
     """
-    🧪 Comprehensive RET v2.1 Integration Test Suite
+    [TEST] Comprehensive RET v2.1 Integration Test Suite
     
     Tests all critical aspects of RET v2.1 ULTRA-COMPACT architecture
     """
@@ -58,7 +58,7 @@ class RETv21IntegrationTest(unittest.TestCase):
         # Performance baselines
         self.baseline_memory = self._get_memory_usage()
         
-        logger.info(f"🧪 Test setup complete")
+        logger.info(f"[TEST] Test setup complete")
         logger.info(f"   Device: {self.device}")
         logger.info(f"   Baseline memory: {self.baseline_memory:.2f} MB")
     
@@ -296,7 +296,7 @@ class RETv21IntegrationTest(unittest.TestCase):
 def run_comprehensive_test():
     """Run comprehensive RET v2.1 test suite"""
     
-    print("🧪 Starting RET v2.1 ULTRA-COMPACT Integration Test Suite...")
+    print("[TEST] Starting RET v2.1 ULTRA-COMPACT Integration Test Suite...")
     print("="*60)
     
     # Create test suite

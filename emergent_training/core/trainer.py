@@ -77,7 +77,7 @@ class EmergentCubeTrainer(nn.Module):
             config_dict = {"error": "Failed to serialize EmergentTrainingConfig"}
 
         logger.info(
-            f"🚀 INIT EmergentCubeTrainer @ {timestamp}\n"
+            f"[START] INIT EmergentCubeTrainer @ {timestamp}\n"
             f"     FROM: {caller_info}\n"
             f"     WITH_CONFIG: {json.dumps(config_dict, indent=2, default=str)}"
         )
@@ -99,7 +99,7 @@ class EmergentCubeTrainer(nn.Module):
         """Initializes all sub-modules of the trainer."""
         # Choose cell architecture based on configuration
         if self.config.enable_nca:
-            logger.info("🔬 Using NCA Cell Architecture")
+            logger.info("[SCIENCE] Using NCA Cell Architecture")
             if hasattr(self.config, "nca_config") and self.config.nca_config:
                 # Use EmergentNCACell for advanced features
                 self.cell = create_emergent_nca_cell_from_config(

@@ -67,7 +67,7 @@ class Lattice3D(nn.Module, PlasticityMixin, ClusteringMixin):
             config_dict = {"error": "Failed to serialize config"}
 
         self.logger.info(
-            f"🚀 INIT Lattice3D @ {timestamp}\n"
+            f"[START] INIT Lattice3D @ {timestamp}\n"
             f"     FROM: {caller_info}\n"
             f"     WITH_CONFIG: {json.dumps(config_dict, indent=2, default=str)}"
         )

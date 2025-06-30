@@ -5,10 +5,10 @@ import torch
 from new_rebuild.config import SimpleProjectConfig
 from new_rebuild.core.lattice.lattice import Lattice3D
 
-print("🔍 Простой анализ проблемы с соседями...")
+print("[SEARCH] Простой анализ проблемы с соседями...")
 
 config = SimpleProjectConfig()
-print(f"📏 Lattice dimensions: {config.lattice.dimensions}")
+print(f"[RULER] Lattice dimensions: {config.lattice.dimensions}")
 
 # Создаем lattice
 lattice = Lattice3D()
@@ -19,15 +19,15 @@ num_cells = config.lattice.total_cells
 state_size = config.model.state_size
 test_states = torch.randn(batch_size, num_cells, state_size)
 
-print(f"📊 Test states shape: {test_states.shape}")
-print(f"📊 Total cells: {num_cells}")
+print(f"[DATA] Test states shape: {test_states.shape}")
+print(f"[DATA] Total cells: {num_cells}")
 
 # Устанавливаем состояния
 lattice.states = test_states
 
 # Анализируем spatial optimizer
-print(f"🔍 Spatial optimizer: {type(lattice.spatial_optimizer).__name__}")
-print(f"🔍 MoE processor set: {lattice.spatial_optimizer.moe_processor is not None}")
+print(f"[SEARCH] Spatial optimizer: {type(lattice.spatial_optimizer).__name__}")
+print(f"[SEARCH] MoE processor set: {lattice.spatial_optimizer.moe_processor is not None}")
 
 # Проверим несколько клеток в кубе 8x8x8
 # Углы: (0,0,0)=0, (7,7,7)=511
@@ -35,7 +35,7 @@ print(f"🔍 MoE processor set: {lattice.spatial_optimizer.moe_processor is not 
 # Центр: (4,4,4)=260
 test_cells = [0, 32, 260, 479, 511]
 
-print("\n🔍 Анализ клеток:")
+print("\n[SEARCH] Анализ клеток:")
 for cell_idx in test_cells:
     # Конвертируем linear index в 3D координаты
     z = cell_idx // 64  # 8*8
@@ -53,4 +53,4 @@ for cell_idx in test_cells:
     
     print(f"  Cell {cell_idx:3d} at {coords}: {cell_type}")
 
-print("\n✅ Analysis completed")
+print("\n[OK] Analysis completed")

@@ -1,11 +1,11 @@
 """
-🔤 PHRASE BANK DECODER - Декодирование через поиск фраз
+[TEXT] PHRASE BANK DECODER - Декодирование через поиск фраз
 
 Реализует декодирование эмбедингов в текст через поиск наиболее семантически
 близких фраз в предобученном phrase bank.
 
 Phase 2.7.1 - PhraseBankDecoder Implementation
-Phase 2.7.2 - STAGE 1.2 OPTIMIZATION ✨
+Phase 2.7.2 - STAGE 1.2 OPTIMIZATION [NEW]
 Phase 2.7.3 - STAGE 1.3 PRODUCTION READINESS [START]
 """
 

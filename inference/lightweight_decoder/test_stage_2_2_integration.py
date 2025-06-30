@@ -1,5 +1,5 @@
 """
-🧪 Stage 2.2: Advanced Optimization & Performance Validation
+[TEST] Stage 2.2: Advanced Optimization & Performance Validation
 
 TESTING SCOPE:
 - [OK] RET v2.1 integration в GenerativeDecoder
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 class Stage22IntegrationTest(unittest.TestCase):
     """
-    🧪 Stage 2.2: Advanced Optimization & Performance Validation
+    [TEST] Stage 2.2: Advanced Optimization & Performance Validation
     
     Comprehensive integration test для RET v2.1 → GenerativeDecoder
     """
@@ -70,7 +70,7 @@ class Stage22IntegrationTest(unittest.TestCase):
         # Note: PhraseBankDecoder comparison skipped due to import issues
         self.phrase_decoder_available = False
         
-        logger.info(f"🧪 Stage 2.2 Test setup complete")
+        logger.info(f"[TEST] Stage 2.2 Test setup complete")
         logger.info(f"   Device: {self.device}")
         logger.info(f"   GenerativeDecoder architecture: {self.config.architecture_type}")
         logger.info(f"   Parameter target: {self.config.target_parameters:,}")
@@ -297,8 +297,8 @@ class Stage22IntegrationTest(unittest.TestCase):
         logger.info(f"   [OK] Unified interface VALIDATED!")
     
     def test_08_production_readiness_verification(self):
-        """🏭 TEST 8: Production Readiness Verification"""
-        logger.info("🏭 TEST 8: Production Readiness Verification")
+        """[FACTORY] TEST 8: Production Readiness Verification"""
+        logger.info("[FACTORY] TEST 8: Production Readiness Verification")
         
         # Test batch processing
         batch_embeddings = torch.randn(3, 768, device=self.device)

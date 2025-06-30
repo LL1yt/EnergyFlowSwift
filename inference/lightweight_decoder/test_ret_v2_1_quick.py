@@ -164,7 +164,7 @@ def test_model_info():
 def run_quick_test_suite():
     """[START] Run Quick Test Suite"""
     
-    print("🧪" + "="*50)
+    print("[TEST]" + "="*50)
     print("[START] RET v2.1 ULTRA-COMPACT - QUICK TEST SUITE")
     print("⏱️ Expected time: <30 seconds")
     print("="*52)

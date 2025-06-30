@@ -57,7 +57,7 @@ def main():
     if args.test_only:
         args.max_experiments = 3  # Минимум для тестирования
         args.quick = True
-        print("🧪 Test mode: Running minimal experiments for system validation")
+        print("[TEST] Test mode: Running minimal experiments for system validation")
     
     start_time = time.time()
     
@@ -84,7 +84,7 @@ def main():
         improvement = results.get('improvement_from_stage_2_3', 0)
         print(f"[CHART] Improvement from Stage 2.3: +{improvement:.1%}")
         
-        print(f"🧪 Total experiments: {results.get('total_experiments', 0)}")
+        print(f"[TEST] Total experiments: {results.get('total_experiments', 0)}")
         print(f"[OK] Success rate: {results.get('success_rate', 0):.1%}")
         print(f"⏱️ Total time: {total_time:.1f} seconds")
         
@@ -199,7 +199,7 @@ def print_next_steps_recommendations(results: dict, args: argparse.Namespace):
 
 def test_system_readiness():
     """Тестирование готовности системы"""
-    print("🧪 Testing system readiness...")
+    print("[TEST] Testing system readiness...")
     
     try:
         # Тест импортов
@@ -221,13 +221,13 @@ def test_system_readiness():
 
 
 if __name__ == "__main__":
-    print("🔬 STAGE 2.4 HYPERPARAMETER OPTIMIZATION LAUNCHER")
+    print("[SCIENCE] STAGE 2.4 HYPERPARAMETER OPTIMIZATION LAUNCHER")
     print("[TARGET] Goal: Achieve 50%+ Q→A similarity breakthrough!")
     print()
     
     # Тестирование системы
     if not test_system_readiness():
-        print("🛑 System not ready. Please check dependencies.")
+        print("[STOP] System not ready. Please check dependencies.")
         sys.exit(1)
     
     # Запуск оптимизации

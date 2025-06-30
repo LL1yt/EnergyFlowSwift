@@ -9,68 +9,68 @@ import re
 
 # Mapping of Unicode emojis to ASCII equivalents
 EMOJI_REPLACEMENTS = {
-    "✅": "[OK]",
-    "🚀": "[START]",
-    "⚠️": "[WARN]",
-    "❌": "[ERROR]",
-    "🔧": "[TOOL]",
-    "📊": "[DATA]",
-    "💡": "[IDEA]",
-    "🎯": "[TARGET]",
-    "✨": "[NEW]",
-    "🐛": "[BUG]",
-    "🔥": "[HOT]",
-    "⭐": "[STAR]",
-    "🌟": "[SHINE]",
-    "📈": "[UP]",
-    "📉": "[DOWN]",
-    "🔄": "[SYNC]",
-    "🏆": "[WIN]",
-    "🎉": "[PARTY]",
-    "💪": "[STRONG]",
-    "🚨": "[ALERT]",
-    "📝": "[NOTE]",
-    "🔍": "[SEARCH]",
-    "⚡": "[FAST]",
-    "🛠️": "[BUILD]",
-    "🎨": "[ART]",
-    "🧪": "[TEST]",
-    "🔬": "[SCIENCE]",
-    "📚": "[LEARN]",
-    "💻": "[COMPUTER]",
-    "🖥️": "[DESKTOP]",
-    "📱": "[PHONE]",
-    "🖨️": "[PRINTER]",
-    "🗂️": "[FOLDER]",
-    "📂": "[DIRECTORY]",
-    "📁": "[FILE]",
-    "📅": "[CALENDAR]",
-    "⏳": "[TIME]",
-    "⏰": "[ALARM]",
-    "🔔": "[BELL]",
-    "🔒": "[LOCK]",
-    "🔓": "[UNLOCK]",
-    "🛑": "[STOP]",
-    "🧹": "[CLEAN]",
-    "🧼": "[WASH]",
-    "🧽": "[SPRAY]",
-    "🔤": "[TEXT]",
-    "🔢": "[NUMBER]",
-    "🔣": "[SYMBOL]",
-    "🗄️": "[ARCHIVE]",
-    "📏": "[RULER]",
-    "🏎️": "[RACE]",
-    "🏁": "[START]",
-    "🏭": "[FACTORY]",
-    "🏠": "[HOME]",
-    "🏡": "[HOUSE]",
-    "🏫": "[SCHOOL]",
-    "🏢": "[OFFICE]",
-    "🏥": "[HOSPITAL]",
-    "🏦": "[BANK]",
-    "💾": "[DISK]",
-    "💿": "[CD]",
-    "📀": "[DISK]",
+    "[OK]": "[OK]",
+    "[START]": "[START]",
+    "[WARN]": "[WARN]",
+    "[ERROR]": "[ERROR]",
+    "[TOOL]": "[TOOL]",
+    "[DATA]": "[DATA]",
+    "[IDEA]": "[IDEA]",
+    "[TARGET]": "[TARGET]",
+    "[NEW]": "[NEW]",
+    "[BUG]": "[BUG]",
+    "[HOT]": "[HOT]",
+    "[STAR]": "[STAR]",
+    "[SHINE]": "[SHINE]",
+    "[UP]": "[UP]",
+    "[DOWN]": "[DOWN]",
+    "[SYNC]": "[SYNC]",
+    "[WIN]": "[WIN]",
+    "[PARTY]": "[PARTY]",
+    "[STRONG]": "[STRONG]",
+    "[ALERT]": "[ALERT]",
+    "[NOTE]": "[NOTE]",
+    "[SEARCH]": "[SEARCH]",
+    "[FAST]": "[FAST]",
+    "[BUILD]": "[BUILD]",
+    "[ART]": "[ART]",
+    "[TEST]": "[TEST]",
+    "[SCIENCE]": "[SCIENCE]",
+    "[LEARN]": "[LEARN]",
+    "[COMPUTER]": "[COMPUTER]",
+    "[DESKTOP]": "[DESKTOP]",
+    "[PHONE]": "[PHONE]",
+    "[PRINTER]": "[PRINTER]",
+    "[FOLDER]": "[FOLDER]",
+    "[DIRECTORY]": "[DIRECTORY]",
+    "[FILE]": "[FILE]",
+    "[CALENDAR]": "[CALENDAR]",
+    "[TIME]": "[TIME]",
+    "[ALARM]": "[ALARM]",
+    "[BELL]": "[BELL]",
+    "[LOCK]": "[LOCK]",
+    "[UNLOCK]": "[UNLOCK]",
+    "[STOP]": "[STOP]",
+    "[CLEAN]": "[CLEAN]",
+    "[WASH]": "[WASH]",
+    "[SPRAY]": "[SPRAY]",
+    "[TEXT]": "[TEXT]",
+    "[NUMBER]": "[NUMBER]",
+    "[SYMBOL]": "[SYMBOL]",
+    "[ARCHIVE]": "[ARCHIVE]",
+    "[RULER]": "[RULER]",
+    "[RACE]": "[RACE]",
+    "[START]": "[START]",
+    "[FACTORY]": "[FACTORY]",
+    "[HOME]": "[HOME]",
+    "[HOUSE]": "[HOUSE]",
+    "[SCHOOL]": "[SCHOOL]",
+    "[OFFICE]": "[OFFICE]",
+    "[HOSPITAL]": "[HOSPITAL]",
+    "[BANK]": "[BANK]",
+    "[DISK]": "[DISK]",
+    "[CD]": "[CD]",
+    "[DISK]": "[DISK]",
 }
 
 
@@ -101,22 +101,41 @@ def fix_file(filepath):
 
 
 def main():
-    """Main function to process all Python files in new_rebuild directory."""
-    root_dir = "new_rebuild"
-    if not os.path.exists(root_dir):
-        print(f"Directory {root_dir} not found!")
-        return
-
+    """Main function to process all Python files in the project."""
+    # Directories to check
+    dirs_to_check = [
+        "new_rebuild",
+        "core", 
+        "data",
+        "training",
+        "inference",
+        "utils",
+        "emergent_training",
+        "dynamic_training",
+        "production_training",
+        "smart_resume_training"
+    ]
+    
     fixed_count = 0
     total_count = 0
-
-    for root, dirs, files in os.walk(root_dir):
-        for file in files:
-            if file.endswith(".py"):
-                filepath = os.path.join(root, file)
-                total_count += 1
-                if fix_file(filepath):
-                    fixed_count += 1
+    
+    # Also check root level Python files
+    for file in os.listdir("."):
+        if file.endswith(".py"):
+            total_count += 1
+            if fix_file(file):
+                fixed_count += 1
+    
+    # Check subdirectories
+    for dir_name in dirs_to_check:
+        if os.path.exists(dir_name):
+            for root, dirs, files in os.walk(dir_name):
+                for file in files:
+                    if file.endswith(".py"):
+                        filepath = os.path.join(root, file)
+                        total_count += 1
+                        if fix_file(filepath):
+                            fixed_count += 1
 
     print(f"\nProcessed {total_count} files, fixed {fixed_count} files")
 

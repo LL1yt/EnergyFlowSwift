@@ -270,7 +270,7 @@ class ModelWeightsManager:
                 backup_file.unlink()
                 print(f"🗑️ Удален старый backup: {backup_file.name}")
             
-            print(f"🧹 Очищено {len(old_backups)} старых backup файлов")
+            print(f"[CLEAN] Очищено {len(old_backups)} старых backup файлов")
 
 def main():
     """Демонстрация работы с менеджером весов"""

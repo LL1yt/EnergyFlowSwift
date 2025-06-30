@@ -13,5 +13,5 @@ dataloader, stats = create_training_dataloader(config, max_samples_per_source=10
 for batch in dataloader:
     print(f'Testing batch with shape: {batch[embedding].shape}')
     losses = trainer.train_epoch(dataloader)
-    print(f'✅ Training successful! Losses: {losses}')
+    print(f'[OK] Training successful! Losses: {losses}')
     break

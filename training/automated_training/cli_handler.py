@@ -51,10 +51,10 @@ def handle_show_config_test(args: argparse.Namespace):
         )
 
         fits = total_estimated_time / 60 <= args.max_hours
-        logger.warning(f"Fits in {args.max_hours}h: {'✅' if fits else '❌'}")
+        logger.warning(f"Fits in {args.max_hours}h: {'[OK]' if fits else '[ERROR]'}")
 
     except Exception as e:
-        logger.error(f"❌ Failed to show config: {e}")
+        logger.error(f"[ERROR] Failed to show config: {e}")
         sys.exit(1)
 
 
@@ -81,6 +81,6 @@ def handle_run_automated_training(args: argparse.Namespace):
     except KeyboardInterrupt:
         logger.warning("⏹️ Training interrupted by user")
     except Exception as e:
-        logger.error(f"❌ Training failed: {e}")
+        logger.error(f"[ERROR] Training failed: {e}")
         traceback.print_exc()
         sys.exit(1)

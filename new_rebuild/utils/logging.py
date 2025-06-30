@@ -21,6 +21,28 @@ import threading
 import hashlib
 
 
+class UTF8StreamHandler(logging.StreamHandler):
+    """Custom StreamHandler that handles UTF-8 encoding for Windows console."""
+    
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            # Handle encoding for Windows console
+            if hasattr(stream, 'buffer') and hasattr(stream.buffer, 'write'):
+                # Use buffer for binary write with UTF-8 encoding
+                stream.buffer.write((msg + self.terminator).encode('utf-8'))
+                stream.buffer.flush()
+            else:
+                # Fallback: replace problematic characters
+                safe_msg = msg.encode('ascii', errors='replace').decode('ascii')
+                stream.write(safe_msg + self.terminator)
+                if hasattr(stream, 'flush'):
+                    stream.flush()
+        except Exception:
+            self.handleError(record)
+
+
 def _get_caller_info_legacy() -> str:
     """
     Интегрированная функция из core/log_utils.py
@@ -213,6 +235,12 @@ def setup_logging(
     # Очищаем существующие handlers
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
+    
+    # Также очищаем handlers у всех существующих логгеров
+    for name in list(logging.Logger.manager.loggerDict.keys()):
+        logger = logging.getLogger(name)
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
 
     # Определяем уровень логирования
     if debug_mode:
@@ -235,6 +263,9 @@ def setup_logging(
     # Устанавливаем уровень
     root_logger.setLevel(log_level)
     console_level = log_level
+    
+    # Отключаем propagation проблемных логгеров
+    logging.getLogger("new_rebuild").propagate = True
 
     # Создаем форматтер (выбираем тип в зависимости от настроек)
     if debug_mode:
@@ -248,8 +279,8 @@ def setup_logging(
     else:
         formatter = ModuleTrackingFormatter(format_str)
 
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
+    # Console handler with UTF-8 support
+    console_handler = UTF8StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)
     console_handler.setFormatter(formatter)
 
@@ -299,7 +330,14 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         else:
             name = "unknown"
 
-    return logging.getLogger(name)
+    logger = logging.getLogger(name)
+    
+    # Убеждаемся что logger использует UTF-8 handler через propagation
+    if not logger.handlers and logger.parent:
+        # Если у логгера нет своих handlers, он будет использовать parent handlers
+        logger.propagate = True
+    
+    return logger
 
 
 def log_init(component_name: str, **kwargs) -> None:

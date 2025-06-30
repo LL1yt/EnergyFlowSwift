@@ -58,9 +58,9 @@ def log_stage_complete(stage: int, result: Dict[str, Any]):
     actual_time = result.get("actual_time_minutes", 0)
 
     if success:
-        msg = f"✅ Stage {stage} completed successfully in {actual_time:.1f} minutes."
+        msg = f"[OK] Stage {stage} completed successfully in {actual_time:.1f} minutes."
         logger.warning(msg)
     else:
         error_msg = result.get("error_message", "Unknown error")
-        msg = f"❌ Stage {stage} failed after {actual_time:.1f} minutes. Reason: {error_msg}"
+        msg = f"[ERROR] Stage {stage} failed after {actual_time:.1f} minutes. Reason: {error_msg}"
         logger.error(msg)

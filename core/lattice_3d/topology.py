@@ -65,7 +65,7 @@ class NeighborTopology:
             config_dict = {"error": "Failed to serialize config"}
 
         logger.info(
-            f"🚀 INIT NeighborTopology @ {timestamp}\n"
+            f"[START] INIT NeighborTopology @ {timestamp}\n"
             f"     FROM: {caller_info}\n"
             f"     WITH_CONFIG: {json.dumps(config_dict, indent=2, default=str)}"
         )

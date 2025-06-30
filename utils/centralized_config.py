@@ -41,14 +41,14 @@ class CentralizedConfig:
             if config_file.exists():
                 with open(config_file, "r", encoding="utf-8") as f:
                     self._config = yaml.safe_load(f)
-                logger.info(f"✅ Loaded config from {self.config_path}")
+                logger.info(f"[OK] Loaded config from {self.config_path}")
             else:
                 logger.warning(
-                    f"⚠️ Config file not found: {self.config_path}, using defaults"
+                    f"[WARN] Config file not found: {self.config_path}, using defaults"
                 )
                 self._config = self._get_default_config()
         except Exception as e:
-            logger.error(f"❌ Failed to load config: {e}")
+            logger.error(f"[ERROR] Failed to load config: {e}")
             self._config = self._get_default_config()
 
     def _get_default_config(self) -> Dict[str, Any]:
@@ -211,7 +211,7 @@ class CentralizedConfig:
         if section not in self._config:
             self._config[section] = {}
         self._config[section][key] = value
-        logger.info(f"🔧 Updated config: {section}.{key} = {value}")
+        logger.info(f"[TOOL] Updated config: {section}.{key} = {value}")
 
     def log_config_summary(self):
         """Логирование сводки конфигурации"""
@@ -271,6 +271,6 @@ def get_default_neighbor_count() -> int:
 if __name__ == "__main__":
     # Тестирование
     config = get_centralized_config()
-    print("🧪 Testing Centralized Config:")
+    print("[TEST] Testing Centralized Config:")
     print(f"   NCA config: {config.get_nca_config()}")
     print(f"   gMLP config: {config.get_gmlp_config()}")

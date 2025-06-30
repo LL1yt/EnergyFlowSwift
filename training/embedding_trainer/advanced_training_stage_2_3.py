@@ -243,7 +243,7 @@ class AdvancedTrainingStage23:
             
             # Early stopping check
             if self._check_early_stopping(val_metrics):
-                print(f"🛑 Early stopping at epoch {epoch}")
+                print(f"[STOP] Early stopping at epoch {epoch}")
                 break
             
             # Save checkpoint если улучшение

@@ -107,7 +107,7 @@ class ExtendedOptimizationStrategy:
             )
             
             # Запуск baseline
-            print("   🔬 Running Stage 2.3 baseline configuration...")
+            print("   [SCIENCE] Running Stage 2.3 baseline configuration...")
             baseline_results = self._run_single_config(stage_2_3_config, "baseline_stage_2_3")
             
             baseline_qa = baseline_results.get('qa_similarity', 0)
@@ -153,7 +153,7 @@ class ExtendedOptimizationStrategy:
         ]
         
         for i, variation in enumerate(conservative_variations):
-            print(f"   🧪 Conservative experiment {i+1}/{len(conservative_variations)}: {variation}")
+            print(f"   [TEST] Conservative experiment {i+1}/{len(conservative_variations)}: {variation}")
             
             # Создание конфигурации
             test_config = Stage23Config(
@@ -358,7 +358,7 @@ class ExtendedOptimizationStrategy:
         print(f"[TROPHY] Best Q→A similarity: {best_qa:.1%}")
         print(f"[DATA] Mean Q→A similarity: {mean_qa:.1%}")
         print(f"[CHART] Improvement from Stage 2.3: {final_analysis['improvement_from_stage_2_3']:+.1%}")
-        print(f"🧪 Total experiments: {final_analysis['total_experiments']}")
+        print(f"[TEST] Total experiments: {final_analysis['total_experiments']}")
         print(f"[OK] Success rate: {final_analysis['success_rate']:.1%}")
         print(f"⏱️ Total time: {total_time:.1f} seconds")
         

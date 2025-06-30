@@ -1,5 +1,5 @@
 """
-🧪 ТЕСТЫ QUALITY OPTIMIZER - Stage 2.3 Production Integration (FIXED)
+[TEST] ТЕСТЫ QUALITY OPTIMIZER - Stage 2.3 Production Integration (FIXED)
 Комплексное тестирование системы оптимизации качества генерации
 
 Tests:
@@ -92,7 +92,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_01_quality_metrics_basic(self):
         """Test 1: Базовая функциональность QualityMetrics"""
-        print("🧪 Test 1: QualityMetrics basic functionality")
+        print("[TEST] Test 1: QualityMetrics basic functionality")
         
         # Создание метрик
         metrics = QualityMetrics(
@@ -120,7 +120,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_02_advanced_quality_assessment(self):
         """Test 2: AdvancedQualityAssessment comprehensive evaluation"""
-        print("🧪 Test 2: AdvancedQualityAssessment comprehensive evaluation")
+        print("[TEST] Test 2: AdvancedQualityAssessment comprehensive evaluation")
         
         for i, test_case in enumerate(self.test_cases):
             with self.subTest(case=i):
@@ -159,7 +159,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_03_quality_assessment_edge_cases(self):
         """Test 3: Quality assessment edge cases"""
-        print("🧪 Test 3: Quality assessment edge cases")
+        print("[TEST] Test 3: Quality assessment edge cases")
         
         # Пустые строки
         metrics_empty = self.quality_assessor.assess_comprehensive_quality("", "test")
@@ -187,7 +187,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_04_optimization_config_validation(self):
         """Test 4: OptimizationConfig validation"""
-        print("🧪 Test 4: OptimizationConfig validation")
+        print("[TEST] Test 4: OptimizationConfig validation")
         
         # Создание конфигурации
         config = OptimizationConfig(
@@ -215,7 +215,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_05_parameter_optimizer_initialization(self):
         """Test 5: GenerationParameterOptimizer initialization"""
-        print("🧪 Test 5: GenerationParameterOptimizer initialization")
+        print("[TEST] Test 5: GenerationParameterOptimizer initialization")
         
         # Создание оптимизатора
         optimizer = GenerationParameterOptimizer(self.config)
@@ -238,7 +238,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_06_parameter_generation(self):
         """Test 6: Parameter generation и mutation"""
-        print("🧪 Test 6: Parameter generation и mutation")
+        print("[TEST] Test 6: Parameter generation и mutation")
         
         optimizer = GenerationParameterOptimizer(self.config)
         base_params = optimizer._get_initial_parameters()
@@ -270,7 +270,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_07_generative_decoder_integration(self):
         """Test 7: Интеграция с GenerativeDecoder"""
-        print("🧪 Test 7: Интеграция с GenerativeDecoder")
+        print("[TEST] Test 7: Интеграция с GenerativeDecoder")
         
         # Создание GenerativeDecoder
         decoder_config = GenerativeConfig(
@@ -315,7 +315,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_08_mock_parameter_optimization(self):
         """Test 8: Mock parameter optimization (abbreviated)"""
-        print("🧪 Test 8: Mock parameter optimization")
+        print("[TEST] Test 8: Mock parameter optimization")
         
         # Создание mock GenerativeDecoder для быстрого тестирования
         class MockGenerativeDecoder:
@@ -377,7 +377,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_09_production_readiness_evaluation(self):
         """Test 9: Production readiness evaluation"""
-        print("🧪 Test 9: Production readiness evaluation")
+        print("[TEST] Test 9: Production readiness evaluation")
         
         # Тестовые cases с разным уровнем качества (FIXED thresholds)
         test_cases = [
@@ -431,7 +431,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_10_factory_function(self):
         """Test 10: Factory function create_quality_optimizer"""
-        print("🧪 Test 10: Factory function create_quality_optimizer")
+        print("[TEST] Test 10: Factory function create_quality_optimizer")
         
         # Создание оптимизатора через factory
         optimizer = create_quality_optimizer(
@@ -450,7 +450,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_11_optimization_results_serialization(self):
         """Test 11: Сохранение и загрузка результатов оптимизации"""
-        print("🧪 Test 11: Optimization results serialization")
+        print("[TEST] Test 11: Optimization results serialization")
         
         optimizer = GenerationParameterOptimizer(self.config)
         
@@ -494,7 +494,7 @@ class QualityOptimizerStage23FixedTest(unittest.TestCase):
     
     def test_12_stage23_integration_readiness(self):
         """Test 12: Полная готовность Stage 2.3"""
-        print("🧪 Test 12: Stage 2.3 integration readiness")
+        print("[TEST] Test 12: Stage 2.3 integration readiness")
         
         # Проверка всех компонентов Stage 2.3
         components_ready = {

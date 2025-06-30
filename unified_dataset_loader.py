@@ -49,7 +49,7 @@ class UnifiedEmbeddingDataset(Dataset):
         self.embeddings: List[torch.Tensor] = []
         self.metadata: List[Dict] = []
         
-        logger.info("🔄 Initializing UnifiedEmbeddingDataset...")
+        logger.info("[SYNC] Initializing UnifiedEmbeddingDataset...")
         
         # Загружаем данные из всех источников
         self._load_all_sources()
@@ -57,7 +57,7 @@ class UnifiedEmbeddingDataset(Dataset):
         # Фильтруем и валидируем
         self._filter_and_validate()
         
-        logger.info(f"✅ Dataset ready: {len(self.embeddings)} samples")
+        logger.info(f"[OK] Dataset ready: {len(self.embeddings)} samples")
     
     def _load_all_sources(self):
         """Загружаем данные из всех доступных источников"""
@@ -79,7 +79,7 @@ class UnifiedEmbeddingDataset(Dataset):
         cache_dir = Path("cache/dialogue_dataset")
         files = list(cache_dir.glob("*.pt"))
         
-        logger.info(f"📂 Loading dialogue cache: {len(files)} files")
+        logger.info(f"[DIRECTORY] Loading dialogue cache: {len(files)} files")
         
         loaded_count = 0
         for file in files:
@@ -106,7 +106,7 @@ class UnifiedEmbeddingDataset(Dataset):
             except Exception as e:
                 logger.warning(f"Failed to load dialogue file {file}: {e}")
                 
-        logger.info(f"✅ Loaded {loaded_count} embeddings from dialogue cache")
+        logger.info(f"[OK] Loaded {loaded_count} embeddings from dialogue cache")
     
     def _extract_embeddings_from_dialogue(self, data: Dict) -> List[torch.Tensor]:
         """Извлекаем эмбеддинги из dialogue data структуры"""
@@ -134,7 +134,7 @@ class UnifiedEmbeddingDataset(Dataset):
         embeddings_dir = Path("data/embeddings")
         files = list(embeddings_dir.glob("*.pt"))
         
-        logger.info(f"📂 Loading prepared embeddings: {len(files)} files")
+        logger.info(f"[DIRECTORY] Loading prepared embeddings: {len(files)} files")
         
         loaded_count = 0
         for file in files:
@@ -183,13 +183,13 @@ class UnifiedEmbeddingDataset(Dataset):
             except Exception as e:
                 logger.warning(f"Failed to load prepared embedding {file}: {e}")
                 
-        logger.info(f"✅ Loaded {loaded_count} embeddings from prepared files")
+        logger.info(f"[OK] Loaded {loaded_count} embeddings from prepared files")
     
     def _load_cache_embeddings(self):
         """Загружаем cache эмбеддинги из cache/llm_*.pt"""
         cache_files = list(Path("cache").glob("llm_*.pt"))
         
-        logger.info(f"📂 Loading cache embeddings: {len(cache_files)} files")
+        logger.info(f"[DIRECTORY] Loading cache embeddings: {len(cache_files)} files")
         
         loaded_count = 0
         for file in cache_files:
@@ -225,11 +225,11 @@ class UnifiedEmbeddingDataset(Dataset):
             except Exception as e:
                 logger.warning(f"Failed to load cache embedding {file}: {e}")
                 
-        logger.info(f"✅ Loaded {loaded_count} embeddings from cache files")
+        logger.info(f"[OK] Loaded {loaded_count} embeddings from cache files")
     
     def _load_snli_data(self):
         """Генерируем SNLI эмбеддинги при необходимости"""
-        logger.info("🔧 Generating SNLI embeddings...")
+        logger.info("[TOOL] Generating SNLI embeddings...")
         
         try:
             generator = SNLIEmbeddingGenerator()
@@ -259,7 +259,7 @@ class UnifiedEmbeddingDataset(Dataset):
                     logger.warning(f"Failed to generate SNLI embedding: {e}")
                     continue
                     
-            logger.info(f"✅ Generated {loaded_count} SNLI embeddings")
+            logger.info(f"[OK] Generated {loaded_count} SNLI embeddings")
             
         except Exception as e:
             logger.error(f"Failed to load SNLI data: {e}")
@@ -288,7 +288,7 @@ class UnifiedEmbeddingDataset(Dataset):
     
     def _filter_and_validate(self):
         """Финальная фильтрация и валидация данных"""
-        logger.info("🔍 Filtering and validating dataset...")
+        logger.info("[SEARCH] Filtering and validating dataset...")
         
         # Shuffle если нужно
         if self.config.shuffle_sources:
@@ -307,7 +307,7 @@ class UnifiedEmbeddingDataset(Dataset):
             source = meta['source']
             source_stats[source] = source_stats.get(source, 0) + 1
             
-        logger.info("📊 Dataset statistics:")
+        logger.info("[DATA] Dataset statistics:")
         for source, count in source_stats.items():
             logger.info(f"  {source}: {count} samples")
     
@@ -366,14 +366,14 @@ def create_training_dataloader(
         pin_memory=torch.cuda.is_available()
     )
     
-    logger.info(f"🚀 DataLoader created: {len(dataset)} samples, batch_size={batch_size}")
+    logger.info(f"[START] DataLoader created: {len(dataset)} samples, batch_size={batch_size}")
     
     return dataloader, stats
 
 
 def main():
     """Тестируем unified dataset loader"""
-    print("🧪 TESTING UNIFIED DATASET LOADER")
+    print("[TEST] TESTING UNIFIED DATASET LOADER")
     print("=" * 50)
     
     # Создаем конфигурацию для тестирования
@@ -393,11 +393,11 @@ def main():
         shuffle=True
     )
     
-    print(f"\n📊 DATASET STATISTICS:")
+    print(f"\n[DATA] DATASET STATISTICS:")
     print(json.dumps(stats, indent=2))
     
     # Тестируем загрузку нескольких батчей
-    print(f"\n🔄 TESTING BATCH LOADING:")
+    print(f"\n[SYNC] TESTING BATCH LOADING:")
     for i, batch in enumerate(dataloader):
         embeddings = batch['embedding']  # [batch_size, embedding_dim]
         metadata = batch['metadata']  # List of dicts
@@ -410,8 +410,8 @@ def main():
         if i >= 2:  # Тестируем только первые 3 батча
             break
     
-    print(f"\n✅ Unified Dataset Loader test completed!")
-    print(f"📈 Ready for real training with {stats['total_samples']} samples")
+    print(f"\n[OK] Unified Dataset Loader test completed!")
+    print(f"[UP] Ready for real training with {stats['total_samples']} samples")
 
 
 if __name__ == "__main__":

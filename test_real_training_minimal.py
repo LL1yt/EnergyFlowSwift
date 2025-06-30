@@ -6,12 +6,12 @@ from new_rebuild.config import SimpleProjectConfig
 from new_rebuild.core.training import EmbeddingTrainer
 from new_rebuild.core.training.utils import create_training_dataloader
 
-print("🚀 Real training with minimal settings...")
+print("[START] Real training with minimal settings...")
 
 config = SimpleProjectConfig()
-print(f"📊 Config: test_dataset_size={config.training_embedding.test_dataset_size}")
-print(f"📊 Config: num_epochs={config.training_embedding.num_epochs}")
-print(f"📊 Config: batch_size={config.training_embedding.embedding_batch_size}")
+print(f"[DATA] Config: test_dataset_size={config.training_embedding.test_dataset_size}")
+print(f"[DATA] Config: num_epochs={config.training_embedding.num_epochs}")
+print(f"[DATA] Config: batch_size={config.training_embedding.embedding_batch_size}")
 
 # Создаем минимальный dataloader
 dataloader, stats = create_training_dataloader(
@@ -20,22 +20,22 @@ dataloader, stats = create_training_dataloader(
     shuffle=True
 )
 
-print(f"\n📊 Dataset loaded: {stats.total_samples} samples")
-print(f"📊 Batches per epoch: {len(dataloader)}")
+print(f"\n[DATA] Dataset loaded: {stats.total_samples} samples")
+print(f"[DATA] Batches per epoch: {len(dataloader)}")
 
 # Создаем trainer
 trainer = EmbeddingTrainer(config)
 
 # Обучение одной эпохи
 start_time = time.time()
-print("\n⏳ Starting training epoch...")
+print("\n[TIME] Starting training epoch...")
 
 try:
     losses = trainer.train_epoch(dataloader)
     
     elapsed = time.time() - start_time
-    print(f"\n✅ Epoch completed in {elapsed:.1f} seconds!")
-    print(f"📈 Losses:")
+    print(f"\n[OK] Epoch completed in {elapsed:.1f} seconds!")
+    print(f"[UP] Losses:")
     for key, value in losses.items():
         if key != 'count' and isinstance(value, (int, float)):
             print(f"   {key}: {value:.6f}")
@@ -47,6 +47,6 @@ try:
         print(f"📦 Total batches processed: {losses['count']}")
         
 except Exception as e:
-    print(f"\n❌ Error: {e}")
+    print(f"\n[ERROR] Error: {e}")
     import traceback
     traceback.print_exc()

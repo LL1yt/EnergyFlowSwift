@@ -175,17 +175,17 @@ class DeviceManager:
 
     def _log_device_info(self):
         """Логирование информации об устройстве"""
-        logger.info(f"[DESKTOP] DeviceManager инициализирован:")
-        logger.info(f"   Устройство: {self.device}")
+        logger.info(f"[DESKTOP] DeviceManager initialized:")
+        logger.info(f"   Device: {self.device}")
 
         if self.device.type == "cuda":
             try:
                 props = torch.cuda.get_device_properties(self.device)
                 logger.info(f"   GPU: {torch.cuda.get_device_name(self.device)}")
-                logger.info(f"   Память: {props.total_memory / (1024**3):.1f}GB")
+                logger.info(f"   Memory: {props.total_memory / (1024**3):.1f}GB")
                 logger.info(f"   Compute Capability: {props.major}.{props.minor}")
             except (RuntimeError, AssertionError) as e:
-                logger.warning(f"   [WARN] Ошибка получения информации GPU: {str(e)}")
+                logger.warning(f"   [WARN] Error getting GPU info: {str(e)}")
         else:
             try:
                 memory_info = psutil.virtual_memory()

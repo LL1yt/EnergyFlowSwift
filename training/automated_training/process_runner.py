@@ -28,7 +28,7 @@ def run_process(
     try:
         if verbose:
             logger.info(
-                f"🚀 Starting subprocess '{process_id}': {' '.join(cmd[:3])}..."
+                f"[START] Starting subprocess '{process_id}': {' '.join(cmd[:3])}..."
             )
 
         process = subprocess.Popen(
@@ -62,14 +62,14 @@ def run_process(
             return_code = process.returncode
             if verbose:
                 if return_code == 0:
-                    logger.info(f"✅ Subprocess '{process_id}' completed successfully")
+                    logger.info(f"[OK] Subprocess '{process_id}' completed successfully")
                 else:
                     logger.error(
-                        f"❌ Subprocess '{process_id}' failed with exit code {return_code}"
+                        f"[ERROR] Subprocess '{process_id}' failed with exit code {return_code}"
                     )
         except subprocess.TimeoutExpired:
             logger.error(
-                f"⏰ Process '{process_id}' timed out after {timeout_seconds/60:.1f} min."
+                f"[ALARM] Process '{process_id}' timed out after {timeout_seconds/60:.1f} min."
             )
             process.kill()
             process.wait()
@@ -85,7 +85,7 @@ def run_process(
         }
 
     except Exception as e:
-        logger.error(f"❌ Subprocess execution failed for '{process_id}': {e}")
+        logger.error(f"[ERROR] Subprocess execution failed for '{process_id}': {e}")
         return None
 
 

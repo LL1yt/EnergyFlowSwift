@@ -43,14 +43,14 @@ def setup_experiment_tracking(experiment_name: str) -> Path:
     (experiment_dir / "logs").mkdir(exist_ok=True)
     (experiment_dir / "metrics").mkdir(exist_ok=True)
     
-    logger.info(f"📊 Experiment tracking setup: {experiment_dir}")
+    logger.info(f"[DATA] Experiment tracking setup: {experiment_dir}")
     return experiment_dir
 
 
 def run_training_epoch(trainer: EmbeddingTrainer, dataloader, epoch: int, experiment_dir: Path) -> Dict[str, float]:
     """Запускает одну эпоху обучения"""
     
-    logger.info(f"\n🚀 Starting Epoch {epoch + 1}")
+    logger.info(f"\n[START] Starting Epoch {epoch + 1}")
     epoch_start_time = time.time()
     
     # Use trainer's train_epoch method directly
@@ -58,7 +58,7 @@ def run_training_epoch(trainer: EmbeddingTrainer, dataloader, epoch: int, experi
     
     epoch_time = time.time() - epoch_start_time
     
-    logger.info(f"✅ Epoch {epoch + 1} completed in {epoch_time:.2f}s")
+    logger.info(f"[OK] Epoch {epoch + 1} completed in {epoch_time:.2f}s")
     logger.info(f"   Average losses: {', '.join([f'{k}={v:.6f}' for k, v in train_losses.items()])}")
     
     # Сохраняем метрики
@@ -81,7 +81,7 @@ def run_training_epoch(trainer: EmbeddingTrainer, dataloader, epoch: int, experi
 def main():
     """Главная функция для запуска реального обучения"""
     
-    logger.info("🚀 STARTING REAL 3D CELLULAR NEURAL NETWORK TRAINING")
+    logger.info("[START] STARTING REAL 3D CELLULAR NEURAL NETWORK TRAINING")
     logger.info("Using CENTRAL CONFIG ONLY (new_rebuild.config)")
     logger.info("=" * 60)
     
@@ -89,25 +89,25 @@ def main():
     
     # Проверяем что включен режим реального обучения
     if config.training_embedding.test_mode:
-        logger.warning("⚠️ test_mode=True in config! Switch to real training mode in config_components.py")
-        logger.error("\n❌ CONFIGURATION ERROR:")
+        logger.warning("[WARN] test_mode=True in config! Switch to real training mode in config_components.py")
+        logger.error("\n[ERROR] CONFIGURATION ERROR:")
         logger.error("test_mode=True in central config!")
         logger.error("Edit new_rebuild/config/config_components.py:")
         logger.error("  Change: test_mode: bool = False")
         return
     
-    logger.info("✅ Real training mode enabled")
-    logger.info(f"📏 Lattice size: {config.lattice.dimensions}")
-    logger.info(f"🎯 Target embedding dim: {config.training_embedding.target_embedding_dim}")
-    logger.info(f"📊 Epochs: {config.training_embedding.num_epochs}")
-    logger.info(f"🔥 Batch size: {config.training_embedding.embedding_batch_size}")
+    logger.info("[OK] Real training mode enabled")
+    logger.info(f"[RULER] Lattice size: {config.lattice.dimensions}")
+    logger.info(f"[TARGET] Target embedding dim: {config.training_embedding.target_embedding_dim}")
+    logger.info(f"[DATA] Epochs: {config.training_embedding.num_epochs}")
+    logger.info(f"[HOT] Batch size: {config.training_embedding.embedding_batch_size}")
     
     # Настройка эксперимента
     experiment_name = f"real_training_{config.lattice.dimensions[0]}x{config.lattice.dimensions[1]}x{config.lattice.dimensions[2]}"
     experiment_dir = setup_experiment_tracking(experiment_name)
     
     # Создание датасета (используем настройки из конфига)
-    logger.info("📂 Loading unified dataset...")
+    logger.info("[DIRECTORY] Loading unified dataset...")
     # Для прогоночного обучения используем только 658 сэмплов (из dialogue cache)
     max_samples = config.training_embedding.test_dataset_size
     
@@ -117,7 +117,7 @@ def main():
         shuffle=True
     )
     
-    logger.info(f"📊 Dataset loaded: {dataset_stats.total_samples} total samples")
+    logger.info(f"[DATA] Dataset loaded: {dataset_stats.total_samples} total samples")
     
     # Сохраняем статистику датасета
     with open(experiment_dir / "dataset_stats.json", 'w') as f:
@@ -135,7 +135,7 @@ def main():
     
     # Основной цикл обучения
     num_epochs = config.training_embedding.num_epochs
-    logger.info(f"🎯 Starting training for {num_epochs} epochs...")
+    logger.info(f"[TARGET] Starting training for {num_epochs} epochs...")
     
     best_loss = float('inf')
     patience_counter = 0
@@ -155,22 +155,22 @@ def main():
             # Сохраняем лучшую модель
             best_model_path = experiment_dir / "checkpoints" / "best_model.pth"
             trainer.save_checkpoint(str(best_model_path), epoch=epoch + 1, loss=current_loss)
-            logger.info(f"💾 New best model saved: loss={current_loss:.6f}")
+            logger.info(f"[DISK] New best model saved: loss={current_loss:.6f}")
             
         else:
             patience_counter += 1
-            logger.info(f"⚠️ No improvement for {patience_counter} epochs")
+            logger.info(f"[WARN] No improvement for {patience_counter} epochs")
         
         # Регулярные checkpoint'ы (используем настройку из конфига)
         save_interval = config.training_embedding.save_checkpoint_every
         if (epoch + 1) % save_interval == 0:
             checkpoint_path = experiment_dir / "checkpoints" / f"epoch_{epoch + 1}.pth"
             trainer.save_checkpoint(str(checkpoint_path), epoch=epoch + 1, loss=current_loss)
-            logger.info(f"💾 Regular checkpoint saved: epoch_{epoch + 1}.pth")
+            logger.info(f"[DISK] Regular checkpoint saved: epoch_{epoch + 1}.pth")
         
         # Early stopping
         if patience_counter >= early_stopping_patience:
-            logger.info(f"🛑 Early stopping triggered after {patience_counter} epochs without improvement")
+            logger.info(f"[STOP] Early stopping triggered after {patience_counter} epochs without improvement")
             break
     
     # Финальное сохранение
@@ -197,11 +197,11 @@ def main():
     with open(experiment_dir / "experiment_summary.json", 'w') as f:
         json.dump(summary, f, indent=2)
     
-    logger.info(f"\n🎉 TRAINING COMPLETED!")
-    logger.info(f"📊 Experiment results saved to: {experiment_dir}")
-    logger.info(f"🏆 Best loss achieved: {best_loss:.6f}")
-    logger.info(f"📈 Total samples processed: {dataset_stats.total_samples}")
-    logger.info(f"\n🚀 Ready for analysis and next steps!")
+    logger.info(f"\n[PARTY] TRAINING COMPLETED!")
+    logger.info(f"[DATA] Experiment results saved to: {experiment_dir}")
+    logger.info(f"[WIN] Best loss achieved: {best_loss:.6f}")
+    logger.info(f"[UP] Total samples processed: {dataset_stats.total_samples}")
+    logger.info(f"\n[START] Ready for analysis and next steps!")
 
 
 if __name__ == "__main__":

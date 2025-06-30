@@ -709,7 +709,7 @@ def create_nca_config(
 def test_nca_basic() -> bool:
     """Базовый тест NCA functionality"""
     try:
-        print("🧪 Testing Neural Cellular Automata...")
+        print("[TEST] Testing Neural Cellular Automata...")
 
         # Create config and NCA
         config = create_nca_config()

@@ -158,7 +158,7 @@ class LossFunctionDiagnostics:
                     print(f"         Projection weights std: {proj_weights.std().item():.6f}")
             
             # Тестируем разные векторы
-            print(f"      🧪 Тест с random векторами:")
+            print(f"      [TEST] Тест с random векторами:")
             random_output = torch.randn_like(final_output)
             random_target = torch.randn_like(projected_target)
             random_cos = torch.nn.functional.cosine_similarity(random_output, random_target, dim=-1)
@@ -173,7 +173,7 @@ class LossFunctionDiagnostics:
     
     def _test_surface_consistency_loss(self, trainer, outputs, targets):
         """Тестирование surface consistency loss"""
-        print(f"\n   🏠 SURFACE CONSISTENCY LOSS:")
+        print(f"\n   [HOME] SURFACE CONSISTENCY LOSS:")
         
         input_surface = outputs['input_surface']
         output_surface = outputs['final_output']  # Это должно быть output_surface

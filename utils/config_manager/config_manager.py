@@ -646,7 +646,7 @@ class ConfigManager:
 
     def shutdown(self):
         """Graceful shutdown"""
-        self.logger.info("🛑 Shutting down ConfigManager...")
+        self.logger.info("[STOP] Shutting down ConfigManager...")
 
         if self._hot_reload_thread and self._hot_reload_thread.is_alive():
             self._should_stop_hot_reload.set()

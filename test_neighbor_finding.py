@@ -6,7 +6,7 @@ import numpy as np
 from new_rebuild.config import SimpleProjectConfig
 from new_rebuild.core.lattice.lattice import Lattice3D
 
-print("🔍 Тест поиска соседей...")
+print("[SEARCH] Тест поиска соседей...")
 
 config = SimpleProjectConfig()
 lattice = Lattice3D()
@@ -18,8 +18,8 @@ state_size = config.model.state_size
 test_states = torch.randn(batch_size, num_cells, state_size)
 lattice.states = test_states
 
-print(f"📊 Cube: {config.lattice.dimensions}")
-print(f"📊 Total cells: {num_cells}")
+print(f"[DATA] Cube: {config.lattice.dimensions}")
+print(f"[DATA] Total cells: {num_cells}")
 
 # Проверим поиск соседей используя spatial optimizer напрямую
 def get_neighbors_for_cell(cell_idx):
@@ -39,7 +39,7 @@ def get_neighbors_for_cell(cell_idx):
                 return neighbors, radius
         return [], 0.0
     except Exception as e:
-        print(f"❌ Ошибка поиска соседей для клетки {cell_idx}: {e}")
+        print(f"[ERROR] Ошибка поиска соседей для клетки {cell_idx}: {e}")
         return [], 0.0
 
 # Тестируем разные типы клеток
@@ -55,7 +55,7 @@ test_cells = [
     (100, "interior")
 ]
 
-print("\n🔍 Результаты поиска соседей:")
+print("\n[SEARCH] Результаты поиска соседей:")
 print("Клетка | Тип           | Соседи | Радиус")
 print("-" * 45)
 
@@ -87,7 +87,7 @@ def get_manhattan_neighbors(cell_idx, max_distance=1):
     
     return neighbors
 
-print("\n🔍 Сравнение с манхэттенским расстоянием:")
+print("\n[SEARCH] Сравнение с манхэттенским расстоянием:")
 print("Клетка | Spatial | Manhattan")
 print("-" * 25)
 
@@ -96,4 +96,4 @@ for cell_idx, _ in test_cells[:6]:  # Только угловые клетки
     manhattan_neighbors = get_manhattan_neighbors(cell_idx, 1)
     print(f"{cell_idx:6d} | {len(spatial_neighbors):7d} | {len(manhattan_neighbors):9d}")
 
-print("\n✅ Тест завершен")
+print("\n[OK] Тест завершен")

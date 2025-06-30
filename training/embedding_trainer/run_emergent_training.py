@@ -179,7 +179,7 @@ class EmergentTrainingRunner:
     
     def analyze_emergent_behavior(self, epoch: int) -> Dict[str, Any]:
         """Analyze emergent behavior patterns"""
-        logger.info(f"🔬 Analyzing emergent behavior (epoch {epoch})...")
+        logger.info(f"[SCIENCE] Analyzing emergent behavior (epoch {epoch})...")
         
         analysis = {
             'epoch': epoch,

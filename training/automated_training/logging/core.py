@@ -76,7 +76,7 @@ class AutomatedTrainingLogger:
 
         if self.verbose:
             logging.info(
-                f"🔧 [LOGGING] Система логирования настроена (оптимизированная)"
+                f"[TOOL] [LOGGING] Система логирования настроена (оптимизированная)"
             )
             logging.info(
                 f"   Console: {logging.getLevelName(console_level)}, File: {logging.getLevelName(file_level)}"

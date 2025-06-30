@@ -76,7 +76,7 @@ def test_cached_model():
         # Используем наш LLMHandler для тестирования
         from data.embedding_loader.format_handlers import create_llm_handler
         
-        print("\n🧪 Testing cached DistilBERT...")
+        print("\n[TEST] Testing cached DistilBERT...")
         
         handler = create_llm_handler("distilbert")
         test_text = "This is a test sentence for DistilBERT."
