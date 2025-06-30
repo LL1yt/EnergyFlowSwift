@@ -14,7 +14,7 @@
 import torch
 import torch.nn as nn
 from typing import List, Dict, Optional, Any
-import logging
+from ...utils.logging import get_logger
 import time
 from datetime import datetime
 
@@ -54,7 +54,7 @@ class Lattice3D(nn.Module):
         self.config = get_project_config()
         self.device = torch.device(self.config.current_device)
         self.pos_helper = Position3D(self.config.lattice.dimensions)
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
         # Логирование инициализации
         from ...utils.logging import log_init

@@ -12,12 +12,12 @@ DeviceManager обеспечивает:
 
 import torch
 import gc
-import logging
+from .logging import get_logger
 from typing import Tuple, Optional, Dict, Any, Union
 from pathlib import Path
 import psutil
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MemoryMonitor:

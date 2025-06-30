@@ -9,7 +9,6 @@ MoE Processor - упрощенный Mixture of Experts процессор
 
 import torch
 import torch.nn as nn
-import logging
 from typing import Dict, List, Optional, Any, Tuple
 from torch.utils.checkpoint import checkpoint
 
@@ -156,7 +155,7 @@ class MoEConnectionProcessor(nn.Module):
         **kwargs,
     ) -> Dict[str, Any]:
         # DEBUG: Reduced logging - only log for specific problematic cells
-        if cell_idx in [223, 256, 260, 320] or logger.isEnabledFor(logging.DEBUG):
+        if cell_idx in [223, 256, 260, 320] or logger.isEnabledFor(10):
             logger.debug(f"🔍 MoE FORWARD called for cell {cell_idx}")
             logger.debug(f"🔍 current_state.shape={current_state.shape}")
             logger.debug(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
@@ -228,7 +227,7 @@ class MoEConnectionProcessor(nn.Module):
                     f"но full_lattice_states отсутствует. Согласно CLAUDE.md fallback'и запрещены."
                 )
         else:
-            # По правилам CLAUDE.md - никаких fallback'ов, proper error handling
+            # По правилам CLAУDE.md - никаких fallback'ов, proper error handling
             # Проверяем длину neighbor_indices (может быть list или tensor)
             neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
             if neighbor_count == 0:

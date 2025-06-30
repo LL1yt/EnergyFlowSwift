@@ -8,7 +8,6 @@
 """
 
 import torch
-import logging
 import json
 import time
 from datetime import datetime
@@ -18,10 +17,20 @@ from typing import Dict, Any
 from new_rebuild.config import SimpleProjectConfig
 from new_rebuild.core.training import EmbeddingTrainer
 from new_rebuild.core.training.utils import create_training_dataloader
+from new_rebuild.utils.logging import setup_logging, get_logger
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+# === ИСПОЛЬЗУЕМ ТОЛЬКО ЦЕНТРАЛЬНУЮ КОНФИГУРАЦИЮ ===
+config = SimpleProjectConfig()
+    
+# Initialize centralized logging system
+setup_logging(
+    debug_mode=config.logging.debug_mode,
+    log_file=config.logging.log_file if getattr(config.logging, 'log_to_file', False) else None,
+    enable_context=True
+)
+    
+logger = get_logger(__name__)
+logger.info("⚙️ Loading central configuration...")
 
 def setup_experiment_tracking(experiment_name: str) -> Path:
     """Настраивает отслеживание эксперимента"""
@@ -76,9 +85,7 @@ def main():
     print("Using CENTRAL CONFIG ONLY (new_rebuild.config)")
     print("=" * 60)
     
-    # === ИСПОЛЬЗУЕМ ТОЛЬКО ЦЕНТРАЛЬНУЮ КОНФИГУРАЦИЮ ===
-    logger.info("⚙️ Loading central configuration...")
-    config = SimpleProjectConfig()
+
     
     # Проверяем что включен режим реального обучения
     if config.training_embedding.test_mode:

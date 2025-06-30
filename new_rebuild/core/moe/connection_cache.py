@@ -25,7 +25,6 @@ import pickle
 import hashlib
 import os
 import time
-import logging
 import math
 
 from .connection_types import ConnectionCategory, ConnectionInfo
@@ -170,7 +169,7 @@ class ConnectionCacheManager:
                 "distant_threshold": self.distant_threshold,
                 "cache_version": self.cache_config.get("cache_version", "2024.1"),
             }
-            if logger.level == logging.DEBUG:
+            if logger.isEnabledFor(10):
                 logger.debug("--- Проверка совместимости кэша ---")
 
             for key, expected_value in checks.items():
@@ -182,19 +181,19 @@ class ConnectionCacheManager:
                         rel_tol=1e-9,
                         abs_tol=1e-9,
                     ):
-                        if logger.level == logging.DEBUG:
+                        if logger.isEnabledFor(10):
                             logger.debug(
                                 f"❌ НЕ СОВПАДАЕТ (float): {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
                             )
                         is_compatible = False
                 elif cached_value != expected_value:
-                    if logger.level == logging.DEBUG:
+                    if logger.isEnabledFor(10):
                         logger.debug(
                             f"❌ НЕ СОВПАДАЕТ: {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
                         )
                     is_compatible = False
                 else:
-                    if logger.level == logging.DEBUG:
+                    if logger.isEnabledFor(10):
                         logger.debug(f"✅ Совпадает: {key} = {cached_value}")
 
             if not is_compatible:
@@ -223,7 +222,7 @@ class ConnectionCacheManager:
             "cache_version": self.cache_config.get("cache_version", "2024.1"),
             # GPU/CPU кэш полностью совместим, убираем GPU из ключа
         }
-        if logger.level == logging.DEBUG:
+        if logger.isEnabledFor(10):
             logger.debug(f"🔑 Cache key data: {key_data}")
 
         key_str = str(sorted(key_data.items()))

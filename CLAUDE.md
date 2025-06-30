@@ -20,10 +20,12 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 Директория `new_rebuild` содержит основную, переработанную архитектуру проекта с модульной структурой.
 
 #### **`new_rebuild/` (корень)**
+
 - **`__init__.py`** (1.8KB, 60 строк) - Главный модуль с экспортом основных компонентов. Включает ProjectConfig, BaseCell, VectorizedGNNCell и фабричные функции. Версия 0.1.0.
 - **`Working_solutions_from_the_Legacy_project_that_can_be_used.md`** (4.7KB) - Документация с рабочими решениями из legacy проекта для переиспользования.
 
 #### **`new_rebuild/config/` - Централизованная конфигурация**
+
 - **`__init__.py`** - Экспорт SimpleProjectConfig как основного ProjectConfig, включает все компоненты конфигурации и фабричные функции.
 - **`config_components.py`** (большой файл) - Модульные компоненты конфигурации через композицию:
   - `LatticeSettings` - размеры решетки, стратегии размещения
@@ -41,18 +43,21 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 - **`simple_config.py`** - Основной класс `SimpleProjectConfig` с композицией компонентов. Предоставляет единую точку доступа ко всем настройкам проекта.
 
 #### **`new_rebuild/core/` - Ядро архитектуры**
+
 - **`__init__.py`** - Экспорт основных компонентов: BaseCell, VectorizedGNNCell, create_cell, Lattice3D, create_lattice.
 
 ##### **`new_rebuild/core/cells/` - Клетки нейронной сети**
+
 - **`__init__.py`** (4.2KB, 122 строки) - Фабрика клеток с поддержкой различных типов: vectorized_gnn, base_cell. Включает валидацию параметров и создание клеток с логированием.
 - **`base_cell.py`** (3.2KB, 94 строки) - Абстрактный базовый класс `BaseCell` для всех типов клеток. Определяет интерфейс forward(), методы для сброса памяти и получения информации о параметрах.
 - **`vectorized_gnn.py`** (16KB, 393 строки) - Основная векторизованная GNN клетка `VectorizedGNNCell`. Использует attention механизм для агрегации соседей, поддерживает внешние входы, оптимизирована для GPU с batch processing.
 
 ##### **`new_rebuild/core/moe/` - Mixture of Experts архитектура**
+
 - **`__init__.py`** (3.7KB, 82 строки) - Экспорт всех MoE компонентов и фабричных функций для создания connection processor и экспертов.
 - **`moe_processor.py`** (28KB, 617 строк) - Основной `MoEConnectionProcessor` с тремя экспертами:
   - Local Expert (SimpleLinear, 10% связей)
-  - Functional Expert (HybridGNN_CNF, 55% связей)  
+  - Functional Expert (HybridGNN_CNF, 55% связей)
   - Distant Expert (GPUEnhancedCNF, 35% связей)
   - Включает gating network и connection classifier с кэшированием
 - **`gating_network.py`** (5.3KB, 122 строки) - `GatingNetwork` для адаптивного взвешивания экспертов на основе состояний клеток.
@@ -65,11 +70,13 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 - **`distance_calculator.py`** (3.8KB, 94 строки) - Расчет расстояний в 3D решетке с различными метриками.
 
 ##### **`new_rebuild/core/cnf/` - Continuous Normalizing Flows**
+
 - **`__init__.py`** (3.0KB, 88 строк) - Экспорт GPU-оптимизированных CNF компонентов. Deprecated старые компоненты заменены на GPU Enhanced версии.
 - **`gpu_enhanced_cnf.py`** (26KB, 666 строк) - `GPUEnhancedCNF` с векторизованным Neural ODE, batch processing и адаптивной интеграцией. Поддерживает различные режимы обработки батчей.
 - **`gpu_optimized_euler_solver.py`** (44KB, 1110 строк) - `GPUOptimizedEulerSolver` с адаптивными методами интеграции, Lipschitz-based step control и GPU ускорением.
 
 ##### **`new_rebuild/core/lattice/` - 3D решетка**
+
 - **`__init__.py`** (5.6KB, 152 строки) - Экспорт компонентов решетки: Lattice3D, Position3D, spatial optimization классы.
 - **`lattice.py`** (15KB, 351 строка) - Основной класс `Lattice3D` для MoE архитектуры. Управляет GNN клетками, MoE processor и spatial optimization.
 - **`position.py`** (4.1KB, 92 строки) - `Position3D` helper для работы с 3D координатами и индексами.
@@ -79,6 +86,7 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 - **`vectorized_spatial_processor.py`** (16KB, 371 строка) - Векторизованная обработка пространственных запросов.
 
 ##### **`new_rebuild/core/lattice/spatial_optimization/` - Пространственная оптимизация**
+
 - **`__init__.py`** (4.8KB, 125 строк) - Экспорт unified spatial optimizer и связанных компонентов.
 - **`unified_spatial_optimizer.py`** (22KB, 589 строк) - `UnifiedSpatialOptimizer` - единый оптимизатор для всех типов пространственных операций.
 - **`adaptive_chunker.py`** (30KB, 721 строка) - `AdaptiveGPUChunker` для умного разбиения больших решеток на GPU-оптимальные блоки.
@@ -86,32 +94,37 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 - **`memory_manager.py`** (8.4KB, 212 строк) - `MemoryPoolManager` для управления памятью в пространственных операциях.
 
 ##### **`new_rebuild/core/training/` - Компоненты обучения**
+
 - **`__init__.py`** (747B, 26 строк) - Экспорт EmbeddingTrainer.
 - **`embedding_trainer.py`** (24KB, 556 строк) - Основной `EmbeddingTrainer` для обучения 3D куба на эмбеддингах. Реализует полный цикл: эмбединги → куб → эмбединги → текст.
 - **`embedding_lattice_mapper.py`** (20KB, 420 строк) - Компоненты для маппинга эмбеддингов в решетку и обратно.
 
 ##### **`new_rebuild/core/inference/` - Компоненты инференса**
+
 - **`__init__.py`** (756B, 25 строк) - Экспорт text decoder компонентов.
 - **`text_decoder.py`** (26KB, 645 строк) - `SimpleTextDecoder` и `JointTextDecoder` для преобразования эмбеддингов обратно в текст с кэшированием.
 
 ##### **`new_rebuild/core/common/` - Общие компоненты**
+
 - **`__init__.py`** (699B, 18 строк) - Экспорт EmbeddingTransformer и интерфейсов.
 - **`embedding_transformer.py`** (14KB, 310 строк) - `EmbeddingTransformer` для преобразования размерностей эмбеддингов (768D ↔ lattice dimensions).
 - **`interfaces.py`** (6.4KB, 177 строк) - Абстрактные интерфейсы для различных компонентов системы.
 
 #### **`new_rebuild/utils/` - Утилиты**
+
 - **`__init__.py`** (2.2KB, 79 строк) - Экспорт логирования и device management функций.
 - **`logging.py`** (24KB, 602 строки) - Централизованная система логирования с caller tracking, anti-duplication фильтрами и контекстным форматированием.
 - **`device_manager.py`** (17KB, 434 строки) - `DeviceManager` для управления GPU/CPU, автоматического определения оптимального устройства и мониторинга памяти.
 - **`model_cache.py`** (14KB, 379 строк) - Система кэширования моделей с поддержкой различных бэкендов.
 
 #### **`new_rebuild/docs/` - Документация**
+
 - **`plan_training.md`** - Детальный план реализации обучения на эмбеддингах LLM. Описывает архитектуру teacher-student подхода с DistilBERT.
 - **`todo.md`** - Список задач на будущее и моментов для запоминания.
 
 ### Принципы работы
 
-**приоритет на скорость**
+**приоритет на вдумчивость, постепенность и эффективность(сначала разобраться в проблеме и понять, что к чему, а птом действовать. мы никуда не спешим) - применяем простой и эффективный вариант, доводим через тесты до рабочего состояния и потом оптимизируем и усложняем, если это улучшит производительность**
 
 - Минимальные церемонии, максимальная эффективность, в том смысле, что можно пожертвовать перфекционизмом в угоду простому и эффективному решению
 - Используй современные языковые возможности
@@ -138,8 +151,3 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 - **Functional candidates**: Средние расстояния для динамической similarity проверки
 - **Disk persistence**: Кэш сохраняется на диск с hash-ключами конфигурации
 - **Automatic management**: Автоматическая перестройка при изменении параметров
-
-
-
-
-

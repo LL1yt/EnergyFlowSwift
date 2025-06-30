@@ -7,7 +7,7 @@ Cells Package - клеточные процессоры
 """
 
 from typing import Any, Dict, Optional
-import logging
+from ...utils.logging import get_logger
 
 from ...config import get_project_config
 from .base_cell import BaseCell
@@ -19,12 +19,12 @@ try:
     VECTORIZED_AVAILABLE = True
 except ImportError:
     VECTORIZED_AVAILABLE = False
-    logging.warning("⚠️  Vectorized components not available - using legacy versions")
+    get_logger(__name__).warning("⚠️  Vectorized components not available - using legacy versions")
 
 # Импорты legacy компонентов (DEPRECATED)
 # from .gnn_cell import GNNCell  # DEPRECATED - используйте VectorizedGNNCell
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def create_cell(cell_type: Optional[str] = None, **kwargs) -> BaseCell:

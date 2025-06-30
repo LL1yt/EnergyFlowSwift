@@ -364,7 +364,7 @@ class LoggingSettings:
     """Настройки логирования"""
 
     level: str = "INFO"
-    debug_mode: bool = False
+    debug_mode: bool = True
     log_to_file: bool = True
     log_file: str = "logs/cnf_debug.log"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -472,7 +472,7 @@ class TrainingEmbeddingSettings:
     test_mode: bool = False               # РЕАЛЬНОЕ ОБУЧЕНИЕ
     
     # Эпохи обучения для реального training
-    num_epochs: int = 5                   # Основные эпохи для первого эксперимента
+    num_epochs: int = 1                   # Основные эпохи для первого эксперимента
     # warmup_epochs: int = 10             # Старые настройки
     # main_epochs: int = 100
     # fine_tune_epochs: int = 50

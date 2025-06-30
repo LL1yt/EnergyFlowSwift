@@ -888,3 +888,74 @@ class GPUSpatialProcessor:
             self.adaptive_hash.insert_batch(coords_tensor, indices_tensor)
             
             logger.debug(f"📍 Spatial hash заполнен: {len(all_coordinates)} клеток")
+    
+    def find_neighbors(
+        self, coords: Union[Tuple[int, int, int], List[int], torch.Tensor], radius: float
+    ) -> List[int]:
+        """
+        Простой API для поиска соседей в радиусе
+        
+        Args:
+            coords: координаты точки (x, y, z)
+            radius: радиус поиска
+            
+        Returns:
+            Список индексов соседних клеток
+        """
+        # Ленивая инициализация spatial hash, если он пустой
+        self._ensure_spatial_hash_initialized()
+        
+        # Преобразуем координаты в тензор
+        if isinstance(coords, (tuple, list)):
+            coords_tensor = torch.tensor([coords], device=self.device, dtype=torch.float32)
+        elif isinstance(coords, torch.Tensor):
+            if coords.dim() == 1:
+                coords_tensor = coords.unsqueeze(0).to(self.device)
+            else:
+                coords_tensor = coords.to(self.device)
+        else:
+            raise ValueError(f"Неподдерживаемый тип координат: {type(coords)}")
+        
+        # Используем существующий adaptive_hash для поиска
+        neighbor_lists = self.adaptive_hash.query_radius_batch(coords_tensor, radius)
+        
+        # Возвращаем первый результат как список Python integers
+        if neighbor_lists and len(neighbor_lists) > 0:
+            neighbors_tensor = neighbor_lists[0]
+            neighbors_list = neighbors_tensor.cpu().tolist()
+            
+            # Убираем саму точку из результатов (нужно вычислить индекс центральной точки)
+            if isinstance(coords, (tuple, list)):
+                # Преобразуем координаты в линейный индекс
+                center_x, center_y, center_z = coords
+                if hasattr(self.chunker, 'pos_helper'):
+                    center_idx = self.chunker.pos_helper.to_linear_index((center_x, center_y, center_z))
+                    if center_idx in neighbors_list:
+                        neighbors_list.remove(center_idx)
+            
+            return neighbors_list
+        else:
+            return []
+    
+    def _ensure_spatial_hash_initialized(self):
+        """
+        Ленивая инициализация spatial hash
+        Заполняет hash координатами всех клеток решетки если он еще не инициализирован
+        """
+        # Простая проверка - есть ли данные в hash
+        stats = self.adaptive_hash.get_comprehensive_stats()
+        total_points = stats.get('spatial_hash', {}).get('total_points', 0)
+        
+        if total_points == 0:
+            logger.debug("🔧 Инициализируем spatial hash автоматически...")
+            
+            # Вычисляем общее количество клеток в решетке
+            total_cells = self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
+            
+            # Создаем dummy states для инициализации
+            dummy_states = torch.zeros(total_cells, 1, device=self.device)
+            
+            # Заполняем spatial hash
+            self._populate_spatial_hash(dummy_states)
+            
+            logger.info(f"✅ Spatial hash автоматически инициализирован для {total_cells} клеток")

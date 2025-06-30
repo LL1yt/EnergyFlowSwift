@@ -14,15 +14,14 @@ Unified Dataset Loader для реального обучения 3D Cellular Ne
 import torch
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
-import logging
 from typing import List, Dict, Tuple, Optional, Union
 import random
 from dataclasses import dataclass
 
 from ....config import SimpleProjectConfig
+from ....utils.logging import get_logger
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass 
