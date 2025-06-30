@@ -196,7 +196,7 @@ def create_emergent_nca_cell_from_config(config: Dict[str, Any]) -> EmergentNCAC
 
     # Логирование из централизованной конфигурации
     logger.info(
-        f"[SCIENCE] EmergentNCACell (centralized): state={params['state_size']}, "
+        f"🔬 EmergentNCACell (centralized): state={params['state_size']}, "
         f"hidden={params['hidden_dim']}, neighbors={params['neighbor_count']}"
     )
 
@@ -206,7 +206,7 @@ def create_emergent_nca_cell_from_config(config: Dict[str, Any]) -> EmergentNCAC
 def test_nca_adapter():
     """Тестирование NCA адаптера с централизованной конфигурацией"""
 
-    print("[TEST] TESTING NCA ADAPTER (CENTRALIZED CONFIG)")
+    print("🧪 TESTING NCA ADAPTER (CENTRALIZED CONFIG)")
     print("=" * 60)
 
     # НОВОЕ: Используем централизованную конфигурацию
@@ -234,19 +234,19 @@ def test_nca_adapter():
     # Forward pass
     output = cell(neighbor_states, own_state, external_input)
 
-    print(f"[OK] Forward pass successful: {own_state.shape} → {output.shape}")
+    print(f"✅ Forward pass successful: {own_state.shape} → {output.shape}")
 
     # Информация о клетке
     info = cell.get_info()
     spec_info = cell.get_specialization_info()
 
-    print(f"[DATA] Cell parameters: {info['total_parameters']}")
+    print(f"📊 Cell parameters: {info['total_parameters']}")
     target_params = info.get("target_parameters")
     if target_params:
-        print(f"[TARGET] Target: {target_params}")
-        print(f"[UP] Efficiency: {info['parameter_efficiency']:.2f}x")
+        print(f"🎯 Target: {target_params}")
+        print(f"📈 Efficiency: {info['parameter_efficiency']:.2f}x")
     else:
-        print(f"[TARGET] Target: N/A")
+        print(f"🎯 Target: N/A")
     print(f"🧠 Specialization: {spec_info['specialization_strength']:.3f}")
 
     # Проверка централизованной конфигурации

@@ -88,7 +88,7 @@ class MultiTeacherDistillation:
         # Adaptive weights
         self.current_teacher_weights = self.config.teacher_weights.copy()
         
-        print(f"[START] MultiTeacherDistillation initialized")
+        print(f"🚀 MultiTeacherDistillation initialized")
         print(f"   Teachers: {len(self.config.teacher_models)}")
         print(f"   Models: {self.config.teacher_models}")
         print(f"   Adaptive weighting: {self.config.adaptive_weighting}")
@@ -106,7 +106,7 @@ class MultiTeacherDistillation:
         Returns:
             Dict с ensemble эмбедингами и метаданными
         """
-        print("[TARGET] Creating multi-teacher ensemble dataset...")
+        print("🎯 Creating multi-teacher ensemble dataset...")
         
         # Получение эмбедингов от каждого teacher
         teacher_embeddings = {}
@@ -381,7 +381,7 @@ def create_multi_teacher_system(
 
 if __name__ == "__main__":
     # Демонстрация системы
-    print("[START] Testing Multi-Teacher Knowledge Distillation...")
+    print("🚀 Testing Multi-Teacher Knowledge Distillation...")
     
     # Создание multi-teacher system
     multi_teacher = create_multi_teacher_system()
@@ -396,11 +396,11 @@ if __name__ == "__main__":
          "answer": "Supervised learning uses labeled training data to learn a mapping from inputs to outputs."}
     ]
     
-    print(f"[DATA] Multi-Teacher Statistics:")
+    print(f"📊 Multi-Teacher Statistics:")
     teacher_stats = multi_teacher.get_teacher_statistics()
     for teacher, stats in teacher_stats.items():
         print(f"   {teacher}:")
         print(f"     Weight: {stats['current_weight']:.3f}")
         print(f"     Avg confidence: {stats['average_confidence']:.3f}")
     
-    print("\n[OK] Multi-Teacher Knowledge Distillation system ready!") 
+    print("\n✅ Multi-Teacher Knowledge Distillation system ready!") 

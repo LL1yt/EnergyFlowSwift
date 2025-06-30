@@ -110,7 +110,7 @@ class CLIInterface:
         if not self.validate_args(parsed_args):
             return 1
 
-        logger.info(f"[START] Starting Automated Training CLI...")
+        logger.info(f"🚀 Starting Automated Training CLI...")
         logger.info(f"CLI Arguments: {vars(parsed_args)}")
 
         if parsed_args.test_config:
@@ -118,7 +118,7 @@ class CLIInterface:
         else:
             handle_run_automated_training(parsed_args)
 
-        logger.info("[OK] Automated Training process finished.")
+        logger.info("✅ Automated Training process finished.")
         return 0
 
 

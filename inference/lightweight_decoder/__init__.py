@@ -6,7 +6,7 @@
 2. GenerativeDecoder - генеративная модель ~1-2M параметров  
 3. HybridDecoder - комбинированный подход для максимального качества
 
-[TARGET] Технические характеристики:
+🎯 Технические характеристики:
 - Input: эмбединги 768D (от EmbeddingProcessor)
 - Output: coherent text sequences
 - Target BLEU: >0.4
@@ -31,13 +31,13 @@ from .generative_decoder import GenerativeDecoder, GenerativeConfig, create_gene
 
 # Экспорты с новым GenerativeDecoder
 __all__ = [
-    "PhraseBankDecoder",     # Phase 2.7.1 [OK]
-    "DecodingConfig",        # Configuration [OK]
-    "PhraseBank",            # Infrastructure [OK]
-    "PhraseEntry",           # Data structure [OK]
-    "PhraseLoader",          # Utilities [OK]
-    "GenerativeDecoder",     # Phase 2.7.2 [OK] STAGE 2.1 READY!
-    "GenerativeConfig",      # Configuration [OK]
-    "create_generative_decoder",  # Factory [OK]
+    "PhraseBankDecoder",     # Phase 2.7.1 ✅
+    "DecodingConfig",        # Configuration ✅
+    "PhraseBank",            # Infrastructure ✅
+    "PhraseEntry",           # Data structure ✅
+    "PhraseLoader",          # Utilities ✅
+    "GenerativeDecoder",     # Phase 2.7.2 ✅ STAGE 2.1 READY!
+    "GenerativeConfig",      # Configuration ✅
+    "create_generative_decoder",  # Factory ✅
     # "HybridDecoder",         # Phase 2.7.3 🔜 PLANNED
 ] 

@@ -1,5 +1,5 @@
 """
-[START] Stage 3.1.4.1: Emergent Training Execution Script
+🚀 Stage 3.1.4.1: Emergent Training Execution Script
 ====================================================
 
 Production-ready emergent training с:
@@ -72,10 +72,10 @@ class EmergentTrainingRunner:
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
-            logger.info(f"[OK] Configuration loaded from {self.config_path}")
+            logger.info(f"✅ Configuration loaded from {self.config_path}")
             return config
         except Exception as e:
-            logger.error(f"[ERROR] Failed to load config: {e}")
+            logger.error(f"❌ Failed to load config: {e}")
             raise
     
     def setup_trainer(self):
@@ -112,7 +112,7 @@ class EmergentTrainingRunner:
         
         # Log system info
         info = self.trainer.get_system_info()
-        logger.info("[OK] Trainer setup complete:")
+        logger.info("✅ Trainer setup complete:")
         for key, value in info.items():
             logger.info(f"   {key}: {value}")
     
@@ -157,7 +157,7 @@ class EmergentTrainingRunner:
                 'num_batches': len(questions)
             }
             
-            logger.info(f"[OK] Training data loaded: {len(questions)} batches")
+            logger.info(f"✅ Training data loaded: {len(questions)} batches")
             return training_data
             
         except Exception as e:
@@ -179,7 +179,7 @@ class EmergentTrainingRunner:
     
     def analyze_emergent_behavior(self, epoch: int) -> Dict[str, Any]:
         """Analyze emergent behavior patterns"""
-        logger.info(f"[SCIENCE] Analyzing emergent behavior (epoch {epoch})...")
+        logger.info(f"🔬 Analyzing emergent behavior (epoch {epoch})...")
         
         analysis = {
             'epoch': epoch,
@@ -272,7 +272,7 @@ class EmergentTrainingRunner:
     
     def run_training(self):
         """Run complete emergent training pipeline"""
-        logger.info("[START] Starting emergent training...")
+        logger.info("🚀 Starting emergent training...")
         
         # Setup
         self.setup_trainer()
@@ -284,7 +284,7 @@ class EmergentTrainingRunner:
         
         # Training loop
         for epoch in range(epochs):
-            logger.info(f"\n[TARGET] EPOCH {epoch+1}/{epochs}")
+            logger.info(f"\n🎯 EPOCH {epoch+1}/{epochs}")
             
             epoch_metrics = []
             epoch_start_time = time.time()
@@ -316,7 +316,7 @@ class EmergentTrainingRunner:
             avg_metrics = self._average_metrics(epoch_metrics)
             avg_metrics['epoch_time'] = epoch_time
             
-            logger.info(f"[DATA] EPOCH {epoch+1} SUMMARY:")
+            logger.info(f"📊 EPOCH {epoch+1} SUMMARY:")
             logger.info(f"   Average loss: {avg_metrics['total_loss']:.6f}")
             logger.info(f"   Average similarity: {avg_metrics['cosine_similarity']:.6f}")
             logger.info(f"   Epoch time: {epoch_time:.1f}s")
@@ -355,7 +355,7 @@ class EmergentTrainingRunner:
     def _print_final_summary(self):
         """Print final training summary"""
         logger.info("\n" + "="*60)
-        logger.info("[TARGET] EMERGENT TRAINING COMPLETE!")
+        logger.info("🎯 EMERGENT TRAINING COMPLETE!")
         logger.info("="*60)
         
         if self.training_history:
@@ -367,7 +367,7 @@ class EmergentTrainingRunner:
             final_sim = self.training_history[-1]['cosine_similarity']
             sim_improvement = final_sim - initial_sim
             
-            logger.info(f"[DATA] TRAINING METRICS:")
+            logger.info(f"📊 TRAINING METRICS:")
             logger.info(f"   Initial loss: {initial_loss:.6f}")
             logger.info(f"   Final loss: {final_loss:.6f}")
             logger.info(f"   Loss improvement: {loss_improvement:.6f}")
@@ -407,7 +407,7 @@ def main():
     except KeyboardInterrupt:
         print("\n[WARNING]  Training interrupted by user")
     except Exception as e:
-        print(f"\n[ERROR] Training failed: {e}")
+        print(f"\n❌ Training failed: {e}")
         import traceback
         traceback.print_exc()
         return 1

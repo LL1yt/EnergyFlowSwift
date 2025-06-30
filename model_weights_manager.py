@@ -26,7 +26,7 @@ class ModelWeightsManager:
         for dir_path in [self.latest_dir, self.versioned_dir, self.backups_dir]:
             dir_path.mkdir(exist_ok=True)
         
-        print(f"[FOLDER] Model Weights Manager initialized: {self.base_dir}")
+        print(f"🗂️ Model Weights Manager initialized: {self.base_dir}")
     
     def save_latest_weights(self, trainer, config, metadata=None):
         """Сохранить последние веса (перезаписывает предыдущие)"""
@@ -155,7 +155,7 @@ class ModelWeightsManager:
             metadata = checkpoint.get('metadata', {})
             config = checkpoint.get('config', {})
             
-            print(f"[OK] Веса загружены: {weights_path}")
+            print(f"✅ Веса загружены: {weights_path}")
             print(f"   Timestamp: {metadata.get('timestamp', 'unknown')}")
             print(f"   Параметров: {metadata.get('trainable_params', 'unknown'):,}")
             
@@ -166,7 +166,7 @@ class ModelWeightsManager:
             }
             
         except Exception as e:
-            print(f"[ERROR] Ошибка загрузки весов: {e}")
+            print(f"❌ Ошибка загрузки весов: {e}")
             return None
     
     def list_available_weights(self):
@@ -270,14 +270,14 @@ class ModelWeightsManager:
                 backup_file.unlink()
                 print(f"🗑️ Удален старый backup: {backup_file.name}")
             
-            print(f"[CLEAN] Очищено {len(old_backups)} старых backup файлов")
+            print(f"🧹 Очищено {len(old_backups)} старых backup файлов")
 
 def main():
     """Демонстрация работы с менеджером весов"""
     manager = ModelWeightsManager()
     manager.list_available_weights()
     
-    print(f"\n[IDEA] ИСПОЛЬЗОВАНИЕ:")
+    print(f"\n💡 ИСПОЛЬЗОВАНИЕ:")
     print(f"1. manager.save_latest_weights(trainer, config) - сохранить текущие веса")
     print(f"2. manager.load_latest_weights(trainer) - загрузить последние веса")
     print(f"3. manager.create_training_checkpoint(trainer, config, epoch, loss, sim) - checkpoint")

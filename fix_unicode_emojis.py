@@ -7,90 +7,88 @@ Used to fix Windows console encoding issues.
 import os
 import re
 
-# Mapping of Unicode emojis to ASCII equivalents
+# Mapping to restore emojis from ASCII replacements
 EMOJI_REPLACEMENTS = {
-    "[OK]": "[OK]",
-    "[START]": "[START]",
-    "[WARN]": "[WARN]",
-    "[ERROR]": "[ERROR]",
-    "[TOOL]": "[TOOL]",
-    "[DATA]": "[DATA]",
-    "[IDEA]": "[IDEA]",
-    "[TARGET]": "[TARGET]",
-    "[NEW]": "[NEW]",
-    "[BUG]": "[BUG]",
-    "[HOT]": "[HOT]",
-    "[STAR]": "[STAR]",
-    "[SHINE]": "[SHINE]",
-    "[UP]": "[UP]",
-    "[DOWN]": "[DOWN]",
-    "[SYNC]": "[SYNC]",
-    "[WIN]": "[WIN]",
-    "[PARTY]": "[PARTY]",
-    "[STRONG]": "[STRONG]",
-    "[ALERT]": "[ALERT]",
-    "[NOTE]": "[NOTE]",
-    "[SEARCH]": "[SEARCH]",
-    "[FAST]": "[FAST]",
-    "[BUILD]": "[BUILD]",
-    "[ART]": "[ART]",
-    "[TEST]": "[TEST]",
-    "[SCIENCE]": "[SCIENCE]",
-    "[LEARN]": "[LEARN]",
-    "[COMPUTER]": "[COMPUTER]",
-    "[DESKTOP]": "[DESKTOP]",
-    "[PHONE]": "[PHONE]",
-    "[PRINTER]": "[PRINTER]",
-    "[FOLDER]": "[FOLDER]",
-    "[DIRECTORY]": "[DIRECTORY]",
-    "[FILE]": "[FILE]",
-    "[CALENDAR]": "[CALENDAR]",
-    "[TIME]": "[TIME]",
-    "[ALARM]": "[ALARM]",
-    "[BELL]": "[BELL]",
-    "[LOCK]": "[LOCK]",
-    "[UNLOCK]": "[UNLOCK]",
-    "[STOP]": "[STOP]",
-    "[CLEAN]": "[CLEAN]",
-    "[WASH]": "[WASH]",
-    "[SPRAY]": "[SPRAY]",
-    "[TEXT]": "[TEXT]",
-    "[NUMBER]": "[NUMBER]",
-    "[SYMBOL]": "[SYMBOL]",
-    "[ARCHIVE]": "[ARCHIVE]",
-    "[RULER]": "[RULER]",
-    "[RACE]": "[RACE]",
-    "[START]": "[START]",
-    "[FACTORY]": "[FACTORY]",
-    "[HOME]": "[HOME]",
-    "[HOUSE]": "[HOUSE]",
-    "[SCHOOL]": "[SCHOOL]",
-    "[OFFICE]": "[OFFICE]",
-    "[HOSPITAL]": "[HOSPITAL]",
-    "[BANK]": "[BANK]",
-    "[DISK]": "[DISK]",
-    "[CD]": "[CD]",
-    "[DISK]": "[DISK]",
+    "✅": "✅",
+    "🚀": "🚀", 
+    "⚠️": "⚠️",
+    "❌": "❌",
+    "🔧": "🔧",
+    "📊": "📊",
+    "💡": "💡",
+    "🎯": "🎯",
+    "✨": "✨",
+    "🐛": "🐛",
+    "🔥": "🔥",
+    "⭐": "⭐",
+    "🌟": "🌟",
+    "📈": "📈",
+    "📉": "📉",
+    "🔄": "🔄",
+    "🏆": "🏆",
+    "🎉": "🎉",
+    "💪": "💪",
+    "🚨": "🚨",
+    "📝": "📝",
+    "🔍": "🔍",
+    "⚡": "⚡",
+    "🛠️": "🛠️",
+    "🎨": "🎨",
+    "🧪": "🧪",
+    "🔬": "🔬",
+    "📚": "📚",
+    "💻": "💻",
+    "🖥️": "🖥️",
+    "📱": "📱",
+    "🖨️": "🖨️",
+    "🗂️": "🗂️",
+    "📂": "📂",
+    "📁": "📁",
+    "📅": "📅",
+    "⏳": "⏳",
+    "⏰": "⏰",
+    "🔔": "🔔",
+    "🔒": "🔒",
+    "🔓": "🔓",
+    "🛑": "🛑",
+    "🧹": "🧹",
+    "🧼": "🧼",
+    "🧽": "🧽",
+    "🔤": "🔤",
+    "🔢": "🔢",
+    "🔣": "🔣",
+    "🗄️": "🗄️",
+    "📏": "📏",
+    "🏎️": "🏎️",
+    "🏭": "🏭",
+    "🏠": "🏠",
+    "🏡": "🏡",
+    "🏫": "🏫",
+    "🏢": "🏢",
+    "🏥": "🏥",
+    "🏦": "🏦",
+    "💾": "💾",
+    "💿": "💿",
 }
 
 
-def fix_file(filepath):
-    """Fix Unicode emojis in a single file."""
+def restore_emojis_in_file(filepath):
+    """Restore emojis from ASCII replacements in a single file."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
 
         original_content = content
 
-        # Replace emojis
-        for emoji, replacement in EMOJI_REPLACEMENTS.items():
-            content = content.replace(emoji, replacement)
+        # Restore emojis from ASCII
+        for ascii_replacement, emoji in EMOJI_REPLACEMENTS.items():
+            content = content.replace(ascii_replacement, emoji)
 
         # Only write if changed
         if content != original_content:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
-            print(f"Fixed: {filepath}")
+            print(f"Restored emojis in: {filepath}")
             return True
 
         return False
@@ -101,7 +99,7 @@ def fix_file(filepath):
 
 
 def main():
-    """Main function to process all Python files in the project."""
+    """Main function to restore emojis in all Python files."""
     # Directories to check
     dirs_to_check = [
         "new_rebuild",
@@ -123,7 +121,7 @@ def main():
     for file in os.listdir("."):
         if file.endswith(".py"):
             total_count += 1
-            if fix_file(file):
+            if restore_emojis_in_file(file):
                 fixed_count += 1
     
     # Check subdirectories
@@ -134,10 +132,10 @@ def main():
                     if file.endswith(".py"):
                         filepath = os.path.join(root, file)
                         total_count += 1
-                        if fix_file(filepath):
+                        if restore_emojis_in_file(filepath):
                             fixed_count += 1
 
-    print(f"\nProcessed {total_count} files, fixed {fixed_count} files")
+    print(f"\n🎉 Processed {total_count} files, restored emojis in {fixed_count} files!")
 
 
 if __name__ == "__main__":

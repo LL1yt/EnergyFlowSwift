@@ -5,14 +5,14 @@
 - 🥇 Resource-Efficient Transformer v2.1 (ULTRA-COMPACT, 722K params)
 - 🥈 Hybrid CCT+Mamba architecture (планируется)
 ( CCT+Mamba превосходит по:
-  1. Spatial Intelligence ([HOT] КРИТИЧНО для 15×15×11 lattice)
+  1. Spatial Intelligence (🔥 КРИТИЧНО для 15×15×11 lattice)
   2. Natural 3D Processing (поверхности → объем → поверхности)
   3. Emergent Pattern Detection (CNN отлично для spatial patterns)
   4. Biological Alignment (ближе к cortical column аналогии))
 - 🥉 Enhanced CCT baseline (fallback)
 
 CRITICAL SUCCESS METRICS:
-- Parameters: ≤800K [OK] ACHIEVED (722K)
+- Parameters: ≤800K ✅ ACHIEVED (722K)
 - Memory reduction: ≥60% target
 - Speed: maintain 50% improvement
 - BLEU score: >0.45 target
@@ -132,7 +132,7 @@ class AdvancedTokenizer:
         self.token_to_id = {**self.special_tokens, **self.word_tokens}
         self.id_to_token = {v: k for k, v in self.token_to_id.items()}
         
-        logger.info(f"[TEXT] AdvancedTokenizer initialized with {len(self.token_to_id)} tokens")
+        logger.info(f"🔤 AdvancedTokenizer initialized with {len(self.token_to_id)} tokens")
     
     def encode(self, text: str) -> List[int]:
         """Simple text encoding"""
@@ -283,13 +283,13 @@ class GenerativeDecoder(nn.Module):
     [BRAIN] GENERATIVE DECODER - Advanced Embedding-to-Text Generation
     
     Unified interface integrating multiple revolutionary architectures:
-    - RET v2.1 (ULTRA-COMPACT, 722K parameters) [OK] READY
+    - RET v2.1 (ULTRA-COMPACT, 722K parameters) ✅ READY
     - RET v2.0 (Resource-efficient baseline) 
     - Hybrid CCT+Mamba (bio-inspired) 🔜 PLANNED
     - Enhanced CCT (fallback) 🔜 PLANNED
     
     Target Performance:
-    - Parameters: ≤800K [OK] ACHIEVED
+    - Parameters: ≤800K ✅ ACHIEVED
     - Memory: 60% reduction target
     - Speed: 50% improvement maintained
     - Quality: BLEU >0.45
@@ -318,7 +318,7 @@ class GenerativeDecoder(nn.Module):
             'parameter_count': self._count_parameters()
         }
         
-        logger.info(f"[START] GenerativeDecoder initialized:")
+        logger.info(f"🚀 GenerativeDecoder initialized:")
         logger.info(f"   Architecture: {self.config.architecture_type}")
         logger.info(f"   Parameters: {self.generation_stats['parameter_count']:,}")
         logger.info(f"   Target: ≤{self.config.target_parameters:,}")
@@ -439,7 +439,7 @@ class GenerativeDecoder(nn.Module):
             }
             
             if self.config.verbose_logging:
-                logger.info(f"[TARGET] Generation completed:")
+                logger.info(f"🎯 Generation completed:")
                 logger.info(f"   Text: '{text[:50]}{'...' if len(text) > 50 else ''}'")
                 logger.info(f"   Quality: {quality_metrics['overall_quality']:.3f}")
                 logger.info(f"   Time: {generation_time:.3f}s")
@@ -448,7 +448,7 @@ class GenerativeDecoder(nn.Module):
             return result
             
         except Exception as e:
-            logger.error(f"[ERROR] Generation failed: {e}")
+            logger.error(f"❌ Generation failed: {e}")
             
             if self.config.fallback_enabled:
                 # Simple fallback generation
@@ -567,7 +567,7 @@ class GenerativeDecoder(nn.Module):
         self.decoder_model.load_state_dict(checkpoint['model_state_dict'])
         self.generation_stats = checkpoint.get('generation_stats', self.generation_stats)
         
-        logger.info(f"[DIRECTORY] Model loaded from {path}")
+        logger.info(f"📂 Model loaded from {path}")
 
 
 def create_generative_decoder(

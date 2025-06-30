@@ -24,10 +24,10 @@ sys.path.insert(0, str(project_root))
 
 # === ИМПОРТЫ МОДУЛЕЙ (будут создаваться постепенно) ===
 try:
-    # [OK] Модуль cell_prototype готов!
+    # ✅ Модуль cell_prototype готов!
     from core import CellPrototype, create_cell_from_config
 
-    # [OK] Модуль lattice_3d готов с I/O стратегией!
+    # ✅ Модуль lattice_3d готов с I/O стратегией!
     from core.lattice_3d import (
         Lattice3D,
         LatticeConfig,
@@ -47,13 +47,13 @@ try:
     # from utils.logger import setup_logger
 
     print("[INFO] Инициализация системы...")
-    print("[OK] Модуль cell_prototype загружен успешно!")
-    print("[OK] Модуль lattice_3d с I/O стратегией загружен успешно!")
+    print("✅ Модуль cell_prototype загружен успешно!")
+    print("✅ Модуль lattice_3d с I/O стратегией загружен успешно!")
     print("[WARNING]  Остальные модули пока не реализованы")
 
 except ImportError as e:
     print(f"[WARNING]  Модуль не найден: {e}")
-    print("[IDEA] Это нормально на начальной стадии разработки")
+    print("💡 Это нормально на начальной стадии разработки")
 
 from new_rebuild.config import (
     ProjectConfig,
@@ -88,7 +88,7 @@ def setup_project_structure():
 
     for dir_path in directories:
         os.makedirs(dir_path, exist_ok=True)
-        print(f"  [OK] Создана директория: {dir_path}")
+        print(f"  ✅ Создана директория: {dir_path}")
 
 
 def load_configuration(config_path="config/main_config.yaml"):
@@ -117,15 +117,15 @@ def load_configuration(config_path="config/main_config.yaml"):
         # Устанавливаем как глобальный
         set_global_config_manager(config)
 
-        print("  [OK] ConfigManager инициализирован успешно")
-        print(f"  [DATA] Загружено секций: {len(config.get_config())}")
+        print("  ✅ ConfigManager инициализирован успешно")
+        print(f"  📊 Загружено секций: {len(config.get_config())}")
         print(
             f"  [MAGNIFY] Обнаружено модульных конфигураций: {config.get_stats()['config_loads']}"
         )
 
         return config
     except Exception as e:
-        print(f"  [ERROR] Ошибка инициализации ConfigManager: {e}")
+        print(f"  ❌ Ошибка инициализации ConfigManager: {e}")
         return None
 
 
@@ -164,9 +164,9 @@ def setup_logging(config):
     )
 
     logger = logging.getLogger(__name__)
-    logger.info("[OK] Система логирования настроена")
-    logger.info(f"[DATA] Уровень логирования: {log_level}")
-    logger.info(f"[FOLDER] Файл логов: {log_file if log_to_file else 'отключен'}")
+    logger.info("✅ Система логирования настроена")
+    logger.info(f"📊 Уровень логирования: {log_level}")
+    logger.info(f"🗂️ Файл логов: {log_file if log_to_file else 'отключен'}")
 
     return logger
 
@@ -219,7 +219,7 @@ def demonstrate_concept():
     """
     )
 
-    print("\n[IDEA] Ключевые преимущества:")
+    print("\n💡 Ключевые преимущества:")
     print("  🔹 Параметрическая эффективность: учим только 1 прототип")
     print("  🔹 Биологическая правдоподобность: как в коре мозга")
     print("  🔹 Параллелизм: все клетки работают одновременно")
@@ -238,7 +238,7 @@ def demonstrate_io_strategy():
     try:
         import torch
 
-        print("[TARGET] Сравнение различных стратегий размещения...")
+        print("🎯 Сравнение различных стратегий размещения...")
 
         # Тестируем разные размеры решеток
         sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32)]
@@ -305,8 +305,8 @@ def demonstrate_io_strategy():
         # Получаем информацию о I/O точках
         io_info = lattice.get_io_point_info()
 
-        print(f"  [OK] 3D решетка создана: {config.dimensions}")
-        print(f"  [DATA] Всего клеток: {config.total_cells}")
+        print(f"  ✅ 3D решетка создана: {config.dimensions}")
+        print(f"  📊 Всего клеток: {config.total_cells}")
         print(
             f"  [PIN] Входных точек: {io_info['input_points']['count']} ({io_info['input_points']['coverage_percentage']:.1f}%)"
         )
@@ -330,14 +330,14 @@ def demonstrate_io_strategy():
         print(f"  📤 Все состояния: {output_states.shape}")
         print(f"  📤 I/O выходы: {io_output.shape}")
         print(
-            f"  [TARGET] Диапазон выходов: [{io_output.min():.3f}, {io_output.max():.3f}]"
+            f"  🎯 Диапазон выходов: [{io_output.min():.3f}, {io_output.max():.3f}]"
         )
 
         # Сравнение с полной гранью
         full_face_points = 8 * 8  # 64 точки для полной грани
         efficiency_gain = full_face_points / num_input_points
 
-        print(f"\n[IDEA] Эффективность:")
+        print(f"\n💡 Эффективность:")
         print(f"  🔸 Полная грань: {full_face_points} точек")
         print(f"  🔸 Пропорциональная: {num_input_points} точек")
         print(f"  🔸 Ускорение: {efficiency_gain:.1f}x меньше I/O точек")
@@ -348,7 +348,7 @@ def demonstrate_io_strategy():
         return True
 
     except Exception as e:
-        print(f"  [ERROR] Ошибка демонстрации I/O стратегии: {e}")
+        print(f"  ❌ Ошибка демонстрации I/O стратегии: {e}")
         import traceback
 
         traceback.print_exc()
@@ -359,23 +359,23 @@ def run_simple_test():
     """
     Запускает простой тест для проверки готовности системы
     """
-    print("\n[TEST] ПРОСТОЙ ТЕСТ СИСТЕМЫ")
+    print("\n🧪 ПРОСТОЙ ТЕСТ СИСТЕМЫ")
     print("=" * 30)
 
     # Проверяем доступность PyTorch
     try:
         import torch
 
-        print(f"  [OK] PyTorch доступен (версия: {torch.__version__})")
+        print(f"  ✅ PyTorch доступен (версия: {torch.__version__})")
 
         # Проверяем доступность GPU
         if torch.cuda.is_available():
-            print(f"  [OK] GPU доступен: {torch.cuda.get_device_name(0)}")
+            print(f"  ✅ GPU доступен: {torch.cuda.get_device_name(0)}")
         else:
             print("  ℹ️  GPU недоступен, будем использовать CPU")
 
     except ImportError:
-        print("  [ERROR] PyTorch не установлен")
+        print("  ❌ PyTorch не установлен")
         return False
 
     # Проверяем другие библиотеки
@@ -383,9 +383,9 @@ def run_simple_test():
     for lib in libraries:
         try:
             __import__(lib)
-            print(f"  [OK] {lib} доступен")
+            print(f"  ✅ {lib} доступен")
         except ImportError:
-            print(f"  [ERROR] {lib} не установлен")
+            print(f"  ❌ {lib} не установлен")
             return False
 
     # Демонстрируем РЕАЛЬНЫЙ модуль cell_prototype
@@ -401,7 +401,7 @@ def run_simple_test():
             cell_config = config_manager.get_config("cell_prototype")
             if cell_config:
                 real_cell = create_cell_from_config(cell_config)
-                print(f"  [OK] Реальная клетка создана: {real_cell}")
+                print(f"  ✅ Реальная клетка создана: {real_cell}")
 
                 # Создаем тестовые данные
                 batch_size = 2
@@ -413,10 +413,10 @@ def run_simple_test():
                 with torch.no_grad():
                     new_state = real_cell(neighbor_states, own_state, external_input)
 
-                print(f"  [DATA] Входное состояние: {own_state[0].numpy()}")
-                print(f"  [DATA] Новое состояние:   {new_state[0].numpy()}")
+                print(f"  📊 Входное состояние: {own_state[0].numpy()}")
+                print(f"  📊 Новое состояние:   {new_state[0].numpy()}")
                 print(
-                    f"  [DATA] Диапазон выхода:   [{new_state.min():.3f}, {new_state.max():.3f}]"
+                    f"  📊 Диапазон выхода:   [{new_state.min():.3f}, {new_state.max():.3f}]"
                 )
 
                 # Показываем информацию о модели
@@ -424,7 +424,7 @@ def run_simple_test():
                 print(f"  [INFO] Параметров в модели: {info['total_parameters']}")
                 print(f"  [INFO] Размер модели: {info['model_size_mb']:.2f} MB")
 
-                print("  [OK] Тест реальной клетки прошел успешно!")
+                print("  ✅ Тест реальной клетки прошел успешно!")
             else:
                 print("  [WARNING]  Конфигурация cell_prototype не найдена")
 
@@ -447,14 +447,14 @@ def run_simple_test():
             test_input = torch.randn(1, 3)
             output = cell(test_input)
 
-            print(f"  [OK] Простая клетка создана")
-            print(f"  [DATA] Вход: {test_input.detach().numpy().flatten()}")
-            print(f"  [DATA] Выход: {output.detach().numpy().flatten()}")
+            print(f"  ✅ Простая клетка создана")
+            print(f"  📊 Вход: {test_input.detach().numpy().flatten()}")
+            print(f"  📊 Выход: {output.detach().numpy().flatten()}")
 
         return True
 
     except Exception as e:
-        print(f"  [ERROR] Ошибка тестирования клетки: {e}")
+        print(f"  ❌ Ошибка тестирования клетки: {e}")
         import traceback
 
         traceback.print_exc()
@@ -471,7 +471,7 @@ def main():
     3. Инициализация модулей
     4. Запуск основной логики
     """
-    print("[START] ЗАПУСК 3D КЛЕТОЧНОЙ НЕЙРОННОЙ СЕТИ")
+    print("🚀 ЗАПУСК 3D КЛЕТОЧНОЙ НЕЙРОННОЙ СЕТИ")
     print("=" * 50)
 
     # Парсим аргументы командной строки
@@ -495,7 +495,7 @@ def main():
     # Загружаем конфигурацию
     config = load_configuration(args.config)
     if config is None:
-        print("[ERROR] Не удалось загрузить конфигурацию. Завершение работы.")
+        print("❌ Не удалось загрузить конфигурацию. Завершение работы.")
         return 1
 
     # Настраиваем логирование
@@ -512,10 +512,10 @@ def main():
 
     # Запускаем тест системы
     if not run_simple_test():
-        print("\n[ERROR] Тесты системы не прошли. Проверьте установку зависимостей.")
+        print("\n❌ Тесты системы не прошли. Проверьте установку зависимостей.")
         return 1
 
-    print(f"\n[TARGET] РЕЖИМ РАБОТЫ: {args.mode.upper()}")
+    print(f"\n🎯 РЕЖИМ РАБОТЫ: {args.mode.upper()}")
     print("=" * 30)
 
     if args.mode == "demo":
@@ -524,7 +524,7 @@ def main():
         print("  • Демонстрируем I/O стратегию с автоматическим масштабированием")
         print("  • Выполняем простые тесты")
         print("  • Готовимся к реальной разработке")
-        print("\n[IDEA] Следующий шаг: интеграция с signal_propagation модулем")
+        print("\n💡 Следующий шаг: интеграция с signal_propagation модулем")
 
     elif args.mode == "train":
         print("[GRADUATE] Режим обучения (пока не реализован)")
@@ -533,12 +533,12 @@ def main():
         print("  • Будет сохранять чекпоинты")
 
     elif args.mode == "test":
-        print("[TEST] Режим тестирования (пока не реализован)")
+        print("🧪 Режим тестирования (пока не реализован)")
         print("  • Будет загружать обученную модель")
         print("  • Будет делать предсказания")
         print("  • Будет оценивать качество")
 
-    print("\n[OK] СИСТЕМА ГОТОВА К РАЗРАБОТКЕ!")
+    print("\n✅ СИСТЕМА ГОТОВА К РАЗРАБОТКЕ!")
     print("📖 Следуйте плану в PROJECT_PLAN.md")
     print("[CONFIG] Настройки в config/main_config.yaml")
 

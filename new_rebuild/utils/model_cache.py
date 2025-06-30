@@ -44,7 +44,7 @@ class ModelCacheManager:
         self.cache_metadata_file = self.local_models_dir / "cache_metadata.json"
         self.metadata = self._load_metadata()
 
-        self.logger.info(f"[ARCHIVE] ModelCacheManager initialized: {self.local_models_dir}")
+        self.logger.info(f"🗄️ ModelCacheManager initialized: {self.local_models_dir}")
 
     def _load_metadata(self) -> Dict[str, Any]:
         """Загрузка метаданных кэша"""
@@ -75,7 +75,7 @@ class ModelCacheManager:
         """Проверка наличия модели в кэше"""
         model_path = self._get_model_path(model_name)
 
-        self.logger.debug(f"[SEARCH] Checking cache for '{model_name}' at: {model_path}")
+        self.logger.debug(f"🔍 Checking cache for '{model_name}' at: {model_path}")
 
         # Проверяем основные файлы
         required_files = ["config.json"]
@@ -90,9 +90,9 @@ class ModelCacheManager:
             file_path = model_path / file
             if not file_path.exists():
                 missing_files.append(file)
-                self.logger.debug(f"  [ERROR] Missing: {file}")
+                self.logger.debug(f"  ❌ Missing: {file}")
             else:
-                self.logger.debug(f"  [OK] Found: {file}")
+                self.logger.debug(f"  ✅ Found: {file}")
 
         # Для distilbert проверяем наличие файла модели в любом формате
         if model_name.startswith("distilbert"):
@@ -100,11 +100,11 @@ class ModelCacheManager:
             for model_file in model_files:
                 model_file_path = model_path / model_file
                 if model_file_path.exists():
-                    self.logger.debug(f"  [OK] Found model file: {model_file}")
+                    self.logger.debug(f"  ✅ Found model file: {model_file}")
                     model_file_found = True
                     break
                 else:
-                    self.logger.debug(f"  [ERROR] Missing model file: {model_file}")
+                    self.logger.debug(f"  ❌ Missing model file: {model_file}")
 
             if not model_file_found:
                 missing_files.append(
@@ -114,10 +114,10 @@ class ModelCacheManager:
         is_cached = len(missing_files) == 0
 
         if is_cached:
-            self.logger.debug(f"[OK] Model '{model_name}' is cached at: {model_path}")
+            self.logger.debug(f"✅ Model '{model_name}' is cached at: {model_path}")
         else:
             self.logger.debug(
-                f"[ERROR] Model '{model_name}' not cached. Missing files: {missing_files}"
+                f"❌ Model '{model_name}' not cached. Missing files: {missing_files}"
             )
 
         return is_cached
@@ -132,7 +132,7 @@ class ModelCacheManager:
         Returns:
             Путь к модели для загрузки
         """
-        self.logger.debug(f"[SEARCH] get_model_path called for '{model_name}'")
+        self.logger.debug(f"🔍 get_model_path called for '{model_name}'")
         self.logger.debug(f"  prefer_local: {self.prefer_local}")
         self.logger.debug(f"  auto_download: {self.auto_download}")
 
@@ -145,22 +145,22 @@ class ModelCacheManager:
         # 1. Если предпочитаем локальную версию
         if self.prefer_local:
             if is_cached:
-                self.logger.info(f"[FILE] Using cached model: {local_path}")
+                self.logger.info(f"📁 Using cached model: {local_path}")
                 return str(local_path)
 
             # Локальная версия предпочтительна, но её нет. Пытаемся скачать.
             if self.auto_download:
                 self.logger.info(
-                    f"[SYNC] Model '{model_name}' not in cache, attempting to download."
+                    f"🔄 Model '{model_name}' not in cache, attempting to download."
                 )
                 if self._download_model(model_name):
                     self.logger.info(
-                        f"[OK] Download successful. Now using cached model: {local_path}"
+                        f"✅ Download successful. Now using cached model: {local_path}"
                     )
                     return str(local_path)
                 else:
                     self.logger.warning(
-                        f"[WARN] Failed to download '{model_name}'. Falling back to online version."
+                        f"⚠️ Failed to download '{model_name}'. Falling back to online version."
                     )
             else:
                 self.logger.warning(
@@ -207,7 +207,7 @@ class ModelCacheManager:
             }
             self._save_metadata()
 
-            self.logger.info(f"[OK] Successfully cached {model_name}")
+            self.logger.info(f"✅ Successfully cached {model_name}")
             return True
 
         except ImportError:
@@ -281,11 +281,11 @@ class ModelCacheManager:
             tokenizer = AutoTokenizer.from_pretrained(str(model_path))
             model = AutoModel.from_pretrained(str(model_path))
 
-            self.logger.info(f"[OK] Model {model_name} integrity verified")
+            self.logger.info(f"✅ Model {model_name} integrity verified")
             return True
 
         except Exception as e:
-            self.logger.warning(f"[ERROR] Model {model_name} integrity check failed: {e}")
+            self.logger.warning(f"❌ Model {model_name} integrity check failed: {e}")
             return False
 
 
@@ -305,7 +305,7 @@ def get_model_cache_manager(
             from ..config.simple_config import get_project_config
 
             config = get_project_config()
-        logger.debug("[TOOL] Creating new global ModelCacheManager")
+        logger.debug("🔧 Creating new global ModelCacheManager")
         _global_cache_manager = ModelCacheManager(config)
     else:
         logger.debug("♻️ Reusing existing global ModelCacheManager")
@@ -350,12 +350,12 @@ def setup_model_cache(models: list = None) -> Dict[str, bool]:
     results = {}
 
     for model in models:
-        logger.info(f"[SYNC] Setting up cache for {model}")
+        logger.info(f"🔄 Setting up cache for {model}")
         results[model] = manager._download_model(model)
 
     # Показываем статистику
     cache_info = manager.get_cache_info()
-    logger.info(f"[DATA] Cache setup complete:")
+    logger.info(f"📊 Cache setup complete:")
     logger.info(f"  Models: {cache_info['models_count']}")
     logger.info(f"  Total size: {cache_info['total_size_mb']:.1f} MB")
 

@@ -157,7 +157,7 @@ class AdapterCubeTrainer:
         self.training_history = []
         self.adapter_warmup_complete = False
 
-        self.logger.info(f"[OK] AdapterCubeTrainer configured:")
+        self.logger.info(f"✅ AdapterCubeTrainer configured:")
         self.logger.info(
             f"   Teacher: {self.config.teacher_model} ({self.config.teacher_embedding_dim}D)"
         )
@@ -211,7 +211,7 @@ class AdapterCubeTrainer:
         # 4. Проверка совместимости
         self._validate_integration()
 
-        self.logger.info("[TARGET] All integrated components initialized successfully!")
+        self.logger.info("🎯 All integrated components initialized successfully!")
 
     def _setup_adapter(self):
         """Создание и настройка универсального адаптера"""
@@ -241,7 +241,7 @@ class AdapterCubeTrainer:
         compression_ratio = self.adapter.get_compression_ratio()
         param_count = self.adapter.get_parameter_count()
 
-        self.logger.info(f"[OK] Adapter created:")
+        self.logger.info(f"✅ Adapter created:")
         self.logger.info(f"   {self.config.teacher_embedding_dim}D → {surface_size}D")
         self.logger.info(
             f"   Compression: {compression_ratio:.3f} ({compression_ratio*100:.1f}%)"
@@ -275,7 +275,7 @@ class AdapterCubeTrainer:
         self.embedding_processor = EmbeddingProcessor(processor_config)
         self.embedding_processor.to(self.device)
 
-        self.logger.info(f"[OK] EmbeddingProcessor.SURFACE_ONLY initialized:")
+        self.logger.info(f"✅ EmbeddingProcessor.SURFACE_ONLY initialized:")
         self.logger.info(f"   Mode: {ProcessingMode.SURFACE_ONLY.value}")
         self.logger.info(f"   Surface size: {surface_size}D")
         self.logger.info(f"   Surface dims: {surface_dims}")
@@ -317,7 +317,7 @@ class AdapterCubeTrainer:
                 processor_params, lr=self.config.cube_learning_rate
             )
             self.logger.info(
-                f"[OK] Processor optimizer created with {len(processor_params)} parameters"
+                f"✅ Processor optimizer created with {len(processor_params)} parameters"
             )
         else:
             self.processor_optimizer = None
@@ -336,7 +336,7 @@ class AdapterCubeTrainer:
                     all_params, lr=self.config.cube_learning_rate
                 )
                 self.logger.info(
-                    f"[OK] Joint optimizer configured with {len(all_params)} total parameters"
+                    f"✅ Joint optimizer configured with {len(all_params)} total parameters"
                 )
             else:
                 self.joint_optimizer = None
@@ -346,7 +346,7 @@ class AdapterCubeTrainer:
         else:
             self.joint_optimizer = None
 
-        self.logger.info("[OK] All optimizers configured (adapter, processor, joint)")
+        self.logger.info("✅ All optimizers configured (adapter, processor, joint)")
 
     def _calculate_surface_size(self) -> int:
         """Вычисление размера surface в зависимости от стратегии"""
@@ -396,7 +396,7 @@ class AdapterCubeTrainer:
             processor_output.shape == adapter_output.shape
         ), f"Processor output shape mismatch: {processor_output.shape} vs expected {adapter_output.shape}"
 
-        self.logger.info("[OK] Integration validation passed!")
+        self.logger.info("✅ Integration validation passed!")
         self.logger.info(
             f"   Pipeline: {test_input.shape} → {adapter_output.shape} → {processor_output.shape}"
         )

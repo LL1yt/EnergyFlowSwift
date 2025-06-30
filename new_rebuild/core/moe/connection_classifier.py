@@ -142,20 +142,20 @@ class UnifiedConnectionClassifier(nn.Module):
         """Инициализация pre-computed кэша"""
         try:
             if self.cache_manager is not None:
-                logger.info("[SYNC] Инициализация connection cache...")
+                logger.info("🔄 Инициализация connection cache...")
                 self.cache_manager.precompute_all_connections()
 
                 # Логируем статистику кэша
                 stats = self.cache_manager.get_cache_stats()
                 if stats["status"] == "active":
                     logger.info(
-                        f"[OK] Cache готов: {stats['cached_cells']} клеток, {stats['total_connections']} связей, {stats['cache_size_mb']:.1f}MB"
+                        f"✅ Cache готов: {stats['cached_cells']} клеток, {stats['total_connections']} связей, {stats['cache_size_mb']:.1f}MB"
                     )
                 else:
-                    logger.warning("[WARN] Cache пуст, используем fallback режим")
+                    logger.warning("⚠️ Cache пуст, используем fallback режим")
         except Exception as e:
-            logger.error(f"[ERROR] Ошибка инициализации кэша: {e}")
-            logger.info("[SYNC] Переключаемся на fallback режим без кэша")
+            logger.error(f"❌ Ошибка инициализации кэша: {e}")
+            logger.info("🔄 Переключаемся на fallback режим без кэша")
             self.cache_manager = None
 
     def classify_connections_batch(
@@ -206,7 +206,7 @@ class UnifiedConnectionClassifier(nn.Module):
 
                     if self.enable_detailed_stats:
                         logger.debug(
-                            f"[OK] Cache hit: {cache_time:.4f}s для batch_size={cell_indices.shape[0]}"
+                            f"✅ Cache hit: {cache_time:.4f}s для batch_size={cell_indices.shape[0]}"
                         )
                 return result
 
@@ -243,7 +243,7 @@ class UnifiedConnectionClassifier(nn.Module):
         """
         try:
             logger.debug(
-                f"[SEARCH] classify_connections_batch_original: входные данные - cell_indices.shape={cell_indices.shape}, neighbor_indices.shape={neighbor_indices.shape}, states.shape={states.shape}"
+                f"🔍 classify_connections_batch_original: входные данные - cell_indices.shape={cell_indices.shape}, neighbor_indices.shape={neighbor_indices.shape}, states.shape={states.shape}"
             )
 
             batch_size, max_neighbors = neighbor_indices.shape
@@ -256,7 +256,7 @@ class UnifiedConnectionClassifier(nn.Module):
             import traceback
 
             logger.error(
-                f"[ERROR] ОШИБКА в classify_connections_batch_original (начало): {e}"
+                f"❌ ОШИБКА в classify_connections_batch_original (начало): {e}"
             )
             logger.error(f"📍 Traceback:\n{traceback.format_exc()}")
             raise
@@ -301,12 +301,12 @@ class UnifiedConnectionClassifier(nn.Module):
 
             if not (valid_middle_cells.all() and valid_middle_neighbors.all()):
                 logger.warning(
-                    f"[WARN] Неправильные индексы: cells max={middle_cells.max().item()}, neighbors max={middle_neighbors.max().item()}, states size={states.shape[0]}"
+                    f"⚠️ Неправильные индексы: cells max={middle_cells.max().item()}, neighbors max={middle_neighbors.max().item()}, states size={states.shape[0]}"
                 )
                 # Фильтруем только валидные индексы
                 valid_pairs = valid_middle_cells & valid_middle_neighbors
                 if valid_pairs.sum().item() == 0:
-                    logger.warning("[WARN] Нет валидных пар для функциональной проверки")
+                    logger.warning("⚠️ Нет валидных пар для функциональной проверки")
                 else:
                     middle_cells = middle_cells[valid_pairs]
                     middle_neighbors = middle_neighbors[valid_pairs]
@@ -413,9 +413,9 @@ class UnifiedConnectionClassifier(nn.Module):
                 self._update_stats_from_result(result)
 
                 self.performance_stats["cache_hits"] += 1
-                logger.debug(f"[OK] Cache hit для клетки {cell_idx}")
+                logger.debug(f"✅ Cache hit для клетки {cell_idx}")
                 logger.debug(
-                    f"[DATA] Cache result: LOCAL={len(result.get(ConnectionCategory.LOCAL, []))}, FUNCTIONAL={len(result.get(ConnectionCategory.FUNCTIONAL, []))}, DISTANT={len(result.get(ConnectionCategory.DISTANT, []))}"
+                    f"📊 Cache result: LOCAL={len(result.get(ConnectionCategory.LOCAL, []))}, FUNCTIONAL={len(result.get(ConnectionCategory.FUNCTIONAL, []))}, DISTANT={len(result.get(ConnectionCategory.DISTANT, []))}"
                 )
                 return result
 
@@ -446,7 +446,7 @@ class UnifiedConnectionClassifier(nn.Module):
         # Создаем полный тензор состояний
         try:
             logger.debug(
-                f"[SEARCH] concat debug: cell_state.shape={cell_state.shape}, neighbor_states.shape={neighbor_states.shape}"
+                f"🔍 concat debug: cell_state.shape={cell_state.shape}, neighbor_states.shape={neighbor_states.shape}"
             )
 
             # Нормализуем размеры для корректной конкатенации
@@ -479,18 +479,18 @@ class UnifiedConnectionClassifier(nn.Module):
             all_states = torch.cat(
                 [cell_state_normalized, neighbor_states_normalized], dim=0
             )
-            logger.debug(f"[SEARCH] all_states.shape после concat: {all_states.shape}")
+            logger.debug(f"🔍 all_states.shape после concat: {all_states.shape}")
 
         except Exception as e:
-            logger.error(f"[ERROR] concat error: {e}")
+            logger.error(f"❌ concat error: {e}")
             logger.error(
-                f"[SEARCH] cell_state.shape={cell_state.shape}, neighbor_states.shape={neighbor_states.shape}"
+                f"🔍 cell_state.shape={cell_state.shape}, neighbor_states.shape={neighbor_states.shape}"
             )
             logger.error(
-                f"[SEARCH] cell_state_normalized.shape={locals().get('cell_state_normalized', 'не определено')}"
+                f"🔍 cell_state_normalized.shape={locals().get('cell_state_normalized', 'не определено')}"
             )
             logger.error(
-                f"[SEARCH] neighbor_states_normalized.shape={locals().get('neighbor_states_normalized', 'не определено')}"
+                f"🔍 neighbor_states_normalized.shape={locals().get('neighbor_states_normalized', 'не определено')}"
             )
             raise
 
@@ -703,10 +703,10 @@ class UnifiedConnectionClassifier(nn.Module):
     def rebuild_cache(self, force: bool = True):
         """Принудительная перестройка кэша"""
         if self.cache_manager is not None:
-            logger.info("[SYNC] Принудительная перестройка кэша...")
+            logger.info("🔄 Принудительная перестройка кэша...")
             self.cache_manager.clear_cache()
             self.cache_manager.precompute_all_connections(force_rebuild=force)
-            logger.info("[OK] Кэш перестроен")
+            logger.info("✅ Кэш перестроен")
         else:
             logger.warning("Cache manager не доступен")
 
@@ -731,5 +731,5 @@ class UnifiedConnectionClassifier(nn.Module):
         self.usage_stats["total_classifications"] += 1
 
         logger.debug(
-            f"[DATA] Stats updated: LOCAL+{local_count}, FUNCTIONAL+{functional_count}, DISTANT+{distant_count}"
+            f"📊 Stats updated: LOCAL+{local_count}, FUNCTIONAL+{functional_count}, DISTANT+{distant_count}"
         )

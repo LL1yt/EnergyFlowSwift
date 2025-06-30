@@ -1,5 +1,5 @@
 """
-[START] Resource-Efficient Transformer (RET) - Революционная архитектура 2025
+🚀 Resource-Efficient Transformer (RET) - Революционная архитектура 2025
 
 Реализация компактного декодера с 52% снижением памяти и 33% ускорением
 на основе исследований современных transformer архитектур.
@@ -289,7 +289,7 @@ class EmbeddingToTextBridge(nn.Module):
 
 class ResourceEfficientDecoder(nn.Module):
     """
-    [START] Resource-Efficient Transformer Decoder
+    🚀 Resource-Efficient Transformer Decoder
 
     Революционная архитектура с 52% memory reduction и 33% speedup
     Оптимизирована для RTX 5090 и edge deployment
@@ -322,7 +322,7 @@ class ResourceEfficientDecoder(nn.Module):
         # Initialize weights
         self.apply(self._init_weights)
 
-        logger.info(f"[START] ResourceEfficientDecoder initialized:")
+        logger.info(f"🚀 ResourceEfficientDecoder initialized:")
         logger.info(f"   Parameters: {self._count_parameters():,}")
         logger.info(f"   Target: <{config.target_parameters:,}")
         logger.info(f"   Memory reduction: {config.memory_reduction_factor:.1%}")
@@ -470,7 +470,7 @@ class ResourceEfficientDecoder(nn.Module):
             # Update metrics
             self.metrics.update(result["metrics"])
 
-            logger.info(f"[START] RET Generation completed:")
+            logger.info(f"🚀 RET Generation completed:")
             logger.info(f"   Tokens: {len(tokens)}")
             logger.info(f"   Time: {result['metrics']['forward_time']:.3f}s")
             logger.info(f"   Quality: {result['quality_score']:.3f}")
@@ -478,7 +478,7 @@ class ResourceEfficientDecoder(nn.Module):
             return text
 
         except Exception as e:
-            logger.error(f"[ERROR] RET Generation failed: {e}")
+            logger.error(f"❌ RET Generation failed: {e}")
             return f"RET Generation Error: {str(e)}"
 
     def get_model_info(self) -> Dict[str, Any]:
@@ -524,7 +524,7 @@ def create_resource_efficient_decoder(
 
     decoder = ResourceEfficientDecoder(config)
 
-    logger.info("[TARGET] ResourceEfficientDecoder created successfully!")
+    logger.info("🎯 ResourceEfficientDecoder created successfully!")
     logger.info(f"   Memory optimization: {config.memory_reduction_factor:.1%}")
     logger.info(f"   Speed optimization: {config.speed_improvement_factor:.1%}")
     logger.info(f"   Parameters: {decoder._count_parameters():,}")
@@ -534,7 +534,7 @@ def create_resource_efficient_decoder(
 
 if __name__ == "__main__":
     # Тестирование RET decoder
-    print("[START] Testing Resource-Efficient Transformer Decoder...")
+    print("🚀 Testing Resource-Efficient Transformer Decoder...")
 
     # Create decoder
     decoder = create_resource_efficient_decoder()
@@ -548,4 +548,4 @@ if __name__ == "__main__":
     print(f"Generated: {result}")
     print(f"Model info: {decoder.get_model_info()}")
 
-    print("[OK] RET Decoder test completed!")
+    print("✅ RET Decoder test completed!")

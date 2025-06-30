@@ -77,18 +77,18 @@ def optimize_gmlp_config() -> Dict[str, Any]:
                         best_params = param_count
                         
                 except Exception as e:
-                    print(f"[ERROR] Failed config hidden_dim={hidden_dim}: {e}")
+                    print(f"❌ Failed config hidden_dim={hidden_dim}: {e}")
     
     print("\n" + "=" * 60)
-    print("[TARGET] OPTIMIZATION RESULTS")
+    print("🎯 OPTIMIZATION RESULTS")
     print("=" * 60)
     
     if best_config:
-        print(f"[OK] Best Configuration:")
+        print(f"✅ Best Configuration:")
         for key, value in best_config.items():
             print(f"   {key}: {value}")
         
-        print(f"\n[DATA] Parameter Analysis:")
+        print(f"\n📊 Parameter Analysis:")
         print(f"   Target: {target_params:,} parameters")
         print(f"   Achieved: {best_params:,} parameters")
         print(f"   Difference: {best_diff:,} parameters")
@@ -97,7 +97,7 @@ def optimize_gmlp_config() -> Dict[str, Any]:
         if best_diff <= 2000:  # Within 2K parameters
             print(f"[SUCCESS] EXCELLENT: Within 2K of target!")
         elif best_diff <= 5000:  # Within 5K parameters
-            print(f"[OK] GOOD: Within 5K of target")
+            print(f"✅ GOOD: Within 5K of target")
         else:
             print(f"[WARNING]  ACCEPTABLE: {best_diff:,} parameters from target")
     
@@ -121,7 +121,7 @@ def optimize_gmlp_config() -> Dict[str, Any]:
 
 def test_optimized_config(config: Dict[str, Any]):
     """Test optimized configuration"""
-    print(f"\n[TEST] Testing Optimized Configuration")
+    print(f"\n🧪 Testing Optimized Configuration")
     print("=" * 40)
     
     try:
@@ -129,8 +129,8 @@ def test_optimized_config(config: Dict[str, Any]):
         cell = GatedMLPCell(**config)
         param_count = count_parameters(cell)
         
-        print(f"[OK] Cell created successfully")
-        print(f"[DATA] Parameters: {param_count:,}")
+        print(f"✅ Cell created successfully")
+        print(f"📊 Parameters: {param_count:,}")
         
         # Test forward pass
         batch_size = 2
@@ -140,9 +140,9 @@ def test_optimized_config(config: Dict[str, Any]):
         
         output = cell(neighbor_states, own_state, external_input)
         
-        print(f"[OK] Forward pass successful")
-        print(f"[DATA] Input shape: {own_state.shape}")
-        print(f"[DATA] Output shape: {output.shape}")
+        print(f"✅ Forward pass successful")
+        print(f"📊 Input shape: {own_state.shape}")
+        print(f"📊 Output shape: {output.shape}")
         
         # Test gradient flow
         loss = output.mean()
@@ -151,13 +151,13 @@ def test_optimized_config(config: Dict[str, Any]):
         grad_params = sum(1 for p in cell.parameters() if p.grad is not None)
         total_params = len(list(cell.parameters()))
         
-        print(f"[OK] Gradient flow successful")
-        print(f"[DATA] Parameters with gradients: {grad_params}/{total_params}")
+        print(f"✅ Gradient flow successful")
+        print(f"📊 Parameters with gradients: {grad_params}/{total_params}")
         
         return True
         
     except Exception as e:
-        print(f"[ERROR] Test failed: {e}")
+        print(f"❌ Test failed: {e}")
         return False
 
 
@@ -184,12 +184,12 @@ def calculate_full_system_size(config: Dict[str, Any]):
     
     total_system_params = lattice_params + adapter_params + spatial_propagation_params + loss_function_params
     
-    print(f"[DATA] Single Cell: {cell_params:,} parameters")
-    print(f"[DATA] Total Cells: {total_cells:,} cells")
-    print(f"[DATA] Lattice: {lattice_params:,} parameters")
-    print(f"[DATA] Adapter: {adapter_params:,} parameters")
-    print(f"[DATA] Spatial Prop: {spatial_propagation_params:,} parameters")
-    print(f"[DATA] Total System: {total_system_params:,} parameters")
+    print(f"📊 Single Cell: {cell_params:,} parameters")
+    print(f"📊 Total Cells: {total_cells:,} cells")
+    print(f"📊 Lattice: {lattice_params:,} parameters")
+    print(f"📊 Adapter: {adapter_params:,} parameters")
+    print(f"📊 Spatial Prop: {spatial_propagation_params:,} parameters")
+    print(f"📊 Total System: {total_system_params:,} parameters")
     
     # Memory estimation
     memory_gb = total_system_params * 4 / (1024**3)  # 4 bytes per float32
@@ -216,11 +216,11 @@ if __name__ == "__main__":
             # Analyze full system
             system_analysis = calculate_full_system_size(optimal_config)
             
-            print(f"\n[TARGET] FINAL RECOMMENDATION:")
-            print(f"[OK] Use configuration: {optimal_config}")
-            print(f"[OK] System feasible: {system_analysis['memory_gb']:.1f}GB memory")
-            print(f"[OK] Ready для emergent training!")
+            print(f"\n🎯 FINAL RECOMMENDATION:")
+            print(f"✅ Use configuration: {optimal_config}")
+            print(f"✅ System feasible: {system_analysis['memory_gb']:.1f}GB memory")
+            print(f"✅ Ready для emergent training!")
         else:
-            print(f"\n[ERROR] Optimal configuration failed testing")
+            print(f"\n❌ Optimal configuration failed testing")
     else:
-        print(f"\n[ERROR] No suitable configuration found") 
+        print(f"\n❌ No suitable configuration found") 

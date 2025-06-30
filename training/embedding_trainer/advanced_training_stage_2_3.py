@@ -88,7 +88,7 @@ class AdvancedTrainingStage23:
         self.best_qa_similarity = 0.0
         self.patience_counter = 0
         
-        print(f"[START] AdvancedTrainingStage23 initialized")
+        print(f"🚀 AdvancedTrainingStage23 initialized")
         print(f"   Target Q→A similarity: {self.config.target_qa_similarity:.1%}")
         print(f"   Target dataset size: {self.config.target_pairs} pairs")
         print(f"   Multi-teacher models: {len(self.config.teacher_models)}")
@@ -130,7 +130,7 @@ class AdvancedTrainingStage23:
         self.cube_trainer = CubeTrainer(config=training_config)
         self.cube_trainer.initialize_components()
         
-        print("[OK] All training components setup complete!")
+        print("✅ All training components setup complete!")
     
     def _normalize_embedding_dimensions(self, embeddings: torch.Tensor, target_dim: int = 768) -> torch.Tensor:
         """
@@ -174,7 +174,7 @@ class AdvancedTrainingStage23:
     
     def create_enhanced_dataset(self) -> DialogueDataset:
         """Создание enhanced dataset с expanded data и multi-teacher embeddings"""
-        print("[TARGET] Creating enhanced dataset for Stage 2.3...")
+        print("🎯 Creating enhanced dataset for Stage 2.3...")
         
         # 1. Dataset Expansion до 100+ pairs
         expanded_dataset = create_expanded_dataset(
@@ -182,7 +182,7 @@ class AdvancedTrainingStage23:
             quality_threshold=0.6  # Используем стандартное значение
         )
         
-        print(f"   [OK] Dataset expanded to {len(expanded_dataset)} pairs")
+        print(f"   ✅ Dataset expanded to {len(expanded_dataset)} pairs")
         
         # 2. Multi-Teacher Enhancement (если включен)
         if self.config.use_multi_teacher and self.multi_teacher:
@@ -202,7 +202,7 @@ class AdvancedTrainingStage23:
                 dialogue_pairs, validation_split=0.2
             )
             
-            print(f"   [OK] Multi-teacher ensemble created")
+            print(f"   ✅ Multi-teacher ensemble created")
             print(f"      Train samples: {len(ensemble_data['train']['question_embeddings'])}")
             print(f"      Validation samples: {len(ensemble_data['validation']['question_embeddings'])}")
         
@@ -210,7 +210,7 @@ class AdvancedTrainingStage23:
     
     def run_advanced_training(self, dataset: DialogueDataset) -> Dict[str, float]:
         """Запуск продвинутого обучения Stage 2.3"""
-        print("[START] Starting Stage 2.3 Advanced Training...")
+        print("🚀 Starting Stage 2.3 Advanced Training...")
         
         # Получение dataloader
         train_dataloader = dataset.get_dataloader(
@@ -243,7 +243,7 @@ class AdvancedTrainingStage23:
             
             # Early stopping check
             if self._check_early_stopping(val_metrics):
-                print(f"[STOP] Early stopping at epoch {epoch}")
+                print(f"🛑 Early stopping at epoch {epoch}")
                 break
             
             # Save checkpoint если улучшение
@@ -259,7 +259,7 @@ class AdvancedTrainingStage23:
         
         print(f"[SUCCESS] Stage 2.3 Training Complete!")
         print(f"   Best Q→A similarity: {self.best_qa_similarity:.1%}")
-        print(f"   Target achieved: {'[OK]' if self.best_qa_similarity >= self.config.target_qa_similarity else '[ERROR]'}")
+        print(f"   Target achieved: {'✅' if self.best_qa_similarity >= self.config.target_qa_similarity else '❌'}")
         
         return final_results
     
@@ -487,7 +487,7 @@ def analyze_stage_2_3_progress(training_history: List[Dict]) -> Dict:
 
 if __name__ == "__main__":
     # Демонстрация Stage 2.3
-    print("[START] Testing Stage 2.3 Advanced Training Enhancement...")
+    print("🚀 Testing Stage 2.3 Advanced Training Enhancement...")
     
     # Запуск обучения
     results = run_stage_2_3_training(
@@ -497,7 +497,7 @@ if __name__ == "__main__":
         use_multi_teacher=True
     )
     
-    print(f"[DATA] Stage 2.3 Results:")
+    print(f"📊 Stage 2.3 Results:")
     for key, value in results.items():
         if isinstance(value, float):
             if "similarity" in key:
@@ -507,4 +507,4 @@ if __name__ == "__main__":
         else:
             print(f"   {key}: {value}")
     
-    print("\n[OK] Stage 2.3 Advanced Training Enhancement system ready!") 
+    print("\n✅ Stage 2.3 Advanced Training Enhancement system ready!") 

@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 def test_gpu_dataset():
     """Тестируем GPU-ускоренный датасет"""
     
-    logger.info("[TEST] TESTING GPU-ACCELERATED DATASET")
+    logger.info("🧪 TESTING GPU-ACCELERATED DATASET")
     logger.info("=" * 60)
     
     # Создаем конфигурацию
@@ -26,12 +26,12 @@ def test_gpu_dataset():
     device_manager = get_device_manager()
     
     # Проверяем GPU
-    logger.info(f"[SEARCH] GPU Available: {device_manager.is_cuda()}")
+    logger.info(f"🔍 GPU Available: {device_manager.is_cuda()}")
     if device_manager.is_cuda():
-        logger.info(f"[DISK] Total GPU Memory: {device_manager.get_available_memory_gb():.1f}GB")
+        logger.info(f"💾 Total GPU Memory: {device_manager.get_available_memory_gb():.1f}GB")
     
     # Тест 1: Небольшой датасет для проверки функциональности
-    logger.info("\n[SCIENCE] Test 1: Small dataset (100 samples)")
+    logger.info("\n🔬 Test 1: Small dataset (100 samples)")
     config.training_embedding.max_total_samples = 100
     
     start_time = time.time()
@@ -43,11 +43,11 @@ def test_gpu_dataset():
     load_time = time.time() - start_time
     
     logger.info(f"⏱️ Load time: {load_time:.2f}s")
-    logger.info(f"[DATA] Dataset size: {stats.total_samples}")
-    logger.info(f"[DATA] Sources: {stats.source_distribution}")
+    logger.info(f"📊 Dataset size: {stats.total_samples}")
+    logger.info(f"📊 Sources: {stats.source_distribution}")
     
     # Тест работы с батчами
-    logger.info("\n[SYNC] Testing batch loading:")
+    logger.info("\n🔄 Testing batch loading:")
     batch_times = []
     for i, batch in enumerate(dataloader):
         batch_start = time.time()
@@ -62,17 +62,17 @@ def test_gpu_dataset():
             break
     
     avg_batch_time = sum(batch_times) / len(batch_times)
-    logger.info(f"[UP] Average batch time: {avg_batch_time:.4f}s")
+    logger.info(f"📈 Average batch time: {avg_batch_time:.4f}s")
     
     # Тест памяти
     if device_manager.is_cuda():
         memory_stats = device_manager.get_memory_stats()
-        logger.info(f"\n[DISK] GPU Memory after test:")
+        logger.info(f"\n💾 GPU Memory after test:")
         logger.info(f"  Allocated: {memory_stats.get('allocated_mb', 0):.1f}MB")
         logger.info(f"  Available: {device_manager.get_available_memory_gb():.1f}GB")
     
     # Тест 2: Автоматическое управление памятью
-    logger.info("\n[SCIENCE] Test 2: Automatic memory management")
+    logger.info("\n🔬 Test 2: Automatic memory management")
     config.training_embedding.max_total_samples = None  # Автоматический лимит
     
     start_time = time.time()
@@ -84,15 +84,15 @@ def test_gpu_dataset():
     auto_load_time = time.time() - start_time
     
     logger.info(f"⏱️ Auto load time: {auto_load_time:.2f}s")
-    logger.info(f"[DATA] Auto dataset size: {stats2.total_samples}")
+    logger.info(f"📊 Auto dataset size: {stats2.total_samples}")
     
     # Сравнение производительности
-    logger.info(f"\n[UP] Performance Summary:")
+    logger.info(f"\n📈 Performance Summary:")
     logger.info(f"  Manual limit (100): {load_time:.2f}s")
     logger.info(f"  Auto limit ({stats2.total_samples}): {auto_load_time:.2f}s")
     logger.info(f"  Samples per second: {stats2.total_samples / auto_load_time:.0f}")
     
-    logger.info("\n[OK] GPU Dataset test completed!")
+    logger.info("\n✅ GPU Dataset test completed!")
     
     return {
         'small_dataset_time': load_time,
@@ -105,6 +105,6 @@ def test_gpu_dataset():
 
 if __name__ == "__main__":
     results = test_gpu_dataset()
-    print("\n[DATA] Test Results Summary:")
+    print("\n📊 Test Results Summary:")
     for key, value in results.items():
         print(f"  {key}: {value}")

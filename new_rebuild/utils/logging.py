@@ -208,10 +208,10 @@ class DebugModeFilter(logging.Filter):
         # Важные DEBUG сообщения (содержат специальные маркеры)
         message = record.getMessage()
         important_markers = [
-            "[START] INIT",
-            "[OK]",
-            "[ERROR]",
-            "[WARN]",
+            "🚀 INIT",
+            "✅",
+            "❌",
+            "⚠️",
             "ERROR",
             "CRITICAL",
         ]
@@ -368,7 +368,7 @@ def log_init(component_name: str, **kwargs) -> None:
 
     info_str = "\n     ".join(info_parts) if info_parts else "No additional info"
 
-    logger.info(f"[START] INIT {component_name} @ {timestamp}\n" f"     {info_str}")
+    logger.info(f"🚀 INIT {component_name} @ {timestamp}\n" f"     {info_str}")
 
 
 def log_function_call(func_name: str, args: Dict[str, Any] = None) -> None:
@@ -435,18 +435,18 @@ def log_cell_init(
 
     # Проверяем превышение параметров (только если target_params указан)
     if target_params is not None and total_params > target_params * 1.2:
-        status = "[WARN] ПРЕВЫШЕНИЕ"
+        status = "⚠️ ПРЕВЫШЕНИЕ"
         logger.warning(
-            f"[START] INIT {cell_type}Cell: {total_params:,} params (target: {target_params:,}) - {status}"
+            f"🚀 INIT {cell_type}Cell: {total_params:,} params (target: {target_params:,}) - {status}"
         )
     elif target_params is not None:
-        status = "[OK] НОРМА"
+        status = "✅ НОРМА"
         logger.info(
-            f"[START] INIT {cell_type}Cell: {total_params:,} params (target: {target_params:,}) - {status}"
+            f"🚀 INIT {cell_type}Cell: {total_params:,} params (target: {target_params:,}) - {status}"
         )
     else:
         # Нет целевого количества параметров
-        logger.info(f"[START] INIT {cell_type}Cell: {total_params:,} params")
+        logger.info(f"🚀 INIT {cell_type}Cell: {total_params:,} params")
 
     # Дополнительная информация
     for key, value in kwargs.items():

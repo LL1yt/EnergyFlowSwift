@@ -102,7 +102,7 @@ class GMLPOptConnections(nn.Module):
         }
 
         logger.info(
-            f"[START] INIT GMLPOptConnections @ {timestamp}\n"
+            f"🚀 INIT GMLPOptConnections @ {timestamp}\n"
             f"     FROM: {caller_info}\n"
             f"     WITH_CONFIG: {json.dumps(config_log, indent=2, default=str)}"
         )
@@ -189,11 +189,11 @@ class GMLPOptConnections(nn.Module):
 
         # Статус относительно target
         if total_params <= self.target_params * 1.1:  # 10% tolerance
-            logger.info(f"[GMLP_OPT_SUCCESS] [OK] Parameter count within target!")
+            logger.info(f"[GMLP_OPT_SUCCESS] ✅ Parameter count within target!")
         else:
             excess = total_params - self.target_params
             logger.warning(
-                f"[GMLP_OPT_OVER] [WARN] Exceeds target by {excess:,} ({total_params/self.target_params:.2f}x)"
+                f"[GMLP_OPT_OVER] ⚠️ Exceeds target by {excess:,} ({total_params/self.target_params:.2f}x)"
             )
 
     def forward(
@@ -321,12 +321,12 @@ def test_gmlp_opt_connections() -> bool:
 
         output = cell(neighbor_states, own_state, connection_weights, external_input)
         assert output.shape == (batch_size, 36), f"Wrong output shape: {output.shape}"
-        print(f"[OK] Output shape OK: {output.shape}")
+        print(f"✅ Output shape OK: {output.shape}")
 
         info = cell.get_info()
         assert info["architecture"] == "GMLPOptConnections"
         assert info["total_parameters"] > 0
-        print(f"[OK] Get info OK: {info['total_parameters']} params")
+        print(f"✅ Get info OK: {info['total_parameters']} params")
 
         print("--- GMLPOptConnections Test PASSED ---")
         return True
@@ -340,6 +340,6 @@ def test_gmlp_opt_connections() -> bool:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    print("[TEST] Testing GMLPOptConnections...")
+    print("🧪 Testing GMLPOptConnections...")
     success = test_gmlp_opt_connections()
-    print(f"Result: {'[OK] SUCCESS' if success else '[ERROR] FAILED'}")
+    print(f"Result: {'✅ SUCCESS' if success else '❌ FAILED'}")

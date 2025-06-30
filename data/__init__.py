@@ -58,7 +58,7 @@ def get_data_package_info():
 
 def list_available_modules():
     """Выводит список доступных модулей"""
-    print("[DATA] Data Package Modules:")
+    print("📊 Data Package Modules:")
     for module in __all__:
         print(f"  - {module}")
     return __all__

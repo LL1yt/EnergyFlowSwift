@@ -218,15 +218,15 @@ class ProgressiveConfigManager:
     def validate_stage_config(self, config: StageConfig) -> bool:
         """Валидирует конфигурацию стадии (с минимальным логированием)"""
         if config.dataset_limit <= 0:
-            logger.error(f"[ERROR] Invalid dataset_limit: {config.dataset_limit}")
+            logger.error(f"❌ Invalid dataset_limit: {config.dataset_limit}")
             return False
 
         if config.epochs <= 0:
-            logger.error(f"[ERROR] Invalid epochs: {config.epochs}")
+            logger.error(f"❌ Invalid epochs: {config.epochs}")
             return False
 
         if config.batch_size <= 0:
-            logger.error(f"[ERROR] Invalid batch_size: {config.batch_size}")
+            logger.error(f"❌ Invalid batch_size: {config.batch_size}")
             return False
 
         return True

@@ -545,7 +545,7 @@ class GPUEnhancedCNF(nn.Module):
 
     def optimize_performance(self):
         """Принудительная оптимизация производительности"""
-        logger.info("[TOOL] Оптимизация GPU Enhanced CNF")
+        logger.info("🔧 Оптимизация GPU Enhanced CNF")
 
         # Оптимизируем solver
         self.solver.optimize_performance()
@@ -553,11 +553,11 @@ class GPUEnhancedCNF(nn.Module):
         # Сбрасываем некоторую статистику
         self.performance_stats["gpu_memory_usage_mb"] = 0.0
 
-        logger.info("[OK] CNF оптимизация завершена")
+        logger.info("✅ CNF оптимизация завершена")
 
     def cleanup(self):
         """Освобождение ресурсов"""
-        logger.info("[STOP] Cleanup GPU Enhanced CNF")
+        logger.info("🛑 Cleanup GPU Enhanced CNF")
         self.solver.cleanup()
 
 
@@ -612,7 +612,7 @@ def benchmark_cnf_performance(
     for state_size in state_sizes:
         for batch_size in batch_sizes:
             logger.info(
-                f"[TEST] Бенчмарк CNF: state_size={state_size}, batch_size={batch_size}"
+                f"🧪 Бенчмарк CNF: state_size={state_size}, batch_size={batch_size}"
             )
 
             trial_results = []

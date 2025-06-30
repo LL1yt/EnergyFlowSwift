@@ -384,10 +384,10 @@ class EnhancedConfigValidator(ConfigValidator):
                 raise ValueError(f"Unsupported schema file format: {schema_path.suffix}")
             
             self._apply_schema(schema)
-            self.logger.info(f"[OK] Loaded schema from {schema_file}")
+            self.logger.info(f"✅ Loaded schema from {schema_file}")
             
         except Exception as e:
-            self.logger.error(f"[ERROR] Error loading schema from {schema_file}: {e}")
+            self.logger.error(f"❌ Error loading schema from {schema_file}: {e}")
             raise
     
     def _apply_schema(self, schema: Dict[str, Any]):
@@ -422,7 +422,7 @@ class EnhancedConfigValidator(ConfigValidator):
             config_hash = self._calculate_config_hash(config_data)
             if config_hash in self._validation_cache:
                 cached_result = self._validation_cache[config_hash]
-                self.logger.debug(f"[TARGET] Using cached validation result for {self.section_name}")
+                self.logger.debug(f"🎯 Using cached validation result for {self.section_name}")
                 return cached_result
         
         # Выполняем валидацию
@@ -484,7 +484,7 @@ class EnhancedConfigValidator(ConfigValidator):
     def clear_cache(self):
         """Очистка кэша валидации"""
         self._validation_cache.clear()
-        self.logger.info(f"[CLEAN] Cleared validation cache for {self.section_name}")
+        self.logger.info(f"🧹 Cleared validation cache for {self.section_name}")
     
     def get_validation_stats(self) -> Dict[str, Any]:
         """Статистика валидации"""
@@ -530,7 +530,7 @@ class SchemaManager:
                 self.logger.info(f"[INFO] Loaded schema: {schema_name}")
                 
             except Exception as e:
-                self.logger.error(f"[ERROR] Error loading schema {schema_file}: {e}")
+                self.logger.error(f"❌ Error loading schema {schema_file}: {e}")
         
         for schema_file in self.schemas_dir.glob("*.yaml"):
             try:
@@ -542,7 +542,7 @@ class SchemaManager:
                 self.logger.info(f"[INFO] Loaded schema: {schema_name}")
                 
             except Exception as e:
-                self.logger.error(f"[ERROR] Error loading schema {schema_file}: {e}")
+                self.logger.error(f"❌ Error loading schema {schema_file}: {e}")
     
     def get_schema(self, schema_name: str) -> Optional[Dict[str, Any]]:
         """Получение схемы по имени"""

@@ -133,7 +133,7 @@ class GPUSpatialProcessor:
         self._start_background_processing()
 
         logger.info(
-            f"[START] GPUSpatialProcessor инициализирован: {dimensions} на {self.device}"
+            f"🚀 GPUSpatialProcessor инициализирован: {dimensions} на {self.device}"
         )
 
     def _initialize_components(self):
@@ -186,7 +186,7 @@ class GPUSpatialProcessor:
         try:
             loop.run_until_complete(self._async_processing_loop())
         except Exception as e:
-            logger.error(f"[ERROR] Ошибка в async processing loop: {e}")
+            logger.error(f"❌ Ошибка в async processing loop: {e}")
         finally:
             loop.close()
 
@@ -205,7 +205,7 @@ class GPUSpatialProcessor:
                     await self._perform_maintenance_tasks()
 
             except Exception as e:
-                logger.error(f"[ERROR] Ошибка обработки spatial query: {e}")
+                logger.error(f"❌ Ошибка обработки spatial query: {e}")
 
     async def _process_spatial_query(self, query: SpatialQuery):
         """Обрабатывает пространственный запрос"""
@@ -249,12 +249,12 @@ class GPUSpatialProcessor:
             self._update_performance_metrics(result)
 
             logger.debug(
-                f"[OK] Query {query.query_id} обработан за {processing_time_ms:.1f}ms, "
+                f"✅ Query {query.query_id} обработан за {processing_time_ms:.1f}ms, "
                 f"chunks: {len(affected_chunks)}"
             )
 
         except Exception as e:
-            logger.error(f"[ERROR] Ошибка обработки query {query.query_id}: {e}")
+            logger.error(f"❌ Ошибка обработки query {query.query_id}: {e}")
         finally:
             # Очищаем активный запрос
             self.active_queries.pop(query.query_id, None)
@@ -277,7 +277,7 @@ class GPUSpatialProcessor:
                     affected_chunks.update(chunk_info.neighbor_chunks)
 
             except ValueError:
-                logger.warning(f"[WARN] Координата {coord} вне boundaries решетки")
+                logger.warning(f"⚠️ Координата {coord} вне boundaries решетки")
 
         return affected_chunks
 
@@ -312,16 +312,16 @@ class GPUSpatialProcessor:
         for future in as_completed(futures):
             try:
                 result = future.result(timeout=10.0)  # 10 секунд таймаут
-                logger.debug(f"[OK] Chunk загружен: {result}")
+                logger.debug(f"✅ Chunk загружен: {result}")
             except Exception as e:
-                logger.error(f"[ERROR] Ошибка загрузки chunk: {e}")
+                logger.error(f"❌ Ошибка загрузки chunk: {e}")
 
     def _chunk_load_callback(self, task: ChunkProcessingTask):
         """Callback для загрузки chunk'а"""
         try:
             chunk_info = self.chunker.adaptive_chunks[task.chunk_id]
         except (IndexError, KeyError):
-            logger.error(f"[ERROR] Chunk {task.chunk_id} не найден")
+            logger.error(f"❌ Chunk {task.chunk_id} не найден")
             return f"Chunk {task.chunk_id} not found"
 
         # Создаем координаты и индексы для spatial hash
@@ -617,7 +617,7 @@ class GPUSpatialProcessor:
 
     def optimize_performance(self):
         """Принудительная оптимизация производительности"""
-        logger.info("[TOOL] Запущена принудительная оптимизация производительности")
+        logger.info("🔧 Запущена принудительная оптимизация производительности")
 
         # Оптимизация spatial hash
         self.adaptive_hash.hash_grid.optimize_memory()
@@ -632,11 +632,11 @@ class GPUSpatialProcessor:
         # Принудительная очистка GPU памяти
         self.device_manager.cleanup()
 
-        logger.info("[OK] Оптимизация производительности завершена")
+        logger.info("✅ Оптимизация производительности завершена")
 
     def shutdown(self):
         """Завершение работы processor'а"""
-        logger.info("[STOP] Завершение работы GPUSpatialProcessor")
+        logger.info("🛑 Завершение работы GPUSpatialProcessor")
 
         # Останавливаем background processing
         self.processing_active = False
@@ -650,7 +650,7 @@ class GPUSpatialProcessor:
         # Финальная очистка памяти
         self.device_manager.cleanup()
 
-        logger.info("[OK] GPUSpatialProcessor завершен")
+        logger.info("✅ GPUSpatialProcessor завершен")
 
     # === PUBLIC API ===
     
@@ -706,7 +706,7 @@ class GPUSpatialProcessor:
                 try:
                     future.result(timeout=30.0)  # 30 секунд таймаут
                 except Exception as e:
-                    logger.error(f"[ERROR] Ошибка обработки chunk'а: {e}")
+                    logger.error(f"❌ Ошибка обработки chunk'а: {e}")
         
         # Apply all updates at once to create new tensor
         if updates:
@@ -733,9 +733,9 @@ class GPUSpatialProcessor:
         """Обрабатывает один chunk с заданной функцией"""
         try:
             # DEBUG: Логируем размерности
-            logger.debug(f"[TOOL] CHUNK PROCESSING: all_states shape {all_states.shape}")
-            logger.debug(f"[TOOL] CHUNK INDICES count: {len(chunk_info.cell_indices)}")
-            logger.debug(f"[TOOL] CHUNK INDICES range: {min(chunk_info.cell_indices)} - {max(chunk_info.cell_indices)}")
+            logger.debug(f"🔧 CHUNK PROCESSING: all_states shape {all_states.shape}")
+            logger.debug(f"🔧 CHUNK INDICES count: {len(chunk_info.cell_indices)}")
+            logger.debug(f"🔧 CHUNK INDICES range: {min(chunk_info.cell_indices)} - {max(chunk_info.cell_indices)}")
             
             # Получаем индексы клеток chunk'а
             indices = torch.tensor(
@@ -746,31 +746,31 @@ class GPUSpatialProcessor:
             
             # ИСПРАВЛЯЕМ индексирование: all_states имеет shape [batch, cells, features]
             # Индексы chunk_info.cell_indices относятся к cells dimension (второй размерности)
-            logger.debug(f"[SEARCH] INDEXING DEBUG: all_states.shape={all_states.shape}, indices.shape={indices.shape}")
-            logger.debug(f"[SEARCH] INDICES SAMPLE: {indices[:5].tolist()} ... {indices[-5:].tolist()}")
+            logger.debug(f"🔍 INDEXING DEBUG: all_states.shape={all_states.shape}, indices.shape={indices.shape}")
+            logger.debug(f"🔍 INDICES SAMPLE: {indices[:5].tolist()} ... {indices[-5:].tolist()}")
             
             if all_states.dim() == 3:  # [batch, cells, features]
                 batch_size, num_cells, features = all_states.shape
                 max_cell_index = num_cells - 1
                 
-                logger.debug(f"[SEARCH] BATCH INDEXING: batch_size={batch_size}, num_cells={num_cells}, max_index={max_cell_index}")
+                logger.debug(f"🔍 BATCH INDEXING: batch_size={batch_size}, num_cells={num_cells}, max_index={max_cell_index}")
                 
                 if torch.any(indices > max_cell_index):
                     invalid_indices = indices[indices > max_cell_index]
-                    logger.error(f"[ERROR] INVALID CELL INDICES: {invalid_indices.tolist()} > {max_cell_index}")
-                    logger.error(f"[ERROR] All states shape: {all_states.shape}")
+                    logger.error(f"❌ INVALID CELL INDICES: {invalid_indices.tolist()} > {max_cell_index}")
+                    logger.error(f"❌ All states shape: {all_states.shape}")
                     raise RuntimeError(f"Cell index out of bounds: max valid cell index is {max_cell_index}")
                 
-                logger.debug(f"[SEARCH] BEFORE INDEXING: about to do all_states[:, indices, :]")
+                logger.debug(f"🔍 BEFORE INDEXING: about to do all_states[:, indices, :]")
                 # Извлекаем состояния для chunk'а: [:, indices, :] - все батчи, выбранные клетки, все фичи
                 chunk_states = all_states[:, indices, :]  # [batch, chunk_cells, features]
-                logger.debug(f"[SEARCH] AFTER INDEXING: chunk_states.shape={chunk_states.shape}")
+                logger.debug(f"🔍 AFTER INDEXING: chunk_states.shape={chunk_states.shape}")
                 
             else:  # Fallback для других форматов
                 max_index = all_states.shape[0] - 1
                 if torch.any(indices > max_index):
                     invalid_indices = indices[indices > max_index]
-                    logger.error(f"[ERROR] INVALID INDICES: {invalid_indices.tolist()} > {max_index}")
+                    logger.error(f"❌ INVALID INDICES: {invalid_indices.tolist()} > {max_index}")
                     raise RuntimeError(f"Index out of bounds: max valid index is {max_index}")
                 
                 chunk_states = all_states[indices]
@@ -808,7 +808,7 @@ class GPUSpatialProcessor:
                     )
                     
                 except Exception as e:
-                    logger.debug(f"[WARN] Не удалось найти соседей для клетки {cell_idx}: {e}")
+                    logger.debug(f"⚠️ Не удалось найти соседей для клетки {cell_idx}: {e}")
                     neighbor_indices = torch.empty(0, device=self.device, dtype=torch.long)
                 
                 # Собираем состояния соседей
@@ -859,7 +859,7 @@ class GPUSpatialProcessor:
             return f"Chunk {chunk_info.chunk_id} processed successfully"
             
         except Exception as e:
-            logger.error(f"[ERROR] Ошибка обработки chunk {chunk_info.chunk_id}: {e}")
+            logger.error(f"❌ Ошибка обработки chunk {chunk_info.chunk_id}: {e}")
             return f"Chunk {chunk_info.chunk_id} processing failed: {e}"
     
     def _populate_spatial_hash(self, states: torch.Tensor):
@@ -947,7 +947,7 @@ class GPUSpatialProcessor:
         total_points = stats.get('spatial_hash', {}).get('total_points', 0)
         
         if total_points == 0:
-            logger.debug("[TOOL] Инициализируем spatial hash автоматически...")
+            logger.debug("🔧 Инициализируем spatial hash автоматически...")
             
             # Вычисляем общее количество клеток в решетке
             total_cells = self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
@@ -958,4 +958,4 @@ class GPUSpatialProcessor:
             # Заполняем spatial hash
             self._populate_spatial_hash(dummy_states)
             
-            logger.info(f"[OK] Spatial hash автоматически инициализирован для {total_cells} клеток")
+            logger.info(f"✅ Spatial hash автоматически инициализирован для {total_cells} клеток")

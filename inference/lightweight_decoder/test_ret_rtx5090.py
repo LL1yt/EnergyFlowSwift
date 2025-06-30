@@ -1,5 +1,5 @@
 """
-[TEST] RTX 5090 COMPATIBILITY TEST - Resource-Efficient Transformer
+🧪 RTX 5090 COMPATIBILITY TEST - Resource-Efficient Transformer
 
 Специальный тест для проверки:
 - RTX 5090 edge optimization compatibility
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 class RTX5090PerformanceTester:
     """
-    [START] RTX 5090 Performance Tester для Resource-Efficient Transformer
+    🚀 RTX 5090 Performance Tester для Resource-Efficient Transformer
     
     Проверяет:
     - Совместимость с RTX 5090 
@@ -57,7 +57,7 @@ class RTX5090PerformanceTester:
         self.ret_metrics = {}
         self.test_results = {}
         
-        logger.info(f"[TARGET] RTX 5090 Tester initialized on device: {self.device}")
+        logger.info(f"🎯 RTX 5090 Tester initialized on device: {self.device}")
         
     def _detect_device(self) -> str:
         """Определение доступного устройства"""
@@ -72,13 +72,13 @@ class RTX5090PerformanceTester:
             
             # RTX 5090 detection
             if "5090" in device_name or device_props.major >= 12:
-                logger.info("[START] RTX 5090 (or newer) detected - edge optimization режим")
+                logger.info("🚀 RTX 5090 (or newer) detected - edge optimization режим")
                 return "cuda"
             else:
                 logger.info("🎮 Other CUDA device - standard режим")
                 return "cuda"
         else:
-            logger.info("[COMPUTER] CPU mode - RTX 5090 fallback активен")
+            logger.info("💻 CPU mode - RTX 5090 fallback активен")
             return "cpu"
     
     def create_baseline_model(self) -> torch.nn.Module:
@@ -199,7 +199,7 @@ class RTX5090PerformanceTester:
     def test_baseline_performance(self) -> Dict[str, Any]:
         """Тестирование baseline модели"""
         
-        logger.info("[DATA] Testing baseline transformer performance...")
+        logger.info("📊 Testing baseline transformer performance...")
         
         # Create baseline model
         baseline_model = self.create_baseline_model()
@@ -231,7 +231,7 @@ class RTX5090PerformanceTester:
     def test_ret_performance(self) -> Dict[str, Any]:
         """Тестирование Resource-Efficient Transformer"""
         
-        logger.info("[START] Testing Resource-Efficient Transformer performance...")
+        logger.info("🚀 Testing Resource-Efficient Transformer performance...")
         
         # Create RET model with RTX 5090 optimization
         config = RETConfig(
@@ -262,7 +262,7 @@ class RTX5090PerformanceTester:
             'model_type': 'resource_efficient_transformer'
         }
         
-        logger.info(f"[TARGET] RET Results:")
+        logger.info(f"🎯 RET Results:")
         logger.info(f"   Memory: {memory_usage:.1f} MB")
         logger.info(f"   Speed: {inference_time:.1f} ms")
         logger.info(f"   Parameters: {parameters:,}")
@@ -273,7 +273,7 @@ class RTX5090PerformanceTester:
         """Расчет улучшений RET относительно baseline"""
         
         if not self.baseline_metrics or not self.ret_metrics:
-            logger.error("[ERROR] Baseline или RET metrics не собраны")
+            logger.error("❌ Baseline или RET metrics не собраны")
             return {}
         
         # Memory reduction calculation
@@ -330,7 +330,7 @@ class RTX5090PerformanceTester:
                     result = model.decode(test_input)
                 
                 compatibility_results['edge_quantization_works'] = True
-                logger.info("[OK] Edge quantization: PASSED")
+                logger.info("✅ Edge quantization: PASSED")
                 
             except Exception as e:
                 logger.warning(f"[WARNING] Edge quantization: FAILED - {e}")
@@ -345,7 +345,7 @@ class RTX5090PerformanceTester:
                 result = model.decode(test_input)
                 
                 compatibility_results['gradient_checkpointing_works'] = True
-                logger.info("[OK] Gradient checkpointing: PASSED")
+                logger.info("✅ Gradient checkpointing: PASSED")
                 
             except Exception as e:
                 logger.warning(f"[WARNING] Gradient checkpointing: FAILED - {e}")
@@ -360,7 +360,7 @@ class RTX5090PerformanceTester:
                     result = model.decode(test_input)
                 
                 compatibility_results['mixed_precision_works'] = True
-                logger.info("[OK] Mixed precision: PASSED")
+                logger.info("✅ Mixed precision: PASSED")
                 
             except Exception as e:
                 logger.warning(f"[WARNING] Mixed precision: FAILED - {e}")
@@ -370,7 +370,7 @@ class RTX5090PerformanceTester:
     def run_comprehensive_test(self) -> Dict[str, Any]:
         """Запуск полного теста RTX 5090 совместимости"""
         
-        logger.info("[START] Starting comprehensive RTX 5090 performance test...")
+        logger.info("🚀 Starting comprehensive RTX 5090 performance test...")
         
         # Run all tests
         baseline_results = self.test_baseline_performance()
@@ -414,16 +414,16 @@ class RTX5090PerformanceTester:
         """Печать детального отчета"""
         
         if not self.test_results:
-            logger.error("[ERROR] No test results available")
+            logger.error("❌ No test results available")
             return
         
         print("\n" + "="*60)
-        print("[START] RTX 5090 RESOURCE-EFFICIENT TRANSFORMER TEST REPORT")
+        print("🚀 RTX 5090 RESOURCE-EFFICIENT TRANSFORMER TEST REPORT")
         print("="*60)
         
         # Environment info
         env = self.test_results['test_environment']
-        print(f"\n[DATA] Test Environment:")
+        print(f"\n📊 Test Environment:")
         print(f"   Device: {env['device']}")
         print(f"   CUDA Available: {env['cuda_available']}")
         print(f"   GPU: {env.get('device_name', 'N/A')}")
@@ -437,30 +437,30 @@ class RTX5090PerformanceTester:
         print(f"   Baseline Memory: {baseline['memory_mb']:.1f} MB")
         print(f"   RET Memory: {ret['memory_mb']:.1f} MB")
         print(f"   → Memory Reduction: {improvements['memory_reduction_percent']:.1f}% "
-              f"{'[OK]' if improvements['memory_target_achieved'] else '[ERROR]'}")
+              f"{'✅' if improvements['memory_target_achieved'] else '❌'}")
         
-        print(f"\n[FAST] Speed Comparison:")
+        print(f"\n⚡ Speed Comparison:")
         print(f"   Baseline Speed: {baseline['inference_time_ms']:.1f} ms")
         print(f"   RET Speed: {ret['inference_time_ms']:.1f} ms")
         print(f"   → Speed Improvement: {improvements['speed_improvement_percent']:.1f}% "
-              f"{'[OK]' if improvements['speed_target_achieved'] else '[ERROR]'}")
+              f"{'✅' if improvements['speed_target_achieved'] else '❌'}")
         
         print(f"\n[SAVE] Parameter Comparison:")
         print(f"   Baseline Parameters: {baseline['parameters']:,}")
         print(f"   RET Parameters: {ret['parameters']:,}")
         print(f"   → Parameter Reduction: {improvements['parameter_reduction_percent']:.1f}% "
-              f"{'[OK]' if improvements['parameter_target_achieved'] else '[ERROR]'}")
+              f"{'✅' if improvements['parameter_target_achieved'] else '❌'}")
         
         # RTX 5090 compatibility
         compat = self.test_results['rtx5090_compatibility']
         print(f"\n🎮 RTX 5090 Compatibility:")
-        print(f"   Edge Quantization: {'[OK]' if compat['edge_quantization_works'] else '[ERROR]'}")
-        print(f"   Gradient Checkpointing: {'[OK]' if compat['gradient_checkpointing_works'] else '[ERROR]'}")
-        print(f"   Mixed Precision: {'[OK]' if compat['mixed_precision_works'] else '[ERROR]'}")
+        print(f"   Edge Quantization: {'✅' if compat['edge_quantization_works'] else '❌'}")
+        print(f"   Gradient Checkpointing: {'✅' if compat['gradient_checkpointing_works'] else '❌'}")
+        print(f"   Mixed Precision: {'✅' if compat['mixed_precision_works'] else '❌'}")
         
         # Overall result
         success = self.test_results['test_passed']
-        print(f"\n[TARGET] Overall Test Result: {'[OK] PASSED' if success else '[ERROR] FAILED'}")
+        print(f"\n🎯 Overall Test Result: {'✅ PASSED' if success else '❌ FAILED'}")
         
         if success:
             print("\n[SUCCESS] Resource-Efficient Transformer готов к production!")
@@ -476,7 +476,7 @@ class RTX5090PerformanceTester:
 def main():
     """Main test функция"""
     
-    print("[START] Starting RTX 5090 Resource-Efficient Transformer Test")
+    print("🚀 Starting RTX 5090 Resource-Efficient Transformer Test")
     print("="*60)
     
     # Create tester
@@ -502,13 +502,13 @@ def main():
         with open(results_path, 'w') as f:
             json.dump(serializable_results, f, indent=2)
         
-        logger.info(f"[FOLDER] Results saved to: {results_path}")
+        logger.info(f"🗂️ Results saved to: {results_path}")
         
         return results['test_passed']
         
     except Exception as e:
         import traceback
-        logger.error(f"[ERROR] Test failed with error: {e}")
+        logger.error(f"❌ Test failed with error: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return False
 

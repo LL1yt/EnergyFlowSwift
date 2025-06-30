@@ -45,7 +45,7 @@ class LossFunctionDiagnostics:
         self._test_different_scenarios(trainer)
         
         print("\n" + "="*60)
-        print("[OK] ДИАГНОСТИКА ЗАВЕРШЕНА")
+        print("✅ ДИАГНОСТИКА ЗАВЕРШЕНА")
         print("="*60)
     
     def _create_trainer(self):
@@ -118,7 +118,7 @@ class LossFunctionDiagnostics:
     
     def _test_dialogue_similarity_loss(self, trainer, outputs, targets):
         """Детальное тестирование dialogue similarity loss"""
-        print(f"\n   [DATA] DIALOGUE SIMILARITY LOSS:")
+        print(f"\n   📊 DIALOGUE SIMILARITY LOSS:")
         
         final_output = outputs['final_output']
         target_embedding = targets['target_embedding']
@@ -140,7 +140,7 @@ class LossFunctionDiagnostics:
             
             # Проверяем на идентичность
             if torch.mean(cos_sim).item() > 0.999:
-                print(f"      [ALERT] ПРОБЛЕМА: Почти идентичные тензоры!")
+                print(f"      🚨 ПРОБЛЕМА: Почти идентичные тензоры!")
                 print(f"         final_output[:5]: {final_output[0][:5]}")
                 print(f"         projected_target[:5]: {projected_target[0][:5]}")
                 print(f"         difference: {(final_output[0][:5] - projected_target[0][:5]).abs()}")
@@ -158,7 +158,7 @@ class LossFunctionDiagnostics:
                     print(f"         Projection weights std: {proj_weights.std().item():.6f}")
             
             # Тестируем разные векторы
-            print(f"      [TEST] Тест с random векторами:")
+            print(f"      🧪 Тест с random векторами:")
             random_output = torch.randn_like(final_output)
             random_target = torch.randn_like(projected_target)
             random_cos = torch.nn.functional.cosine_similarity(random_output, random_target, dim=-1)
@@ -167,13 +167,13 @@ class LossFunctionDiagnostics:
             print(f"         random dialogue_loss: {random_loss.item():.6f}")
             
             if random_loss.item() > 0.5:
-                print(f"         [OK] Random vectors дают нормальный loss > 0.5")
+                print(f"         ✅ Random vectors дают нормальный loss > 0.5")
             else:
-                print(f"         [ALERT] Даже random vectors дают низкий loss!")
+                print(f"         🚨 Даже random vectors дают низкий loss!")
     
     def _test_surface_consistency_loss(self, trainer, outputs, targets):
         """Тестирование surface consistency loss"""
-        print(f"\n   [HOME] SURFACE CONSISTENCY LOSS:")
+        print(f"\n   🏠 SURFACE CONSISTENCY LOSS:")
         
         input_surface = outputs['input_surface']
         output_surface = outputs['final_output']  # Это должно быть output_surface
@@ -186,11 +186,11 @@ class LossFunctionDiagnostics:
         print(f"      surface_consistency_loss (MSE): {surface_loss.item():.6f}")
         
         if surface_loss.item() < 0.001:
-            print(f"      [ALERT] ПРОБЛЕМА: Слишком маленький surface loss!")
+            print(f"      🚨 ПРОБЛЕМА: Слишком маленький surface loss!")
             print(f"         Разность: {(input_surface - output_surface).abs().mean().item():.8f}")
             print(f"         Возможно input_surface == output_surface")
         else:
-            print(f"      [OK] Surface loss выглядит нормально")
+            print(f"      ✅ Surface loss выглядит нормально")
     
     def _test_internal_dynamics_loss(self, trainer, outputs, targets):
         """Тестирование internal dynamics loss"""
@@ -206,15 +206,15 @@ class LossFunctionDiagnostics:
             print(f"      internal_dynamics_loss (L2): {internal_loss.item():.6f}")
             
             if internal_loss.item() < 0.001:
-                print(f"      [ALERT] Очень маленький internal loss")
+                print(f"      🚨 Очень маленький internal loss")
             else:
-                print(f"      [OK] Internal loss выглядит разумно")
+                print(f"      ✅ Internal loss выглядит разумно")
         else:
             print(f"      [WARNING] Нет internal_state в outputs")
     
     def _test_full_loss_computation(self, trainer, dataset):
         """Тестирование полного loss computation"""
-        print(f"\n[TARGET] ПОЛНЫЙ LOSS COMPUTATION:")
+        print(f"\n🎯 ПОЛНЫЙ LOSS COMPUTATION:")
         
         # Получаем sample
         sample = dataset[0]
@@ -247,22 +247,22 @@ class LossFunctionDiagnostics:
                 print(f"      {key}: {loss_val:.6f}")
                 
                 if loss_val == 0.0:
-                    print(f"         [ALERT] {key} = 0.0 - ПРОБЛЕМА!")
+                    print(f"         🚨 {key} = 0.0 - ПРОБЛЕМА!")
                 elif loss_val < 0.01:
                     print(f"         [WARNING] {key} очень маленький")
                 else:
-                    print(f"         [OK] {key} выглядит нормально")
+                    print(f"         ✅ {key} выглядит нормально")
         
         print(f"   Total loss: {total_loss:.6f}")
         
         if total_loss == 0.0:
-            print(f"   [ALERT] КРИТИЧЕСКАЯ ПРОБЛЕМА: Total loss = 0.0!")
+            print(f"   🚨 КРИТИЧЕСКАЯ ПРОБЛЕМА: Total loss = 0.0!")
             print(f"      Все компоненты loss равны нулю")
             print(f"      Обучение невозможно в таком состоянии")
         elif total_loss < 0.1:
             print(f"   [WARNING] Total loss очень маленький - может быть проблемой")
         else:
-            print(f"   [OK] Total loss выглядит разумно для начала обучения")
+            print(f"   ✅ Total loss выглядит разумно для начала обучения")
     
     def _test_different_scenarios(self, trainer):
         """Тестирование разных scenarios"""
@@ -311,11 +311,11 @@ class LossFunctionDiagnostics:
         print(f"      Total loss с нулевыми векторами: {scenario3_loss:.6f}")
         
         # Анализ результатов
-        print(f"\n   [DATA] Анализ scenarios:")
+        print(f"\n   📊 Анализ scenarios:")
         if scenario1_loss > 1.0 and scenario2_loss > 0.5:
-            print(f"      [OK] Loss function работает - разные inputs дают разные losses")
+            print(f"      ✅ Loss function работает - разные inputs дают разные losses")
         elif all(loss < 0.01 for loss in [scenario1_loss, scenario2_loss, scenario3_loss]):
-            print(f"      [ALERT] ПРОБЛЕМА: Все scenarios дают нулевой loss!")
+            print(f"      🚨 ПРОБЛЕМА: Все scenarios дают нулевой loss!")
             print(f"         Loss function не работает правильно")
         else:
             print(f"      [WARNING] Частичная проблема - некоторые scenarios дают нулевой loss")
@@ -325,7 +325,7 @@ def main():
     diagnostics = LossFunctionDiagnostics()
     diagnostics.run_diagnostics()
     
-    print("\n[TARGET] СЛЕДУЮЩИЕ ШАГИ:")
+    print("\n🎯 СЛЕДУЮЩИЕ ШАГИ:")
     print("1. Если loss function работает правильно - проблема в данных")
     print("2. Если loss = 0 во всех scenarios - проблема в реализации loss")
     print("3. Если только real data дает 0 - проблема в embeddings или projection")

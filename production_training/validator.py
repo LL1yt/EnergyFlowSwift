@@ -22,7 +22,7 @@ def validate_system(model_name: str, device: str) -> bool:
         embedding_loader = EmbeddingLoader()
         test_embeddings = embedding_loader.get_embeddings(["hello", "world"])
         assert len(test_embeddings) == 2, "Failed to load test embeddings."
-        logger.info("[OK] Embedding loading successful.")
+        logger.info("✅ Embedding loading successful.")
 
         logger.info("2️⃣ Testing dataset creation...")
         test_dataset = ["Question1?", "Answer1", "Question2?", "Answer2"]
@@ -30,7 +30,7 @@ def validate_system(model_name: str, device: str) -> bool:
             model_name=model_name, data=test_dataset, batch_size=2
         )
         assert len(dataset) > 0, "Failed to create dataset."
-        logger.info("[OK] Dataset creation successful.")
+        logger.info("✅ Dataset creation successful.")
 
         logger.info("3️⃣ Testing EmergentCubeTrainer initialization...")
 
@@ -57,7 +57,7 @@ def validate_system(model_name: str, device: str) -> bool:
             config = EmergentTrainingConfig(teacher_model=model_name)
 
         trainer = EmergentCubeTrainer(config, device=device)
-        logger.info("[OK] Trainer initialization successful.")
+        logger.info("✅ Trainer initialization successful.")
 
         logger.info("4️⃣ Testing training step...")
         batch = next(iter(dataset.get_dataloader()))
@@ -68,12 +68,12 @@ def validate_system(model_name: str, device: str) -> bool:
         metrics = trainer.train_step(input_emb, target_emb)
         assert "total_loss" in metrics, "Training step did not return a loss."
         logger.info(
-            f"[OK] Training step successful: loss = {metrics.get('total_loss', 'N/A'):.4f}"
+            f"✅ Training step successful: loss = {metrics.get('total_loss', 'N/A'):.4f}"
         )
 
         logger.info("[SUCCESS] System validation completed successfully!")
         return True
 
     except Exception as e:
-        logger.error(f"[ERROR] System validation failed: {e}", exc_info=True)
+        logger.error(f"❌ System validation failed: {e}", exc_info=True)
         return False

@@ -28,10 +28,10 @@ class MetricsLogger:
         if metrics.get("status") == "completed":
             if metrics.get("success"):
                 self.logger.info(
-                    f"[OK] Stage {stage}: {metrics.get('actual_time_minutes', 0):.1f}min"
+                    f"✅ Stage {stage}: {metrics.get('actual_time_minutes', 0):.1f}min"
                 )
             else:
-                self.logger.error(f"[ERROR] Stage {stage}: FAILED")
+                self.logger.error(f"❌ Stage {stage}: FAILED")
 
         # JSON метрики сохраняем всегда для анализа
         try:

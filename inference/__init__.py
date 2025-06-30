@@ -9,7 +9,7 @@
 - phrase_decoder/         # Phrase-based подход  
 - end_to_end_pipeline/    # Полная интегрированная система
 
-[TARGET] Phase 2.7 Objectives:
+🎯 Phase 2.7 Objectives:
 - BLEU score >0.4
 - Model size <2M parameters  
 - Production-ready API

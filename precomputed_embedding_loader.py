@@ -96,7 +96,7 @@ class PrecomputedEmbeddingLoader:
             )
 
             # Информация о датасете
-            logger.info(f"[OK] Dataset loaded successfully:")
+            logger.info(f"✅ Dataset loaded successfully:")
             logger.info(f"   Size: {len(dataset):,} pairs")
             logger.info(f"   Embedding dimension: {question_embeddings.shape[1]}")
             logger.info(f"   Teacher model: {data.get('teacher_model', 'unknown')}")
@@ -121,7 +121,7 @@ class PrecomputedEmbeddingLoader:
             return dataset
 
         except Exception as e:
-            logger.error(f"[ERROR] Failed to load embedding dataset: {e}")
+            logger.error(f"❌ Failed to load embedding dataset: {e}")
             raise
 
     def list_available_datasets(self, data_dir: str = "data/embeddings") -> list:
@@ -186,7 +186,7 @@ def create_precomputed_dataset(embeddings_file: str) -> PrecomputedEmbeddingData
 
 def test_precomputed_loader():
     """Тест загрузчика готовых эмбеддингов"""
-    print("[TEST] Testing PrecomputedEmbeddingLoader")
+    print("🧪 Testing PrecomputedEmbeddingLoader")
 
     loader = PrecomputedEmbeddingLoader()
 
@@ -214,7 +214,7 @@ def test_precomputed_loader():
 
         # 3. Проверяем данные
         sample_q, sample_a = dataset[0]
-        print(f"[OK] Sample loaded:")
+        print(f"✅ Sample loaded:")
         print(f"   Question embedding shape: {sample_q.shape}")
         print(f"   Answer embedding shape: {sample_a.shape}")
         print(f"   Question norm: {sample_q.norm().item():.6f}")

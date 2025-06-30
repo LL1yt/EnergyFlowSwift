@@ -38,7 +38,7 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("CubeTrainer dependencies not available")
 
-# [START] STAGE 1.2: AutoencoderDataset - ГОТОВ!
+# 🚀 STAGE 1.2: AutoencoderDataset - ГОТОВ!
 try:
     from .autoencoder_dataset import (
         AutoencoderDataset, 
@@ -57,7 +57,7 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("AutoencoderDataset dependencies not available")
 
-# [START] STAGE 1.3: DialogueDataset - ГОТОВ!
+# 🚀 STAGE 1.3: DialogueDataset - ГОТОВ!
 try:
     from .dialogue_dataset import (
         DialogueDataset, 
@@ -113,10 +113,10 @@ def _check_dependencies():
             print(f"[WARNING]  Warning: Missing required modules: {missing_modules}")
             print("   Make sure all dependencies are implemented before using EmbeddingTrainer")
         else:
-            print("[OK] All dependencies are available")
+            print("✅ All dependencies are available")
             
     except ImportError as e:
-        print(f"[ERROR] Critical dependency missing: {e}")
+        print(f"❌ Critical dependency missing: {e}")
         print("   Install required packages: torch, numpy")
 
 # Автоматическая проверка при импорте модуля

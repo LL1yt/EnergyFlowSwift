@@ -8,7 +8,7 @@ import argparse
 def parse_args():
     """Parses command line arguments for dynamic training."""
     parser = argparse.ArgumentParser(
-        description="[START] Dynamic Training Script",
+        description="🚀 Dynamic Training Script",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 

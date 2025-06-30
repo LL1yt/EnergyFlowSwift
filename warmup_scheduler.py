@@ -114,7 +114,7 @@ def create_warmup_scheduler(
 
 def test_warmup_scheduler():
     """Тест warm-up scheduler"""
-    print("[TEST] Testing WarmupScheduler")
+    print("🧪 Testing WarmupScheduler")
 
     # Создаем dummy optimizer
     import torch.nn as nn

@@ -10,14 +10,14 @@ sys.path.append(str(Path(__file__).parent))
 def test_logging_levels():
     """Тестируем разные уровни логирования"""
     
-    print("[TEST] TESTING LOGGING LEVELS CONFIGURATION")
+    print("🧪 TESTING LOGGING LEVELS CONFIGURATION")
     print("=" * 50)
     
     from new_rebuild.config import SimpleProjectConfig
     from new_rebuild.utils.logging import get_logger
     
     # Тест 1: DEBUG уровень
-    print("\n[SCIENCE] Test 1: DEBUG level")
+    print("\n🔬 Test 1: DEBUG level")
     config1 = SimpleProjectConfig()
     config1.logging.level = "DEBUG"
     config1.logging.debug_mode = False  # Отключаем debug_mode, чтобы level работал
@@ -28,7 +28,7 @@ def test_logging_levels():
     logger.warning("This WARNING message should appear")
     
     # Тест 2: WARNING уровень
-    print("\n[SCIENCE] Test 2: WARNING level")
+    print("\n🔬 Test 2: WARNING level")
     config2 = SimpleProjectConfig()
     config2.logging.level = "WARNING"
     config2.logging.debug_mode = False
@@ -40,7 +40,7 @@ def test_logging_levels():
     logger2.error("This ERROR message should appear")
     
     # Тест 3: debug_mode переопределяет level
-    print("\n[SCIENCE] Test 3: debug_mode overrides level")
+    print("\n🔬 Test 3: debug_mode overrides level")
     config3 = SimpleProjectConfig()
     config3.logging.level = "ERROR"  # Высокий уровень
     config3.logging.debug_mode = True  # Но debug_mode включен
@@ -49,7 +49,7 @@ def test_logging_levels():
     logger3.debug("This DEBUG message should appear (debug_mode override)")
     logger3.info("This INFO message should appear (debug_mode override)")
     
-    print("\n[OK] Logging levels test completed!")
+    print("\n✅ Logging levels test completed!")
 
 if __name__ == "__main__":
     test_logging_levels()

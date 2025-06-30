@@ -9,9 +9,9 @@ Spatial Optimization Module
 ОБНОВЛЕНИЕ (28 декабря 2025):
 - Все конфигурационные классы перенесены в центральный config
 - ChunkInfo и SpatialOptimConfig теперь в project_config.py
-- [START] ДОБАВЛЕНЫ GPU SPATIAL OPTIMIZATION КОМПОНЕНТЫ
+- 🚀 ДОБАВЛЕНЫ GPU SPATIAL OPTIMIZATION КОМПОНЕНТЫ
 
-[WARN] MIGRATION GUIDE:
+⚠️ MIGRATION GUIDE:
 ===================
 DEPRECATED → РЕКОМЕНДУЕМАЯ ЗАМЕНА:
 - LatticeChunker → AdaptiveGPUChunker (GPU acceleration, adaptive memory)
@@ -37,7 +37,7 @@ from .unified_spatial_optimizer import (
     estimate_unified_memory_requirements,
 )
 
-# [WARN] DEPRECATED вспомогательные компоненты (используйте GPU аналоги)
+# ⚠️ DEPRECATED вспомогательные компоненты (используйте GPU аналоги)
 # from .chunker import LatticeChunker  # DEPRECATED: use AdaptiveGPUChunker
 from .memory_manager import MemoryPoolManager  # Still used
 
@@ -94,7 +94,7 @@ __all__ = [
     "OptimizationConfig",
     "OptimizationMode",
     "estimate_unified_memory_requirements",
-    # [WARN] DEPRECATED вспомогательные компоненты
+    # ⚠️ DEPRECATED вспомогательные компоненты
     # "LatticeChunker",  # DEPRECATED: use AdaptiveGPUChunker
     "MemoryPoolManager",  # Still used
     # "HierarchicalSpatialIndex",  # DEPRECATED

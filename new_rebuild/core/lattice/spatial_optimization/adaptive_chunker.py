@@ -193,7 +193,7 @@ class ChunkScheduler:
         self.scheduler_thread.start()
 
         logger.info(
-            f"[CALENDAR] ChunkScheduler запущен: max_concurrent={max_concurrent_chunks}"
+            f"📅 ChunkScheduler запущен: max_concurrent={max_concurrent_chunks}"
         )
 
     def schedule_task(self, task: ChunkProcessingTask) -> Future:
@@ -236,7 +236,7 @@ class ChunkScheduler:
                 time.sleep(0.1)  # Небольшая пауза
 
             except Exception as e:
-                logger.error(f"[ERROR] Ошибка в scheduler loop: {e}")
+                logger.error(f"❌ Ошибка в scheduler loop: {e}")
 
     def _execute_task(self, task: ChunkProcessingTask, future: Future):
         """Выполняет задачу обработки chunk'а"""
@@ -256,13 +256,13 @@ class ChunkScheduler:
 
                 # Обновляем статистику
                 logger.debug(
-                    f"[OK] Chunk {task.chunk_id} обработан за {processing_time:.1f}ms"
+                    f"✅ Chunk {task.chunk_id} обработан за {processing_time:.1f}ms"
                 )
 
                 future.set_result(result)
 
             except Exception as e:
-                logger.error(f"[ERROR] Ошибка обработки chunk {task.chunk_id}: {e}")
+                logger.error(f"❌ Ошибка обработки chunk {task.chunk_id}: {e}")
                 future.set_exception(e)
             finally:
                 self.active_chunks.discard(task.chunk_id)
@@ -317,7 +317,7 @@ class AdaptiveGPUChunker:
         self.memory_manager = get_memory_pool_manager()  # Пусть сам получает конфигурацию
 
         logger.info(
-            f"[TARGET] AdaptiveGPUChunker создан: {len(self._chunks)} chunks на {self.device}"
+            f"🎯 AdaptiveGPUChunker создан: {len(self._chunks)} chunks на {self.device}"
         )
 
     @property
@@ -337,7 +337,7 @@ class AdaptiveGPUChunker:
         z_chunks = max(1, (z_dim + optimal_chunk_size - 1) // optimal_chunk_size)
         
         logger.info(
-            f"[TOOL] CHUNKER GRID: {x_chunks}×{y_chunks}×{z_chunks} = {x_chunks*y_chunks*z_chunks} chunks "
+            f"🔧 CHUNKER GRID: {x_chunks}×{y_chunks}×{z_chunks} = {x_chunks*y_chunks*z_chunks} chunks "
             f"for lattice {self.dimensions} with chunk_size {optimal_chunk_size}"
         )
 
@@ -400,7 +400,7 @@ class AdaptiveGPUChunker:
         optimal_size = max(min_chunk_size, min(chunk_size, max_chunk_size))
 
         logger.info(
-            f"[RULER] CHUNK SIZE CALCULATION: optimal={optimal_size}, "
+            f"📏 CHUNK SIZE CALCULATION: optimal={optimal_size}, "
             f"effective_min={effective_min_chunk_size}, effective_max={effective_max_chunk_size}, "
             f"computed_chunk={chunk_size}, memory={available_memory_mb:.1f}MB"
         )
@@ -594,7 +594,7 @@ class AdaptiveGPUChunker:
                     remaining_chunks.remove(first_chunk)
 
         logger.debug(
-            f"[CALENDAR] Adaptive schedule создано: {len(schedule)} batches, "
+            f"📅 Adaptive schedule создано: {len(schedule)} batches, "
             f"avg_batch_size={np.mean([len(b) for b in schedule]):.1f}"
         )
 
@@ -620,7 +620,7 @@ class AdaptiveGPUChunker:
                 # Validate indices
                 if torch.any(indices > max_cell_index):
                     invalid_indices = indices[indices > max_cell_index]
-                    logger.error(f"[ERROR] INVALID CELL INDICES in prefetch: {invalid_indices.tolist()} > {max_cell_index}")
+                    logger.error(f"❌ INVALID CELL INDICES in prefetch: {invalid_indices.tolist()} > {max_cell_index}")
                     raise RuntimeError(f"Cell index out of bounds in prefetch: max valid cell index is {max_cell_index}")
                 
                 # Extract states for all batches: [:, indices, :]
@@ -679,7 +679,7 @@ class AdaptiveGPUChunker:
 
         if high_pressure_chunks:
             logger.info(
-                f"[SYNC] Rebalancing {len(high_pressure_chunks)} high-pressure chunks"
+                f"🔄 Rebalancing {len(high_pressure_chunks)} high-pressure chunks"
             )
 
             # Понижаем приоритет chunk'ов с высоким давлением

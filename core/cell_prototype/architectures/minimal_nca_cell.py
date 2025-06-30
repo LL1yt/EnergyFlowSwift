@@ -102,7 +102,7 @@ class MinimalNCACell(nn.Module):
         }
 
         logger.info(
-            f"[START] INIT MinimalNCACell @ {timestamp}\n"
+            f"🚀 INIT MinimalNCACell @ {timestamp}\n"
             f"     FROM: {caller_info}\n"
             f"     WITH_CONFIG: {json.dumps(config_log, indent=2, default=str)}"
         )
@@ -154,7 +154,7 @@ class MinimalNCACell(nn.Module):
         total_params = sum(p.numel() for p in self.parameters())
         trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
 
-        logger.info(f"[OK] MinimalNCACell параметры:")
+        logger.info(f"✅ MinimalNCACell параметры:")
         logger.info(f"   Total: {total_params:,} parameters")
         logger.info(f"   Trainable: {trainable_params:,} parameters")
         logger.info(f"   Target: ~{self.target_params:,} (current: {total_params:,})")
@@ -320,12 +320,12 @@ def test_nca_cell_basic() -> bool:
 
         output = cell(neighbor_states, own_state, external_input)
         assert output.shape == (batch_size, 4), f"Wrong output shape: {output.shape}"
-        print(f"[OK] Output shape OK: {output.shape}")
+        print(f"✅ Output shape OK: {output.shape}")
 
         info = cell.get_info()
         assert info["architecture"] == "MinimalNCA"
         assert info["total_parameters"] > 0
-        print(f"[OK] Get info OK: {info['total_parameters']} params")
+        print(f"✅ Get info OK: {info['total_parameters']} params")
 
         # Test no external input
         output_no_ext = cell(neighbor_states, own_state, None)
@@ -333,7 +333,7 @@ def test_nca_cell_basic() -> bool:
             batch_size,
             4,
         ), f"Wrong shape (no external): {output_no_ext.shape}"
-        print("[OK] No external input OK")
+        print("✅ No external input OK")
 
         print("--- MinimalNCACell Basic Test PASSED ---")
         return True
@@ -377,11 +377,11 @@ if __name__ == "__main__":
     assert info["state_size"] == 5
     assert info["hidden_dim"] == 10
     assert info["target_parameters"] == 300
-    print("[OK] Create from config OK")
+    print("✅ Create from config OK")
 
     print("\n--- Testing create_compatible_nca_cell ---")
     comp_cell = create_compatible_nca_cell()
     info_comp = comp_cell.get_info()
     assert info_comp["state_size"] == 8
     assert info_comp["hidden_dim"] == 16
-    print("[OK] Create compatible cell OK")
+    print("✅ Create compatible cell OK")

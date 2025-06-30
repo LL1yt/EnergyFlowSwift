@@ -243,7 +243,7 @@ class SimpleTextDecoder(nn.Module):
         gpu_info = f" (GPU: {self.use_gpu_acceleration}, batch: {self.gpu_batch_size})"
         local_info = f" (local: {config.embedding.prefer_local_models})"
         self.logger.info(
-            f"[TEXT] SimpleTextDecoder initialized (cache: {self.cache_enabled}){gpu_info}{local_info}"
+            f"🔤 SimpleTextDecoder initialized (cache: {self.cache_enabled}){gpu_info}{local_info}"
         )
 
     def _init_decoder_model(self):
@@ -267,7 +267,7 @@ class SimpleTextDecoder(nn.Module):
                 self._tokenizer = "dummy"
                 return
 
-            self.logger.info(f"[SYNC] Loading model from: {model_path}")
+            self.logger.info(f"🔄 Loading model from: {model_path}")
 
             # Загружаем токенизатор и модель
             self._tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -287,7 +287,7 @@ class SimpleTextDecoder(nn.Module):
             )
             source_info = "local cache" if is_local else "online"
             self.logger.info(
-                f"[OK] Decoder model loaded from {source_info}: {self.decoder_model_name}"
+                f"✅ Decoder model loaded from {source_info}: {self.decoder_model_name}"
             )
 
         except ImportError:

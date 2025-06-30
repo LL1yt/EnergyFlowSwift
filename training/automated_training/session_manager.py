@@ -100,7 +100,7 @@ class SessionManager:
         elapsed_hours = (datetime.now() - self.start_time).total_seconds() / 3600
 
         if elapsed_hours >= self.max_total_time_hours:
-            logger.warning(f"[ALARM] Time limit reached: {elapsed_hours:.1f}h")
+            logger.warning(f"⏰ Time limit reached: {elapsed_hours:.1f}h")
             return False
 
         return True
@@ -116,7 +116,7 @@ class SessionManager:
 
     def log_session_start(self):
         """Логирует начало сессии обучения (минимально)"""
-        logger.warning(f"[TARGET] AUTOMATED TRAINING SESSION STARTED")
+        logger.warning(f"🎯 AUTOMATED TRAINING SESSION STARTED")
         logger.warning(f"   Duration: {self.max_total_time_hours}h | Mode: {self.mode}")
         if self.scale:
             logger.warning(f"   Scale: {self.scale}")
@@ -134,19 +134,19 @@ class SessionManager:
         # Логируем только каждую 3-ю стадию или важные моменты
         if result.stage % 3 == 0 or not result.success or remaining_time < 1.0:
             logger.warning(
-                f"[DATA] Progress: Stage {result.stage} | {elapsed_total:.1f}h/{self.max_total_time_hours}h"
+                f"📊 Progress: Stage {result.stage} | {elapsed_total:.1f}h/{self.max_total_time_hours}h"
             )
             if summary.best_similarity:
                 logger.warning(f"   Best similarity: {summary.best_similarity:.3f}")
             if remaining_time < 1.0:
-                logger.warning(f"   [WARN] Less than 1h remaining!")
+                logger.warning(f"   ⚠️ Less than 1h remaining!")
 
     def log_final_summary(self):
         """Выводит финальную сводку по сессии"""
         summary = self.get_session_summary()
         elapsed_hours = self.get_elapsed_time_hours()
 
-        logger.warning(f"[START] TRAINING SESSION COMPLETED")
+        logger.warning(f"🚀 TRAINING SESSION COMPLETED")
         logger.warning(
             f"   Duration: {elapsed_hours:.1f}h | Stages: {summary.total_stages}"
         )

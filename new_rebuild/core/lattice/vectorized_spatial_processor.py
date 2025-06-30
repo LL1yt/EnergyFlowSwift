@@ -7,10 +7,10 @@ Vectorized Spatial Processor - полностью векторизованная
 Исключает все sequential операции и циклы.
 
 КЛЮЧЕВЫЕ ОПТИМИЗАЦИИ:
-1. [OK] Batch Neighbor Finding - все соседи находятся параллельно
-2. [OK] Vectorized Cell Processing - все клетки обрабатываются сразу
-3. [OK] GPU Memory Optimization - efficient tensor operations
-4. [OK] Adaptive Batch Sizing - оптимальные размеры батчей для GPU
+1. ✅ Batch Neighbor Finding - все соседи находятся параллельно
+2. ✅ Vectorized Cell Processing - все клетки обрабатываются сразу
+3. ✅ GPU Memory Optimization - efficient tensor operations
+4. ✅ Adaptive Batch Sizing - оптимальные размеры батчей для GPU
 """
 
 import torch
@@ -153,7 +153,7 @@ class VectorizedSpatialProcessor:
             "cells_per_second": 0.0,
         }
 
-        logger.info(f"[START] VectorizedSpatialProcessor initialized:")
+        logger.info(f"🚀 VectorizedSpatialProcessor initialized:")
         logger.info(f"   Dimensions: {dimensions}")
         logger.info(f"   Search radius: {self.search_radius:.2f}")
         logger.info(f"   Max neighbors: {self.max_neighbors}")
@@ -197,7 +197,7 @@ class VectorizedSpatialProcessor:
         states = self.device_manager.ensure_device(states)
         total_cells, state_size = states.shape
 
-        logger.info(f"[START] Vectorized processing {total_cells:,} cells...")
+        logger.info(f"🚀 Vectorized processing {total_cells:,} cells...")
 
         # Создаем выходной тензор на том же устройстве
         new_states = torch.empty_like(states, device=self.device)
@@ -253,7 +253,7 @@ class VectorizedSpatialProcessor:
         processing_time = time.time() - start_time
         self._update_performance_stats(total_cells, processing_time)
 
-        logger.info(f"[OK] Vectorized processing completed in {processing_time:.3f}s")
+        logger.info(f"✅ Vectorized processing completed in {processing_time:.3f}s")
         logger.info(f"   Performance: {total_cells/processing_time:.0f} cells/second")
 
         return new_states
@@ -367,4 +367,4 @@ class VectorizedSpatialProcessor:
     def cleanup(self):
         """Очистка ресурсов"""
         self.device_manager.cleanup()
-        logger.debug("[CLEAN] VectorizedSpatialProcessor cleaned up")
+        logger.debug("🧹 VectorizedSpatialProcessor cleaned up")

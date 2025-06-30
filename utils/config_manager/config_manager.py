@@ -146,7 +146,7 @@ class ConfigManager:
     def _initialize(self):
         """Инициализация менеджера конфигурации"""
         try:
-            self.logger.info("[START] Initializing ConfigManager...")
+            self.logger.info("🚀 Initializing ConfigManager...")
 
             # Загружаем основную конфигурацию
             self._load_base_config()
@@ -177,11 +177,11 @@ class ConfigManager:
             if self.settings.enable_hot_reload:
                 self._start_hot_reload_monitor()
 
-            self.logger.info("[OK] ConfigManager initialized successfully")
-            self.logger.info(f"   [DATA] Loaded {len(self._config_cache)} config sections")
+            self.logger.info("✅ ConfigManager initialized successfully")
+            self.logger.info(f"   📊 Loaded {len(self._config_cache)} config sections")
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Failed to initialize ConfigManager: {e}")
+            self.logger.error(f"❌ Failed to initialize ConfigManager: {e}")
             raise
 
     def get_config(
@@ -295,10 +295,10 @@ class ConfigManager:
                     self.logger.info(f"[REFRESH] Reloading configuration section: {section}")
 
                 self._stats["hot_reloads"] += 1
-                self.logger.info("[OK] Configuration reloaded successfully")
+                self.logger.info("✅ Configuration reloaded successfully")
 
             except Exception as e:
-                self.logger.error(f"[ERROR] Error reloading configuration: {e}")
+                self.logger.error(f"❌ Error reloading configuration: {e}")
                 raise
 
     def get_section(self, section_name: str):
@@ -418,7 +418,7 @@ class ConfigManager:
                 return version.version
 
             except Exception as e:
-                self.logger.error(f"[ERROR] Error creating config version: {e}")
+                self.logger.error(f"❌ Error creating config version: {e}")
                 return None
 
     def _create_initial_version(self, config_data: Dict[str, Any]):
@@ -433,7 +433,7 @@ class ConfigManager:
             )
             self.logger.info(f"[PIN] Created initial config version {version.version}")
         except Exception as e:
-            self.logger.error(f"[ERROR] Error creating initial version: {e}")
+            self.logger.error(f"❌ Error creating initial version: {e}")
 
     def rollback_to_version(self, target_version: str) -> bool:
         """
@@ -464,7 +464,7 @@ class ConfigManager:
             return True
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Error rolling back to version {target_version}: {e}")
+            self.logger.error(f"❌ Error rolling back to version {target_version}: {e}")
             return False
 
     def list_config_versions(self) -> List[Dict[str, Any]]:
@@ -539,11 +539,11 @@ class ConfigManager:
                 validator.load_schema_from_file(schema_file)
                 self._enhanced_validators[section] = validator
 
-                self.logger.info(f"[OK] Loaded schema for section {section}")
+                self.logger.info(f"✅ Loaded schema for section {section}")
                 return True
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Error loading schema for {section}: {e}")
+            self.logger.error(f"❌ Error loading schema for {section}: {e}")
 
         return False
 
@@ -630,10 +630,10 @@ class ConfigManager:
             else:
                 raise ValueError(f"Unsupported format: {format}")
 
-            self.logger.info(f"[OK] Configuration exported to {output_path}")
+            self.logger.info(f"✅ Configuration exported to {output_path}")
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Error exporting configuration: {e}")
+            self.logger.error(f"❌ Error exporting configuration: {e}")
             raise
 
     def __enter__(self):
@@ -646,13 +646,13 @@ class ConfigManager:
 
     def shutdown(self):
         """Graceful shutdown"""
-        self.logger.info("[STOP] Shutting down ConfigManager...")
+        self.logger.info("🛑 Shutting down ConfigManager...")
 
         if self._hot_reload_thread and self._hot_reload_thread.is_alive():
             self._should_stop_hot_reload.set()
             self._hot_reload_thread.join(timeout=2.0)
 
-        self.logger.info("[OK] ConfigManager shutdown complete")
+        self.logger.info("✅ ConfigManager shutdown complete")
 
     # ========================================
     # PRIVATE METHODS
@@ -680,7 +680,7 @@ class ConfigManager:
             self.logger.info(f"[WRITE] Loaded base config: {base_path}")
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Error loading base config {base_path}: {e}")
+            self.logger.error(f"❌ Error loading base config {base_path}: {e}")
             raise
 
     def _discover_module_configs(self):
@@ -733,7 +733,7 @@ class ConfigManager:
             self._stats["config_loads"] += 1
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Error loading module config {config_path}: {e}")
+            self.logger.error(f"❌ Error loading module config {config_path}: {e}")
 
     def _extract_module_name(self, config_path: Path) -> str:
         """Извлечение имени модуля из пути к конфигурации"""
@@ -869,20 +869,20 @@ class ConfigManager:
 
             # Отложим создание первой версии до тех пор, пока конфигурация не будет загружена
 
-            self.logger.info("[OK] Config versioning initialized")
+            self.logger.info("✅ Config versioning initialized")
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Error initializing versioning: {e}")
+            self.logger.error(f"❌ Error initializing versioning: {e}")
             self._version_manager = None
 
     def _initialize_schema_manager(self):
         """Инициализация менеджера схем"""
         try:
             self._schema_manager = SchemaManager(schemas_dir=self.settings.schemas_dir)
-            self.logger.info("[OK] Schema manager initialized")
+            self.logger.info("✅ Schema manager initialized")
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Error initializing schema manager: {e}")
+            self.logger.error(f"❌ Error initializing schema manager: {e}")
             self._schema_manager = None
 
     def _validate_section_enhanced(
@@ -917,7 +917,7 @@ class ConfigManager:
             mode = self.settings.dynamic_config_mode
             if mode == "auto" and self.settings.auto_hardware_detection:
                 mode = self._dynamic_config_manager.generator.detect_hardware_mode()
-                self.logger.info(f"[TARGET] Auto-detected mode: {mode}")
+                self.logger.info(f"🎯 Auto-detected mode: {mode}")
 
             # Применяем custom scale factor если указан
             if self.settings.custom_scale_factor is not None:
@@ -930,7 +930,7 @@ class ConfigManager:
                     self.settings.custom_scale_factor,
                 )
                 self.logger.info(
-                    f"[TARGET] Applied custom scale factor: {self.settings.custom_scale_factor}"
+                    f"🎯 Applied custom scale factor: {self.settings.custom_scale_factor}"
                 )
 
             # Генерируем динамическую конфигурацию
@@ -939,10 +939,10 @@ class ConfigManager:
             # Интегрируем в основную конфигурацию
             self._merge_dynamic_config(dynamic_config)
 
-            self.logger.info("[OK] Dynamic configuration integrated successfully")
+            self.logger.info("✅ Dynamic configuration integrated successfully")
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Failed to initialize dynamic config: {e}")
+            self.logger.error(f"❌ Failed to initialize dynamic config: {e}")
             self._dynamic_config_manager = None
 
     def _merge_dynamic_config(self, dynamic_config: Dict[str, Any]):
@@ -971,7 +971,7 @@ class ConfigManager:
                 self._config_cache["_dynamic_metadata"] = dynamic_config["_metadata"]
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Error merging dynamic config: {e}")
+            self.logger.error(f"❌ Error merging dynamic config: {e}")
 
     def get_dynamic_config_info(self) -> Optional[Dict[str, Any]]:
         """Получить информацию о текущей динамической конфигурации"""
@@ -1008,11 +1008,11 @@ class ConfigManager:
             # Мержим новую конфигурацию
             self._merge_dynamic_config(new_dynamic_config)
 
-            self.logger.info(f"[OK] Dynamic configuration regenerated for mode: {mode}")
+            self.logger.info(f"✅ Dynamic configuration regenerated for mode: {mode}")
             return True
 
         except Exception as e:
-            self.logger.error(f"[ERROR] Failed to regenerate dynamic config: {e}")
+            self.logger.error(f"❌ Failed to regenerate dynamic config: {e}")
             return False
 
 

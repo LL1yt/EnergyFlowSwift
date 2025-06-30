@@ -303,7 +303,7 @@ class PatternFormationMetrics(nn.Module):
         )
         self.step_counter = 0
 
-        logger.info(f"[DATA] PatternFormationMetrics initialized: {cube_dimensions} cube")
+        logger.info(f"📊 PatternFormationMetrics initialized: {cube_dimensions} cube")
 
     def compute_spatial_coherence(self, cube_states: torch.Tensor) -> torch.Tensor:
         """
@@ -584,11 +584,11 @@ class NeuralCellularAutomata(nn.Module):
         """
         # КРИТИЧЕСКАЯ ПРОВЕРКА: Защита от None inputs
         if current_states is None:
-            logger.error("[ERROR] [NCA] current_states is None!")
+            logger.error("❌ [NCA] current_states is None!")
             raise ValueError("NCA received None for current_states")
 
         if raw_updates is None:
-            logger.error("[ERROR] [NCA] raw_updates is None!")
+            logger.error("❌ [NCA] raw_updates is None!")
             raise ValueError("NCA received None for raw_updates")
 
         # ДИАГНОСТИКА: Проверяем размеры
@@ -597,7 +597,7 @@ class NeuralCellularAutomata(nn.Module):
 
         if current_states.shape != raw_updates.shape:
             logger.error(
-                f"[ERROR] [NCA] Shape mismatch: current_states {current_states.shape} vs raw_updates {raw_updates.shape}"
+                f"❌ [NCA] Shape mismatch: current_states {current_states.shape} vs raw_updates {raw_updates.shape}"
             )
             raise ValueError(
                 f"Shape mismatch in NCA inputs: {current_states.shape} vs {raw_updates.shape}"
@@ -709,7 +709,7 @@ def create_nca_config(
 def test_nca_basic() -> bool:
     """Базовый тест NCA functionality"""
     try:
-        print("[TEST] Testing Neural Cellular Automata...")
+        print("🧪 Testing Neural Cellular Automata...")
 
         # Create config and NCA
         config = create_nca_config()
@@ -732,11 +732,11 @@ def test_nca_basic() -> bool:
         assert "updated_states" in results
         assert results["updated_states"].shape == current_states.shape
 
-        print("[OK] NCA basic functionality works!")
+        print("✅ NCA basic functionality works!")
         return True
 
     except Exception as e:
-        print(f"[ERROR] NCA test failed: {e}")
+        print(f"❌ NCA test failed: {e}")
         return False
 
 

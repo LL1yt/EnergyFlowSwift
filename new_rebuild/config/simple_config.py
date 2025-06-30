@@ -152,24 +152,24 @@ class SimpleProjectConfig:
 
     def _log_initialization(self):
         """Логирование информации о конфигурации"""
-        logging.info("[TOOL] SimpleProjectConfig initialized:")
+        logging.info("🔧 SimpleProjectConfig initialized:")
         logging.info(
-            f"   [DATA] Lattice: {self.lattice.dimensions} = {self.lattice.total_cells} cells"
+            f"   📊 Lattice: {self.lattice.dimensions} = {self.lattice.total_cells} cells"
         )
         logging.info(
             f"   🧠 Model: {self.model.state_size}D state, {self.model.target_params} params"
         )
-        logging.info(f"   [DESKTOP] Device: {self.device_manager.get_device_str()}")
+        logging.info(f"   🖥️ Device: {self.device_manager.get_device_str()}")
 
         if self.cache and self.cache.enabled:
             logging.info(
-                f"   [DISK] Cache: enabled (GPU: {self.cache.use_gpu_acceleration})"
+                f"   💾 Cache: enabled (GPU: {self.cache.use_gpu_acceleration})"
             )
         if self.cnf and self.cnf.enabled:
             logging.info(f"   🌊 CNF: enabled ({self.cnf.adaptive_method})")
         if self.embedding:
             logging.info(
-                f"   [TARGET] Embeddings: {self.embedding.teacher_model} ({self.embedding.teacher_embedding_dim}D → {self.cube_embedding_dim}D)"
+                f"   🎯 Embeddings: {self.embedding.teacher_model} ({self.embedding.teacher_embedding_dim}D → {self.cube_embedding_dim}D)"
             )
 
     @property

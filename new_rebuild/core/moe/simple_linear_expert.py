@@ -122,12 +122,12 @@ class OptimizedSimpleLinearExpert(nn.Module):
         elif neighbor_states.dim() == 2:
             # neighbor_states имеет размер [num_neighbors, state_size]
             # Это нормально для одиночной обработки (без batch)
-            logger.warning(f"[WARN] 2 размерность neighbor_states, возможно потерян batch_size, используем default_batch_size={self.default_batch_size} ")
+            logger.warning(f"⚠️ 2 размерность neighbor_states, возможно потерян batch_size, используем default_batch_size={self.default_batch_size} ")
             num_neighbors, _ = neighbor_states.shape
             batch_size = self.default_batch_size
         else:
             # Неожиданная размерность - логируем для отладки
-            logger.warning(f"[WARN] Неожиданная размерность neighbor_states: {neighbor_states.shape}")
+            logger.warning(f"⚠️ Неожиданная размерность neighbor_states: {neighbor_states.shape}")
             num_neighbors = neighbor_states.shape[0] if neighbor_states.numel() > 0 else 0
 
         if num_neighbors == 0:
@@ -135,7 +135,7 @@ class OptimizedSimpleLinearExpert(nn.Module):
             return self.normalization(current_state)
 
         # 1. Адаптивная агрегация соседей
-        logger.debug(f"[SEARCH] use_attention={self.use_attention}, num_neighbors={num_neighbors}")
+        logger.debug(f"🔍 use_attention={self.use_attention}, num_neighbors={num_neighbors}")
         if self.use_attention and num_neighbors > 1:
             # Attention-based агрегация (независимо от количества соседей)
             # Нормализуем размерности current_state
@@ -144,27 +144,27 @@ class OptimizedSimpleLinearExpert(nn.Module):
             else:
                 current_flat = current_state  # [1, 32]
             
-            logger.debug(f"[SEARCH] attention: current_flat.shape={current_flat.shape}, neighbor_states.shape={neighbor_states.shape}")
+            logger.debug(f"🔍 attention: current_flat.shape={current_flat.shape}, neighbor_states.shape={neighbor_states.shape}")
             current_expanded = current_flat.expand(neighbor_states.shape[0], -1)  # [num_neighbors, state_size]
-            logger.debug(f"[SEARCH] attention: current_expanded.shape={current_expanded.shape}")
+            logger.debug(f"🔍 attention: current_expanded.shape={current_expanded.shape}")
             
             attention_weights = F.softmax(
                 torch.sum(neighbor_states * current_expanded, dim=-1), dim=0
             )  # [num_neighbors]
-            logger.debug(f"[SEARCH] attention: attention_weights.shape={attention_weights.shape}")
+            logger.debug(f"🔍 attention: attention_weights.shape={attention_weights.shape}")
             
             aggregated_neighbors = torch.sum(
                 neighbor_states * attention_weights.unsqueeze(-1), dim=0, keepdim=True
             )  # [1, state_size]
-            logger.debug(f"[SEARCH] attention: результат aggregated_neighbors.shape={aggregated_neighbors.shape}")
+            logger.debug(f"🔍 attention: результат aggregated_neighbors.shape={aggregated_neighbors.shape}")
         else:
             # Простое усреднение для одного соседа или fallback
             aggregated_neighbors = torch.mean(neighbor_states, dim=0, keepdim=True)
 
         # 2. Обработка агрегированных соседей через фиксированную сеть
-        logger.debug(f"[SEARCH] aggregated_neighbors.shape={aggregated_neighbors.shape}")
+        logger.debug(f"🔍 aggregated_neighbors.shape={aggregated_neighbors.shape}")
         neighbor_features = self.neighbor_aggregator(aggregated_neighbors)
-        logger.debug(f"[SEARCH] neighbor_features после aggregator.shape={neighbor_features.shape}")
+        logger.debug(f"🔍 neighbor_features после aggregator.shape={neighbor_features.shape}")
 
         # 3. Объединяем текущее состояние с обработанными соседями
         # Нормализуем размерности для конкатенации
@@ -186,7 +186,7 @@ class OptimizedSimpleLinearExpert(nn.Module):
                 break
             
         # Добавляем логирование для отладки
-        logger.debug(f"[SEARCH] Размеры перед конкатенацией: current_for_concat={current_for_concat.shape}, neighbor_for_concat={neighbor_for_concat.shape}")
+        logger.debug(f"🔍 Размеры перед конкатенацией: current_for_concat={current_for_concat.shape}, neighbor_for_concat={neighbor_for_concat.shape}")
             
         combined_input = torch.cat([current_for_concat, neighbor_for_concat], dim=-1)
 

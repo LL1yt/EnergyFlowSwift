@@ -11,7 +11,7 @@ from new_rebuild.core.training import EmbeddingTrainer
 from new_rebuild.config import SimpleProjectConfig
 from new_rebuild.core.training.utils import create_training_dataloader
 
-print("[START] Starting training test...")
+print("🚀 Starting training test...")
 
 config = SimpleProjectConfig()
 trainer = EmbeddingTrainer(config)
@@ -23,25 +23,25 @@ dataloader, stats = create_training_dataloader(
     shuffle=True
 )
 
-print(f"[DATA] Dataset: {stats.total_samples} samples")
+print(f"📊 Dataset: {stats.total_samples} samples")
 print(f"📦 Batch size: {config.training_embedding.embedding_batch_size}")
-print(f"[SYNC] Total batches: {len(dataloader)}")
+print(f"🔄 Total batches: {len(dataloader)}")
 
 # Test one epoch with timing
 start_time = time.time()
-print("\n[TIME] Starting epoch...")
+print("\n⏳ Starting epoch...")
 
 try:
     losses = trainer.train_epoch(dataloader)
     
     elapsed = time.time() - start_time
-    print(f"\n[OK] Epoch completed in {elapsed:.1f} seconds!")
-    print(f"[UP] Losses:")
+    print(f"\n✅ Epoch completed in {elapsed:.1f} seconds!")
+    print(f"📈 Losses:")
     for key, value in losses.items():
         if key != 'count':
             print(f"   {key}: {value:.6f}")
     
 except Exception as e:
-    print(f"\n[ERROR] Error during training: {e}")
+    print(f"\n❌ Error during training: {e}")
     import traceback
     traceback.print_exc()

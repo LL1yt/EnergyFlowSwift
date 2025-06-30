@@ -424,7 +424,7 @@ def create_adapter_for_cube(cube_dimensions: Tuple[int, int, int],
         strategy=strategy
     )
     
-    logger.info(f"[TARGET] Адаптер создан для куба {cube_dimensions}: {teacher_model} ({source_dim}D) → surface ({surface_size}D)")
+    logger.info(f"🎯 Адаптер создан для куба {cube_dimensions}: {teacher_model} ({source_dim}D) → surface ({surface_size}D)")
     
     return adapter
 

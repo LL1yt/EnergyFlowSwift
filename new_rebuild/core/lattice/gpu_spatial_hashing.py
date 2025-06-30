@@ -72,7 +72,7 @@ class GPUMortonEncoder:
         self._prepare_bit_masks()
 
         logger.debug(
-            f"[NUMBER] GPUMortonEncoder инициализирован для {dimensions}, {self.bits} бит"
+            f"🔢 GPUMortonEncoder инициализирован для {dimensions}, {self.bits} бит"
         )
 
     def _prepare_bit_masks(self):
@@ -168,7 +168,7 @@ class GPUSpatialHashGrid:
         self.stats = GPUSpatialHashingStats()
 
         logger.info(
-            f"[RACE] GPUSpatialHashGrid инициализирован: {dimensions} → {self.grid_dims} "
+            f"🏎️ GPUSpatialHashGrid инициализирован: {dimensions} → {self.grid_dims} "
             f"(cell_size={cell_size}) на {self.device}"
         )
 
@@ -329,7 +329,7 @@ class GPUSpatialHashGrid:
         if len(self.query_cache) > self.cache_max_size * 0.8:
             # Оставляем только 50% самых используемых записей
             self.query_cache.clear()
-            logger.debug("[CLEAN] Query cache очищен для оптимизации памяти")
+            logger.debug("🧹 Query cache очищен для оптимизации памяти")
 
         # Принудительная очистка GPU памяти
         self.device_manager.cleanup()
@@ -383,7 +383,7 @@ class AdaptiveGPUSpatialHash:
         self.query_count = 0
 
         logger.info(
-            f"[TARGET] AdaptiveGPUSpatialHash создан: cell_size={self.optimal_cell_size}, "
+            f"🎯 AdaptiveGPUSpatialHash создан: cell_size={self.optimal_cell_size}, "
             f"target_memory={target_memory_mb}MB"
         )
 
@@ -443,7 +443,7 @@ class AdaptiveGPUSpatialHash:
         # Проверяем превышение целевой памяти
         if memory_usage["total_gpu_mb"] > self.target_memory_mb * 1.2:
             logger.warning(
-                f"[WARN] Превышение target memory: {memory_usage['total_gpu_mb']:.1f}MB > "
+                f"⚠️ Превышение target memory: {memory_usage['total_gpu_mb']:.1f}MB > "
                 f"{self.target_memory_mb * 1.2:.1f}MB"
             )
 
@@ -459,7 +459,7 @@ class AdaptiveGPUSpatialHash:
                 self._rebuild_with_new_cell_size(new_cell_size)
 
         logger.debug(
-            f"[DATA] Adaptive stats: queries={stats.total_queries}, "
+            f"📊 Adaptive stats: queries={stats.total_queries}, "
             f"avg_time={stats.avg_query_time_ms:.2f}ms, "
             f"memory={memory_usage['total_gpu_mb']:.1f}MB"
         )
@@ -467,7 +467,7 @@ class AdaptiveGPUSpatialHash:
     def _rebuild_with_new_cell_size(self, new_cell_size: int):
         """Перестраивает hash grid с новым размером ячеек"""
         logger.info(
-            f"[SYNC] Rebuilding hash grid: {self.optimal_cell_size} → {new_cell_size}"
+            f"🔄 Rebuilding hash grid: {self.optimal_cell_size} → {new_cell_size}"
         )
 
         # Сохраняем данные

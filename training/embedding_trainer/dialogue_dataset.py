@@ -170,7 +170,7 @@ class DialogueDataset(Dataset):
             answer_embeddings: Готовые эмбединги ответов (опционально)
         """
         self.logger = logging.getLogger(__name__)
-        self.logger.info("[START] Initializing DialogueDataset for Stage 1.3...")
+        self.logger.info("🚀 Initializing DialogueDataset for Stage 1.3...")
 
         # Проверка зависимостей
         if not EMBEDDING_LOADER_AVAILABLE:
@@ -236,7 +236,7 @@ class DialogueDataset(Dataset):
         # Создание train/val split
         self._create_train_val_split()
 
-        self.logger.info(f"[OK] DialogueDataset initialized successfully")
+        self.logger.info(f"✅ DialogueDataset initialized successfully")
         self.logger.info(
             f"   Total conversation pairs: {len(self.question_embeddings)}"
         )
@@ -288,7 +288,7 @@ class DialogueDataset(Dataset):
                 texts=["Test message"], model_key=teacher_model_key
             )
             self.logger.info(
-                f"[OK] Teacher model {self.config.teacher_model} (key: {teacher_model_key}) is available"
+                f"✅ Teacher model {self.config.teacher_model} (key: {teacher_model_key}) is available"
             )
 
             # Обновляем config с правильным ключом

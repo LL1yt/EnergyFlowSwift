@@ -134,7 +134,7 @@ class CubeTrainer:
         self.logger = logging.getLogger(__name__)
         self._setup_logging()
         
-        self.logger.info("[START] Initializing CubeTrainer...")
+        self.logger.info("🚀 Initializing CubeTrainer...")
         
         # Проверка доступности зависимостей
         if not DEPENDENCIES_AVAILABLE:
@@ -170,7 +170,7 @@ class CubeTrainer:
         self.checkpoint_dir = Path(self.config.checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         
-        self.logger.info(f"[OK] CubeTrainer initialized successfully")
+        self.logger.info(f"✅ CubeTrainer initialized successfully")
         self.logger.info(f"   Mode: {self.config.mode}")
         self.logger.info(f"   Device: {self.config.device}")
         self.logger.info(f"   Lattice size: {self.config.lattice_size}")
@@ -246,7 +246,7 @@ class CubeTrainer:
                 input_dim=self.config.embedding_dim,
                 cube_shape=self.config.lattice_size
             )
-            self.logger.info(f"[OK] EmbeddingReshaper initialized: {self.config.embedding_dim}D ↔ {self.config.lattice_size}")
+            self.logger.info(f"✅ EmbeddingReshaper initialized: {self.config.embedding_dim}D ↔ {self.config.lattice_size}")
             
             # 2. EmbeddingProcessor (3D Cubic Core) 
             from core.embedding_processor import EmbeddingConfig, create_dialogue_config
@@ -264,11 +264,11 @@ class CubeTrainer:
             processor_config.output_dim = self.config.embedding_dim
             
             self.embedding_processor = EmbeddingProcessor(config=processor_config)
-            self.logger.info(f"[OK] EmbeddingProcessor initialized: {self.config.lattice_size}")
+            self.logger.info(f"✅ EmbeddingProcessor initialized: {self.config.lattice_size}")
             
             # 3. EmbeddingLoader для данных
             self.embedding_loader = EmbeddingLoader()
-            self.logger.info(f"[OK] EmbeddingLoader initialized")
+            self.logger.info(f"✅ EmbeddingLoader initialized")
             
             # 4. Настройка loss function
             self._setup_loss_function()
@@ -276,11 +276,11 @@ class CubeTrainer:
             # 5. Настройка optimizer
             self._setup_optimizer()
             
-            self.logger.info("[TARGET] All training components initialized successfully")
+            self.logger.info("🎯 All training components initialized successfully")
             return True
             
         except Exception as e:
-            self.logger.error(f"[ERROR] Failed to initialize components: {e}")
+            self.logger.error(f"❌ Failed to initialize components: {e}")
             raise
     
     def _setup_loss_function(self):
@@ -309,7 +309,7 @@ class CubeTrainer:
             self.logger.warning(f"Unknown loss function: {self.config.loss_function}, using cosine")
             self.loss_function = lambda x, y: 1 - nn.functional.cosine_similarity(x, y, dim=1).mean()
         
-        self.logger.info(f"[OK] Loss function configured: {self.config.loss_function}")
+        self.logger.info(f"✅ Loss function configured: {self.config.loss_function}")
     
     def _setup_optimizer(self):
         """Настройка оптимизатора"""
@@ -330,7 +330,7 @@ class CubeTrainer:
             self.logger.warning(f"Unknown optimizer: {self.config.optimizer}, using Adam")
             self.optimizer = optim.Adam(trainable_params, lr=self.config.learning_rate)
         
-        self.logger.info(f"[OK] Optimizer configured: {self.config.optimizer}")
+        self.logger.info(f"✅ Optimizer configured: {self.config.optimizer}")
         self.logger.info(f"   Trainable parameters: {sum(p.numel() for p in trainable_params)}")
     
     def forward(self, input_embedding: torch.Tensor) -> torch.Tensor:
@@ -371,7 +371,7 @@ class CubeTrainer:
         """Изменение режима обучения"""
         if mode in ["autoencoder", "dialogue", "mixed"]:
             self.config.mode = mode
-            self.logger.info(f"[OK] Training mode changed to: {mode}")
+            self.logger.info(f"✅ Training mode changed to: {mode}")
         else:
             raise ValueError(f"Unknown mode: {mode}. Supported: autoencoder, dialogue, mixed")
     

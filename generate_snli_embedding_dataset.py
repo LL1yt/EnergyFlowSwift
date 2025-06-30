@@ -106,7 +106,7 @@ class SNLIEmbeddingGenerator:
             return pairs
 
         except Exception as e:
-            logger.error(f"[ERROR] Ошибка при загрузке SNLI: {e}")
+            logger.error(f"❌ Ошибка при загрузке SNLI: {e}")
             raise
 
     def create_embedding_dataset(
@@ -286,26 +286,26 @@ def main():
             premise_embeddings, hypothesis_embeddings, snli_pairs, args.output_dir
         )
 
-        logger.info(f"[OK] SNLI эмбеддинги готовы: {saved_file}")
+        logger.info(f"✅ SNLI эмбеддинги готовы: {saved_file}")
         logger.info(f"   Теперь можно использовать в run_dynamic_training.py")
 
         # Тест загрузки через precomputed_embedding_loader
-        logger.info(f"\n[TEST] Тестируем загрузку через PrecomputedEmbeddingLoader...")
+        logger.info(f"\n🧪 Тестируем загрузку через PrecomputedEmbeddingLoader...")
         from precomputed_embedding_loader import PrecomputedEmbeddingLoader
 
         loader = PrecomputedEmbeddingLoader()
         dataset = loader.load_dataset(saved_file)
 
         sample_q, sample_a = dataset[0]
-        logger.info(f"[TEST] Тест успешен:")
+        logger.info(f"🧪 Тест успешен:")
         logger.info(f"   Sample premise embedding: {sample_q.shape}")
         logger.info(f"   Sample hypothesis embedding: {sample_a.shape}")
         logger.info(f"   Готов для обучения!")
 
     except KeyboardInterrupt:
-        logger.info("[STOP] Остановлено пользователем")
+        logger.info("🛑 Остановлено пользователем")
     except Exception as e:
-        logger.error(f"[ERROR] Ошибка: {e}")
+        logger.error(f"❌ Ошибка: {e}")
         import traceback
 
         traceback.print_exc()

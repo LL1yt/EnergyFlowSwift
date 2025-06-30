@@ -44,7 +44,7 @@ def validate_system(model_name: str, device: str) -> bool:
         )
         test_surface = adapter.forward(test_embedding)
         assert test_surface.shape == (1, 256), "Adapter output shape is incorrect."
-        logger.info("[OK] Universal Adapter works as expected.")
+        logger.info("✅ Universal Adapter works as expected.")
 
         # 3. Test EmergentCubeTrainer initialization
         logger.info("3️⃣ Testing EmergentCubeTrainer initialization...")
@@ -69,7 +69,7 @@ def validate_system(model_name: str, device: str) -> bool:
         # --- End of Logging ---
 
         trainer = EmergentCubeTrainer(config, device=device)
-        logger.info(f"[OK] EmergentCubeTrainer initialized on {trainer.device}")
+        logger.info(f"✅ EmergentCubeTrainer initialized on {trainer.device}")
 
         # 4. Test dataset creation
         logger.info("4️⃣ Testing dataset creation...")
@@ -81,7 +81,7 @@ def validate_system(model_name: str, device: str) -> bool:
             validation_split=0.0,
         )
         assert len(dataset) > 0, "Dataset creation failed."
-        logger.info(f"[OK] Dataset created with {len(dataset)} pairs.")
+        logger.info(f"✅ Dataset created with {len(dataset)} pairs.")
 
         # 5. Test a single training step
         logger.info("5️⃣ Testing a single training step...")
@@ -91,12 +91,12 @@ def validate_system(model_name: str, device: str) -> bool:
         metrics = trainer.train_step(input_emb, target_emb)
         assert "total_loss" in metrics, "Training step did not return a loss."
         logger.info(
-            f"[OK] Training step successful: loss = {metrics.get('total_loss', 'N/A'):.4f}"
+            f"✅ Training step successful: loss = {metrics.get('total_loss', 'N/A'):.4f}"
         )
 
         logger.info("[SUCCESS] System validation completed successfully!")
         return True
 
     except Exception as e:
-        logger.error(f"[ERROR] System validation failed: {e}", exc_info=True)
+        logger.error(f"❌ System validation failed: {e}", exc_info=True)
         return False

@@ -1,5 +1,5 @@
 """
-[START] Resource-Efficient Transformer v2.1 - ULTRA-COMPACT
+🚀 Resource-Efficient Transformer v2.1 - ULTRA-COMPACT
 
 CRITICAL FIX для 3M->800K parameter reduction:
 - PROBLEM: 3.01M parameters vs 800K target (3.76x exceeds)
@@ -169,7 +169,7 @@ class UltraCompactLayer(nn.Module):
 
 class ResourceEfficientDecoderV21(nn.Module):
     """
-    [START] Resource-Efficient Transformer v2.1 - ULTRA-COMPACT
+    🚀 Resource-Efficient Transformer v2.1 - ULTRA-COMPACT
     
     Target: STRICT 800K parameters, 70% memory reduction
     Architecture: Minimal viable transformer для proof-of-concept
@@ -219,7 +219,7 @@ class ResourceEfficientDecoderV21(nn.Module):
         self.apply(self._init_weights)
         
         param_count = self._count_parameters()
-        logger.info(f"[START] ResourceEfficientDecoderV21 initialized:")
+        logger.info(f"🚀 ResourceEfficientDecoderV21 initialized:")
         logger.info(f"   Parameters: {param_count:,} (target: ≤{config.target_parameters:,})")
         logger.info(f"   Vocab size: {config.vocab_size}")
         logger.info(f"   Hidden size: {config.hidden_size}")
@@ -227,7 +227,7 @@ class ResourceEfficientDecoderV21(nn.Module):
         logger.info(f"   Single layer sharing: {config.single_layer_sharing}")
         
         if param_count <= config.target_parameters:
-            logger.info(f"[OK] ULTRA-COMPACT target achieved!")
+            logger.info(f"✅ ULTRA-COMPACT target achieved!")
         else:
             excess = param_count - config.target_parameters
             logger.warning(f"[WARNING] Parameter count exceeds target by {excess:,}")
@@ -259,7 +259,7 @@ class ResourceEfficientDecoderV21(nn.Module):
         
         final_norm_params = sum(p.numel() for p in self.final_norm.parameters())
         
-        logger.info(f"[DATA] ULTRA-COMPACT Parameter breakdown:")
+        logger.info(f"📊 ULTRA-COMPACT Parameter breakdown:")
         logger.info(f"   Bridge (768->256): {bridge_params:,}")
         logger.info(f"   Token Embedding (256*256): {embedding_params:,}")
         logger.info(f"   Transformer: {transformer_params:,}")
@@ -346,7 +346,7 @@ class ResourceEfficientDecoderV21(nn.Module):
             
             self.metrics.update(result['metrics'])
             
-            logger.info(f"[START] RET v2.1 ULTRA Generation:")
+            logger.info(f"🚀 RET v2.1 ULTRA Generation:")
             logger.info(f"   Tokens: {len(tokens)}")
             logger.info(f"   Time: {result['metrics']['forward_time']:.3f}s")
             logger.info(f"   Parameters: {result['metrics']['parameters_active']:,}")
@@ -355,7 +355,7 @@ class ResourceEfficientDecoderV21(nn.Module):
             return text
             
         except Exception as e:
-            logger.error(f"[ERROR] RET v2.1 ULTRA failed: {e}")
+            logger.error(f"❌ RET v2.1 ULTRA failed: {e}")
             return f"RET v2.1 ULTRA Error: {str(e)}"
     
     def get_model_info(self) -> Dict[str, Any]:
@@ -390,7 +390,7 @@ def create_ultra_compact_decoder(config_path: Optional[str] = None) -> ResourceE
     
     decoder = ResourceEfficientDecoderV21(config)
     
-    logger.info("[TARGET] ResourceEfficientDecoderV21 ULTRA-COMPACT created!")
+    logger.info("🎯 ResourceEfficientDecoderV21 ULTRA-COMPACT created!")
     logger.info(f"   Target: ≤{config.target_parameters:,} parameters")
     logger.info(f"   Achieved: {decoder._count_parameters():,} parameters")
     logger.info(f"   Target achieved: {decoder._count_parameters() <= config.target_parameters}")
@@ -400,7 +400,7 @@ def create_ultra_compact_decoder(config_path: Optional[str] = None) -> ResourceE
 
 if __name__ == "__main__":
     # Тестирование RET v2.1 ULTRA-COMPACT
-    print("[START] Testing Resource-Efficient Transformer v2.1 ULTRA-COMPACT...")
+    print("🚀 Testing Resource-Efficient Transformer v2.1 ULTRA-COMPACT...")
     
     # Create ultra-compact decoder
     decoder = create_ultra_compact_decoder()
@@ -417,5 +417,5 @@ if __name__ == "__main__":
     param_count = decoder._count_parameters()
     target = decoder.config.target_parameters
     print(f"[SAVE] Parameters: {param_count:,} / {target:,}")
-    print(f"[OK] Target achieved: {param_count <= target}")
-    print("[OK] RET v2.1 ULTRA-COMPACT test completed!") 
+    print(f"✅ Target achieved: {param_count <= target}")
+    print("✅ RET v2.1 ULTRA-COMPACT test completed!") 

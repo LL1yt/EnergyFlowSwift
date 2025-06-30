@@ -98,7 +98,7 @@ class ExpressionEvaluator:
             logger.debug(f"📐 Evaluated '{expr}' = {result}")
             return result
         except Exception as e:
-            logger.error(f"[ERROR] Error evaluating expression '{expr}': {e}")
+            logger.error(f"❌ Error evaluating expression '{expr}': {e}")
             return expr
 
     def process_config_dict(self, config: Dict[str, Any]) -> Dict[str, Any]:
@@ -454,7 +454,7 @@ class DynamicConfigGenerator:
             config["architecture"]["hybrid_mode"] = True
             config["architecture"]["disable_nca_scaling"] = True
 
-        logger.info(f"[TARGET] Configured for {mode} mode (scale={scale_factor})")
+        logger.info(f"🎯 Configured for {mode} mode (scale={scale_factor})")
         return config
 
     def generate_config(self, mode: str = "auto") -> Dict[str, Any]:
@@ -535,7 +535,7 @@ class DynamicConfigGenerator:
             "bio_constants_version": "1.0",
         }
 
-        logger.info(f"[OK] Generated config for {mode} mode:")
+        logger.info(f"✅ Generated config for {mode} mode:")
         logger.info(
             f"   Lattice: {processed_config['lattice']['xs']}x{processed_config['lattice']['ys']}x{processed_config['lattice']['zs']}"
         )
@@ -613,14 +613,14 @@ if __name__ == "__main__":
 
     # Тест автоопределения
     auto_config = manager.create_config_for_mode("auto")
-    print(f"\n[TARGET] Auto-detected mode: {auto_config['_metadata']['mode']}")
+    print(f"\n🎯 Auto-detected mode: {auto_config['_metadata']['mode']}")
 
     # Тест всех режимов
     for mode in ["development", "research", "validation"]:
         config = manager.create_config_for_mode(mode)
         lattice = config["lattice"]
         gmlp = config["gmlp"]
-        print(f"\n[DATA] {mode.upper()} mode:")
+        print(f"\n📊 {mode.upper()} mode:")
         print(f"   Lattice: {lattice['xs']}x{lattice['ys']}x{lattice['zs']}")
         print(f"   Neurons: {lattice['total_neurons']:,}")
         print(f"   Batch: {config['training']['batch_size']}")
@@ -631,7 +631,7 @@ if __name__ == "__main__":
         )
 
     # Специальный тест с scale=0.06 (как в команде пользователя)
-    print(f"\n[TARGET] SPECIAL TEST: Development mode with scale=0.06:")
+    print(f"\n🎯 SPECIAL TEST: Development mode with scale=0.06:")
     setattr(manager.generator.scale_settings, "development", 0.06)
     config_006 = manager.create_config_for_mode("development")
     lattice_006 = config_006["lattice"]
@@ -659,5 +659,5 @@ if __name__ == "__main__":
         input_size * hidden_dim + hidden_dim * state_size + memory_dim * hidden_dim
     )
     print(
-        f"   [DATA] Estimated gMLP params: ~{approx_params} (target: {gmlp_006['target_params']})"
+        f"   📊 Estimated gMLP params: ~{approx_params} (target: {gmlp_006['target_params']})"
     )

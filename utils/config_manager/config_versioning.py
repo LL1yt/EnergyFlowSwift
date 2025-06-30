@@ -454,7 +454,7 @@ class ConfigVersionManager:
             with open(output_path, 'w', encoding='utf-8') as f:
                 yaml.dump(history, f, default_flow_style=False, allow_unicode=True)
         
-        self.logger.info(f"[DATA] Exported version history to {output_file}")
+        self.logger.info(f"📊 Exported version history to {output_file}")
     
     # ========================================
     # PRIVATE METHODS

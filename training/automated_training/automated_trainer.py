@@ -93,7 +93,7 @@ class AutomatedTrainer:
 
             # Валидируем конфигурацию
             if not self.config_manager.validate_stage_config(stage_config):
-                logger.error(f"[ERROR] Invalid configuration for stage {stage}")
+                logger.error(f"❌ Invalid configuration for stage {stage}")
                 break
 
             # Оцениваем время выполнения
@@ -107,7 +107,7 @@ class AutomatedTrainer:
 
             if estimated_time_hours > remaining_hours:
                 logger.warning(
-                    f"[ALARM] Not enough time for stage {stage}: {estimated_time_hours:.1f}h needed, {remaining_hours:.1f}h left"
+                    f"⏰ Not enough time for stage {stage}: {estimated_time_hours:.1f}h needed, {remaining_hours:.1f}h left"
                 )
                 break
 
@@ -132,7 +132,7 @@ class AutomatedTrainer:
 
             if result is None or not result.success:
                 logger.error(
-                    f"[ERROR] Stage {stage} failed after {stage_duration:.1f}min - stopping"
+                    f"❌ Stage {stage} failed after {stage_duration:.1f}min - stopping"
                 )
                 break
 

@@ -1,17 +1,17 @@
 """
-[TEST] GENERATIVE DECODER INTEGRATION TEST - Stage 2.1 Validation
+🧪 GENERATIVE DECODER INTEGRATION TEST - Stage 2.1 Validation
 
 TESTING SCOPE:
-- [OK] GenerativeDecoder initialization with RET v2.1
-- [TEST] Parameter target achievement (≤800K)
-- [TEST] RTX 5090 compatibility validation  
-- [TEST] Memory reduction effectiveness (≥60% target)
-- [TEST] Generation quality (BLEU score improvement)
-- [TEST] API consistency with PhraseBankDecoder
-- [TEST] Performance benchmarking vs baseline
+- ✅ GenerativeDecoder initialization with RET v2.1
+- 🧪 Parameter target achievement (≤800K)
+- 🧪 RTX 5090 compatibility validation  
+- 🧪 Memory reduction effectiveness (≥60% target)
+- 🧪 Generation quality (BLEU score improvement)
+- 🧪 API consistency with PhraseBankDecoder
+- 🧪 Performance benchmarking vs baseline
 
 CRITICAL SUCCESS CRITERIA:
-- Parameters ≤ 800K (RET v2.1: 722K [OK])
+- Parameters ≤ 800K (RET v2.1: 722K ✅)
 - Memory reduction ≥ 60%
 - Generation time <100ms
 - Quality score >0.4
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 class GenerativeDecoderIntegrationTest(unittest.TestCase):
     """
-    [TEST] Comprehensive GenerativeDecoder Integration Test Suite
+    🧪 Comprehensive GenerativeDecoder Integration Test Suite
     
     Tests all critical aspects of GenerativeDecoder Stage 2.1 integration
     """
@@ -87,7 +87,7 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         # Performance baselines
         self.baseline_memory = self._get_memory_usage()
         
-        logger.info(f"[TEST] GenerativeDecoder Integration Test setup complete")
+        logger.info(f"🧪 GenerativeDecoder Integration Test setup complete")
         logger.info(f"   Device: {self.device}")
         logger.info(f"   Architecture: {self.config.architecture_type}")
         logger.info(f"   Baseline memory: {self.baseline_memory:.2f} MB")
@@ -113,8 +113,8 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         return (param_size + buffer_size) / 1024 / 1024
     
     def test_01_initialization_success(self):
-        """[TARGET] TEST 1: Successful initialization"""
-        logger.info("[TARGET] TEST 1: GenerativeDecoder Initialization")
+        """🎯 TEST 1: Successful initialization"""
+        logger.info("🎯 TEST 1: GenerativeDecoder Initialization")
         
         # Check basic initialization
         self.assertIsNotNone(self.decoder)
@@ -129,13 +129,13 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         param_count = self.decoder._count_parameters()
         self.assertLessEqual(param_count, self.config.target_parameters)
         
-        logger.info(f"   [OK] Initialization successful")
+        logger.info(f"   ✅ Initialization successful")
         logger.info(f"   Parameters: {param_count:,} / {self.config.target_parameters:,}")
         logger.info(f"   Architecture: {self.decoder.config.architecture_type}")
     
     def test_02_parameter_efficiency_achievement(self):
-        """[TARGET] TEST 2: Parameter Efficiency (CRITICAL)"""
-        logger.info("[TARGET] TEST 2: Parameter Efficiency Achievement")
+        """🎯 TEST 2: Parameter Efficiency (CRITICAL)"""
+        logger.info("🎯 TEST 2: Parameter Efficiency Achievement")
         
         param_count = self.decoder._count_parameters()
         target = self.config.target_parameters
@@ -149,7 +149,7 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         
         logger.info(f"   Parameters: {param_count:,} / {target:,}")
         logger.info(f"   Efficiency: {efficiency:.1f}% under target")
-        logger.info(f"   [OK] Parameter efficiency ACHIEVED!")
+        logger.info(f"   ✅ Parameter efficiency ACHIEVED!")
         
         # Verify this matches RET v2.1 expectations (722K)
         expected_ret_v21_params = 722_944
@@ -157,8 +157,8 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         self.assertLess(param_variance, 0.05, f"Parameter count variance >5% from expected RET v2.1")
     
     def test_03_basic_generation_functionality(self):
-        """[TARGET] TEST 3: Basic Generation Functionality"""
-        logger.info("[TARGET] TEST 3: Basic Generation Functionality")
+        """🎯 TEST 3: Basic Generation Functionality"""
+        logger.info("🎯 TEST 3: Basic Generation Functionality")
         
         # Test basic generation
         result = self.decoder.generate(self.test_embedding, max_length=10)
@@ -179,11 +179,11 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         logger.info(f"   Tokens: {len(result['tokens'])}")
         logger.info(f"   Quality: {result['quality_metrics']['overall_quality']:.3f}")
         logger.info(f"   Time: {result['generation_time']:.3f}s")
-        logger.info(f"   [OK] Basic generation WORKING!")
+        logger.info(f"   ✅ Basic generation WORKING!")
     
     def test_04_api_consistency_with_phrase_bank(self):
-        """[TARGET] TEST 4: API Consistency with PhraseBankDecoder"""
-        logger.info("[TARGET] TEST 4: API Consistency with PhraseBankDecoder")
+        """🎯 TEST 4: API Consistency with PhraseBankDecoder"""
+        logger.info("🎯 TEST 4: API Consistency with PhraseBankDecoder")
         
         # Test decode() method compatibility
         text_result = self.decoder.decode(self.test_embedding, max_length=10)
@@ -204,11 +204,11 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         
         logger.info(f"   Single decode: '{text_result[:30]}{'...' if len(text_result) > 30 else ''}'")
         logger.info(f"   Batch results: {len(batch_results)} items")
-        logger.info(f"   [OK] API consistency VERIFIED!")
+        logger.info(f"   ✅ API consistency VERIFIED!")
     
     def test_05_rtx_5090_compatibility(self):
-        """[START] TEST 5: RTX 5090 Compatibility"""
-        logger.info("[START] TEST 5: RTX 5090 Compatibility")
+        """🚀 TEST 5: RTX 5090 Compatibility"""
+        logger.info("🚀 TEST 5: RTX 5090 Compatibility")
         
         if not torch.cuda.is_available():
             self.skipTest("CUDA not available - skipping RTX 5090 test")
@@ -234,7 +234,7 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
                 with torch.amp.autocast('cuda'):
                     result = self.decoder.generate(test_embedding, max_length=5)
                     self.assertIsInstance(result['text'], str)
-                    logger.info(f"   Mixed precision: [OK] Working")
+                    logger.info(f"   Mixed precision: ✅ Working")
             
             # Test memory efficiency
             memory_used = self._get_memory_usage()
@@ -246,7 +246,7 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
                 if hasattr(model_config, 'edge_optimization'):
                     logger.info(f"   Edge optimization: {model_config.edge_optimization}")
             
-            logger.info("   [OK] RTX 5090 compatibility VERIFIED!")
+            logger.info("   ✅ RTX 5090 compatibility VERIFIED!")
             
         except Exception as e:
             self.fail(f"RTX 5090 compatibility test failed: {e}")
@@ -275,11 +275,11 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         self.assertGreater(reduction_ratio, target_reduction, 
                           f"Memory reduction {reduction_ratio:.1%} below {target_reduction:.1%} target")
         
-        logger.info(f"   [OK] Memory reduction target ACHIEVED! ({reduction_ratio:.1%} > {target_reduction:.1%})")
+        logger.info(f"   ✅ Memory reduction target ACHIEVED! ({reduction_ratio:.1%} > {target_reduction:.1%})")
     
     def test_07_generation_performance(self):
-        """[FAST] TEST 7: Generation Performance"""
-        logger.info("[FAST] TEST 7: Generation Performance")
+        """⚡ TEST 7: Generation Performance"""
+        logger.info("⚡ TEST 7: Generation Performance")
         
         # Warmup
         for _ in range(3):
@@ -317,11 +317,11 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         self.assertGreater(avg_quality, target_quality,
                           f"Average quality {avg_quality:.3f} below {target_quality:.3f} target")
         
-        logger.info("   [OK] Performance targets ACHIEVED!")
+        logger.info("   ✅ Performance targets ACHIEVED!")
     
     def test_08_quality_assessment_system(self):
-        """[TARGET] TEST 8: Quality Assessment System"""
-        logger.info("[TARGET] TEST 8: Quality Assessment System")
+        """🎯 TEST 8: Quality Assessment System"""
+        logger.info("🎯 TEST 8: Quality Assessment System")
         
         # Generate multiple samples
         samples = []
@@ -353,7 +353,7 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
         self.assertGreater(avg_quality, 0.2, "Quality system producing too low scores")
         self.assertLess(quality_std, 0.3, "Quality scores too inconsistent")
         
-        logger.info("   [OK] Quality assessment system WORKING!")
+        logger.info("   ✅ Quality assessment system WORKING!")
     
     def test_09_integration_readiness(self):
         """[LINK] TEST 9: Integration Readiness"""
@@ -391,8 +391,8 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
             self.assertIsInstance(original_result['text'], str)
             self.assertIsInstance(loaded_result['text'], str)
             
-            logger.info(f"   Performance report: [OK] Complete")
-            logger.info(f"   Save/Load: [OK] Working")
+            logger.info(f"   Performance report: ✅ Complete")
+            logger.info(f"   Save/Load: ✅ Working")
             logger.info(f"   Parameter efficiency: {report['parameter_efficiency']:.2f}x")
             logger.info(f"   Success rate: {report['success_rate']:.1%}")
             
@@ -401,16 +401,16 @@ class GenerativeDecoderIntegrationTest(unittest.TestCase):
             if save_path.exists():
                 save_path.unlink()
         
-        logger.info("   [OK] Integration readiness VERIFIED!")
+        logger.info("   ✅ Integration readiness VERIFIED!")
 
 
 def run_comprehensive_integration_test():
     """
-    [START] Run comprehensive GenerativeDecoder integration test suite
+    🚀 Run comprehensive GenerativeDecoder integration test suite
     """
     
     print("=" * 60)
-    print("[TEST] GENERATIVE DECODER INTEGRATION TEST SUITE")
+    print("🧪 GENERATIVE DECODER INTEGRATION TEST SUITE")
     print("=" * 60)
     print(f"Phase 2.7 Stage 2.1 - GenerativeDecoder + RET v2.1")
     print()
@@ -427,15 +427,15 @@ def run_comprehensive_integration_test():
     print("\n" + "=" * 60)
     if result.wasSuccessful():
         print("[SUCCESS] ALL INTEGRATION TESTS PASSED!")
-        print("[OK] GenerativeDecoder + RET v2.1 READY FOR PRODUCTION!")
-        print("\n[START] STAGE 2.1 INTEGRATION COMPLETE!")
-        print("[IDEA] Next step: Stage 2.2 - Advanced optimization & RTX 5090 validation")
+        print("✅ GenerativeDecoder + RET v2.1 READY FOR PRODUCTION!")
+        print("\n🚀 STAGE 2.1 INTEGRATION COMPLETE!")
+        print("💡 Next step: Stage 2.2 - Advanced optimization & RTX 5090 validation")
         
         return True
     else:
-        print("[ERROR] SOME INTEGRATION TESTS FAILED!")
-        print(f"[ERROR] Failures: {len(result.failures)}")
-        print(f"[ERROR] Errors: {len(result.errors)}")
+        print("❌ SOME INTEGRATION TESTS FAILED!")
+        print(f"❌ Failures: {len(result.failures)}")
+        print(f"❌ Errors: {len(result.errors)}")
         
         return False
 
@@ -444,6 +444,6 @@ if __name__ == "__main__":
     success = run_comprehensive_integration_test()
     
     if success:
-        print("\n[TARGET] INTEGRATION SUCCESS - Ready for next stage!")
+        print("\n🎯 INTEGRATION SUCCESS - Ready for next stage!")
     else:
         print("\n[WARNING] Fix integration issues before proceeding") 
