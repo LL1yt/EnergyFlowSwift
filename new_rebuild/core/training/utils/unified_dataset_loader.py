@@ -32,6 +32,7 @@ class GPUMemoryEstimator:
     def __init__(self):
         self.device_manager = get_device_manager()
         self.embedding_size_mb = 768 * 4 / (1024**2)  # float32, 768 dim
+        self.use_gpu_only = False  # Будет установлено в dataset
     
     def estimate_dataset_memory_mb(self, num_samples: int) -> float:
         """Оценка памяти для датасета в MB"""
@@ -45,6 +46,8 @@ class GPUMemoryEstimator:
             reserve_for_training_gb: Сколько GB оставить для обучения
         """
         if not self.device_manager.is_cuda():
+            if self.use_gpu_only:
+                raise RuntimeError("🚨 GPU memory estimator needs CUDA but GPU not available!")
             return None  # CPU режим - без ограничений
             
         total_memory_gb = self.device_manager.get_available_memory_gb()
@@ -86,15 +89,24 @@ class UnifiedEmbeddingDataset(Dataset):
         self.device_manager = get_device_manager()
         self.memory_estimator = GPUMemoryEstimator()
         
+        # Строгая проверка GPU-only режима
+        if not config.device.fallback_cpu and not self.device_manager.is_cuda():
+            raise RuntimeError(
+                "🚨 GPU не доступен, но fallback_cpu=False в конфигурации! "
+                "Проверьте GPU или установите config.device.fallback_cpu=True"
+            )
+        
+        # Принудительно используем GPU или ошибка
+        self.use_gpu_only = not config.device.fallback_cpu
+        
         # Умное планирование памяти
         self.max_total_samples = self._plan_memory_usage(max_total_samples)
         
         self.embeddings: List[torch.Tensor] = []
         self.metadata: List[Dict] = []
-        self.use_gpu_acceleration = self.device_manager.is_cuda()
         
-        logger.info("🔄 Initializing GPU-accelerated UnifiedEmbeddingDataset...")
-        logger.info(f"🚀 GPU acceleration: {'✅ Enabled' if self.use_gpu_acceleration else '❌ Disabled'}")
+        logger.info("🔄 Initializing STRICT GPU-only UnifiedEmbeddingDataset...")
+        logger.info(f"⚡ GPU-only mode: {'✅ ENFORCED' if self.use_gpu_only else '⚠️ Fallback allowed'}")
         if self.max_total_samples is not None:
             logger.info(f"📊 Smart memory limit: {self.max_total_samples:,} samples")
         
@@ -104,13 +116,10 @@ class UnifiedEmbeddingDataset(Dataset):
         # Применяем общий лимит если задан
         self._apply_total_limit()
         
-        # GPU-ускоренная фильтрация и валидация
-        if self.use_gpu_acceleration:
-            self._gpu_filter_and_validate()
-        else:
-            self._filter_and_validate()
+        # Всегда используем GPU валидацию
+        self._gpu_filter_and_validate()
         
-        logger.info(f"✅ Dataset ready: {len(self.embeddings)} samples")
+        logger.info(f"✅ GPU Dataset ready: {len(self.embeddings)} samples")
         self._log_memory_usage()
     
     def _plan_memory_usage(self, requested_limit: Optional[int]) -> Optional[int]:
@@ -118,6 +127,9 @@ class UnifiedEmbeddingDataset(Dataset):
         
         # Получаем резерв для обучения из конфигурации или используем по умолчанию
         training_reserve_gb = getattr(self.config.training_embedding, 'gpu_memory_reserve_gb', 20.0)
+        
+        # Передаем информацию о GPU-only режиме в estimator
+        self.memory_estimator.use_gpu_only = self.use_gpu_only
         
         # Вычисляем безопасный лимит исходя из доступной памяти
         safe_limit = self.memory_estimator.get_safe_sample_limit(training_reserve_gb)
@@ -138,22 +150,42 @@ class UnifiedEmbeddingDataset(Dataset):
     
     def _log_memory_usage(self):
         """Логирование использования памяти"""
-        if self.use_gpu_acceleration:
+        if self.device_manager.is_cuda():
             stats = self.device_manager.get_memory_stats()
             estimated_mb = self.memory_estimator.estimate_dataset_memory_mb(len(self.embeddings))
             
-            logger.info(f"📊 GPU Memory Usage:")
+            mode_prefix = "⚡ GPU-ONLY" if self.use_gpu_only else "🔄 GPU/CPU"
+            logger.info(f"📊 {mode_prefix} Memory Usage:")
             logger.info(f"  Dataset estimated: {estimated_mb:.1f}MB")
             logger.info(f"  GPU allocated: {stats.get('allocated_mb', 0):.1f}MB")
             logger.info(f"  GPU available: {self.device_manager.get_available_memory_gb():.1f}GB")
     
     def _load_all_sources(self):
-        """Загружаем данные из всех доступных источников"""
+        """Загружаем данные из всех доступных источников с early stopping"""
         
-        # Всегда загружаем основные источники
+        logger.info(f"🔄 Loading sources with limit: {self.max_total_samples}")
+        
+        # Загружаем с проверкой лимита
         self._load_dialogue_cache()
-        self._load_prepared_embeddings()
+        if self._check_early_stop():
+            return
+            
+        self._load_prepared_embeddings() 
+        if self._check_early_stop():
+            return
+            
         self._load_cache_embeddings()
+    
+    def _check_early_stop(self) -> bool:
+        """Проверяем, достигли ли мы лимита сэмплов"""
+        if self.max_total_samples is None:
+            return False
+            
+        current_count = len(self.embeddings)
+        if current_count >= self.max_total_samples:
+            logger.info(f"⚡ Early stop: reached {current_count} samples (limit: {self.max_total_samples})")
+            return True
+        return False
     
     def _apply_total_limit(self):
         """Применяем общий лимит на количество сэмплов"""
@@ -182,8 +214,12 @@ class UnifiedEmbeddingDataset(Dataset):
         
         logger.info(f"📂 Loading dialogue cache: {len(files)} files")
         
-        # Определяем устройство для загрузки
-        map_location = 'cuda' if self.use_gpu_acceleration else 'cpu'
+        # Принудительная загрузка на GPU
+        if self.use_gpu_only:
+            map_location = 'cuda'
+            logger.info("⚡ GPU-ONLY: Loading directly to CUDA")
+        else:
+            map_location = 'cuda' if self.device_manager.is_cuda() else 'cpu'
         
         loaded_count = 0
         for file in files:
@@ -212,6 +248,11 @@ class UnifiedEmbeddingDataset(Dataset):
                             "type": "dialogue"
                         })
                         loaded_count += 1
+                        
+                        # Проверяем лимит после каждого сэмпла
+                        if self.max_total_samples and len(self.embeddings) >= self.max_total_samples:
+                            logger.info(f"⚡ Reached limit in dialogue_cache: {len(self.embeddings)} samples")
+                            return
                             
             except Exception as e:
                 logger.warning(f"Failed to load dialogue file {file}: {e}")
@@ -225,8 +266,11 @@ class UnifiedEmbeddingDataset(Dataset):
         
         logger.info(f"📂 Loading prepared embeddings: {len(files)} files")
         
-        # Определяем устройство для загрузки
-        map_location = 'cuda' if self.use_gpu_acceleration else 'cpu'
+        # Принудительная загрузка на GPU
+        if self.use_gpu_only:
+            map_location = 'cuda'
+        else:
+            map_location = 'cuda' if self.device_manager.is_cuda() else 'cpu'
         
         loaded_count = 0
         for file in files:
@@ -259,6 +303,11 @@ class UnifiedEmbeddingDataset(Dataset):
                             "type": "prepared"
                         })
                         loaded_count += 1
+                        
+                        # Проверяем лимит после каждого сэмпла
+                        if self.max_total_samples and len(self.embeddings) >= self.max_total_samples:
+                            logger.info(f"⚡ Reached limit in prepared_embeddings: {len(self.embeddings)} samples")
+                            return
                     
             except Exception as e:
                 logger.warning(f"Failed to load prepared embedding {file}: {e}")
@@ -271,8 +320,11 @@ class UnifiedEmbeddingDataset(Dataset):
         
         logger.info(f"📂 Loading cache embeddings: {len(cache_files)} files")
         
-        # Определяем устройство для загрузки
-        map_location = 'cuda' if self.use_gpu_acceleration else 'cpu'
+        # Принудительная загрузка на GPU
+        if self.use_gpu_only:
+            map_location = 'cuda'
+        else:
+            map_location = 'cuda' if self.device_manager.is_cuda() else 'cpu'
         
         loaded_count = 0
         for file in cache_files:
@@ -298,6 +350,12 @@ class UnifiedEmbeddingDataset(Dataset):
                                     "type": "cache"
                                 })
                                 loaded_count += 1
+                                
+                                # Проверяем лимит после каждого сэмпла
+                                if self.max_total_samples and len(self.embeddings) >= self.max_total_samples:
+                                    logger.info(f"⚡ Reached limit in cache_embeddings: {len(self.embeddings)} samples")
+                                    return
+                                    
                     elif data.dim() == 1:  # [dim]
                         emb = data.float()
                         if self._is_valid_embedding(emb):
@@ -308,6 +366,11 @@ class UnifiedEmbeddingDataset(Dataset):
                                 "type": "cache"
                             })
                             loaded_count += 1
+                            
+                            # Проверяем лимит после каждого сэмпла
+                            if self.max_total_samples and len(self.embeddings) >= self.max_total_samples:
+                                logger.info(f"⚡ Reached limit in cache_embeddings: {len(self.embeddings)} samples")
+                                return
                     
             except Exception as e:
                 logger.warning(f"Failed to load cache embedding {file}: {e}")
@@ -392,9 +455,12 @@ class UnifiedEmbeddingDataset(Dataset):
             logger.info(f"✅ GPU validation completed: {len(self.embeddings)} valid samples")
             
         except Exception as e:
-            logger.warning(f"⚠️ GPU validation failed, falling back to CPU: {e}")
-            self._filter_and_validate()
-            return
+            if self.use_gpu_only:
+                raise RuntimeError(f"🚨 GPU validation failed in GPU-ONLY mode: {e}")
+            else:
+                logger.warning(f"⚠️ GPU validation failed, falling back to CPU: {e}")
+                self._filter_and_validate()
+                return
             
         # Статистика по источникам
         source_stats = {}
@@ -518,30 +584,50 @@ def create_training_dataloader(
     
     # Оптимизации для RTX 5090
     device_manager = get_device_manager()
-    is_cuda = device_manager.is_cuda()
     
-    # Оптимальные параметры для RTX 5090
-    optimal_num_workers = 8 if is_cuda else num_workers  # 4*2 GPU cores
-    prefetch_factor = 4 if is_cuda else 2
+    # Проверяем GPU-only конфигурацию
+    if not config.device.fallback_cpu and not device_manager.is_cuda():
+        raise RuntimeError("🚨 GPU не доступен для DataLoader в GPU-ONLY режиме!")
+    
+    is_cuda = device_manager.is_cuda()
+    use_gpu_only = not config.device.fallback_cpu
+    
+    # Принудительные GPU оптимизации для RTX 5090
+    if use_gpu_only:
+        # Windows multiprocessing fix: используем заданное количество воркеров
+        optimal_num_workers = num_workers if num_workers is not None else 0
+        prefetch_factor = 6 if optimal_num_workers > 0 else 2
+        # ВАЖНО: pin_memory=False для GPU тензоров (они уже на GPU)
+        pin_memory = False
+        logger.info(f"⚡ GPU-ONLY DataLoader optimizations enabled (workers: {optimal_num_workers})")
+        logger.info("🔧 pin_memory=False (tensors already on GPU)")
+    else:
+        optimal_num_workers = 8 if is_cuda else num_workers
+        prefetch_factor = 4 if is_cuda else 2
+        pin_memory = is_cuda
     
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=optimal_num_workers,
-        pin_memory=is_cuda,
+        pin_memory=pin_memory,
         drop_last=True,  # Для стабильности размеров батчей
         persistent_workers=True if optimal_num_workers > 0 else False,  # PyTorch 2.x оптимизация
         prefetch_factor=prefetch_factor if optimal_num_workers > 0 else None
     )
     
-    logger.info(f"🚀 Optimized DataLoader for RTX 5090:")
+    mode_info = "⚡ GPU-ONLY" if use_gpu_only else "🔄 GPU/CPU Hybrid"
+    logger.info(f"🚀 {mode_info} DataLoader for RTX 5090:")
     logger.info(f"  Samples: {len(dataset):,}")
     logger.info(f"  Batch size: {batch_size}")
     logger.info(f"  Workers: {optimal_num_workers}")
-    logger.info(f"  Pin memory: {is_cuda}")
+    logger.info(f"  Pin memory: {pin_memory}")
     logger.info(f"  Persistent workers: {optimal_num_workers > 0}")
     logger.info(f"  Prefetch factor: {prefetch_factor}")
+    
+    if use_gpu_only:
+        logger.info(f"⚡ GPU-ONLY mode enforced - no CPU fallbacks")
     
     logger.info(f"🚀 DataLoader created: {len(dataset)} samples, batch_size={batch_size}")
     

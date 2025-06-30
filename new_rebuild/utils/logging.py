@@ -192,6 +192,7 @@ class DebugModeFilter(logging.Filter):
 
 def setup_logging(
     debug_mode: bool = False,
+    level: Optional[str] = None,
     log_file: Optional[str] = None,
     enable_deduplication: bool = False,
     enable_context: bool = True,
@@ -200,7 +201,8 @@ def setup_logging(
     Настраивает централизованное логирование.
 
     Args:
-        debug_mode: Включить детальное логирование
+        debug_mode: Включить детальное логирование (переопределяет level)
+        level: Уровень логирования ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
         log_file: Файл для записи логов (опционально)
         enable_deduplication: ОТКЛЮЧЕНО - может скрыть реальные проблемы в коде
         enable_context: Включить контекстное логирование
@@ -212,13 +214,27 @@ def setup_logging(
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # Устанавливаем уровень
+    # Определяем уровень логирования
     if debug_mode:
-        root_logger.setLevel(logging.DEBUG)
-        console_level = logging.DEBUG
+        # debug_mode переопределяет level
+        log_level = logging.DEBUG
+    elif level:
+        # Используем заданный уровень
+        level_map = {
+            "DEBUG": logging.DEBUG,
+            "INFO": logging.INFO,
+            "WARNING": logging.WARNING,
+            "ERROR": logging.ERROR,
+            "CRITICAL": logging.CRITICAL
+        }
+        log_level = level_map.get(level.upper(), logging.INFO)
     else:
-        root_logger.setLevel(logging.INFO)
-        console_level = logging.INFO
+        # По умолчанию INFO
+        log_level = logging.INFO
+    
+    # Устанавливаем уровень
+    root_logger.setLevel(log_level)
+    console_level = log_level
 
     # Создаем форматтер (выбираем тип в зависимости от настроек)
     if debug_mode:
@@ -258,8 +274,9 @@ def setup_logging(
 
     # Логируем успешную настройку
     logger = get_logger("logging_setup")
+    level_name = logging.getLevelName(log_level)
     logger.info(
-        f"🚀 Логирование настроено: debug={debug_mode}, context={enable_context}"
+        f"Logging configured: level={level_name}, debug={debug_mode}, context={enable_context}"
     )
 
 

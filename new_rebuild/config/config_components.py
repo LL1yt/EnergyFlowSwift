@@ -369,7 +369,7 @@ class LoggingSettings:
 
     level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
     # level: str = "DEBUG"  # Для тестов можно использовать DEBUG
-    debug_mode: bool = True
+    debug_mode: bool = False  # По умолчанию используем level, а не debug_mode
     log_to_file: bool = True
     log_file: str = "logs/cnf_debug.log"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -529,8 +529,8 @@ class TrainingEmbeddingSettings:
     # === ОГРАНИЧЕНИЯ ДАТАСЕТА ===
     # Общий лимит на количество сэмплов в датасете (для всех источников вместе)
     # None = без ограничений, int = максимальное количество сэмплов
-    max_total_samples: Optional[int] = None  # Для реального обучения без ограничений
-    # max_total_samples: int = 1000  # Раскомментировать для ограниченного обучения
+    # max_total_samples: Optional[int] = None  # Для реального обучения без ограничений
+    max_total_samples: int = 50  # Раскомментировать для ограниченного обучения
     
     # GPU память, резервируемая для обучения (GB)
     gpu_memory_reserve_gb: float = 20.0  # Оставляем 20GB для модели и обучения

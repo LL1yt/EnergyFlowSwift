@@ -19,8 +19,9 @@ def test_max_total_samples():
     logger.info("🧪 TESTING MAX_TOTAL_SAMPLES FUNCTIONALITY")
     logger.info("=" * 50)
     
-    # Создаем конфигурацию
+    # Создаем конфигурацию с разрешенным fallback для тестов
     config = SimpleProjectConfig()
+    config.device.fallback_cpu = True  # Разрешаем CPU fallback для совместимости
     
     # Тест 1: Без ограничений
     logger.info("\n🔬 Test 1: No limit")

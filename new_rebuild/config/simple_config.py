@@ -96,6 +96,16 @@ class SimpleProjectConfig:
 
     def __post_init__(self):
         """Автоматическая настройка после инициализации"""
+        # ВАЖНО: Сначала настраиваем логирование на основе наших настроек
+        from ..utils.logging import setup_logging
+        setup_logging(
+            debug_mode=self.logging.debug_mode,
+            level=self.logging.level,  # Передаем уровень из конфигурации
+            log_file=self.logging.log_file if self.logging.log_to_file else None,
+            enable_deduplication=False,
+            enable_context=True
+        )
+        
         # Инициализация device manager с централизованным debug_mode из logging настроек
         self.device_manager = get_device_manager(
             prefer_cuda=self.device.prefer_cuda, debug_mode=self.logging.debug_mode
