@@ -10,24 +10,9 @@ print("🔍 Анализ проблемы с соседями...")
 config = SimpleProjectConfig()
 print(f"📏 Lattice dimensions: {config.lattice.dimensions}")
 
-# Создаем spatial optimizer
-spatial_config = {
-    "chunker": config.chunker_config,
-    "memory": config.memory,
-    "device": config.device,
-    "vectorized": config.vectorized,
-    "unified_optimizer": config.unified_optimizer,
-    "adaptive_radius_enabled": config.lattice.adaptive_radius_enabled,
-    "adaptive_radius_ratio": config.lattice.adaptive_radius_ratio,
-    "adaptive_radius_max": config.lattice.adaptive_radius_max,
-    "adaptive_radius_min": config.lattice.adaptive_radius_min,
-    "enable_morton_encoding": config.lattice.enable_morton_encoding,
-    "target_performance_ms": config.lattice.target_performance_ms,
-}
-
+# Создаем spatial optimizer - используем стандартную инициализацию
 optimizer = UnifiedSpatialOptimizer(
-    dimensions=config.lattice.dimensions,
-    config=spatial_config
+    dimensions=config.lattice.dimensions
 )
 
 # Создаем тестовые состояния
@@ -51,7 +36,7 @@ for cell_idx in test_cells:
         
         # Попробуем найти соседей с разными радиусами
         for radius in [1.0, 1.5, 2.0]:
-            neighbors = optimizer.find_neighbors(coords, radius)
+            neighbors = optimizer.find_neighbors_optimized(coords, radius)
             print(f"🔍 Cell {cell_idx} at {coords}: radius={radius} → {len(neighbors)} neighbors")
             if len(neighbors) > 0:
                 break

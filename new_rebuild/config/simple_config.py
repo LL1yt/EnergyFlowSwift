@@ -67,10 +67,14 @@ class SimpleProjectConfig:
     euler: Optional[EulerSettings] = field(default_factory=EulerSettings)
     cache: Optional[CacheSettings] = field(default_factory=CacheSettings)
     spatial: Optional[SpatialSettings] = field(default_factory=SpatialSettings)
-    unified_optimizer: Optional[UnifiedOptimizerSettings] = field(default_factory=UnifiedOptimizerSettings)
+    unified_optimizer: Optional[UnifiedOptimizerSettings] = field(
+        default_factory=UnifiedOptimizerSettings
+    )
     vectorized: Optional[VectorizedSettings] = field(default_factory=VectorizedSettings)
     memory: Optional[MemorySettings] = field(default_factory=MemorySettings)
-    adaptive_chunker: Optional[AdaptiveChunkerSettings] = field(default_factory=AdaptiveChunkerSettings)
+    adaptive_chunker: Optional[AdaptiveChunkerSettings] = field(
+        default_factory=AdaptiveChunkerSettings
+    )
 
     # Экспериментальные компоненты
     experiment: Optional[ExperimentSettings] = None
@@ -92,9 +96,9 @@ class SimpleProjectConfig:
 
     def __post_init__(self):
         """Автоматическая настройка после инициализации"""
-        # Инициализация device manager
+        # Инициализация device manager с централизованным debug_mode из logging настроек
         self.device_manager = get_device_manager(
-            prefer_cuda=self.device.prefer_cuda, debug_mode=self.device.debug_mode
+            prefer_cuda=self.device.prefer_cuda, debug_mode=self.logging.debug_mode
         )
 
         # Связываем cache с expert settings
@@ -187,16 +191,20 @@ class SimpleProjectConfig:
     @property
     def effective_max_chunk_size(self) -> int:
         """Эффективный максимальный размер chunk'а для текущей решетки"""
-        config_max = self.adaptive_chunker.max_chunk_size if self.adaptive_chunker else 64
+        config_max = (
+            self.adaptive_chunker.max_chunk_size if self.adaptive_chunker else 64
+        )
         # Для малых решеток ограничиваем chunk размером в 1/4 решетки по каждой оси
         max_dim = max(self.lattice.dimensions)
         quarter_lattice = max_dim // 4
         return min(config_max, max(quarter_lattice, 4))  # минимум 4 клетки
 
-    @property  
+    @property
     def effective_min_chunk_size(self) -> int:
         """Эффективный минимальный размер chunk'а для текущей решетки"""
-        config_min = self.adaptive_chunker.min_chunk_size if self.adaptive_chunker else 32
+        config_min = (
+            self.adaptive_chunker.min_chunk_size if self.adaptive_chunker else 32
+        )
         # Для малых решеток делаем min_chunk_size = 1/8 от максимального измерения
         max_dim = max(self.lattice.dimensions)
         eighth_lattice = max(max_dim // 8, 2)  # минимум 2 клетки
@@ -259,10 +267,10 @@ class SimpleProjectConfig:
 
     def enable_production_mode(self):
         """Включить режим production"""
-        # Отключаем debug режимы
+        # Отключаем debug режимы - централизованно через LoggingSettings
         self.logging.debug_mode = False
         self.logging.level = "WARNING"
-        self.device.debug_mode = False
+        # self.device.debug_mode = False  # УДАЛЕНО - больше не существует
 
         # Оптимизируем производительность
         if self.performance is None:

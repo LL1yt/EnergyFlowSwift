@@ -59,9 +59,13 @@ class MemoryMonitor:
         """Принудительная очистка памяти"""
         gc.collect()
 
-        if self.device.type == "cuda":
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+        if self.device.type == "cuda" and torch.cuda.is_available():
+            try:
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            except Exception:
+                # Игнорируем ошибки очистки при завершении программы
+                pass
 
         logger.debug(f"🧹 Memory cleanup выполнен для {self.device}")
 
@@ -106,7 +110,7 @@ class DeviceManager:
 
         Args:
             prefer_cuda: Предпочитать CUDA если доступен
-            debug_mode: Включить подробное логирование
+            debug_mode: Включить подробное логирование (передается из config.logging.debug_mode)
         """
         self.prefer_cuda = prefer_cuda
         self.debug_mode = debug_mode
@@ -201,7 +205,9 @@ class DeviceManager:
         """
         if self.device.type == "cuda":
             try:
-                total_memory = torch.cuda.get_device_properties(self.device).total_memory
+                total_memory = torch.cuda.get_device_properties(
+                    self.device
+                ).total_memory
                 reserved_memory = torch.cuda.memory_reserved(self.device)
                 available_memory_bytes = total_memory - reserved_memory
                 return available_memory_bytes / (1024**3)
@@ -357,13 +363,18 @@ class DeviceManager:
 
     def cleanup(self):
         """Полная очистка памяти"""
-        self.memory_monitor.cleanup()
+        try:
+            if hasattr(self, "memory_monitor") and self.memory_monitor:
+                self.memory_monitor.cleanup()
 
-        if self.debug_mode:
-            stats = self.get_memory_stats()
-            logger.info(
-                f"🧹 DeviceManager cleanup: {stats['tensor_transfers']} переносов, {stats['total_allocations']} выделений"
-            )
+            if hasattr(self, "debug_mode") and self.debug_mode:
+                stats = self.get_memory_stats()
+                logger.info(
+                    f"🧹 DeviceManager cleanup: {stats['tensor_transfers']} переносов, {stats['total_allocations']} выделений"
+                )
+        except Exception:
+            # Игнорируем ошибки при завершении программы
+            pass
 
     def __del__(self):
         """Cleanup при удалении объекта"""
@@ -379,14 +390,14 @@ def get_device_manager(
     prefer_cuda: bool = True, debug_mode: bool = True
 ) -> DeviceManager:
     """
-    Получить глобальный DeviceManager (singleton)
+    Получает глобальный instance DeviceManager (singleton pattern)
 
     Args:
-        prefer_cuda: Предпочитать CUDA (только при первом вызове)
-        debug_mode: Режим отладки (только при первом вызове)
+        prefer_cuda: Предпочитать CUDA если доступен
+        debug_mode: Режим отладки (передается из config.logging.debug_mode)
 
     Returns:
-        Глобальный DeviceManager
+        DeviceManager instance
     """
     global _global_device_manager
 

@@ -39,16 +39,21 @@ class UnifiedEmbeddingDataset(Dataset):
     Использует централизованную конфигурацию
     """
     
-    def __init__(self, config: SimpleProjectConfig, max_samples_per_source: Optional[int] = None):
+    def __init__(self, config: SimpleProjectConfig, max_total_samples: Optional[int] = None):
         self.config = config
-        self.max_samples_per_source = max_samples_per_source
+        self.max_total_samples = max_total_samples  # Общий лимит на все источники
         self.embeddings: List[torch.Tensor] = []
         self.metadata: List[Dict] = []
         
         logger.info("🔄 Initializing UnifiedEmbeddingDataset with central config...")
+        if self.max_total_samples is not None:
+            logger.info(f"📊 Total sample limit: {self.max_total_samples}")
         
         # Загружаем данные из всех источников
         self._load_all_sources()
+        
+        # Применяем общий лимит если задан
+        self._apply_total_limit()
         
         # Фильтруем и валидируем
         self._filter_and_validate()
@@ -62,6 +67,26 @@ class UnifiedEmbeddingDataset(Dataset):
         self._load_dialogue_cache()
         self._load_prepared_embeddings()
         self._load_cache_embeddings()
+    
+    def _apply_total_limit(self):
+        """Применяем общий лимит на количество сэмплов"""
+        if self.max_total_samples is None:
+            return
+            
+        current_total = len(self.embeddings)
+        logger.info(f"📊 Before limit: {current_total} samples")
+        
+        if current_total > self.max_total_samples:
+            # Случайным образом выбираем сэмплы, чтобы сохранить разнообразие
+            indices = list(range(current_total))
+            random.shuffle(indices)
+            selected_indices = indices[:self.max_total_samples]
+            
+            # Применяем выбор
+            self.embeddings = [self.embeddings[i] for i in selected_indices]
+            self.metadata = [self.metadata[i] for i in selected_indices]
+            
+            logger.info(f"📊 Applied total limit: {len(self.embeddings)} samples (reduced from {current_total})")
     
     def _load_dialogue_cache(self):
         """Загружаем dialogue datasets из cache/dialogue_dataset/"""
@@ -97,10 +122,6 @@ class UnifiedEmbeddingDataset(Dataset):
                             "type": "dialogue"
                         })
                         loaded_count += 1
-                        
-                        if (self.max_samples_per_source and 
-                            loaded_count >= self.max_samples_per_source):
-                            break
                             
             except Exception as e:
                 logger.warning(f"Failed to load dialogue file {file}: {e}")
@@ -145,10 +166,6 @@ class UnifiedEmbeddingDataset(Dataset):
                             "type": "prepared"
                         })
                         loaded_count += 1
-                
-                if (self.max_samples_per_source and 
-                    loaded_count >= self.max_samples_per_source):
-                    break
                     
             except Exception as e:
                 logger.warning(f"Failed to load prepared embedding {file}: {e}")
@@ -195,10 +212,6 @@ class UnifiedEmbeddingDataset(Dataset):
                                 "type": "cache"
                             })
                             loaded_count += 1
-                
-                if (self.max_samples_per_source and 
-                    loaded_count >= self.max_samples_per_source):
-                    break
                     
             except Exception as e:
                 logger.warning(f"Failed to load cache embedding {file}: {e}")
@@ -282,7 +295,7 @@ class UnifiedEmbeddingDataset(Dataset):
 
 def create_training_dataloader(
     config: SimpleProjectConfig,
-    max_samples_per_source: Optional[int] = None,
+    max_total_samples: Optional[int] = None,
     shuffle: bool = True,
     num_workers: int = 0
 ) -> Tuple[DataLoader, DatasetStats]:
@@ -291,7 +304,7 @@ def create_training_dataloader(
     
     Args:
         config: Центральная конфигурация проекта
-        max_samples_per_source: Максимум образцов с каждого источника (для тестов)
+        max_total_samples: Общий лимит на количество сэмплов (переопределяет config)
         shuffle: Перемешивать данные
         num_workers: Количество воркеров для загрузки
         
@@ -299,7 +312,20 @@ def create_training_dataloader(
         Tuple[DataLoader, DatasetStats]: DataLoader и статистика датасета
     """
     
-    dataset = UnifiedEmbeddingDataset(config, max_samples_per_source)
+    # Используем общий лимит из конфигурации, если он задан
+    if config.training_embedding.max_total_samples is not None:
+        # Приоритет: max_total_samples из конфигурации
+        effective_max_samples = config.training_embedding.max_total_samples
+        logger.info(f"📊 Using max_total_samples from config: {effective_max_samples}")
+    else:
+        # Fallback на параметр функции
+        effective_max_samples = max_total_samples
+        if effective_max_samples is not None:
+            logger.info(f"📊 Using max_total_samples parameter: {effective_max_samples}")
+        else:
+            logger.info("📊 No sample limit - using full dataset")
+    
+    dataset = UnifiedEmbeddingDataset(config, effective_max_samples)
     stats = dataset.get_stats()
     
     # Используем batch_size из конфигурации
@@ -336,7 +362,7 @@ def main():
     # Создаем DataLoader
     dataloader, stats = create_training_dataloader(
         config=config,
-        max_samples_per_source=max_samples,
+        max_total_samples=max_samples,
         shuffle=True
     )
     
