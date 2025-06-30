@@ -357,7 +357,7 @@ class DeviceSettings:
 
     prefer_cuda: bool = True
     # debug_mode: bool = False  # УДАЛЕНО - используем централизованный debug_mode из LoggingSettings
-    fallback_cpu: bool = True
+    fallback_cpu: bool = False # не используем в проекте fallbackи
     memory_fraction: float = 0.9
     allow_tf32: bool = True
     deterministic: bool = False
@@ -412,7 +412,7 @@ class AdaptiveChunkerSettings:
 
     # Для AdaptiveChunkInfo
     optimal_batch_size: int = 1000
-    preferred_device: str = "auto"  # auto, cuda, cpu
+    preferred_device: str = "cuda"  # auto, cuda, cpu
 
     # Для оптимизации параметров чанков
     optimal_batch_size_small: int = 100
@@ -531,6 +531,9 @@ class TrainingEmbeddingSettings:
     # None = без ограничений, int = максимальное количество сэмплов
     max_total_samples: Optional[int] = None  # Для реального обучения без ограничений
     # max_total_samples: int = 1000  # Раскомментировать для ограниченного обучения
+    
+    # GPU память, резервируемая для обучения (GB)
+    gpu_memory_reserve_gb: float = 20.0  # Оставляем 20GB для модели и обучения
     
     # === ТЕСТОВЫЕ ПАРАМЕТРЫ (ВРЕМЕННО) ===
     # Эти параметры используются только когда test_mode = True

@@ -17,11 +17,53 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Union
 import random
 from dataclasses import dataclass
+import gc
 
 from ....config import SimpleProjectConfig
 from ....utils.logging import get_logger
+from ....utils.device_manager import get_device_manager
 
 logger = get_logger(__name__)
+
+
+class GPUMemoryEstimator:
+    """Оценка и управление GPU памятью для датасетов"""
+    
+    def __init__(self):
+        self.device_manager = get_device_manager()
+        self.embedding_size_mb = 768 * 4 / (1024**2)  # float32, 768 dim
+    
+    def estimate_dataset_memory_mb(self, num_samples: int) -> float:
+        """Оценка памяти для датасета в MB"""
+        return num_samples * self.embedding_size_mb
+    
+    def get_safe_sample_limit(self, reserve_for_training_gb: float = 20.0) -> Optional[int]:
+        """
+        Вычисляет безопасный лимит сэмплов, оставляя память для обучения
+        
+        Args:
+            reserve_for_training_gb: Сколько GB оставить для обучения
+        """
+        if not self.device_manager.is_cuda():
+            return None  # CPU режим - без ограничений
+            
+        total_memory_gb = self.device_manager.get_available_memory_gb()
+        available_for_dataset_gb = total_memory_gb - reserve_for_training_gb
+        
+        if available_for_dataset_gb <= 0:
+            logger.warning(f"⚠️ Недостаточно GPU памяти для датасета. Total: {total_memory_gb:.1f}GB, Reserved: {reserve_for_training_gb}GB")
+            return 100  # Минимальный fallback
+            
+        available_for_dataset_mb = available_for_dataset_gb * 1024
+        safe_samples = int(available_for_dataset_mb / self.embedding_size_mb * 0.8)  # 80% безопасность
+        
+        logger.info(f"🧮 GPU Memory Planning:")
+        logger.info(f"  Total GPU: {total_memory_gb:.1f}GB")
+        logger.info(f"  Reserved for training: {reserve_for_training_gb}GB")
+        logger.info(f"  Available for dataset: {available_for_dataset_gb:.1f}GB")
+        logger.info(f"  Safe sample limit: {safe_samples:,}")
+        
+        return safe_samples
 
 
 @dataclass 
@@ -41,13 +83,20 @@ class UnifiedEmbeddingDataset(Dataset):
     
     def __init__(self, config: SimpleProjectConfig, max_total_samples: Optional[int] = None):
         self.config = config
-        self.max_total_samples = max_total_samples  # Общий лимит на все источники
+        self.device_manager = get_device_manager()
+        self.memory_estimator = GPUMemoryEstimator()
+        
+        # Умное планирование памяти
+        self.max_total_samples = self._plan_memory_usage(max_total_samples)
+        
         self.embeddings: List[torch.Tensor] = []
         self.metadata: List[Dict] = []
+        self.use_gpu_acceleration = self.device_manager.is_cuda()
         
-        logger.info("🔄 Initializing UnifiedEmbeddingDataset with central config...")
+        logger.info("🔄 Initializing GPU-accelerated UnifiedEmbeddingDataset...")
+        logger.info(f"🚀 GPU acceleration: {'✅ Enabled' if self.use_gpu_acceleration else '❌ Disabled'}")
         if self.max_total_samples is not None:
-            logger.info(f"📊 Total sample limit: {self.max_total_samples}")
+            logger.info(f"📊 Smart memory limit: {self.max_total_samples:,} samples")
         
         # Загружаем данные из всех источников
         self._load_all_sources()
@@ -55,10 +104,48 @@ class UnifiedEmbeddingDataset(Dataset):
         # Применяем общий лимит если задан
         self._apply_total_limit()
         
-        # Фильтруем и валидируем
-        self._filter_and_validate()
+        # GPU-ускоренная фильтрация и валидация
+        if self.use_gpu_acceleration:
+            self._gpu_filter_and_validate()
+        else:
+            self._filter_and_validate()
         
         logger.info(f"✅ Dataset ready: {len(self.embeddings)} samples")
+        self._log_memory_usage()
+    
+    def _plan_memory_usage(self, requested_limit: Optional[int]) -> Optional[int]:
+        """Планирование использования памяти с учетом обучения"""
+        
+        # Получаем резерв для обучения из конфигурации или используем по умолчанию
+        training_reserve_gb = getattr(self.config.training_embedding, 'gpu_memory_reserve_gb', 20.0)
+        
+        # Вычисляем безопасный лимит исходя из доступной памяти
+        safe_limit = self.memory_estimator.get_safe_sample_limit(training_reserve_gb)
+        
+        if requested_limit is None:
+            return safe_limit  # Используем автоматический лимит
+        
+        if safe_limit is None:
+            return requested_limit  # CPU режим - без ограничений
+            
+        # Используем минимум из запрошенного и безопасного
+        final_limit = min(requested_limit, safe_limit)
+        
+        if final_limit < requested_limit:
+            logger.warning(f"⚠️ Requested {requested_limit:,} samples, but GPU memory allows only {final_limit:,}")
+            
+        return final_limit
+    
+    def _log_memory_usage(self):
+        """Логирование использования памяти"""
+        if self.use_gpu_acceleration:
+            stats = self.device_manager.get_memory_stats()
+            estimated_mb = self.memory_estimator.estimate_dataset_memory_mb(len(self.embeddings))
+            
+            logger.info(f"📊 GPU Memory Usage:")
+            logger.info(f"  Dataset estimated: {estimated_mb:.1f}MB")
+            logger.info(f"  GPU allocated: {stats.get('allocated_mb', 0):.1f}MB")
+            logger.info(f"  GPU available: {self.device_manager.get_available_memory_gb():.1f}GB")
     
     def _load_all_sources(self):
         """Загружаем данные из всех доступных источников"""
@@ -95,10 +182,13 @@ class UnifiedEmbeddingDataset(Dataset):
         
         logger.info(f"📂 Loading dialogue cache: {len(files)} files")
         
+        # Определяем устройство для загрузки
+        map_location = 'cuda' if self.use_gpu_acceleration else 'cpu'
+        
         loaded_count = 0
         for file in files:
             try:
-                data = torch.load(file, map_location='cpu')
+                data = torch.load(file, map_location=map_location)
                 
                 # Обрабатываем структуру из анализа: questions [4, 768], answers [4, 768]
                 embeddings = []
@@ -135,10 +225,13 @@ class UnifiedEmbeddingDataset(Dataset):
         
         logger.info(f"📂 Loading prepared embeddings: {len(files)} files")
         
+        # Определяем устройство для загрузки
+        map_location = 'cuda' if self.use_gpu_acceleration else 'cpu'
+        
         loaded_count = 0
         for file in files:
             try:
-                data = torch.load(file, map_location='cpu')
+                data = torch.load(file, map_location=map_location)
                 
                 # Обрабатываем структуру из анализа: question_embeddings, answer_embeddings
                 embeddings = []
@@ -178,10 +271,13 @@ class UnifiedEmbeddingDataset(Dataset):
         
         logger.info(f"📂 Loading cache embeddings: {len(cache_files)} files")
         
+        # Определяем устройство для загрузки
+        map_location = 'cuda' if self.use_gpu_acceleration else 'cpu'
+        
         loaded_count = 0
         for file in cache_files:
             try:
-                data = torch.load(file, map_location='cpu')
+                data = torch.load(file, map_location=map_location)
                 
                 # Структура из анализа: [94, 4096] torch.float16
                 if isinstance(data, torch.Tensor):
@@ -264,6 +360,95 @@ class UnifiedEmbeddingDataset(Dataset):
         for source, count in source_stats.items():
             logger.info(f"  {source}: {count} samples")
     
+    def _gpu_filter_and_validate(self):
+        """GPU-ускоренная фильтрация и валидация данных"""
+        logger.info("🚀 GPU-accelerated filtering and validation...")
+        
+        if not self.embeddings:
+            return
+            
+        # Конвертируем в batch tensor для GPU обработки
+        try:
+            # Создаем батч тензор на GPU
+            embeddings_batch = torch.stack([emb.float() for emb in self.embeddings])
+            
+            # Векторизованная валидация на GPU
+            valid_mask = self._gpu_validate_batch(embeddings_batch)
+            
+            # Применяем маску
+            valid_embeddings_batch = embeddings_batch[valid_mask]
+            valid_metadata = [meta for i, meta in enumerate(self.metadata) if valid_mask[i]]
+            
+            # Преобразуем обратно в список
+            self.embeddings = [valid_embeddings_batch[i] for i in range(valid_embeddings_batch.size(0))]
+            self.metadata = valid_metadata
+            
+            # Shuffle на GPU
+            if len(self.embeddings) > 0:
+                indices = torch.randperm(len(self.embeddings), device=embeddings_batch.device)
+                self.embeddings = [self.embeddings[i] for i in indices.cpu()]
+                self.metadata = [self.metadata[i] for i in indices.cpu()]
+            
+            logger.info(f"✅ GPU validation completed: {len(self.embeddings)} valid samples")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ GPU validation failed, falling back to CPU: {e}")
+            self._filter_and_validate()
+            return
+            
+        # Статистика по источникам
+        source_stats = {}
+        for meta in self.metadata:
+            source = meta['source']
+            source_stats[source] = source_stats.get(source, 0) + 1
+            
+        logger.info("📊 GPU Dataset statistics:")
+        for source, count in source_stats.items():
+            logger.info(f"  {source}: {count} samples")
+            
+        # Очистка GPU памяти
+        if 'embeddings_batch' in locals():
+            del embeddings_batch
+        if 'valid_embeddings_batch' in locals():
+            del valid_embeddings_batch
+        gc.collect()
+        torch.cuda.empty_cache()
+    
+    def _gpu_validate_batch(self, embeddings_batch: torch.Tensor) -> torch.Tensor:
+        """
+        Векторизованная валидация батча эмбеддингов на GPU
+        
+        Args:
+            embeddings_batch: [N, 768] tensor on GPU
+            
+        Returns:
+            valid_mask: [N] boolean tensor
+        """
+        N = embeddings_batch.size(0)
+        device = embeddings_batch.device
+        
+        # Проверка размерности (все должны быть 768)
+        dim_valid = embeddings_batch.size(1) == self.config.embedding.input_dim
+        
+        # Векторизованная проверка норм
+        norms = torch.norm(embeddings_batch, dim=1)  # [N]
+        norm_valid = (norms > 0.1) & (norms < 100.0)  # [N]
+        
+        # Проверка на NaN/Inf
+        nan_valid = ~torch.isnan(embeddings_batch).any(dim=1)  # [N]
+        inf_valid = ~torch.isinf(embeddings_batch).any(dim=1)  # [N]
+        
+        # Комбинируем все условия
+        valid_mask = norm_valid & nan_valid & inf_valid
+        
+        # Если размерность неправильная, отклоняем все
+        if not dim_valid:
+            valid_mask = torch.zeros(N, dtype=torch.bool, device=device)
+            
+        logger.info(f"🔍 GPU validation: {valid_mask.sum().item()}/{N} samples passed")
+        
+        return valid_mask
+    
     def __len__(self) -> int:
         return len(self.embeddings)
     
@@ -331,14 +516,32 @@ def create_training_dataloader(
     # Используем batch_size из конфигурации
     batch_size = config.training_embedding.embedding_batch_size
     
+    # Оптимизации для RTX 5090
+    device_manager = get_device_manager()
+    is_cuda = device_manager.is_cuda()
+    
+    # Оптимальные параметры для RTX 5090
+    optimal_num_workers = 8 if is_cuda else num_workers  # 4*2 GPU cores
+    prefetch_factor = 4 if is_cuda else 2
+    
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available(),
-        drop_last=True  # Для стабильности размеров батчей
+        num_workers=optimal_num_workers,
+        pin_memory=is_cuda,
+        drop_last=True,  # Для стабильности размеров батчей
+        persistent_workers=True if optimal_num_workers > 0 else False,  # PyTorch 2.x оптимизация
+        prefetch_factor=prefetch_factor if optimal_num_workers > 0 else None
     )
+    
+    logger.info(f"🚀 Optimized DataLoader for RTX 5090:")
+    logger.info(f"  Samples: {len(dataset):,}")
+    logger.info(f"  Batch size: {batch_size}")
+    logger.info(f"  Workers: {optimal_num_workers}")
+    logger.info(f"  Pin memory: {is_cuda}")
+    logger.info(f"  Persistent workers: {optimal_num_workers > 0}")
+    logger.info(f"  Prefetch factor: {prefetch_factor}")
     
     logger.info(f"🚀 DataLoader created: {len(dataset)} samples, batch_size={batch_size}")
     
