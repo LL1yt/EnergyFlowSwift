@@ -156,21 +156,21 @@ class MoEConnectionProcessor(nn.Module):
     ) -> Dict[str, Any]:
         # DEBUG: Reduced logging - only log for specific problematic cells
         if cell_idx in [223, 256, 260, 320] or logger.isEnabledFor(10):
-            logger.debug(f"🔍 MoE FORWARD called for cell {cell_idx}")
-            logger.debug(f"🔍 current_state.shape={current_state.shape}")
-            logger.debug(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
+            logger.debug(f"[SEARCH] MoE FORWARD called for cell {cell_idx}")
+            logger.debug(f"[SEARCH] current_state.shape={current_state.shape}")
+            logger.debug(f"[SEARCH] neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
             # Safe logging for neighbor_indices (could be list or tensor)
             if neighbor_indices is not None:
                 if isinstance(neighbor_indices, torch.Tensor):
-                    logger.debug(f"🔍 neighbor_indices=tensor({neighbor_indices.tolist()}), len={neighbor_indices.numel()}")
+                    logger.debug(f"[SEARCH] neighbor_indices=tensor({neighbor_indices.tolist()}), len={neighbor_indices.numel()}")
                 else:
-                    logger.debug(f"🔍 neighbor_indices={neighbor_indices}, len={len(neighbor_indices)}")
+                    logger.debug(f"[SEARCH] neighbor_indices={neighbor_indices}, len={len(neighbor_indices)}")
             else:
-                logger.debug("🔍 neighbor_indices=None, len=0")
-            logger.debug(f"🔍 spatial_optimizer={spatial_optimizer is not None}")
-            logger.debug(f"🔍 kwargs keys={list(kwargs.keys())}")
+                logger.debug("[SEARCH] neighbor_indices=None, len=0")
+            logger.debug(f"[SEARCH] spatial_optimizer={spatial_optimizer is not None}")
+            logger.debug(f"[SEARCH] kwargs keys={list(kwargs.keys())}")
             if 'full_lattice_states' in kwargs:
-                logger.debug(f"🔍 full_lattice_states.shape={kwargs['full_lattice_states'].shape}")
+                logger.debug(f"[SEARCH] full_lattice_states.shape={kwargs['full_lattice_states'].shape}")
         """
         Основной forward pass с упрощенной логикой
 
@@ -206,7 +206,7 @@ class MoEConnectionProcessor(nn.Module):
 
                 if len(valid_neighbors) != len(adaptive_neighbors):
                     logger.warning(
-                        f"⚠️ Отфильтровано {len(adaptive_neighbors) - len(valid_neighbors)} невалидных индексов для клетки {cell_idx}"
+                        f"[WARN] Отфильтровано {len(adaptive_neighbors) - len(valid_neighbors)} невалидных индексов для клетки {cell_idx}"
                     )
 
                 if valid_neighbors:
@@ -214,7 +214,7 @@ class MoEConnectionProcessor(nn.Module):
                     neighbor_states = full_states[neighbor_indices]
 
                     logger.debug(
-                        f"🔍 ОСНОВНОЙ РЕЖИМ: spatial_optimizer для клетки {cell_idx}: найдено {len(neighbor_indices)} валидных соседей"
+                        f"[SEARCH] ОСНОВНОЙ РЕЖИМ: spatial_optimizer для клетки {cell_idx}: найдено {len(neighbor_indices)} валидных соседей"
                     )
                 else:
                     neighbor_indices = []
@@ -223,7 +223,7 @@ class MoEConnectionProcessor(nn.Module):
                     )
             else:
                 raise RuntimeError(
-                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: spatial_optimizer передан для клетки {cell_idx}, "
+                    f"[ERROR] КРИТИЧЕСКАЯ ОШИБКА: spatial_optimizer передан для клетки {cell_idx}, "
                     f"но full_lattice_states отсутствует. Согласно CLAUDE.md fallback'и запрещены."
                 )
         else:
@@ -232,20 +232,20 @@ class MoEConnectionProcessor(nn.Module):
             neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
             if neighbor_count == 0:
                 raise RuntimeError(
-                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Для клетки {cell_idx} не переданы ни spatial_optimizer, ни neighbor_indices. "
+                    f"[ERROR] КРИТИЧЕСКАЯ ОШИБКА: Для клетки {cell_idx} не переданы ни spatial_optimizer, ни neighbor_indices. "
                     f"Согласно CLAUDE.md fallback'и запрещены - исправьте интеграцию."
                 )
             
             # Если neighbor_indices переданы, требуем full_lattice_states
             if "full_lattice_states" not in kwargs:
                 raise RuntimeError(
-                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Для клетки {cell_idx} переданы neighbor_indices={neighbor_indices}, "
+                    f"[ERROR] КРИТИЧЕСКАЯ ОШИБКА: Для клетки {cell_idx} переданы neighbor_indices={neighbor_indices}, "
                     f"но отсутствует full_lattice_states. Требуется полная интеграция без fallback'ов."
                 )
             
             full_states = kwargs["full_lattice_states"]
-            logger.debug(f"🔍 BEFORE extraction: full_states.shape={full_states.shape}")
-            logger.debug(f"🔍 neighbor_indices for cell {cell_idx}: {neighbor_indices}")
+            logger.debug(f"[SEARCH] BEFORE extraction: full_states.shape={full_states.shape}")
+            logger.debug(f"[SEARCH] neighbor_indices for cell {cell_idx}: {neighbor_indices}")
             
             # Правильное извлечение состояний соседей с учетом batch dimension
             # Преобразуем neighbor_indices в list если это tensor
@@ -265,7 +265,7 @@ class MoEConnectionProcessor(nn.Module):
                 raise RuntimeError(f"Неожиданная размерность full_lattice_states: {full_states.shape}")
             
             logger.debug(
-                f"✅ Извлечены состояния соседей из full_lattice_states для клетки {cell_idx}, shape={neighbor_states.shape}"
+                f"[OK] Извлечены состояния соседей из full_lattice_states для клетки {cell_idx}, shape={neighbor_states.shape}"
             )
 
         # Проверяем количество соседей (может быть list или tensor)
@@ -428,7 +428,7 @@ class MoEConnectionProcessor(nn.Module):
             # Предотвращение ошибки с пустыми expert_outputs
             if not expert_outputs:
                 logger.warning(
-                    f"⚠️ Нет выходов экспертов для клетки {cell_idx}, пропуск GatingNetwork."
+                    f"[WARN] Нет выходов экспертов для клетки {cell_idx}, пропуск GatingNetwork."
                 )
                 final_state = current_state
                 expert_weights = torch.zeros(
@@ -467,7 +467,7 @@ class MoEConnectionProcessor(nn.Module):
 
         except Exception as e:
             logger.error(
-                f"❌ MoE processor CRITICAL error on cell {cell_idx}: {e}",
+                f"[ERROR] MoE processor CRITICAL error on cell {cell_idx}: {e}",
                 exc_info=True,
             )
             # В случае ошибки возвращаем исходное состояние, чтобы не прерывать процесс

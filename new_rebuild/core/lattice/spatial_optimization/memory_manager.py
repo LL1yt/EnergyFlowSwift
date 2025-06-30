@@ -66,7 +66,7 @@ class MemoryPoolManager:
         }
 
         logger.info(
-            f"💾 MemoryPoolManager инициализирован через DeviceManager для {self.device}"
+            f"[DISK] MemoryPoolManager инициализирован через DeviceManager для {self.device}"
         )
 
     def get_tensor(
@@ -150,7 +150,7 @@ class MemoryPoolManager:
 
         self.stats["gc_calls"] += 1
         logger.debug(
-            f"   🧹 Memory cleanup через DeviceManager: GC вызван #{self.stats['gc_calls']}"
+            f"   [CLEAN] Memory cleanup через DeviceManager: GC вызван #{self.stats['gc_calls']}"
         )
 
     def get_memory_stats(self) -> Dict[str, float]:
@@ -195,7 +195,7 @@ class MemoryPoolManager:
         # Финальная очистка памяти
         self.garbage_collect()
 
-        logger.info("🧹 MemoryPoolManager полностью очищен")
+        logger.info("[CLEAN] MemoryPoolManager полностью очищен")
 
 
 _memory_pool_manager_instance = None

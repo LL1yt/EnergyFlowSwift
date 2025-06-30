@@ -121,7 +121,7 @@ class GPUSpatialProcessorWrapper(BaseSpatialProcessor):
             dimensions, config.get("memory_pool_size_gb", 8.0) * 1024 * 0.6
         )
 
-        logger.info(f"🚀 GPU Spatial Processor готов на {self.device}")
+        logger.info(f"[START] GPU Spatial Processor готов на {self.device}")
 
     def find_neighbors(
         self, coords: Union[Coordinates3D, torch.Tensor], radius: float
@@ -150,7 +150,7 @@ class GPUSpatialProcessorWrapper(BaseSpatialProcessor):
                 return []
 
         except Exception as e:
-            logger.warning(f"⚠️ GPU поиск не удался: {e}, fallback на adaptive hash")
+            logger.warning(f"[WARN] GPU поиск не удался: {e}, fallback на adaptive hash")
 
             # Fallback на adaptive hash
             try:
@@ -161,7 +161,7 @@ class GPUSpatialProcessorWrapper(BaseSpatialProcessor):
                     return neighbor_lists[0].cpu().tolist()
                 return []
             except Exception as e2:
-                logger.error(f"❌ Adaptive hash тоже не удался: {e2}")
+                logger.error(f"[ERROR] Adaptive hash тоже не удался: {e2}")
                 return []
 
     def process_lattice(
@@ -268,7 +268,7 @@ class UnifiedSpatialOptimizer:
         self._setup_moe_integration()
 
         logger.info(
-            f"🚀 UnifiedSpatialOptimizer initialized in GPU_ONLY mode for dimensions {dimensions}"
+            f"[START] UnifiedSpatialOptimizer initialized in GPU_ONLY mode for dimensions {dimensions}"
         )
 
     def _determine_optimal_mode(self) -> OptimizationMode:
@@ -283,7 +283,7 @@ class UnifiedSpatialOptimizer:
         """Настройка MoE процессора, если он есть."""
         if self.moe_processor:
             self.moe_processor = self.device_manager.transfer_module(self.moe_processor)
-            logger.info("✅ MoE Processor integrated with UnifiedSpatialOptimizer.")
+            logger.info("[OK] MoE Processor integrated with UnifiedSpatialOptimizer.")
 
     def find_neighbors_optimized(
         self, coords: Union[Coordinates3D, torch.Tensor], radius: float
@@ -300,9 +300,9 @@ class UnifiedSpatialOptimizer:
         start_time = time.time()
         num_cells = states.shape[0]
         
-        logger.debug(f"🔧 UNIFIED OPTIMIZER: processing {num_cells} cells")
-        logger.debug(f"🔧 OPTIMIZER DIMENSIONS: {self.dimensions}")
-        logger.debug(f"🔧 INPUT STATES SHAPE: {states.shape}")
+        logger.debug(f"[TOOL] UNIFIED OPTIMIZER: processing {num_cells} cells")
+        logger.debug(f"[TOOL] OPTIMIZER DIMENSIONS: {self.dimensions}")
+        logger.debug(f"[TOOL] INPUT STATES SHAPE: {states.shape}")
 
         # Определяем функцию обработки
         if processor_fn is None:
@@ -335,21 +335,21 @@ class UnifiedSpatialOptimizer:
             try:
                 # DEBUG: Reduced logging - only log errors and warnings
                 if cell_idx in [223, 256, 260, 320]:
-                    logger.debug(f"🔍 MoE processor called - cell_idx={cell_idx}")
-                    logger.debug(f"🔍 current_state.shape={current_state.shape}")
-                    logger.debug(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
-                    logger.debug(f"🔍 neighbor_indices={neighbor_indices}")
+                    logger.debug(f"[SEARCH] MoE processor called - cell_idx={cell_idx}")
+                    logger.debug(f"[SEARCH] current_state.shape={current_state.shape}")
+                    logger.debug(f"[SEARCH] neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
+                    logger.debug(f"[SEARCH] neighbor_indices={neighbor_indices}")
                     if isinstance(neighbor_indices, (list, torch.Tensor)):
-                        logger.debug(f"🔍 len(neighbor_indices)={len(neighbor_indices) if isinstance(neighbor_indices, list) else neighbor_indices.numel()}")
+                        logger.debug(f"[SEARCH] len(neighbor_indices)={len(neighbor_indices) if isinstance(neighbor_indices, list) else neighbor_indices.numel()}")
                     if full_lattice_states is not None:
-                        logger.debug(f"🔍 full_lattice_states.shape={full_lattice_states.shape}")
+                        logger.debug(f"[SEARCH] full_lattice_states.shape={full_lattice_states.shape}")
                     else:
-                        logger.debug("🔍 full_lattice_states=None")
+                        logger.debug("[SEARCH] full_lattice_states=None")
                 
                 # ВРЕМЕННОЕ РЕШЕНИЕ: обеспечиваем что у каждой клетки есть хотя бы она сама как сосед
                 neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
                 if neighbor_count == 0:
-                    # logger.warning(f"⚠️ Клетка {cell_idx} не имеет соседей, добавляем саму себя")
+                    # logger.warning(f"[WARN] Клетка {cell_idx} не имеет соседей, добавляем саму себя")
                     if isinstance(neighbor_indices, torch.Tensor):
                         neighbor_indices = torch.tensor([cell_idx], device=neighbor_indices.device, dtype=neighbor_indices.dtype)
                     else:
@@ -437,9 +437,9 @@ class UnifiedSpatialOptimizer:
 
             except Exception as e:
                 import traceback
-                logger.error(f"⚠️ MoE processor error: {e}")
+                logger.error(f"[WARN] MoE processor error: {e}")
                 logger.error(f"📍 Full traceback:\n{traceback.format_exc()}")
-                logger.error(f"🔍 Context: cell_idx={cell_idx}, current_state.shape={getattr(current_state, 'shape', 'N/A')}")
+                logger.error(f"[SEARCH] Context: cell_idx={cell_idx}, current_state.shape={getattr(current_state, 'shape', 'N/A')}")
                 return (
                     current_state.squeeze(0)
                     if current_state.dim() > 1
@@ -538,7 +538,7 @@ class UnifiedSpatialOptimizer:
 
     def optimize_performance(self):
         """Принудительная оптимизация производительности"""
-        logger.info("🔧 Запуск принудительной оптимизации UnifiedSpatialOptimizer")
+        logger.info("[TOOL] Запуск принудительной оптимизации UnifiedSpatialOptimizer")
 
         # Оптимизируем GPU компоненты
         self.gpu_processor.optimize_performance()
@@ -549,18 +549,18 @@ class UnifiedSpatialOptimizer:
         # Принудительная очистка памяти
         self.device_manager.cleanup()
 
-        logger.info("✅ Принудительная оптимизация завершена")
+        logger.info("[OK] Принудительная оптимизация завершена")
 
     def cleanup(self):
         """Освобождение ресурсов"""
-        logger.info("🛑 Завершение работы UnifiedSpatialOptimizer")
+        logger.info("[STOP] Завершение работы UnifiedSpatialOptimizer")
 
         self.gpu_processor.shutdown()
 
         # Финальная очистка
         self.device_manager.cleanup()
 
-        logger.info("✅ UnifiedSpatialOptimizer завершен")
+        logger.info("[OK] UnifiedSpatialOptimizer завершен")
 
 
 # === FACTORY FUNCTIONS ===
@@ -585,7 +585,7 @@ def create_unified_spatial_optimizer(
     if config is None:
         config = OptimizationConfig()
 
-    logger.info(f"🏭 Создание UnifiedSpatialOptimizer для {dimensions}")
+    logger.info(f"[FACTORY] Создание UnifiedSpatialOptimizer для {dimensions}")
 
     return UnifiedSpatialOptimizer(
         dimensions=dimensions, config=config, moe_processor=moe_processor

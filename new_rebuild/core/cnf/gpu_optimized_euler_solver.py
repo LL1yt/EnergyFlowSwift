@@ -126,14 +126,14 @@ class GPUOptimizedEulerSolver(nn.Module):
         self._memory_pool = {}
         self._max_pool_size = 5  # Максимум кэшированных размеров
 
-        logger.info(f"🚀 GPUOptimizedEulerSolver инициализирован:")
+        logger.info(f"[START] GPUOptimizedEulerSolver инициализирован:")
         if isinstance(self.config.adaptive_method, AdaptiveMethod):
-            logger.info(f"   🎯 Adaptive method: {self.config.adaptive_method.value}")
+            logger.info(f"   [TARGET] Adaptive method: {self.config.adaptive_method.value}")
         else:
-            logger.info(f"   🎯 Adaptive method: {self.config.adaptive_method}")
-        logger.info(f"   📊 Max batch size: {self.config.max_batch_size}")
-        logger.info(f"   💾 Memory efficient: {self.config.memory_efficient}")
-        logger.info(f"   🖥️ Device: {self.device}")
+            logger.info(f"   [TARGET] Adaptive method: {self.config.adaptive_method}")
+        logger.info(f"   [DATA] Max batch size: {self.config.max_batch_size}")
+        logger.info(f"   [DISK] Memory efficient: {self.config.memory_efficient}")
+        logger.info(f"   [DESKTOP] Device: {self.device}")
 
     def _get_memory_pool_tensor(
         self, shape: Tuple[int, ...], dtype: torch.dtype
@@ -924,7 +924,7 @@ class GPUOptimizedEulerSolver(nn.Module):
 
     def optimize_performance(self):
         """Принудительная оптимизация производительности"""
-        logger.info("🔧 Оптимизация GPU Optimized Euler Solver")
+        logger.info("[TOOL] Оптимизация GPU Optimized Euler Solver")
 
         # Очищаем memory pool
         self._memory_pool.clear()
@@ -935,11 +935,11 @@ class GPUOptimizedEulerSolver(nn.Module):
         # Сбрасываем некоторую статистику
         self.performance_stats["gpu_memory_peak_mb"] = 0.0
 
-        logger.info("✅ Оптимизация завершена")
+        logger.info("[OK] Оптимизация завершена")
 
     def cleanup(self):
         """Освобождение ресурсов"""
-        logger.info("🛑 Cleanup GPU Optimized Euler Solver")
+        logger.info("[STOP] Cleanup GPU Optimized Euler Solver")
 
         # Очищаем memory pool
         self._memory_pool.clear()
@@ -1053,7 +1053,7 @@ def benchmark_solver_performance(
     device = device_manager.get_device()
 
     for batch_size in batch_sizes:
-        logger.info(f"🧪 Бенчмарк для batch_size={batch_size}")
+        logger.info(f"[TEST] Бенчмарк для batch_size={batch_size}")
 
         batch_results = []
 
@@ -1102,8 +1102,8 @@ def benchmark_solver_performance(
 
         logger.info(
             f"   ⏱️ {avg_time:.1f}ms, "
-            f"💾 {avg_memory:.1f}MB, "
-            f"🎯 {success_rate*100:.0f}% success"
+            f"[DISK] {avg_memory:.1f}MB, "
+            f"[TARGET] {success_rate*100:.0f}% success"
         )
 
     return results

@@ -68,7 +68,7 @@ class EmbeddingTransformer(nn.Module, EmbeddingProcessor):
             torch.randn(self.surface_dim, self.surface_dim) * 0.1
         )
         
-        self.logger.info(f"🔄 EmbeddingTransformer initialized: {self.teacher_dim}D ↔ {self.cube_dim}D")
+        self.logger.info(f"[SYNC] EmbeddingTransformer initialized: {self.teacher_dim}D ↔ {self.cube_dim}D")
     
     def _build_linear_transformers(self):
         """Построение простых линейных преобразователей"""
@@ -128,7 +128,7 @@ class EmbeddingTransformer(nn.Module, EmbeddingProcessor):
         self._build_linear_transformers()
         
         # TODO: Реализовать attention механизм
-        self.logger.info("⚠️  Attention transformers not fully implemented yet, using linear")
+        self.logger.info("[WARN]  Attention transformers not fully implemented yet, using linear")
     
     def transform_to_cube(self, embeddings: torch.Tensor) -> torch.Tensor:
         """
@@ -269,7 +269,7 @@ def create_embedding_transformer(config: SimpleProjectConfig) -> EmbeddingTransf
 
 def test_embedding_transformer(config: SimpleProjectConfig, batch_size: int = 4):
     """Тестирование преобразователя эмбедингов"""
-    logger.info("🧪 Testing EmbeddingTransformer...")
+    logger.info("[TEST] Testing EmbeddingTransformer...")
     
     transformer = create_embedding_transformer(config)
     device_manager = get_device_manager()
@@ -294,14 +294,14 @@ def test_embedding_transformer(config: SimpleProjectConfig, batch_size: int = 4)
     mse_loss = F.mse_loss(reconstructed, teacher_embeddings)
     cosine_sim = F.cosine_similarity(reconstructed, teacher_embeddings).mean()
     
-    logger.info(f"  📊 Reconstruction MSE: {mse_loss:.6f}")
-    logger.info(f"  📊 Cosine Similarity: {cosine_sim:.6f}")
+    logger.info(f"  [DATA] Reconstruction MSE: {mse_loss:.6f}")
+    logger.info(f"  [DATA] Cosine Similarity: {cosine_sim:.6f}")
     
     # Информация о параметрах
     param_counts = transformer.get_parameter_count()
-    logger.info(f"  🔧 Total parameters: {param_counts['total']:,}")
+    logger.info(f"  [TOOL] Total parameters: {param_counts['total']:,}")
     
-    logger.info("✅ EmbeddingTransformer test completed!")
+    logger.info("[OK] EmbeddingTransformer test completed!")
     
     return transformer, {
         'mse_loss': mse_loss.item(),

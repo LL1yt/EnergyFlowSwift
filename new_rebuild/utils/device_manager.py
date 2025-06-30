@@ -67,7 +67,7 @@ class MemoryMonitor:
                 # Игнорируем ошибки очистки при завершении программы
                 pass
 
-        logger.debug(f"🧹 Memory cleanup выполнен для {self.device}")
+        logger.debug(f"[CLEAN] Memory cleanup выполнен для {self.device}")
 
     def get_memory_stats(self) -> Dict[str, float]:
         """Получить статистику использования памяти"""
@@ -141,7 +141,7 @@ class DeviceManager:
                 if device_count == 0:
                     if self.debug_mode:
                         logger.info(
-                            "💻 CUDA доступен, но устройств не найдено, используется CPU"
+                            "[COMPUTER] CUDA доступен, но устройств не найдено, используется CPU"
                         )
                     return torch.device("cpu")
 
@@ -153,29 +153,29 @@ class DeviceManager:
                     device = torch.device("cuda:0")
                     if self.debug_mode:
                         logger.info(
-                            f"✅ CUDA устройство выбрано: {torch.cuda.get_device_name(0)} ({gpu_memory_gb:.1f}GB)"
+                            f"CUDA device selected: {torch.cuda.get_device_name(0)} ({gpu_memory_gb:.1f}GB)"
                         )
                     return device
                 else:
                     if self.debug_mode:
                         logger.warning(
-                            f"⚠️ GPU память недостаточна ({gpu_memory_gb:.1f}GB < 8GB), используется CPU"
+                            f"[WARN] GPU память недостаточна ({gpu_memory_gb:.1f}GB < 8GB), используется CPU"
                         )
             except (RuntimeError, AssertionError) as e:
                 if self.debug_mode:
-                    logger.info(f"💻 CUDA ошибка ({str(e)}), используется CPU")
+                    logger.info(f"[COMPUTER] CUDA ошибка ({str(e)}), используется CPU")
 
         if self.debug_mode:
             if not torch.cuda.is_available():
-                logger.info("💻 CUDA недоступен, используется CPU")
+                logger.info("[COMPUTER] CUDA недоступен, используется CPU")
             else:
-                logger.info("💻 CPU выбран принудительно")
+                logger.info("[COMPUTER] CPU выбран принудительно")
 
         return torch.device("cpu")
 
     def _log_device_info(self):
         """Логирование информации об устройстве"""
-        logger.info(f"🖥️ DeviceManager инициализирован:")
+        logger.info(f"[DESKTOP] DeviceManager инициализирован:")
         logger.info(f"   Устройство: {self.device}")
 
         if self.device.type == "cuda":
@@ -185,7 +185,7 @@ class DeviceManager:
                 logger.info(f"   Память: {props.total_memory / (1024**3):.1f}GB")
                 logger.info(f"   Compute Capability: {props.major}.{props.minor}")
             except (RuntimeError, AssertionError) as e:
-                logger.warning(f"   ⚠️ Ошибка получения информации GPU: {str(e)}")
+                logger.warning(f"   [WARN] Ошибка получения информации GPU: {str(e)}")
         else:
             try:
                 memory_info = psutil.virtual_memory()
@@ -194,7 +194,7 @@ class DeviceManager:
                 )
                 logger.info(f"   Available: {memory_info.available / (1024**3):.1f}GB")
             except Exception as e:
-                logger.warning(f"   ⚠️ Ошибка получения информации CPU: {str(e)}")
+                logger.warning(f"   [WARN] Ошибка получения информации CPU: {str(e)}")
 
     def get_available_memory_gb(self) -> float:
         """
@@ -212,14 +212,14 @@ class DeviceManager:
                 available_memory_bytes = total_memory - reserved_memory
                 return available_memory_bytes / (1024**3)
             except (RuntimeError, AssertionError) as e:
-                logger.warning(f"⚠️ Не удалось получить память GPU: {e}")
+                logger.warning(f"[WARN] Не удалось получить память GPU: {e}")
                 return 0.0
         else:
             # Для CPU используем psutil
             try:
                 return psutil.virtual_memory().available / (1024**3)
             except Exception as e:
-                logger.warning(f"⚠️ Не удалось получить память CPU: {e}")
+                logger.warning(f"[WARN] Не удалось получить память CPU: {e}")
                 return 0.0
 
     def ensure_device(self, tensor: torch.Tensor) -> torch.Tensor:
@@ -236,7 +236,7 @@ class DeviceManager:
             self.tensor_transfers += 1
             if self.debug_mode and self.tensor_transfers <= 5:
                 logger.debug(
-                    f"🔄 Перенос tensor {tensor.shape} с {tensor.device} на {self.device}"
+                    f"[SYNC] Перенос tensor {tensor.shape} с {tensor.device} на {self.device}"
                 )
 
             return tensor.to(self.device, non_blocking=True)
@@ -267,7 +267,7 @@ class DeviceManager:
         # Проверяем доступность памяти
         if not self.memory_monitor.can_allocate(required_memory):
             logger.warning(
-                f"⚠️ Недостаточно памяти для tensor {shape}, выполняем cleanup"
+                f"[WARN] Недостаточно памяти для tensor {shape}, выполняем cleanup"
             )
             self.memory_monitor.cleanup()
 
@@ -325,7 +325,7 @@ class DeviceManager:
         if self.debug_mode:
             param_count = sum(p.numel() for p in module.parameters())
             logger.info(
-                f"🔄 Перенос модели на {self.device} ({param_count:,} параметров)"
+                f"[SYNC] Перенос модели на {self.device} ({param_count:,} параметров)"
             )
 
         return module.to(self.device)
@@ -370,7 +370,7 @@ class DeviceManager:
             if hasattr(self, "debug_mode") and self.debug_mode:
                 stats = self.get_memory_stats()
                 logger.info(
-                    f"🧹 DeviceManager cleanup: {stats['tensor_transfers']} переносов, {stats['total_allocations']} выделений"
+                    f"[CLEAN] DeviceManager cleanup: {stats['tensor_transfers']} переносов, {stats['total_allocations']} выделений"
                 )
         except Exception:
             # Игнорируем ошибки при завершении программы

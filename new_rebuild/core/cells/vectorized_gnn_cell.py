@@ -7,10 +7,10 @@ Vectorized GNN Cell - полностью векторизованная обра
 Исключает все циклы и sequential операции.
 
 КЛЮЧЕВЫЕ ОПТИМИЗАЦИИ:
-1. ✅ Vectorized Message Passing - все сообщения вычисляются параллельно
-2. ✅ Batched Attention - attention для всех клеток сразу
-3. ✅ GPU Memory Optimization - минимум аллокаций
-4. ✅ Tensor Reuse - переиспользование буферов
+1. [OK] Vectorized Message Passing - все сообщения вычисляются параллельно
+2. [OK] Batched Attention - attention для всех клеток сразу
+3. [OK] GPU Memory Optimization - минимум аллокаций
+4. [OK] Tensor Reuse - переиспользование буферов
 """
 
 import torch
@@ -267,7 +267,7 @@ class VectorizedGNNCell(BaseCell):
         """Логирование параметров"""
         total_params = sum(p.numel() for p in self.parameters())
 
-        logger.info(f"🚀 VectorizedGNNCell initialized:")
+        logger.info(f"[START] VectorizedGNNCell initialized:")
         logger.info(
             f"   Total params: {total_params:,} (target: {self.target_params:,})"
         )

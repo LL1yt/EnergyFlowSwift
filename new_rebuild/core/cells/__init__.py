@@ -19,7 +19,7 @@ try:
     VECTORIZED_AVAILABLE = True
 except ImportError:
     VECTORIZED_AVAILABLE = False
-    get_logger(__name__).warning("⚠️  Vectorized components not available - using legacy versions")
+    get_logger(__name__).warning("[WARN]  Vectorized components not available - using legacy versions")
 
 # Импорты legacy компонентов (DEPRECATED)
 # from .gnn_cell import GNNCell  # DEPRECATED - используйте VectorizedGNNCell
@@ -45,13 +45,13 @@ def create_cell(cell_type: Optional[str] = None, **kwargs) -> BaseCell:
                 "VectorizedGNNCell not available. "
                 "Ensure vectorized components are properly installed."
             )
-        logger.info("🚀 Creating VectorizedGNNCell for maximum performance")
+        logger.info("[START] Creating VectorizedGNNCell for maximum performance")
         return VectorizedGNNCell(**kwargs)
 
     # Legacy версии больше не поддерживаются
     elif cell_type == "gnn":
         logger.error(
-            "🚨 Legacy GNN Cell is DEPRECATED! Only VectorizedGNNCell is supported."
+            "[ALERT] Legacy GNN Cell is DEPRECATED! Only VectorizedGNNCell is supported."
         )
         raise DeprecationWarning(
             "GNNCell is deprecated and removed. Only VectorizedGNNCell is available."

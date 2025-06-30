@@ -124,7 +124,7 @@ class ConnectionCacheManager:
             self.total_lookup_time = 0.0
             self.total_rebuild_time = 0.0
 
-        logger.info(f"🔧 ConnectionCacheManager initialized:")
+        logger.info(f"[TOOL] ConnectionCacheManager initialized:")
         logger.info(f"   Lattice: {lattice_dimensions} ({self.total_cells} cells)")
         logger.info(f"   Adaptive radius: {self.adaptive_radius}")
         logger.info(
@@ -137,10 +137,10 @@ class ConnectionCacheManager:
         if self.use_gpu:
             gpu_name = torch.cuda.get_device_name(0)
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            logger.info(f"🚀 GPU acceleration: {gpu_name} ({gpu_memory:.1f}GB)")
+            logger.info(f"[START] GPU acceleration: {gpu_name} ({gpu_memory:.1f}GB)")
             logger.info(f"   GPU batch size: {self.gpu_batch_size}")
         else:
-            logger.info("💻 CPU mode: GPU not available or disabled")
+            logger.info("[COMPUTER] CPU mode: GPU not available or disabled")
 
     def _load_cache_from_disk(self) -> bool:
         """
@@ -183,18 +183,18 @@ class ConnectionCacheManager:
                     ):
                         if logger.isEnabledFor(10):
                             logger.debug(
-                                f"❌ НЕ СОВПАДАЕТ (float): {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
+                                f"[ERROR] НЕ СОВПАДАЕТ (float): {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
                             )
                         is_compatible = False
                 elif cached_value != expected_value:
                     if logger.isEnabledFor(10):
                         logger.debug(
-                            f"❌ НЕ СОВПАДАЕТ: {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
+                            f"[ERROR] НЕ СОВПАДАЕТ: {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
                         )
                     is_compatible = False
                 else:
                     if logger.isEnabledFor(10):
-                        logger.debug(f"✅ Совпадает: {key} = {cached_value}")
+                        logger.debug(f"[OK] Совпадает: {key} = {cached_value}")
 
             if not is_compatible:
                 logger.info("Кэш несовместим. Требуется пересоздание.")
@@ -204,11 +204,11 @@ class ConnectionCacheManager:
             self.cache = cache_data["cache"]
             self.distance_cache = cache_data["distance_cache"]
             self.total_cells = cache_data["total_cells"]
-            logger.info(f"✅ Кэш совместим и успешно загружен с диска: {cache_file}")
+            logger.info(f"[OK] Кэш совместим и успешно загружен с диска: {cache_file}")
             return True
 
         except Exception as e:
-            logger.error(f"❌ Ошибка загрузки кэша: {e}")
+            logger.error(f"[ERROR] Ошибка загрузки кэша: {e}")
             return False
 
     def _get_cache_key(self) -> str:
@@ -259,12 +259,12 @@ class ConnectionCacheManager:
             with open(cache_file, "wb") as f:
                 pickle.dump(cache_data, f)
 
-            logger.info(f"✅ Кэш сохранен: {cache_file}")
+            logger.info(f"[OK] Кэш сохранен: {cache_file}")
             logger.info(f"   Размер кэша: {len(self.cache)} клеток")
             logger.info(f"   Adaptive radius: {self.adaptive_radius}")
 
         except Exception as e:
-            logger.error(f"❌ Ошибка сохранения кэша: {e}")
+            logger.error(f"[ERROR] Ошибка сохранения кэша: {e}")
 
     def precompute_all_connections(self, force_rebuild: bool = False):
         """
@@ -272,7 +272,7 @@ class ConnectionCacheManager:
         Использует GPU для ускорения если доступно.
         """
         if self.is_precomputed and not force_rebuild:
-            logger.info("✅ Кэш уже в памяти, переиспользование.")
+            logger.info("[OK] Кэш уже в памяти, переиспользование.")
             return
 
         if not force_rebuild and self._load_cache_from_disk():
@@ -280,7 +280,7 @@ class ConnectionCacheManager:
             return
 
         # --- Логика пересоздания кэша ---
-        logger.info("🔄 Пересоздание кэша классификации связей...")
+        logger.info("[SYNC] Пересоздание кэша классификации связей...")
         rebuild_start_time = time.time()
 
         # Получаем список всех соседей для каждой клетки
@@ -304,7 +304,7 @@ class ConnectionCacheManager:
         self._save_cache_to_disk()
 
         self.is_precomputed = True
-        logger.info(f"✅ Pre-compute завершен для {len(self.cache)} клеток")
+        logger.info(f"[OK] Pre-compute завершен для {len(self.cache)} клеток")
         logger.info(
             f"   Время пересоздания: {time.time() - rebuild_start_time:.2f} секунд"
         )
@@ -315,10 +315,10 @@ class ConnectionCacheManager:
             return self._all_neighbors_cache
 
         if self.use_gpu and self.total_cells > 5000:
-            logger.info("🚀 Вычисляем всех соседей на GPU...")
+            logger.info("[START] Вычисляем всех соседей на GPU...")
             return self._compute_all_neighbors_gpu()
         else:
-            logger.info("🔍 Вычисляем всех соседей на CPU...")
+            logger.info("[SEARCH] Вычисляем всех соседей на CPU...")
             return self._compute_all_neighbors_cpu()
 
     def _compute_all_neighbors_cpu(self) -> Dict[int, List[int]]:
@@ -361,7 +361,7 @@ class ConnectionCacheManager:
             all_neighbors[cell_idx] = neighbors
 
         self._all_neighbors_cache = all_neighbors
-        logger.info(f"✅ Вычислены соседи для {len(all_neighbors)} клеток")
+        logger.info(f"[OK] Вычислены соседи для {len(all_neighbors)} клеток")
         return all_neighbors
 
     def _compute_all_neighbors_gpu(self) -> Dict[int, List[int]]:
@@ -379,7 +379,7 @@ class ConnectionCacheManager:
             all_coords = torch.stack([x_coords, y_coords, z_coords], dim=1).float()
 
             logger.info(
-                f"💾 GPU memory для координат: {all_coords.numel() * 4 / 1024**2:.1f}MB"
+                f"[DISK] GPU memory для координат: {all_coords.numel() * 4 / 1024**2:.1f}MB"
             )
 
             all_neighbors = {}
@@ -411,11 +411,11 @@ class ConnectionCacheManager:
 
                 if start_idx % (batch_size * 10) == 0:
                     logger.info(
-                        f"🚀 GPU: обработано {end_idx}/{self.total_cells} клеток"
+                        f"[START] GPU: обработано {end_idx}/{self.total_cells} клеток"
                     )
 
             self._all_neighbors_cache = all_neighbors
-            logger.info(f"✅ GPU: Вычислены соседи для {len(all_neighbors)} клеток")
+            logger.info(f"[OK] GPU: Вычислены соседи для {len(all_neighbors)} клеток")
             return all_neighbors
 
         except Exception as e:

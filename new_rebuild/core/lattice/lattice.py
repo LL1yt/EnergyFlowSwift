@@ -121,7 +121,7 @@ class Lattice3D(nn.Module):
 
         if self.config.logging.debug_mode:
             logger.info(
-                f"✅ Lattice3D MoE initialized successfully:\n"
+                f"[OK] Lattice3D MoE initialized successfully:\n"
                 f"     INPUT_POINTS: {len(self.input_points)}\n"
                 f"     OUTPUT_POINTS: {len(self.output_points)}\n"
                 f"     CELL_TYPE: {type(self.cells).__name__}\n"
@@ -190,8 +190,8 @@ class Lattice3D(nn.Module):
         """
         start_time = time.time()
 
-        self.logger.info(f"🚀 LATTICE FORWARD: states shape {self.states.shape}")
-        self.logger.info(f"🚀 LATTICE DIMENSIONS: {self.config.lattice.dimensions}")
+        self.logger.info(f"[START] LATTICE FORWARD: states shape {self.states.shape}")
+        self.logger.info(f"[START] LATTICE DIMENSIONS: {self.config.lattice.dimensions}")
 
         # MoE processor уже создан при инициализации
 
@@ -200,7 +200,7 @@ class Lattice3D(nn.Module):
         expected_cells = np.prod(self.config.lattice.dimensions)
         actual_cells = self.states.shape[1] if self.states.dim() > 1 else self.states.shape[0]
         if expected_cells != actual_cells:
-            self.logger.error(f"❌ DIMENSION MISMATCH: Expected {expected_cells} cells from lattice {self.config.lattice.dimensions}, but states has {actual_cells} cells")
+            self.logger.error(f"[ERROR] DIMENSION MISMATCH: Expected {expected_cells} cells from lattice {self.config.lattice.dimensions}, but states has {actual_cells} cells")
             self.logger.error(f"States shape: {self.states.shape}")
             raise RuntimeError(f"Lattice dimensions mismatch: expected {expected_cells} cells, got {actual_cells}")
 
@@ -330,7 +330,7 @@ class Lattice3D(nn.Module):
         """Освобождает ресурсы унифицированного оптимизатора."""
         if hasattr(self.spatial_optimizer, "cleanup"):
             self.spatial_optimizer.cleanup()
-            self.logger.info("🧹 Unified Spatial Optimizer ресурсы освобождены")
+            self.logger.info("[CLEAN] Unified Spatial Optimizer ресурсы освобождены")
 
     def __del__(self):
         """Деструктор для автоматической очистки ресурсов."""

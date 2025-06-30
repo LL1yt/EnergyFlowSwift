@@ -286,9 +286,9 @@ class EmbeddingTrainer(TrainingInterface):
 
         # 4. Emergent dynamics (несколько шагов через MoE)
         # Устанавливаем начальные состояния в решетку
-        logger.debug(f"🔧 Setting lattice states: {lattice_states.shape}")
-        logger.debug(f"🔧 Lattice config dimensions: {self.config.lattice.dimensions}")
-        logger.debug(f"🔧 Expected cells: {self.config.lattice.total_cells}")
+        logger.debug(f"[TOOL] Setting lattice states: {lattice_states.shape}")
+        logger.debug(f"[TOOL] Lattice config dimensions: {self.config.lattice.dimensions}")
+        logger.debug(f"[TOOL] Expected cells: {self.config.lattice.total_cells}")
         
         self.lattice.states = lattice_states
         
