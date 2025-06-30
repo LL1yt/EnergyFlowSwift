@@ -303,6 +303,7 @@ class SpatialSettings:
     enable_async_processing: bool = True
     enable_profiling: bool = True
     log_memory_usage: bool = True
+    # toroidal_topology: bool = True  # Включить торическую топологию для увеличения соседей у граничных клеток
 
 
 @dataclass
@@ -363,7 +364,7 @@ class DeviceSettings:
 class LoggingSettings:
     """Настройки логирования"""
 
-    level: str = "INFO"
+    level: str = "DEBUG"
     debug_mode: bool = True
     log_to_file: bool = True
     log_file: str = "logs/cnf_debug.log"

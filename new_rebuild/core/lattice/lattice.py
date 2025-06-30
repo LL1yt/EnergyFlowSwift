@@ -14,7 +14,6 @@
 import torch
 import torch.nn as nn
 from typing import List, Dict, Optional, Any
-from ...utils.logging import get_logger
 import time
 from datetime import datetime
 
@@ -33,6 +32,9 @@ from .spatial_optimization.unified_spatial_optimizer import (
     OptimizationConfig,
     OptimizationMode,
 )
+from ...utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class Lattice3D(nn.Module):
@@ -54,7 +56,7 @@ class Lattice3D(nn.Module):
         self.config = get_project_config()
         self.device = torch.device(self.config.current_device)
         self.pos_helper = Position3D(self.config.lattice.dimensions)
-        self.logger = get_logger(__name__)
+        self.logger = logger
 
         # Логирование инициализации
         from ...utils.logging import log_init
@@ -118,9 +120,6 @@ class Lattice3D(nn.Module):
         }
 
         if self.config.logging.debug_mode:
-            from ...utils.logging import get_logger
-
-            logger = get_logger(__name__)
             logger.info(
                 f"✅ Lattice3D MoE initialized successfully:\n"
                 f"     INPUT_POINTS: {len(self.input_points)}\n"
@@ -175,9 +174,6 @@ class Lattice3D(nn.Module):
         states = torch.randn(*dims, device=self.device, dtype=torch.float32) * 0.1
 
         if self.config.logging.debug_mode:
-            from ...utils.logging import get_logger
-
-            logger = get_logger(__name__)
             logger.info(f"States initialized with shape: {states.shape}")
 
         return states

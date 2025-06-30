@@ -34,7 +34,7 @@ def get_neighbors_for_cell(cell_idx):
     try:
         # Попробуем найти соседей с разными радиусами
         for radius in [1.0, 1.5, 2.0, 3.0]:
-            neighbors = lattice.spatial_optimizer.find_neighbors(coords, radius)
+            neighbors = lattice.spatial_optimizer.find_neighbors_optimized(coords, radius)
             if len(neighbors) > 0:
                 return neighbors, radius
         return [], 0.0
