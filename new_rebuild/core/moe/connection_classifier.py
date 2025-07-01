@@ -87,8 +87,7 @@ class UnifiedConnectionClassifier(nn.Module):
                 # Создаем адаптер для синхронизации с spatial optimizer
                 self.cache_adapter = UnifiedCacheAdapter(self.cache_manager)
                 logger.info("ConnectionCacheManager и адаптер созданы успешно")
-                # Автоматически инициализируем кэш
-                self._initialize_cache()
+                # НЕ инициализируем кэш здесь - ждем установки spatial optimizer
             except Exception as e:
                 logger.error(f"Ошибка создания ConnectionCacheManager: {e}")
                 import traceback
@@ -167,10 +166,17 @@ class UnifiedConnectionClassifier(nn.Module):
             self.cache_adapter.spatial_optimizer = spatial_optimizer
             logger.info("Spatial optimizer установлен в connection classifier")
             
-            # Если кэш уже был создан, пересинхронизируем его
-            if self.cache_manager is not None and self.cache_manager.is_precomputed:
-                logger.info("Пересинхронизация кэша с новым spatial optimizer...")
-                self.cache_adapter.sync_cache_with_optimizer()
+            # Если кэш еще не инициализирован, инициализируем его сейчас
+            if self.cache_manager is not None and not self.cache_manager.is_precomputed:
+                logger.info("Инициализация кэша с spatial optimizer...")
+                self._initialize_cache()
+            # Если кэш уже был создан без spatial optimizer, пересинхронизируем его
+            elif self.cache_manager is not None and self.cache_manager.is_precomputed:
+                logger.info("Кэш уже создан, проверяем необходимость пересинхронизации...")
+                # Только пересинхронизируем если кэш был создан без spatial optimizer
+                if hasattr(self, '_cache_created_without_spatial_optimizer'):
+                    logger.info("Пересинхронизация кэша с новым spatial optimizer...")
+                    self.cache_adapter.sync_cache_with_optimizer()
         else:
             logger.warning("Cache adapter не инициализирован, spatial optimizer не установлен")
 
@@ -179,6 +185,11 @@ class UnifiedConnectionClassifier(nn.Module):
         try:
             if self.cache_manager is not None:
                 logger.info("🔄 Инициализация connection cache...")
+                
+                # Проверяем, не загружен ли кэш уже
+                if self.cache_manager.is_precomputed:
+                    logger.info("✅ Кэш уже инициализирован, пропускаем повторное вычисление")
+                    return
                 
                 # Если есть spatial optimizer, используем его логику
                 if (self.cache_adapter is not None and 
@@ -190,8 +201,8 @@ class UnifiedConnectionClassifier(nn.Module):
                     self.cache_manager._save_cache_to_disk()
                 else:
                     # Иначе используем встроенную логику
-                    logger.info("Spatial optimizer не установлен, используем встроенную логику")
-                    self.cache_manager.precompute_all_connections()
+                    logger.error("❌ Spatial optimizer не установлен! Это критическая ошибка.")
+                    raise RuntimeError("Spatial optimizer обязателен для работы системы")
 
                 # Логируем статистику кэша
                 stats = self.cache_manager.get_cache_stats()
@@ -200,14 +211,13 @@ class UnifiedConnectionClassifier(nn.Module):
                         f"✅ Cache готов: {stats['cached_cells']} клеток, {stats['total_connections']} связей, {stats['cache_size_mb']:.1f}MB"
                     )
                 else:
-                    logger.warning("⚠️ Cache пуст, используем fallback режим")
+                    logger.error("❌ Cache пуст после инициализации!")
+                    raise RuntimeError("Кэш пуст после предвычисления - это критическая ошибка")
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации кэша: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            logger.info("🔄 Переключаемся на fallback режим без кэша")
-            self.cache_manager = None
-            self.cache_adapter = None
+            raise  # Пробрасываем исключение дальше вместо fallback
 
     def classify_connections_batch(
         self,

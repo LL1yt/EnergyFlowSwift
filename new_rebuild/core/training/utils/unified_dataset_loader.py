@@ -645,13 +645,11 @@ def main():
     from ....config import SimpleProjectConfig
     config = SimpleProjectConfig()
     
-    # Ограничиваем для быстрого теста
-    max_samples = 50
     
     # Создаем DataLoader
     dataloader, stats = create_training_dataloader(
         config=config,
-        max_total_samples=max_samples,
+        max_total_samples=config.training_embedding.max_total_samples,
         shuffle=True
     )
     

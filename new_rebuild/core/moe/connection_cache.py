@@ -117,12 +117,13 @@ class ConnectionCacheManager:
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
 
         # GPU настройки
-        self.use_gpu = (
-            self.cache_config.get("use_gpu_acceleration", True)
-            and torch.cuda.is_available()
-        )
+        # Проверяем доступность GPU
+        if not torch.cuda.is_available():
+            raise RuntimeError("GPU не доступен! RTX 5090 обязателен для работы системы")
+            
+        self.use_gpu = True  # Всегда используем GPU
         self.gpu_batch_size = self.cache_config.get("gpu_batch_size", 10000)
-        self.device = torch.device("cuda" if self.use_gpu else "cpu")
+        self.device = torch.device("cuda")  # Всегда CUDA для RTX 5090
 
         # Кэш структуры
         self.cache: Dict[int, Dict[str, List[CachedConnectionInfo]]] = {}
@@ -333,12 +334,12 @@ class ConnectionCacheManager:
         if hasattr(self, "_all_neighbors_cache"):
             return self._all_neighbors_cache
 
-        if self.use_gpu and self.total_cells > 5000:
+        if self.use_gpu:
             logger.info("🚀 Вычисляем всех соседей на GPU...")
             return self._compute_all_neighbors_gpu()
         else:
-            logger.info("🔍 Вычисляем всех соседей на CPU...")
-            return self._compute_all_neighbors_cpu()
+            logger.error("❌ GPU не доступен для вычисления соседей")
+            raise RuntimeError("GPU обязателен для работы системы с RTX 5090")
 
     def _compute_all_neighbors_cpu(self) -> Dict[int, List[int]]:
         """CPU версия вычисления соседей"""
@@ -534,36 +535,63 @@ class ConnectionCacheManager:
 
         # LOCAL связи - прямо из кэша
         for conn in cached_data["local"]:
-            if conn.target_idx in neighbor_set:
+            # Обрабатываем оба формата: объект CachedConnectionInfo или словарь
+            if hasattr(conn, 'target_idx'):
+                target_idx = conn.target_idx
+                euclidean_distance = conn.euclidean_distance
+                manhattan_distance = conn.manhattan_distance
+            else:
+                # Если это словарь (из загруженного кэша)
+                target_idx = conn['target_idx']
+                euclidean_distance = conn['euclidean_distance']
+                manhattan_distance = conn['manhattan_distance']
+                
+            if target_idx in neighbor_set:
                 result[ConnectionCategory.LOCAL].append(
                     ConnectionInfo(
                         source_idx=cell_idx,
-                        target_idx=conn.target_idx,
-                        euclidean_distance=conn.euclidean_distance,
-                        manhattan_distance=conn.manhattan_distance,
+                        target_idx=target_idx,
+                        euclidean_distance=euclidean_distance,
+                        manhattan_distance=manhattan_distance,
                         category=ConnectionCategory.LOCAL,
                     )
                 )
 
         # DISTANT связи - прямо из кэша
         for conn in cached_data["distant"]:
-            if conn.target_idx in neighbor_set:
+            # Обрабатываем оба формата: объект CachedConnectionInfo или словарь
+            if hasattr(conn, 'target_idx'):
+                target_idx = conn.target_idx
+                euclidean_distance = conn.euclidean_distance
+                manhattan_distance = conn.manhattan_distance
+            else:
+                # Если это словарь (из загруженного кэша)
+                target_idx = conn['target_idx']
+                euclidean_distance = conn['euclidean_distance']
+                manhattan_distance = conn['manhattan_distance']
+                
+            if target_idx in neighbor_set:
                 result[ConnectionCategory.DISTANT].append(
                     ConnectionInfo(
                         source_idx=cell_idx,
-                        target_idx=conn.target_idx,
-                        euclidean_distance=conn.euclidean_distance,
-                        manhattan_distance=conn.manhattan_distance,
+                        target_idx=target_idx,
+                        euclidean_distance=euclidean_distance,
+                        manhattan_distance=manhattan_distance,
                         category=ConnectionCategory.DISTANT,
                     )
                 )
 
         # FUNCTIONAL кандидаты - требуют проверки similarity
-        functional_candidates = [
-            conn
-            for conn in cached_data["functional_candidates"]
-            if conn.target_idx in neighbor_set
-        ]
+        functional_candidates = []
+        for conn in cached_data["functional_candidates"]:
+            # Обрабатываем оба формата: объект CachedConnectionInfo или словарь
+            if hasattr(conn, 'target_idx'):
+                target_idx = conn.target_idx
+            else:
+                target_idx = conn['target_idx']
+                
+            if target_idx in neighbor_set:
+                functional_candidates.append(conn)
 
         if functional_candidates and states is not None:
             # Быстрая функциональная проверка
@@ -576,25 +604,45 @@ class ConnectionCacheManager:
             # Это соответствует логике оригинального классификатора
             functional_indices = {conn.target_idx for conn in functional_connections}
             for conn in functional_candidates:
-                if conn.target_idx not in functional_indices:
+                # Обрабатываем оба формата
+                if hasattr(conn, 'target_idx'):
+                    target_idx = conn.target_idx
+                    euclidean_distance = conn.euclidean_distance
+                    manhattan_distance = conn.manhattan_distance
+                else:
+                    target_idx = conn['target_idx']
+                    euclidean_distance = conn['euclidean_distance']
+                    manhattan_distance = conn['manhattan_distance']
+                    
+                if target_idx not in functional_indices:
                     result[ConnectionCategory.FUNCTIONAL].append(
                         ConnectionInfo(
                             source_idx=cell_idx,
-                            target_idx=conn.target_idx,
-                            euclidean_distance=conn.euclidean_distance,
-                            manhattan_distance=conn.manhattan_distance,
+                            target_idx=target_idx,
+                            euclidean_distance=euclidean_distance,
+                            manhattan_distance=manhattan_distance,
                             category=ConnectionCategory.FUNCTIONAL,
                         )
                     )
         else:
             # Без проверки similarity все кандидаты становятся FUNCTIONAL
             for conn in functional_candidates:
+                # Обрабатываем оба формата
+                if hasattr(conn, 'target_idx'):
+                    target_idx = conn.target_idx
+                    euclidean_distance = conn.euclidean_distance
+                    manhattan_distance = conn.manhattan_distance
+                else:
+                    target_idx = conn['target_idx']
+                    euclidean_distance = conn['euclidean_distance']
+                    manhattan_distance = conn['manhattan_distance']
+                    
                 result[ConnectionCategory.FUNCTIONAL].append(
                     ConnectionInfo(
                         source_idx=cell_idx,
-                        target_idx=conn.target_idx,
-                        euclidean_distance=conn.euclidean_distance,
-                        manhattan_distance=conn.manhattan_distance,
+                        target_idx=target_idx,
+                        euclidean_distance=euclidean_distance,
+                        manhattan_distance=manhattan_distance,
                         category=ConnectionCategory.FUNCTIONAL,
                     )
                 )
@@ -618,8 +666,18 @@ class ConnectionCacheManager:
             cell_state = states[cell_idx]
 
             for conn in candidates:
-                if conn.target_idx < states.shape[0]:
-                    neighbor_state = states[conn.target_idx]
+                # Обрабатываем оба формата
+                if hasattr(conn, 'target_idx'):
+                    target_idx = conn.target_idx
+                    euclidean_distance = conn.euclidean_distance
+                    manhattan_distance = conn.manhattan_distance
+                else:
+                    target_idx = conn['target_idx']
+                    euclidean_distance = conn['euclidean_distance']
+                    manhattan_distance = conn['manhattan_distance']
+                    
+                if target_idx < states.shape[0]:
+                    neighbor_state = states[target_idx]
 
                     # Косинусное сходство
                     similarity = torch.cosine_similarity(
@@ -636,9 +694,9 @@ class ConnectionCacheManager:
                         functional_connections.append(
                             ConnectionInfo(
                                 source_idx=cell_idx,
-                                target_idx=conn.target_idx,
-                                euclidean_distance=conn.euclidean_distance,
-                                manhattan_distance=conn.manhattan_distance,
+                                target_idx=target_idx,
+                                euclidean_distance=euclidean_distance,
+                                manhattan_distance=manhattan_distance,
                                 category=ConnectionCategory.FUNCTIONAL,
                                 functional_similarity=similarity,
                             )
@@ -728,9 +786,18 @@ class ConnectionCacheManager:
         distant_count = 0
 
         for cell_data in self.cache.values():
-            local_count += len(cell_data["local"])
-            functional_candidates_count += len(cell_data["functional_candidates"])
-            distant_count += len(cell_data["distant"])
+            # Проверяем формат кэша - строковые ключи или enum
+            if cell_data and isinstance(next(iter(cell_data.keys()), None), str):
+                # Старый формат со строковыми ключами
+                local_count += len(cell_data.get("local", []))
+                functional_candidates_count += len(cell_data.get("functional_candidates", []))
+                distant_count += len(cell_data.get("distant", []))
+            else:
+                # Новый формат с enum ключами (пока не используется, но на будущее)
+                from .connection_types import ConnectionCategory
+                local_count += len(cell_data.get(ConnectionCategory.LOCAL, []))
+                functional_candidates_count += len(cell_data.get(ConnectionCategory.FUNCTIONAL, []))
+                distant_count += len(cell_data.get(ConnectionCategory.DISTANT, []))
 
         total_connections = local_count + functional_candidates_count + distant_count
 
