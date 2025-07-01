@@ -186,15 +186,22 @@ class UnifiedConnectionClassifier(nn.Module):
             if self.cache_manager is not None:
                 logger.info("🔄 Инициализация connection cache...")
                 
-                # Проверяем, не загружен ли кэш уже
-                if self.cache_manager.is_precomputed:
-                    logger.info("✅ Кэш уже инициализирован, пропускаем повторное вычисление")
+                # Сначала пытаемся загрузить кэш с диска
+                if self.cache_manager._load_cache_from_disk():
+                    self.cache_manager.is_precomputed = True
+                    logger.info("✅ Кэш успешно загружен с диска")
+                    # Проверяем статистику загруженного кэша
+                    stats = self.cache_manager.get_cache_stats()
+                    if stats["status"] == "active":
+                        logger.info(
+                            f"✅ Cache готов: {stats['cached_cells']} клеток, {stats['total_connections']} связей, {stats['cache_size_mb']:.1f}MB"
+                        )
                     return
                 
-                # Если есть spatial optimizer, используем его логику
+                # Если кэш не найден на диске, проверяем наличие spatial optimizer
                 if (self.cache_adapter is not None and 
                     self.cache_adapter.spatial_optimizer is not None):
-                    logger.info("Используем spatial optimizer для предвычисления кэша")
+                    logger.info("Кэш не найден на диске. Используем spatial optimizer для предвычисления кэша")
                     new_cache = self.cache_adapter.precompute_with_spatial_optimizer()
                     self.cache_manager.cache = new_cache
                     self.cache_manager.is_precomputed = True

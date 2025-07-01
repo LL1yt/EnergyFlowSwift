@@ -299,7 +299,7 @@ class UnifiedSpatialOptimizer:
             cell_idx: Индекс клетки в решетке
         
         Returns:
-            Список индексов соседних клеток (включая саму клетку)
+            Список индексов соседних клеток (ВКЛЮЧАЯ саму клетку для совместимости с MoE)
         """
         from ..position import Position3D
         

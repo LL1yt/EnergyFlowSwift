@@ -278,8 +278,8 @@ class CacheSettings:
     enabled: bool = True
     enable_performance_monitoring: bool = True
     enable_detailed_stats: bool = False
-    auto_enable_threshold: int = 3000
-    auto_disable_threshold: int = 1000
+    # auto_enable_threshold: int = 3000
+    # auto_disable_threshold: int = 1000
     small_lattice_fallback: bool = False  # Использовать кэширование для маленьких решеток. во-первых, потому что мы тестируем на маленьких решетках, а во-вторых, потому что мы не используем fallback'и
     use_gpu_acceleration: bool = True
     gpu_batch_size: int = 10000
