@@ -7,15 +7,16 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 import torch
 import numpy as np
 
-from new_rebuild.utils import logger, setup_logging
+from new_rebuild.utils import get_logger, setup_logging
 from new_rebuild.core.moe.connection_types import ConnectionCategory
-from new_rebuild.core.moe.connection_cache import ConnectionInfo
+from new_rebuild.core.moe.connection_cache import CachedConnectionInfo
 
 if TYPE_CHECKING:
     from new_rebuild.core.lattice.spatial_optimization import UnifiedSpatialOptimizer
     from new_rebuild.core.moe.connection_cache import ConnectionCacheManager
 
 setup_logging(__name__)
+logger = get_logger(__name__)
 
 
 class UnifiedCacheAdapter:
@@ -65,7 +66,7 @@ class UnifiedCacheAdapter:
         
         return neighbors
         
-    def precompute_with_spatial_optimizer(self) -> Dict[int, Dict[str, List[ConnectionInfo]]]:
+    def precompute_with_spatial_optimizer(self) -> Dict[int, Dict[str, List[CachedConnectionInfo]]]:
         """
         Предвычисляет все связи используя spatial optimizer
         
@@ -115,7 +116,7 @@ class UnifiedCacheAdapter:
         self, 
         cell_idx: int, 
         neighbors: List[int]
-    ) -> Dict[str, List[ConnectionInfo]]:
+    ) -> Dict[str, List[CachedConnectionInfo]]:
         """
         Классифицирует соседей по категориям
         
@@ -156,9 +157,8 @@ class UnifiedCacheAdapter:
             else:
                 category = ConnectionCategory.DISTANT
                 
-            # Создаем ConnectionInfo
-            conn_info = ConnectionInfo(
-                source_idx=cell_idx,
+            # Создаем CachedConnectionInfo
+            conn_info = CachedConnectionInfo(
                 target_idx=neighbor_idx,
                 euclidean_distance=euclidean_dist,
                 manhattan_distance=manhattan_dist,

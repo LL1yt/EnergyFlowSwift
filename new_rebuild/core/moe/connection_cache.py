@@ -70,29 +70,48 @@ class ConnectionCacheManager:
             lattice_dimensions: Размеры 3D решетки (x, y, z)
             cache_config: Конфигурация кэширования
         """
+        logger.debug(f"ConnectionCacheManager.__init__ called with dimensions: {lattice_dimensions}")
         self.lattice_dimensions = lattice_dimensions
         self.total_cells = np.prod(lattice_dimensions)
 
         # Получаем конфигурацию
-        config = get_project_config()
+        try:
+            config = get_project_config()
+            logger.debug(f"Got project config: {config.__class__.__name__}")
+        except Exception as e:
+            logger.error(f"Failed to get project config: {e}")
+            raise
+            
         if cache_config is None:
             self.cache_config = asdict(config.cache) if config.cache else {}
         else:
             self.cache_config = cache_config
+            
+        logger.debug(f"Cache config: {self.cache_config}")
 
         # ИСПРАВЛЕНО: Всегда получаем актуальный adaptive_radius
-        self.adaptive_radius = config.calculate_adaptive_radius()
+        try:
+            self.adaptive_radius = config.calculate_adaptive_radius()
+            logger.debug(f"Adaptive radius: {self.adaptive_radius}")
+        except Exception as e:
+            logger.error(f"Failed to calculate adaptive radius: {e}")
+            raise
 
         # Пороги для классификации связей, вычисляемые на основе adaptive_radius
-        self.local_threshold = (
-            self.adaptive_radius * config.lattice.local_distance_ratio
-        )
-        self.functional_threshold = (
-            self.adaptive_radius * config.lattice.functional_distance_ratio
-        )
-        self.distant_threshold = (
-            self.adaptive_radius * config.lattice.distant_distance_ratio
-        )
+        try:
+            self.local_threshold = (
+                self.adaptive_radius * config.lattice.local_distance_ratio
+            )
+            self.functional_threshold = (
+                self.adaptive_radius * config.lattice.functional_distance_ratio
+            )
+            self.distant_threshold = (
+                self.adaptive_radius * config.lattice.distant_distance_ratio
+            )
+            logger.debug(f"Thresholds - local: {self.local_threshold}, functional: {self.functional_threshold}, distant: {self.distant_threshold}")
+        except Exception as e:
+            logger.error(f"Failed to calculate thresholds: {e}")
+            raise
 
         # Инициализируем distance calculator
         self.distance_calculator = DistanceCalculator(lattice_dimensions)

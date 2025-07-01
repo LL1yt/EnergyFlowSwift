@@ -285,6 +285,11 @@ class CacheSettings:
     gpu_batch_size: int = 10000
     prefer_gpu_for_large_lattices: bool = True
     gpu_memory_fraction: float = 0.8
+    
+    # Эти значения вычисляются автоматически из LatticeSettings
+    # но нужны для совместимости с legacy кодом
+    local_radius: float = 1.0  # Будет переопределено из lattice settings
+    functional_similarity_threshold: float = 0.3
 
 
 @dataclass

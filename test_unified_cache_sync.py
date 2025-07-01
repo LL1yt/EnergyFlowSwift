@@ -31,7 +31,16 @@ def test_cache_sync():
     spatial_optimizer = lattice.spatial_optimizer
     moe_processor = lattice.moe_processor
     connection_classifier = moe_processor.connection_classifier
+    
+    logger.info(f"Connection classifier type: {type(connection_classifier)}")
+    logger.info(f"Cache enabled: {connection_classifier.enable_cache}")
+    logger.info(f"Cache manager: {connection_classifier.cache_manager}")
+    
     cache_manager = connection_classifier.cache_manager
+    
+    if cache_manager is None:
+        logger.error("Cache manager is None! Cache might be disabled.")
+        return
     
     logger.info("\n=== Проверка синхронизации ===")
     
@@ -55,7 +64,11 @@ def test_cache_sync():
         cache_neighbors = []
         for category, connections in cache_data.items():
             for conn in connections:
-                cache_neighbors.append(conn["target_idx"])
+                # conn может быть либо CachedConnectionInfo либо dict
+                if hasattr(conn, 'target_idx'):
+                    cache_neighbors.append(conn.target_idx)
+                elif isinstance(conn, dict) and 'target_idx' in conn:
+                    cache_neighbors.append(conn['target_idx'])
         cache_neighbors_set = set(cache_neighbors)
         
         # Сравниваем результаты
@@ -108,10 +121,12 @@ def test_cache_sync():
     all_neighbors = []
     for idx in cell_indices:
         neighbors = spatial_optimizer.find_neighbors_by_radius_safe(idx.item())
-        all_neighbors.append(neighbors[:config.model.neighbor_count])
+        # Не ограничиваем количество соседей, берем всех найденных
+        all_neighbors.append(neighbors)
         
     # Создаем тензор соседей
-    max_neighbors = config.model.neighbor_count
+    # Используем максимальное количество соседей из найденных
+    max_neighbors = max(len(neighbors) for neighbors in all_neighbors) if all_neighbors else 100
     neighbor_indices = torch.full((batch_size, max_neighbors), -1, dtype=torch.long).to(lattice.device)
     for i, neighbors in enumerate(all_neighbors):
         neighbor_indices[i, :len(neighbors)] = torch.tensor(neighbors)

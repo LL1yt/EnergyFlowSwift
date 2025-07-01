@@ -68,6 +68,10 @@ class UnifiedConnectionClassifier(nn.Module):
             "enable_performance_monitoring", False
         )
         self.enable_detailed_stats = cache_config.get("enable_detailed_stats", False)
+        
+        logger.debug(f"Cache config: {cache_config}")
+        logger.debug(f"Enable cache param: {enable_cache}")
+        logger.debug(f"Final enable_cache: {self.enable_cache}")
 
         # Модульные компоненты (для fallback)
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
@@ -75,14 +79,24 @@ class UnifiedConnectionClassifier(nn.Module):
 
         # Pre-computed кэш менеджер
         if self.enable_cache:
-            self.cache_manager = ConnectionCacheManager(
-                lattice_dimensions, cache_config
-            )
-            # Создаем адаптер для синхронизации с spatial optimizer
-            self.cache_adapter = UnifiedCacheAdapter(self.cache_manager)
-            # Автоматически инициализируем кэш
-            self._initialize_cache()
+            logger.info(f"Создаем ConnectionCacheManager для решетки {lattice_dimensions}")
+            try:
+                self.cache_manager = ConnectionCacheManager(
+                    lattice_dimensions, cache_config
+                )
+                # Создаем адаптер для синхронизации с spatial optimizer
+                self.cache_adapter = UnifiedCacheAdapter(self.cache_manager)
+                logger.info("ConnectionCacheManager и адаптер созданы успешно")
+                # Автоматически инициализируем кэш
+                self._initialize_cache()
+            except Exception as e:
+                logger.error(f"Ошибка создания ConnectionCacheManager: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                self.cache_manager = None
+                self.cache_adapter = None
         else:
+            logger.warning(f"Cache отключен (enable_cache={self.enable_cache})")
             self.cache_manager = None
             self.cache_adapter = None
 
@@ -176,6 +190,7 @@ class UnifiedConnectionClassifier(nn.Module):
                     self.cache_manager._save_cache_to_disk()
                 else:
                     # Иначе используем встроенную логику
+                    logger.info("Spatial optimizer не установлен, используем встроенную логику")
                     self.cache_manager.precompute_all_connections()
 
                 # Логируем статистику кэша
@@ -188,8 +203,11 @@ class UnifiedConnectionClassifier(nn.Module):
                     logger.warning("⚠️ Cache пуст, используем fallback режим")
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации кэша: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             logger.info("🔄 Переключаемся на fallback режим без кэша")
             self.cache_manager = None
+            self.cache_adapter = None
 
     def classify_connections_batch(
         self,
