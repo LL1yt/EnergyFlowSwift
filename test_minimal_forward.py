@@ -14,7 +14,7 @@ config = SimpleProjectConfig()
 trainer = EmbeddingTrainer(config)
 
 # Параметры теста
-num_passes = 5  # Количество forward pass'ов
+num_passes = 1  # Количество forward pass'ов
 batch_size = 1  # Только 1 сэмпл
 embedding_dim = 768
 

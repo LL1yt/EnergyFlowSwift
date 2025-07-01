@@ -36,6 +36,7 @@ class ConnectionInfo:
     )
 
     def __post_init__(self):
+        # Получаем значения из централизованной конфигурации
         cfg = get_project_config().connection
         if self.strength is None:
             self.strength = cfg.strength

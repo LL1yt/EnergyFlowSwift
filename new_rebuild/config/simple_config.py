@@ -34,6 +34,7 @@ from .config_components import (
     ExperimentSettings,
     PerformanceSettings,
     ValidationSettings,
+    ConnectionSettings,
     EmbeddingSettings,
     TrainingEmbeddingSettings,
     NeighborSettings,
@@ -90,6 +91,7 @@ class SimpleProjectConfig:
     # MoE компоненты
     neighbors: Optional[NeighborSettings] = field(default_factory=NeighborSettings)
     expert: Optional[ExpertSettings] = field(default_factory=ExpertSettings)
+    connection: Optional[ConnectionSettings] = field(default_factory=ConnectionSettings)
 
     # Runtime компоненты (вычисляются автоматически)
     device_manager: Optional[DeviceManager] = field(init=False, default=None)

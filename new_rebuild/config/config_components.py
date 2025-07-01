@@ -591,6 +591,20 @@ class ValidationSettings:
     estimate_compute_time: bool = False
 
 
+@dataclass
+class ConnectionSettings:
+    """Настройки связей между клетками"""
+    
+    # Базовые параметры связей
+    strength: float = 1.0  # Стандартная сила связи
+    functional_similarity: float = 0.3  # Порог функционального сходства
+    
+    # Дополнительные параметры для будущего расширения
+    decay_factor: float = 0.9  # Коэффициент затухания связи
+    min_strength: float = 0.1  # Минимальная сила связи
+    max_strength: float = 5.0  # Максимальная сила связи
+
+
 # === ФУНКЦИИ КОМПОЗИЦИИ ===
 
 

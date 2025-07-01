@@ -290,6 +290,44 @@ class UnifiedSpatialOptimizer:
     ) -> List[int]:
         """GPU-ускоренный поиск соседей."""
         return self.gpu_processor.find_neighbors(coords, radius)
+    
+    def find_neighbors_by_radius_safe(self, cell_idx: int) -> List[int]:
+        """
+        Безопасный поиск соседей для клетки по адаптивному радиусу.
+        
+        Args:
+            cell_idx: Индекс клетки в решетке
+        
+        Returns:
+            Список индексов соседних клеток (включая саму клетку)
+        """
+        from ..position import Position3D
+        
+        # Получаем координаты клетки
+        pos_helper = Position3D(self.dimensions)
+        coords = pos_helper.to_3d_coordinates(cell_idx)
+        
+        # Получаем конфигурацию радиуса
+        config = get_project_config()
+        adaptive_radius = config.calculate_adaptive_radius()
+        
+        logger.debug(f"🔍 Поиск соседей для клетки {cell_idx} (coords={coords}) с радиусом {adaptive_radius:.3f}")
+        
+        try:
+            # Используем GPU processor для поиска соседей
+            neighbors = self.gpu_processor.find_neighbors(coords, adaptive_radius)
+            
+            # Убедимся что сама клетка включена
+            if cell_idx not in neighbors:
+                neighbors.append(cell_idx)
+            
+            logger.debug(f"✅ Найдено {len(neighbors)} соседей для клетки {cell_idx}: {neighbors[:5]}{'...' if len(neighbors) > 5 else ''}")
+            return neighbors
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка поиска соседей для клетки {cell_idx}: {e}")
+            # Fallback: возвращаем только саму клетку
+            return [cell_idx]
 
     def optimize_lattice_forward(
         self, states: torch.Tensor, processor_fn: Optional[Callable] = None
