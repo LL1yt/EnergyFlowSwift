@@ -89,8 +89,11 @@ class MoEConnectionProcessor(nn.Module):
         # === КЛАССИФИКАТОР СВЯЗЕЙ С КЭШИРОВАНИЕМ ===
         self.connection_classifier = UnifiedConnectionClassifier(
             lattice_dimensions=self.lattice_dimensions,
-            enable_cache=False,  # ВРЕМЕННО отключаем кэш для отладки
+            enable_cache=True,  # Включаем кэш для исправления индексации
         )
+        
+        # Spatial optimizer будет установлен позже через setter
+        self.spatial_optimizer = None
 
         # === ЭКСПЕРТЫ ===
         self.local_expert = SimpleLinearExpert(state_size=self.state_size)
@@ -143,6 +146,13 @@ class MoEConnectionProcessor(nn.Module):
         # Перенос модели на правильное устройство
         self.device_manager.transfer_module(self)
         logger.info(f"MoEConnectionProcessor перенесен на устройство: {self.device}")
+        
+    def set_spatial_optimizer(self, spatial_optimizer):
+        """Устанавливает spatial optimizer для синхронизации логики поиска соседей"""
+        self.spatial_optimizer = spatial_optimizer
+        # Передаем его в connection classifier для синхронизации кэша
+        self.connection_classifier.set_spatial_optimizer(spatial_optimizer)
+        logger.info("Spatial optimizer установлен в MoE processor")
 
     def forward(
         self,

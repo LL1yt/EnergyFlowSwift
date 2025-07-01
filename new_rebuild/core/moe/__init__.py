@@ -36,6 +36,7 @@ from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert, AdaptiveGatingNetwork
 from .moe_processor import MoEConnectionProcessor, GatingNetwork
 from .connection_classifier import UnifiedConnectionClassifier
 from .connection_cache import ConnectionCacheManager
+from .unified_cache_adapter import UnifiedCacheAdapter
 
 
 # Фабричная функция для создания MoE Connection Processor
@@ -75,6 +76,7 @@ __all__ = [
     # Connection Classification and Caching
     "UnifiedConnectionClassifier",
     "ConnectionCacheManager",
+    "UnifiedCacheAdapter",
     # Фабричные функции
     "create_moe_connection_processor",
     "create_connection_classifier",

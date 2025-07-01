@@ -128,6 +128,9 @@ class GPUSpatialProcessor:
             "cache_hit_rate": 0.0,
             "chunk_rebalancing_events": 0,
         }
+        
+        # Флаг инициализации spatial hash (инициализируется только один раз)
+        self._spatial_hash_initialized = False
 
         # Background task для обработки запросов
         self._start_background_processing()
@@ -942,11 +945,8 @@ class GPUSpatialProcessor:
         Ленивая инициализация spatial hash
         Заполняет hash координатами всех клеток решетки если он еще не инициализирован
         """
-        # Простая проверка - есть ли данные в hash
-        stats = self.adaptive_hash.get_comprehensive_stats()
-        total_points = stats.get('spatial_hash', {}).get('total_points', 0)
-        
-        if total_points == 0:
+        # Инициализируем spatial hash только один раз
+        if not self._spatial_hash_initialized:
             logger.debug("🔧 Инициализируем spatial hash автоматически...")
             
             # Вычисляем общее количество клеток в решетке
@@ -957,5 +957,8 @@ class GPUSpatialProcessor:
             
             # Заполняем spatial hash
             self._populate_spatial_hash(dummy_states)
+            
+            # Устанавливаем флаг что инициализация завершена
+            self._spatial_hash_initialized = True
             
             logger.info(f"✅ Spatial hash автоматически инициализирован для {total_cells} клеток")
