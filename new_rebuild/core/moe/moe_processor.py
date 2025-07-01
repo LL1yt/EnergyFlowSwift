@@ -295,7 +295,12 @@ class MoEConnectionProcessor(nn.Module):
         # Проверяем количество соседей (может быть list или tensor)
         neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
         if neighbor_count == 0:
-            return self._empty_forward_result(current_state)
+            logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Клетка {cell_idx} не имеет соседей для обработки!")
+            logger.error(f"   Это невозможно в 3D решетке - проверьте радиус поиска!")
+            raise RuntimeError(
+                f"Клетка {cell_idx} изолирована (0 соседей). "
+                f"Проверьте конфигурацию адаптивного радиуса."
+            )
 
         batch_size = 1
         device = current_state.device

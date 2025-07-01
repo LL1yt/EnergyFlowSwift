@@ -299,7 +299,7 @@ class UnifiedSpatialOptimizer:
             cell_idx: Индекс клетки в решетке
         
         Returns:
-            Список индексов соседних клеток (ВКЛЮЧАЯ саму клетку для совместимости с MoE)
+            Список индексов соседних клеток (БЕЗ самой клетки)
         """
         from ..position import Position3D
         
@@ -317,17 +317,26 @@ class UnifiedSpatialOptimizer:
             # Используем GPU processor для поиска соседей
             neighbors = self.gpu_processor.find_neighbors(coords, adaptive_radius)
             
-            # Убедимся что сама клетка включена
-            if cell_idx not in neighbors:
-                neighbors.append(cell_idx)
+            # НЕ включаем саму клетку - она не является соседом самой себе
+            
+            # Проверяем что у клетки есть соседи
+            if len(neighbors) == 0:
+                logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Клетка {cell_idx} (coords={coords}) не имеет соседей!")
+                logger.error(f"   Адаптивный радиус: {adaptive_radius:.3f}")
+                logger.error(f"   Размеры решетки: {self.dimensions}")
+                logger.error(f"   Это невозможно в 3D кубе - проверьте конфигурацию радиуса!")
+                raise RuntimeError(
+                    f"Клетка {cell_idx} изолирована (0 соседей). "
+                    f"Адаптивный радиус {adaptive_radius:.3f} слишком мал для решетки {self.dimensions}"
+                )
             
             logger.debug(f"✅ Найдено {len(neighbors)} соседей для клетки {cell_idx}: {neighbors[:5]}{'...' if len(neighbors) > 5 else ''}")
             return neighbors
             
         except Exception as e:
             logger.error(f"❌ Ошибка поиска соседей для клетки {cell_idx}: {e}")
-            # Fallback: возвращаем только саму клетку
-            return [cell_idx]
+            # Возвращаем пустой список - клетка изолирована
+            return []
 
     def optimize_lattice_forward(
         self, states: torch.Tensor, processor_fn: Optional[Callable] = None
@@ -384,14 +393,8 @@ class UnifiedSpatialOptimizer:
                     else:
                         logger.debug("🔍 full_lattice_states=None")
                 
-                # ВРЕМЕННОЕ РЕШЕНИЕ: обеспечиваем что у каждой клетки есть хотя бы она сама как сосед
+                # Проверяем количество соседей
                 neighbor_count = neighbor_indices.numel() if isinstance(neighbor_indices, torch.Tensor) else len(neighbor_indices)
-                if neighbor_count == 0:
-                    # logger.warning(f"⚠️ Клетка {cell_idx} не имеет соседей, добавляем саму себя")
-                    if isinstance(neighbor_indices, torch.Tensor):
-                        neighbor_indices = torch.tensor([cell_idx], device=neighbor_indices.device, dtype=neighbor_indices.dtype)
-                    else:
-                        neighbor_indices = [cell_idx]
                 # Handle batch processing
                 if current_state.dim() == 3:  # [batch, 1, features]
                     batch_size = current_state.shape[0]

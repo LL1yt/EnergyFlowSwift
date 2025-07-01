@@ -25,7 +25,7 @@ class LatticeSettings:
     adaptive_radius_enabled: bool = True
     adaptive_radius_ratio: float = 0.2
     adaptive_radius_max: float = 100.0
-    adaptive_radius_min: float = 0.1
+    adaptive_radius_min: float = 1.0  # Минимум 1.0 для гарантии хотя бы ближайших соседей
 
     # Новые параметры для классификации соединений
     local_distance_ratio: float = (

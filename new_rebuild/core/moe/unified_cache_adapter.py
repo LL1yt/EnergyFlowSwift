@@ -57,9 +57,6 @@ class UnifiedCacheAdapter:
         # Используем spatial optimizer для поиска соседей
         neighbors = self.spatial_optimizer.find_neighbors_by_radius_safe(cell_idx)
         
-        # Убираем саму клетку из списка соседей если она там есть
-        neighbors = [n for n in neighbors if n != cell_idx]
-        
         logger.debug(
             f"Spatial optimizer нашел {len(neighbors)} соседей для клетки {cell_idx}"
         )
