@@ -59,12 +59,9 @@ class ConfigValidator:
         required_paths = [
             ('model', 'config.model'),
             ('model.state_size', 'config.model.state_size'),
-            ('model.message_dim', 'config.model.message_dim'),
-            ('model.hidden_dim', 'config.model.hidden_dim'),
             ('model.neighbor_count', 'config.model.neighbor_count'),
-            ('model.num_heads', 'config.model.num_heads'),
-            ('model.use_layer_norm', 'config.model.use_layer_norm'),
-            ('model.dropout_rate', 'config.model.dropout_rate'),
+            # message_dim, hidden_dim, target_params перенесены в настройки экспертов
+            # model.num_heads, model.use_layer_norm, model.dropout_rate - это опциональные параметры
         ]
         ConfigValidator._validate_paths(config, required_paths, "Model")
     

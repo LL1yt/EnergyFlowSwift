@@ -913,7 +913,7 @@ class ModePresets:
         
         # Gating network
         expert_gating_params: int = 800  # примерно
-        expert_gating_hidden_dim: int = 11  # для достижения ~800 параметров
+        expert_gating_hidden_dim: int = 24  # для достижения ~800 параметров
         
         # Memory & Performance
         memory_reserve_gb: float = 2.0
@@ -964,7 +964,7 @@ class ModePresets:
         expert_distant_ode_dropout_rate: float = 0.1  # стандартный dropout
         
         # Gating network
-        expert_gating_params: int = 808  # целевое значение
+        expert_gating_params: int = 2000  # целевое значение
         expert_gating_hidden_dim: int = 64  # стандартное значение
         
         # Memory & Performance
@@ -1016,7 +1016,7 @@ class ModePresets:
         expert_distant_ode_dropout_rate: float = 0.15  # больше regularization
         
         # Gating network
-        expert_gating_params: int = 1000  # больше для сложных решений
+        expert_gating_params: int = 3000  # больше для сложных решений
         expert_gating_hidden_dim: int = 128  # увеличено для производительности
         
         # Memory & Performance

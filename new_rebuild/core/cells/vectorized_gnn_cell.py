@@ -226,14 +226,14 @@ class VectorizedGNNCell(BaseCell):
         # Параметры с fallback на конфиг
         self.state_size = state_size or config.model.state_size
         self.neighbor_count = neighbor_count or config.model.neighbor_count
-        self.message_dim = message_dim or config.model.message_dim
-        self.hidden_dim = hidden_dim or config.model.hidden_dim
+        self.message_dim = message_dim  # Теперь должен быть передан явно
+        self.hidden_dim = hidden_dim  # Теперь должен быть передан явно
         self.external_input_size = (
             external_input_size or config.model.external_input_size
         )
         self.activation = activation or config.model.activation
-        self.target_params = target_params or config.model.target_params
-        self.use_attention = use_attention or config.model.use_attention
+        self.target_params = target_params  # Теперь должен быть передан явно
+        self.use_attention = use_attention  # Теперь должен быть передан явно
 
         # Инициализация векторизованных компонентов
         self.message_network = VectorizedMessageNetwork(
@@ -268,8 +268,9 @@ class VectorizedGNNCell(BaseCell):
         total_params = sum(p.numel() for p in self.parameters())
 
         logger.info(f"🚀 VectorizedGNNCell initialized:")
+        target_info = f"(target: {self.target_params:,})" if self.target_params else ""
         logger.info(
-            f"   Total params: {total_params:,} (target: {self.target_params:,})"
+            f"   Total params: {total_params:,} {target_info}"
         )
         logger.info(f"   State size: {self.state_size}")
         logger.info(f"   Message dim: {self.message_dim}")

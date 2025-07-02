@@ -46,6 +46,7 @@ from .config_components import (
     LocalExpertSettings,
     FunctionalExpertSettings,
     DistantExpertSettings,
+    GatingNetworkSettings,
     # Новые компоненты для hardcoded значений
     TrainingOptimizerSettings,
     EmbeddingMappingSettings,
@@ -383,7 +384,7 @@ class SimpleProjectConfig:
             f"   📊 Lattice: {self.lattice.dimensions} = {self.lattice.total_cells} cells"
         )
         logging.info(
-            f"   🧠 Model: {self.model.state_size}D state, {self.model.target_params} params"
+            f"   🧠 Model: {self.model.state_size}D state (общий для всех экспертов)"
         )
         logging.info(f"   🖥️ Device: {self.device_manager.get_device_str()}")
 
