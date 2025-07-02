@@ -52,12 +52,10 @@ from .gpu_spatial_hashing import (
 )
 
 # Импорт векторизованного пространственного процессора
-try:
-    from .vectorized_spatial_processor import VectorizedSpatialProcessor
+# СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
+from .vectorized_spatial_processor import VectorizedSpatialProcessor
 
-    VECTORIZED_SPATIAL_AVAILABLE = True
-except ImportError:
-    VECTORIZED_SPATIAL_AVAILABLE = False
+VECTORIZED_SPATIAL_AVAILABLE = True
 
 
 # Фабрика для создания оптимального пространственного процессора
@@ -146,6 +144,5 @@ __all__ = [
     "get_recommended_spatial_processor",
 ]
 
-# Условный экспорт векторизованных компонентов
-if VECTORIZED_SPATIAL_AVAILABLE:
-    __all__.append("VectorizedSpatialProcessor")
+# Экспорт векторизованных компонентов
+__all__.append("VectorizedSpatialProcessor")

@@ -262,7 +262,14 @@ def setup_logging(
             "ERROR": logging.ERROR,
             "CRITICAL": logging.CRITICAL,
         }
-        log_level = level_map.get(level.upper(), logging.INFO)
+        # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
+        level_upper = level.upper()
+        if level_upper not in level_map:
+            raise RuntimeError(
+                f"❌ КРИТИЧЕСКАЯ ОШИБКА: Неизвестный уровень логирования '{level}'. "
+                f"Допустимые значения: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+            )
+        log_level = level_map[level_upper]
     else:
         # По умолчанию INFO
         log_level = logging.INFO
@@ -334,10 +341,19 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         # Автоматически определяем имя модуля
         frame = inspect.currentframe().f_back
         if frame:
-            module_name = frame.f_globals.get("__name__", "unknown")
+            # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
+            if "__name__" not in frame.f_globals:
+                raise RuntimeError(
+                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Невозможно определить имя модуля. "
+                    "Убедитесь, что вызов get_logger() происходит из правильного модуля Python"
+                )
+            module_name = frame.f_globals["__name__"]
             name = module_name
         else:
-            name = "unknown"
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Невозможно получить текущий фрейм выполнения. "
+                "Проблема с интерпретатором Python или окружением"
+            )
 
     logger = logging.getLogger(name)
 

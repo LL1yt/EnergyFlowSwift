@@ -13,13 +13,10 @@ from ...config import get_project_config
 from .base_cell import BaseCell
 
 # Импорты векторизованных компонентов
-try:
-    from .vectorized_gnn_cell import VectorizedGNNCell
+# СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
+from .vectorized_gnn_cell import VectorizedGNNCell
 
-    VECTORIZED_AVAILABLE = True
-except ImportError:
-    VECTORIZED_AVAILABLE = False
-    get_logger(__name__).warning("⚠️  Vectorized components not available - using legacy versions")
+VECTORIZED_AVAILABLE = True
 
 # Импорты legacy компонентов (DEPRECATED)
 # from .gnn_cell import GNNCell  # DEPRECATED - используйте VectorizedGNNCell
@@ -116,6 +113,5 @@ __all__ = [
     "get_performance_comparison",
 ]
 
-# Условный экспорт векторизованных компонентов
-if VECTORIZED_AVAILABLE:
-    __all__.append("VectorizedGNNCell")
+# Экспорт векторизованных компонентов
+__all__.append("VectorizedGNNCell")

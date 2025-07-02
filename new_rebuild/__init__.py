@@ -18,20 +18,14 @@ Clean 3D Cellular Neural Network Implementation
 from .config import ProjectConfig, get_project_config, set_project_config
 
 # Основные компоненты
-try:
-    from .core import BaseCell, VectorizedGNNCell, create_cell
+# СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
+from .core import BaseCell, VectorizedGNNCell, create_cell
 
-    _CORE_AVAILABLE = True
-except ImportError:
-    _CORE_AVAILABLE = False
+_CORE_AVAILABLE = True
 
-# Deprecated компоненты
-try:
-    from .core import GMLPCell
-
-    _GMLP_AVAILABLE = True
-except ImportError:
-    _GMLP_AVAILABLE = False
+# Deprecated компоненты больше не поддерживаются
+# GMLPCell удален - используйте VectorizedGNNCell
+_GMLP_AVAILABLE = False
 
 __version__ = "0.1.0"
 
@@ -43,17 +37,15 @@ __all__ = [
     "set_project_config",
 ]
 
-# Добавляем core компоненты если доступны
-if _CORE_AVAILABLE:
-    __all__.extend(
-        [
-            "BaseCell",
-            # "NCACell",  # DEPRECATED - удалено
-            "VectorizedGNNCell",  # Векторизованная GNN клетка
-            "create_cell",  # Фабрика клеток
-        ]
-    )
+# Добавляем core компоненты
+__all__.extend(
+    [
+        "BaseCell",
+        # "NCACell",  # DEPRECATED - удалено
+        "VectorizedGNNCell",  # Векторизованная GNN клетка
+        "create_cell",  # Фабрика клеток
+    ]
+)
 
-# Добавляем deprecated компоненты если доступны
-if _GMLP_AVAILABLE:
-    __all__.append("GMLPCell")  # DEPRECATED - используйте GNNCell
+# Deprecated компоненты удалены
+# GMLPCell больше не поддерживается - используйте VectorizedGNNCell

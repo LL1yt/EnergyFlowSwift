@@ -55,6 +55,7 @@ class ModelCacheManager:
             except Exception as e:
                 self.logger.warning(f"Failed to load cache metadata: {e}")
 
+        # Файл не существует - создаем новый
         return {"models": {}, "created": None, "version": "1.0"}
 
     def _save_metadata(self):
@@ -142,13 +143,13 @@ class ModelCacheManager:
         self.logger.debug(f"  local_path: {local_path}")
         self.logger.debug(f"  is_cached: {is_cached}")
 
-        # 1. Если предпочитаем локальную версию
+        # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
         if self.prefer_local:
             if is_cached:
                 self.logger.info(f"📁 Using cached model: {local_path}")
                 return str(local_path)
 
-            # Локальная версия предпочтительна, но её нет. Пытаемся скачать.
+            # Локальная версия предпочтительна, но её нет
             if self.auto_download:
                 self.logger.info(
                     f"🔄 Model '{model_name}' not in cache, attempting to download."
@@ -159,15 +160,18 @@ class ModelCacheManager:
                     )
                     return str(local_path)
                 else:
-                    self.logger.warning(
-                        f"⚠️ Failed to download '{model_name}'. Falling back to online version."
+                    raise RuntimeError(
+                        f"❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось скачать модель '{model_name}'. "
+                        f"Проверьте интернет-соединение или отключите prefer_local_models в конфигурации"
                     )
             else:
-                self.logger.warning(
-                    f"Local model preferred but not found, and auto-download is off. Falling back to online."
+                raise RuntimeError(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Локальная модель '{model_name}' не найдена, "
+                    f"а автоматическая загрузка отключена (auto_download_models=False). "
+                    f"Включите auto_download_models или загрузите модель вручную"
                 )
 
-        # 2. Если локальная версия не предпочтительна или скачать не удалось, используем онлайн
+        # Если локальная версия не предпочтительна, используем онлайн
         self.logger.info(f"🌐 Using online model: {model_name}")
         return model_name
 
@@ -226,6 +230,7 @@ class ModelCacheManager:
                     total_size += file.stat().st_size
             return total_size / (1024 * 1024)
         except Exception:
+            self.logger.warning(f"⚠️ невозможно вычислить размер директории {path}")
             return 0.0
 
     def download_distilbert(self) -> bool:
