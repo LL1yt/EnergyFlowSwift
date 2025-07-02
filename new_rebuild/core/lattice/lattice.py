@@ -19,7 +19,7 @@ from datetime import datetime
 
 # Импорты из new_rebuild
 from ...config import get_project_config
-from ..cells import create_cell
+# from ..cells import create_cell  # Не нужен в MoE архитектуре
 
 # Локальные импорты из lattice модуля
 from .enums import Face
@@ -70,8 +70,8 @@ class Lattice3D(nn.Module):
                 device=str(self.device),
             )
 
-        # Создаем GNN клетки для MoE
-        self.cells = self._create_gnn_cells()
+        # В MoE архитектуре клетки создаются внутри экспертов
+        # self.cells больше не нужен
 
         # Unified Spatial Optimizer с MoE поддержкой
         spatial_config = OptimizationConfig(
@@ -127,28 +127,10 @@ class Lattice3D(nn.Module):
                 f"✅ Lattice3D MoE initialized successfully:\n"
                 f"     INPUT_POINTS: {len(self.input_points)}\n"
                 f"     OUTPUT_POINTS: {len(self.output_points)}\n"
-                f"     CELL_TYPE: {type(self.cells).__name__}\n"
+                f"     CELL_TYPE: MoE (Multiple Experts)\n"
                 f"     SPATIAL_OPTIMIZER: {type(self.spatial_optimizer).__name__}"
             )
 
-    def _create_gnn_cells(self):
-        """
-        Создает GNN клетки для MoE архитектуры.
-        """
-        gnn_config = {
-            "state_size": self.config.model.state_size,
-            "message_dim": self.config.model.message_dim,
-            "hidden_dim": self.config.model.hidden_dim,
-            "neighbor_count": self.config.model.neighbor_count,
-            "external_input_size": self.config.model.external_input_size,
-            "activation": self.config.model.activation,
-            "target_params": self.config.model.target_params,
-            "use_attention": self.config.model.use_attention,
-            "device": self.config.current_device,
-            "debug_mode": self.config.logging.debug_mode,
-        }
-        cell = create_cell("vectorized_gnn", **gnn_config)
-        return cell.to(self.device)
 
     def _create_moe_processor(self):
         """Создаёт MoE processor для MoE архитектуры"""
@@ -164,11 +146,7 @@ class Lattice3D(nn.Module):
         """
         Инициализирует тензор состояний клеток.
         """
-        state_size = (
-            self.cells.state_size
-            if hasattr(self.cells, "state_size")
-            else self.config.model.state_size
-        )
+        state_size = self.config.model.state_size
 
         dims = (self.pos_helper.total_positions, state_size)
 
@@ -324,8 +302,9 @@ class Lattice3D(nn.Module):
             )
 
         # Добавляем информацию о клетках
-        if hasattr(self.cells, "get_info"):
-            stats["cell_info"] = self.cells.get_info()
+        # В MoE архитектуре информация о клетках хранится в экспертах
+        if hasattr(self.moe_processor, "get_info"):
+            stats["moe_info"] = self.moe_processor.get_info()
 
         return stats
 

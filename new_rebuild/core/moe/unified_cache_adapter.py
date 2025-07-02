@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 import torch
 import numpy as np
 
-from new_rebuild.utils import get_logger, setup_logging
+from new_rebuild.utils import get_logger
 from new_rebuild.core.moe.connection_types import ConnectionCategory
 from new_rebuild.core.moe.connection_cache import CachedConnectionInfo
 
@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from new_rebuild.core.lattice.spatial_optimization import UnifiedSpatialOptimizer
     from new_rebuild.core.moe.connection_cache import ConnectionCacheManager
 
-setup_logging(__name__)
 logger = get_logger(__name__)
 
 

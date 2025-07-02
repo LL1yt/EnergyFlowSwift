@@ -43,7 +43,7 @@ class LatticeSettings:
     
     # Адаптивный радиус - константы алгоритма (не дублирование!)
     adaptive_radius_enabled: bool = True
-    adaptive_radius_ratio: float = 0.2
+    adaptive_radius_ratio: float = 0.3
     adaptive_radius_max: float = 100.0
     adaptive_radius_min: float = 1.0
 
@@ -85,19 +85,17 @@ class LatticeSettings:
 
 @dataclass
 class ModelSettings:
-    """Настройки модели GNN"""
+    """Настройки модели - общие параметры для всех экспертов"""
     
-    # Основные размеры - устанавливаются через пресеты
-    state_size: int
-    message_dim: int
-    hidden_dim: int
-    target_params: int
+    # Основной параметр - устанавливается через пресеты
+    state_size: int  # ОБЩИЙ для всех экспертов!
     
     # Динамический neighbor count - алгоритмическая константа
     neighbor_count: int = -1    # -1 означает динамическое определение
     external_input_size: int = 16
 
     # Архитектурные параметры - константы алгоритма
+    # ПРИМЕЧАНИЕ: hidden_dim, message_dim, target_params перенесены в настройки экспертов
     activation: str = "gelu"
     use_attention: bool = True
     aggregation: str = "attention"
@@ -152,9 +150,12 @@ class LocalExpertSettings:
     type: str = "linear"
     alpha: float = 0.1
     beta: float = 0.9
-    neighbor_agg_hidden1: int = 32
-    neighbor_agg_hidden2: int = 16
-    processor_hidden: int = 64
+    
+    # Параметры для настройки количества параметров модели
+    neighbor_agg_hidden1: int = 32  # Можно менять для изменения размера модели
+    neighbor_agg_hidden2: int = 16  # Можно менять для изменения размера модели
+    processor_hidden: int = 64      # Можно менять для изменения размера модели
+    
     max_neighbors_buffer: int = 200
     use_attention: bool = True
     default_batch_size: int = 1
@@ -171,8 +172,11 @@ class FunctionalExpertSettings:
     gnn_ratio: float = 0.6      # 60% параметров для GNN
     cnf_ratio: float = 0.4      # 40% параметров для CNF
     use_attention: bool = True
-    message_dim: int = 16
-    hidden_dim: int = 32
+    
+    # Параметры для настройки количества параметров модели
+    message_dim: int = 16       # Можно менять для изменения размера модели
+    hidden_dim: int = 32        # Можно менять для изменения размера модели
+    
     integration_steps: int = 3
     adaptive_step_size: bool = True
 
@@ -191,6 +195,12 @@ class DistantExpertSettings:
     max_batch_size: int = 1024
     adaptive_method: str = "LIPSCHITZ_BASED"
     memory_efficient: bool = True
+    
+    # Параметры для VectorizedNeuralODE (можно менять для изменения размера модели)
+    ode_hidden_dim: Optional[int] = None  # None = max(16, state_size // 2)
+    ode_dropout_rate: float = 0.1
+    ode_damping_strength: float = 0.1
+    ode_time_embedding_dim_ratio: float = 0.25  # hidden_dim // 4
 
 
 @dataclass
@@ -600,6 +610,10 @@ class ValidationSettings:
     auto_fix_conflicts: bool = True
     check_memory_requirements: bool = True
     estimate_compute_time: bool = False
+    
+    # Настройки для тестирования
+    num_forward_passes: int = 1  # Количество forward pass'ов для теста стабильности
+    stability_threshold: float = 0.1  # Порог стабильности (10% по умолчанию)
 
 
 @dataclass
@@ -866,13 +880,10 @@ class ModePresets:
     class DebugPreset:
         """Настройки для DEBUG режима - быстрые тесты и отладка"""
         # Lattice
-        lattice_dimensions: Tuple[int, int, int] = (8, 8, 8)
+        lattice_dimensions: Tuple[int, int, int] = (10, 10, 10)
         
         # Model
-        model_state_size: int = 32
-        model_hidden_dim: int = 64
-        model_message_dim: int = 16
-        model_target_params: int = 8000
+        model_state_size: int = 24  # Общий для всех экспертов
         
         # Training
         training_batch_size: int = 8
@@ -881,10 +892,28 @@ class ModePresets:
         training_checkpoint_frequency: int = 5
         training_max_samples: int = 50
         
-        # Experts
-        expert_local_params: int = 2000
-        expert_functional_params: int = 5000
-        expert_distant_params: int = 3000
+        # Experts (уменьшены для DEBUG)
+        expert_local_params: int = 1500  # было 2000
+        expert_functional_params: int = 4000  # было 5000
+        expert_distant_params: int = 2500  # было 3000
+        
+        # Дополнительные параметры экспертов для DEBUG
+        # Local expert
+        expert_local_neighbor_agg_hidden1: int = 12  # меньше для быстрых тестов
+        expert_local_neighbor_agg_hidden2: int = 12  # меньше для быстрых тестов
+        expert_local_processor_hidden: int = 12      # меньше для быстрых тестов
+        
+        # Functional expert
+        expert_functional_hidden_dim: int = 12  # меньше для быстрых тестов
+        expert_functional_message_dim: int = 8  # меньше для быстрых тестов
+        
+        # Distant expert (CNF)
+        expert_distant_ode_hidden_dim: int = 48  # меньше для быстрых тестов
+        expert_distant_ode_dropout_rate: float = 0.05  # меньше dropout для тестов
+        
+        # Gating network
+        expert_gating_params: int = 800  # примерно
+        expert_gating_hidden_dim: int = 11  # для достижения ~800 параметров
         
         # Memory & Performance
         memory_reserve_gb: float = 2.0
@@ -895,6 +924,10 @@ class ModePresets:
         logging_debug_mode: bool = True
         logging_enable_profiling: bool = True
         
+        # Validation settings для тестов
+        validation_num_forward_passes: int = 3  # Несколько проходов для теста стабильности
+        validation_stability_threshold: float = 0.15  # 15% допустимая вариация в debug режиме
+        
     @dataclass
     class ExperimentPreset:
         """Настройки для EXPERIMENT режима - исследования и эксперименты"""
@@ -902,10 +935,7 @@ class ModePresets:
         lattice_dimensions: Tuple[int, int, int] = (15, 15, 15)
         
         # Model
-        model_state_size: int = 64
-        model_hidden_dim: int = 128
-        model_message_dim: int = 32
-        model_target_params: int = 25000
+        model_state_size: int = 64  # Общий для всех экспертов
         
         # Training
         training_batch_size: int = 16
@@ -919,6 +949,24 @@ class ModePresets:
         expert_functional_params: int = 8000
         expert_distant_params: int = 4000
         
+        # Дополнительные параметры экспертов для EXPERIMENT
+        # Local expert
+        expert_local_neighbor_agg_hidden1: int = 32  # стандартные значения
+        expert_local_neighbor_agg_hidden2: int = 16
+        expert_local_processor_hidden: int = 64
+        
+        # Functional expert
+        expert_functional_hidden_dim: int = 32   # стандартные значения
+        expert_functional_message_dim: int = 16
+        
+        # Distant expert (CNF)
+        expert_distant_ode_hidden_dim: Optional[int] = None  # авто: max(16, state_size // 2)
+        expert_distant_ode_dropout_rate: float = 0.1  # стандартный dropout
+        
+        # Gating network
+        expert_gating_params: int = 808  # целевое значение
+        expert_gating_hidden_dim: int = 64  # стандартное значение
+        
         # Memory & Performance
         memory_reserve_gb: float = 10.0
         dataloader_workers: int = 4
@@ -928,6 +976,10 @@ class ModePresets:
         logging_debug_mode: bool = False
         logging_enable_profiling: bool = True
         
+        # Validation settings для экспериментов
+        validation_num_forward_passes: int = 5  # Больше проходов для экспериментов
+        validation_stability_threshold: float = 0.1  # 10% стандартный порог
+        
     @dataclass
     class OptimizedPreset:
         """Настройки для OPTIMIZED режима - финальные прогоны"""
@@ -935,10 +987,7 @@ class ModePresets:
         lattice_dimensions: Tuple[int, int, int] = (30, 30, 30)
         
         # Model
-        model_state_size: int = 128
-        model_hidden_dim: int = 256
-        model_message_dim: int = 64
-        model_target_params: int = 100000
+        model_state_size: int = 128  # Общий для всех экспертов
         
         # Training
         training_batch_size: int = 32
@@ -952,6 +1001,24 @@ class ModePresets:
         expert_functional_params: int = 15000
         expert_distant_params: int = 8000
         
+        # Дополнительные параметры экспертов для OPTIMIZED
+        # Local expert
+        expert_local_neighbor_agg_hidden1: int = 64  # увеличены для производительности
+        expert_local_neighbor_agg_hidden2: int = 32
+        expert_local_processor_hidden: int = 128
+        
+        # Functional expert
+        expert_functional_hidden_dim: int = 64   # увеличены для производительности
+        expert_functional_message_dim: int = 32
+        
+        # Distant expert (CNF)
+        expert_distant_ode_hidden_dim: int = 64  # увеличено для производительности
+        expert_distant_ode_dropout_rate: float = 0.15  # больше regularization
+        
+        # Gating network
+        expert_gating_params: int = 1000  # больше для сложных решений
+        expert_gating_hidden_dim: int = 128  # увеличено для производительности
+        
         # Memory & Performance
         memory_reserve_gb: float = 20.0
         dataloader_workers: int = 8
@@ -960,6 +1027,10 @@ class ModePresets:
         logging_level: str = "WARNING"
         logging_debug_mode: bool = False
         logging_enable_profiling: bool = False
+        
+        # Validation settings для финальных прогонов
+        validation_num_forward_passes: int = 10  # Много проходов для точной проверки
+        validation_stability_threshold: float = 0.05  # 5% более строгий порог
         
     # Экземпляры пресетов
     debug: DebugPreset = field(default_factory=DebugPreset)

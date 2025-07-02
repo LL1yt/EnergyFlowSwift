@@ -96,21 +96,42 @@ class VectorizedNeuralODE(nn.Module):
         # Размер входа: собственное состояние + агрегированные соседи
         input_size = state_size * 2
 
+        # Получаем параметры из конфигурации
+        config = get_project_config()
+        distant_config = config.expert.distant if config.expert else None
+        
+        dropout_rate = (
+            distant_config.ode_dropout_rate 
+            if distant_config and hasattr(distant_config, 'ode_dropout_rate')
+            else 0.1
+        )
+        damping_strength = (
+            distant_config.ode_damping_strength
+            if distant_config and hasattr(distant_config, 'ode_damping_strength')
+            else 0.1
+        )
+        time_embedding_ratio = (
+            distant_config.ode_time_embedding_dim_ratio
+            if distant_config and hasattr(distant_config, 'ode_time_embedding_dim_ratio')
+            else 0.25
+        )
+        
         # Компактная но мощная архитектура для vectorized operations
         self.ode_network = nn.Sequential(
             nn.Linear(input_size, self.hidden_dim, bias=True),
             nn.GELU(),
-            nn.Dropout(0.1),  # Небольшая regularization
+            nn.Dropout(dropout_rate),  # Из конфигурации
             nn.Linear(self.hidden_dim, self.hidden_dim // 2, bias=True),
             nn.GELU(),
             nn.Linear(self.hidden_dim // 2, state_size, bias=True),
         )
 
         # Learnable damping для стабилизации
-        self.damping_strength = nn.Parameter(torch.tensor(0.1))
+        self.damping_strength = nn.Parameter(torch.tensor(damping_strength))
 
         # Time embedding для time-dependent dynamics
-        self.time_embedding = nn.Linear(1, self.hidden_dim // 4, bias=False)
+        time_embedding_dim = int(self.hidden_dim * time_embedding_ratio)
+        self.time_embedding = nn.Linear(1, time_embedding_dim, bias=False)
 
         # Normalization layers
         self.input_norm = nn.LayerNorm(input_size)
@@ -229,10 +250,15 @@ class GPUEnhancedCNF(nn.Module):
         self.device_manager = get_device_manager()
         self.device = self.device_manager.get_device()
 
-        # Vectorized Neural ODE
+        # Получаем конфигурацию distant expert
+        config = get_project_config()
+        distant_config = config.expert.distant if config.expert else None
+        
+        # Vectorized Neural ODE с параметрами из конфигурации
         self.neural_ode = VectorizedNeuralODE(
             state_size=state_size,
             connection_type=connection_type,
+            hidden_dim=distant_config.ode_hidden_dim if distant_config else None,
             batch_size=max_batch_size,
         )
 

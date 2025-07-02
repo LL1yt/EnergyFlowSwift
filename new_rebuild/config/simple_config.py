@@ -206,10 +206,7 @@ class SimpleProjectConfig:
         self.lattice = LatticeSettings(dimensions=preset.lattice_dimensions)
         
         self.model = ModelSettings(
-            state_size=preset.model_state_size,
-            message_dim=preset.model_message_dim, 
-            hidden_dim=preset.model_hidden_dim,
-            target_params=preset.model_target_params
+            state_size=preset.model_state_size
         )
         
         self.training = TrainingSettings(
@@ -238,14 +235,41 @@ class SimpleProjectConfig:
         )
         
         # Expert settings
-        local_expert = LocalExpertSettings(params=preset.expert_local_params)
-        functional_expert = FunctionalExpertSettings(params=preset.expert_functional_params)
-        distant_expert = DistantExpertSettings(params=preset.expert_distant_params)
+        local_expert = LocalExpertSettings(
+            params=preset.expert_local_params,
+            neighbor_agg_hidden1=getattr(preset, 'expert_local_neighbor_agg_hidden1', 32),
+            neighbor_agg_hidden2=getattr(preset, 'expert_local_neighbor_agg_hidden2', 16),
+            processor_hidden=getattr(preset, 'expert_local_processor_hidden', 64)
+        )
+        functional_expert = FunctionalExpertSettings(
+            params=preset.expert_functional_params,
+            hidden_dim=getattr(preset, 'expert_functional_hidden_dim', 32),
+            message_dim=getattr(preset, 'expert_functional_message_dim', 16)
+        )
+        distant_expert = DistantExpertSettings(
+            params=preset.expert_distant_params,
+            ode_hidden_dim=getattr(preset, 'expert_distant_ode_hidden_dim', None),
+            ode_dropout_rate=getattr(preset, 'expert_distant_ode_dropout_rate', 0.1)
+        )
+        
+        # Gating network settings
+        gating_network = GatingNetworkSettings(
+            params=getattr(preset, 'expert_gating_params', 808),
+            state_size=preset.model_state_size,  # Используем общий state_size
+            hidden_dim=getattr(preset, 'expert_gating_hidden_dim', 64)
+        )
         
         self.expert = ExpertSettings(
             local=local_expert,
             functional=functional_expert,
-            distant=distant_expert
+            distant=distant_expert,
+            gating=gating_network
+        )
+        
+        # Validation settings из пресетов
+        self.validation = ValidationSettings(
+            num_forward_passes=getattr(preset, 'validation_num_forward_passes', 1),
+            stability_threshold=getattr(preset, 'validation_stability_threshold', 0.1)
         )
         
     def _get_current_preset(self):
@@ -545,7 +569,15 @@ def get_project_config() -> SimpleProjectConfig:
     """Получить глобальный экземпляр конфигурации"""
     global _global_config
     if _global_config is None:
-        _global_config = SimpleProjectConfig()
+        import warnings
+        warnings.warn(
+            "⚠️ Глобальный конфиг не был инициализирован явно! "
+            "Создаем конфиг по умолчанию (DEBUG режим). "
+            "Рекомендуется использовать set_project_config() или create_*_config() функции "
+            "в начале вашего скрипта для явной инициализации.",
+            stacklevel=2
+        )
+        _global_config = create_debug_config()
     return _global_config
 
 

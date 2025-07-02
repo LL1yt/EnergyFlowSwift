@@ -152,7 +152,7 @@ class ConfigValidator:
             ('training.learning_rate', 'config.training.learning_rate'),
             ('training.num_epochs', 'config.training.num_epochs'),
             ('training.gradient_clip_norm', 'config.training.gradient_clip_norm'),
-            ('training.optimizer_type', 'config.training.optimizer_type'),
+            ('training.optimizer', 'config.training.optimizer'),  # Изменено с optimizer_type на optimizer
         ]
         ConfigValidator._validate_paths(config, required_paths, "Training")
     
@@ -162,7 +162,7 @@ class ConfigValidator:
         required_paths = [
             ('logging', 'config.logging'),
             ('logging.level', 'config.logging.level'),
-            ('logging.format', 'config.logging.format'),
+            ('logging.log_format', 'config.logging.log_format'),  # Изменено с format на log_format
             ('logging.enable_file_logging', 'config.logging.enable_file_logging'),
             ('logging.log_dir', 'config.logging.log_dir'),
         ]

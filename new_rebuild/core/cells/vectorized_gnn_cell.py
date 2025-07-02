@@ -273,7 +273,8 @@ class VectorizedGNNCell(BaseCell):
         )
         logger.info(f"   State size: {self.state_size}")
         logger.info(f"   Message dim: {self.message_dim}")
-        logger.info(f"   Neighbor count: {self.neighbor_count}")
+        neighbor_info = "dynamic" if self.neighbor_count == -1 else str(self.neighbor_count)
+        logger.info(f"   Neighbor count: {neighbor_info}")
         logger.info(f"   Use attention: {self.use_attention}")
 
     def forward(

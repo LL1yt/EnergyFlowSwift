@@ -29,7 +29,6 @@ import time
 from torch.utils.data import DataLoader
 
 from ...utils.logging import get_logger
-from ...utils.device_manager import DeviceManager
 from ...config.simple_config import SimpleProjectConfig
 
 from ..common.interfaces import (
@@ -66,7 +65,8 @@ class EmbeddingTrainer(TrainingInterface):
         from ...config import set_project_config
         set_project_config(config)
         
-        self.device_manager = DeviceManager(config.device)
+        # Используем device_manager из конфига вместо создания нового
+        self.device_manager = config.device_manager
         self.device = self.device_manager.device
 
         logger.info(f"Инициализация EmbeddingTrainer на устройстве: {self.device}")

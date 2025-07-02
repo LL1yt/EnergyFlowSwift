@@ -106,13 +106,14 @@ class HybridGNN_CNF_Expert(nn.Module):
         # === КОМПОНЕНТЫ ГИБРИДНОГО ЭКСПЕРТА ===
 
         # 1. GNN компонент (примерно 60% от общих параметров)
+        # Используем параметры из настроек функционального эксперта
         self.gnn_component = VectorizedGNNCell(
             state_size=self.state_size,
             neighbor_count=self.neighbor_count,
-            message_dim=config.model.message_dim,
-            hidden_dim=config.model.hidden_dim,
+            message_dim=config.expert.functional.message_dim,
+            hidden_dim=config.expert.functional.hidden_dim,
             external_input_size=config.model.external_input_size,
-            use_attention=config.model.use_attention,
+            use_attention=config.expert.functional.use_attention,
         )
 
         # 2. CNF компонент (примерно 25% от общих параметров)
