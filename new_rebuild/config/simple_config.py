@@ -43,6 +43,9 @@ from .config_components import (
     TrainingEmbeddingSettings,
     NeighborSettings,
     ExpertSettings,
+    LocalExpertSettings,
+    FunctionalExpertSettings,
+    DistantExpertSettings,
     # Новые компоненты для hardcoded значений
     TrainingOptimizerSettings,
     EmbeddingMappingSettings,

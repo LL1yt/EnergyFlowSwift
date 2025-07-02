@@ -155,7 +155,7 @@ class LocalExpertSettings:
     neighbor_agg_hidden1: int = 32
     neighbor_agg_hidden2: int = 16
     processor_hidden: int = 64
-    max_neighbors_buffer: int = 100
+    max_neighbors_buffer: int = 200
     use_attention: bool = True
     default_batch_size: int = 1
 
@@ -821,7 +821,7 @@ class ArchitectureConstants:
     
     # Пространственная оптимизация
     spatial_cell_size: int = 2
-    spatial_max_neighbors: int = 1000
+    spatial_max_neighbors: int = 20000 # Биологический лимит
     spatial_log_frequency: int = 500
     spatial_chunk_overlap: int = 8
     

@@ -25,6 +25,8 @@ from .position import Position3D
 from .gpu_spatial_hashing import GPUSpatialHashGrid
 
 logger = get_logger(__name__)
+# Конфигурация
+config = get_project_config()
 
 
 class VectorizedNeighborFinder:
@@ -75,7 +77,7 @@ class VectorizedNeighborFinder:
         self,
         cell_indices: torch.Tensor,
         search_radius: float,
-        max_neighbors: int = 1000,
+        max_neighbors: int = config.neighbors.max_neighbors,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Векторизованный поиск соседей для batch клеток
@@ -137,8 +139,6 @@ class VectorizedSpatialProcessor:
         # Векторизованный поиск соседей
         self.neighbor_finder = VectorizedNeighborFinder(dimensions, self.device)
 
-        # Конфигурация
-        config = get_project_config()
         self.search_radius = config.calculate_adaptive_radius()
         self.max_neighbors = config.calculate_dynamic_neighbors()
 
