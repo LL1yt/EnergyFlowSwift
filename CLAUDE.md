@@ -26,7 +26,7 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 
 #### **`new_rebuild/config/` - Централизованная конфигурация**
 
-- **`__init__.py`** - Экспорт SimpleProjectConfig как основного ProjectConfig, включает все компоненты конфигурации и фабричные функции.
+- **`__init__.py`** - Экспорт SimpleProjectConfig как основного ProjectConfig, включает все компоненты конфигурации и фабричные функции. Поддерживает 3 режима конфигурации: DEBUG, EXPERIMENT, OPTIMIZED.
 - **`config_components.py`** (большой файл) - Модульные компоненты конфигурации через композицию:
   - `LatticeSettings` - размеры решетки, стратегии размещения
   - `ModelSettings` - параметры GNN модели (state_size, hidden_dim, neighbor_count)
@@ -37,9 +37,14 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
   - `SpatialSettings` - пространственная оптимизация
   - `VectorizedSettings` - векторизованные операции
   - `DeviceSettings` - управление GPU/CPU
-  - `LoggingSettings` - централизованное логирование
+  - `LoggingSettings` - централизованное логирование с поддержкой custom debug levels
   - `ExpertSettings` - настройки MoE экспертов
   - `EmbeddingSettings` и `TrainingEmbeddingSettings` - работа с эмбеддингами
+  - `TrainingOptimizerSettings` - параметры оптимизатора и обучения
+  - `EmbeddingMappingSettings` - настройки маппинга эмбеддингов
+  - `MemoryManagementSettings` - управление памятью
+  - `ArchitectureConstants` - архитектурные константы
+  - `AlgorithmicStrategies` - стратегии и строковые константы
 - **`simple_config.py`** - Основной класс `SimpleProjectConfig` с композицией компонентов. Предоставляет единую точку доступа ко всем настройкам проекта.
 
 #### **`new_rebuild/core/` - Ядро архитектуры**
@@ -113,9 +118,10 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 #### **`new_rebuild/utils/` - Утилиты**
 
 - **`__init__.py`** (2.2KB, 79 строк) - Экспорт логирования и device management функций.
-- **`logging.py`** (24KB, 602 строки) - Централизованная система логирования с caller tracking, anti-duplication фильтрами и контекстным форматированием.
+- **`logging.py`** (24KB, 602 строки) - Централизованная система логирования с caller tracking, anti-duplication фильтрами, контекстным форматированием и поддержкой custom debug levels (DEBUG_VERBOSE, DEBUG_CACHE, DEBUG_SPATIAL, DEBUG_FORWARD, DEBUG_MEMORY, DEBUG_TRAINING, DEBUG_INIT).
 - **`device_manager.py`** (17KB, 434 строки) - `DeviceManager` для управления GPU/CPU, автоматического определения оптимального устройства и мониторинга памяти.
 - **`model_cache.py`** (14KB, 379 строк) - Система кэширования моделей с поддержкой различных бэкендов.
+- **`hardcoded_checker.py`** - Система защиты от hardcoded значений с декораторами `@no_hardcoded`, функциями `strict_no_hardcoded()` и исключением `HardcodedValueError`.
 
 #### **`new_rebuild/docs/` - Документация**
 
@@ -142,6 +148,63 @@ This is a research project implementing a **3D Cellular Neural Network** inspire
 - в наличии есть nvidia 5090 32gb памяти, так что при возможности нужно это использовать
 - **Конфигурации**: 1. Всегда используйте значения из config вместо hardcoded 2. Применяйте @no_hardcoded декоратор к новым функциям 3. Используйте strict_no_hardcoded() для автоматической замены
 - **Конфигурации**: дополнительная информация по режимам конфигурации: docs\CONFIG_MODES_SUMMARY.md
+- **Система логирования**: Используйте custom debug levels для точной настройки вывода логов: `debug_cache()`, `debug_spatial()`, `debug_forward()`, `debug_memory()`, `debug_training()`, `debug_init()`, `debug_verbose()`. Подробности в new_rebuild/docs/custom_debug_levels_guide.md
+
+### Система конфигурации (НОВИНКА 2025)
+
+**3 режима конфигурации для разных этапов разработки:**
+
+- **DEBUG** - для быстрых тестов и отладки
+  - Маленькая решетка (8x8x8)
+  - Минимальные параметры
+  - Максимальное логирование с custom debug levels
+  
+- **EXPERIMENT** - для исследований
+  - Средняя решетка (15x15x15)
+  - Сбалансированные параметры
+  - Умеренное логирование
+  
+- **OPTIMIZED** - для финальных прогонов
+  - Большая решетка (30x30x30)
+  - Максимальные параметры
+  - Минимальное логирование, все оптимизации включены
+
+**Использование режимов:**
+```python
+from new_rebuild.config import create_debug_config, create_experiment_config, create_optimized_config, set_project_config
+
+# Для отладки
+config = create_debug_config()
+set_project_config(config)
+
+# Для экспериментов
+config = create_experiment_config()
+set_project_config(config)
+
+# Для финальных прогонов
+config = create_optimized_config()
+set_project_config(config)
+```
+
+**Система защиты от hardcoded значений:**
+
+- `@no_hardcoded` - декоратор для функций
+- `strict_no_hardcoded()` - автоматическая замена hardcoded значений на значения из конфига
+- `HardcodedValueError` - исключение с подробной информацией о том, где искать параметр в конфиге
+- `allow_hardcoded` - контекстный менеджер для временного отключения проверок
+
+**Custom Debug Levels система логирования:**
+
+Специальные уровни логирования между DEBUG (10) и INFO (20):
+- `DEBUG_VERBOSE` (11) - самый подробный вывод
+- `DEBUG_CACHE` (12) - операции кэширования
+- `DEBUG_SPATIAL` (13) - пространственная оптимизация
+- `DEBUG_FORWARD` (14) - детали forward pass
+- `DEBUG_MEMORY` (15) - управление памятью GPU
+- `DEBUG_TRAINING` (16) - прогресс обучения
+- `DEBUG_INIT` (17) - инициализация компонентов
+
+Использование: `logger.debug_cache()`, `logger.debug_spatial()`, etc.
 
 ### Ключевые оптимизации производительности
 

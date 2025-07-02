@@ -73,18 +73,21 @@ class SimpleProjectConfig:
     # Режим работы конфигурации
     mode: ModeSettings = field(default_factory=ModeSettings)
     
-    # Основные компоненты (всегда присутствуют)
-    lattice: LatticeSettings = field(default_factory=LatticeSettings)
-    model: ModelSettings = field(default_factory=ModelSettings)
-    training: TrainingSettings = field(default_factory=TrainingSettings)
+    # Основные компоненты (будут инициализированы в __post_init__)
+    lattice: LatticeSettings = field(init=False)
+    model: ModelSettings = field(init=False)
+    training: TrainingSettings = field(init=False)
+    logging: LoggingSettings = field(init=False)
+    cache: CacheSettings = field(init=False)
+    training_embedding: TrainingEmbeddingSettings = field(init=False)
+    
+    # Остальные компоненты с обычной инициализацией
     init: InitSettings = field(default_factory=InitSettings)
     device: DeviceSettings = field(default_factory=DeviceSettings)
-    logging: LoggingSettings = field(default_factory=LoggingSettings)
 
     # Дополнительные компоненты (опциональные)
     cnf: Optional[CNFSettings] = field(default_factory=CNFSettings)
     euler: Optional[EulerSettings] = field(default_factory=EulerSettings)
-    cache: Optional[CacheSettings] = field(default_factory=CacheSettings)
     spatial: Optional[SpatialSettings] = field(default_factory=SpatialSettings)
     unified_optimizer: Optional[UnifiedOptimizerSettings] = field(
         default_factory=UnifiedOptimizerSettings
@@ -102,13 +105,10 @@ class SimpleProjectConfig:
 
     # Компоненты для работы с эмбедингами
     embedding: Optional[EmbeddingSettings] = field(default_factory=EmbeddingSettings)
-    training_embedding: Optional[TrainingEmbeddingSettings] = field(
-        default_factory=TrainingEmbeddingSettings
-    )
 
     # MoE компоненты
     neighbors: Optional[NeighborSettings] = field(default_factory=NeighborSettings)
-    expert: Optional[ExpertSettings] = field(default_factory=ExpertSettings)
+    expert: Optional[ExpertSettings] = field(init=False)  # Инициализируем в __post_init__
     connection: Optional[ConnectionSettings] = field(default_factory=ConnectionSettings)
     
     # Централизованные параметры (для миграции hardcoded значений)
@@ -126,6 +126,9 @@ class SimpleProjectConfig:
 
     def __post_init__(self):
         """Автоматическая настройка после инициализации"""
+        # СНАЧАЛА инициализируем компоненты с пресетами
+        self._initialize_components_from_presets()
+        
         # Применяем настройки режима ПЕРЕД всем остальным
         if self.mode.auto_apply_overrides:
             self._apply_mode_settings()
@@ -192,107 +195,117 @@ class SimpleProjectConfig:
         if self.mode.log_mode_info:
             logging.info(f"🎯 Config mode: {self.mode.mode.value.upper()}")
             
+    def _initialize_components_from_presets(self):
+        """Инициализируем компоненты с значениями из пресетов"""
+        preset = self._get_current_preset()
+        
+        # Создаем компоненты с обязательными параметрами из пресетов
+        self.lattice = LatticeSettings(dimensions=preset.lattice_dimensions)
+        
+        self.model = ModelSettings(
+            state_size=preset.model_state_size,
+            message_dim=preset.model_message_dim, 
+            hidden_dim=preset.model_hidden_dim,
+            target_params=preset.model_target_params
+        )
+        
+        self.training = TrainingSettings(
+            batch_size=preset.training_batch_size,
+            max_epochs=preset.training_num_epochs,
+            num_epochs=preset.training_num_epochs,
+            early_stopping_patience=preset.training_early_stopping_patience,
+            checkpoint_frequency=preset.training_checkpoint_frequency
+        )
+        
+        self.logging = LoggingSettings(
+            level=preset.logging_level,
+            debug_mode=preset.logging_debug_mode,
+            enable_profiling=preset.logging_enable_profiling,
+            performance_tracking=preset.logging_enable_profiling
+        )
+        
+        self.cache = CacheSettings(
+            enable_detailed_stats=preset.logging_debug_mode  # Связано с debug режимом
+        )
+        
+        self.training_embedding = TrainingEmbeddingSettings(
+            test_mode=preset.logging_debug_mode,  # DEBUG = test_mode
+            num_epochs=preset.training_num_epochs,
+            max_total_samples=preset.training_max_samples
+        )
+        
+        # Expert settings
+        local_expert = LocalExpertSettings(params=preset.expert_local_params)
+        functional_expert = FunctionalExpertSettings(params=preset.expert_functional_params)
+        distant_expert = DistantExpertSettings(params=preset.expert_distant_params)
+        
+        self.expert = ExpertSettings(
+            local=local_expert,
+            functional=functional_expert,
+            distant=distant_expert
+        )
+        
+    def _get_current_preset(self):
+        """Получить текущий пресет на основе режима"""
+        if not hasattr(self, 'mode_presets') or self.mode_presets is None:
+            from .config_components import ModePresets
+            self.mode_presets = ModePresets()
+            
+        if self.mode.mode == ConfigMode.DEBUG:
+            return self.mode_presets.debug
+        elif self.mode.mode == ConfigMode.EXPERIMENT:
+            return self.mode_presets.experiment
+        elif self.mode.mode == ConfigMode.OPTIMIZED:
+            return self.mode_presets.optimized
+        else:
+            return self.mode_presets.debug  # По умолчанию
+            
     def _apply_debug_mode(self):
-        """Режим отладки - быстрые тесты, много логов"""
-        # Используем централизованные пресеты вместо hardcoded значений
+        """Режим отладки - дополнительные настройки"""
+        # Основные параметры уже установлены в _initialize_components_from_presets
         preset = self.mode_presets.debug
         
-        # Применяем настройки из пресета
-        self.lattice.dimensions = preset.lattice_dimensions
-        self.model.state_size = preset.model_state_size
-        self.model.target_params = preset.model_target_params
+        # Дополнительные настройки для DEBUG режима
+        self.logging.debug_categories = ['cache', 'init', 'training']
         
-        # Много логирования
-        self.logging.debug_mode = True
-        self.logging.level = "DEBUG"
-        self.logging.performance_tracking = True
-        # В debug режиме включаем категории для отладки
-        self.logging.debug_categories = ['cache', 'init']
-        
-        # Быстрые настройки обучения
-        self.training_embedding.max_total_samples = preset.training_max_samples
-        self.training_embedding.num_epochs = preset.training_num_epochs
-        self.training_embedding.test_mode = True
-        
-        # Минимальные параметры экспертов
-        self.expert.functional.params = preset.expert_functional_params
-        self.expert.distant.params = preset.expert_distant_params
-        
-        # Оптимизация для быстрых тестов
+        # Architecture (для совместимости с legacy кодом)
         self.architecture.moe_functional_params = preset.expert_functional_params
         self.architecture.moe_distant_params = preset.expert_distant_params
-        self.architecture.spatial_max_neighbors = 100  # TODO: добавить в пресет
         
-        # Минимальные настройки памяти
+        # Memory & Performance
         self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
         self.memory_management.dataloader_workers = preset.dataloader_workers
         
     def _apply_experiment_mode(self):
-        """Режим экспериментов - средние параметры"""
-        # Используем централизованные пресеты
+        """Режим экспериментов - дополнительные настройки"""
+        # Основные параметры уже установлены в _initialize_components_from_presets
         preset = self.mode_presets.experiment
         
-        # Применяем настройки из пресета
-        self.lattice.dimensions = preset.lattice_dimensions
-        self.model.state_size = preset.model_state_size
-        self.model.target_params = preset.model_target_params
-        
-        # Умеренное логирование
-        self.logging.debug_mode = False
-        self.logging.level = "INFO"
-        # В experiment режиме фокусируемся на training debug
+        # Дополнительные настройки для EXPERIMENT режима
         self.logging.debug_categories = self.logging.TRAINING_DEBUG
         
-        # Экспериментальные настройки
-        self.training_embedding.max_total_samples = preset.training_max_samples
-        self.training_embedding.num_epochs = preset.training_num_epochs
-        self.training_embedding.test_mode = False
-        
-        # Средние параметры экспертов
-        self.expert.functional.params = preset.expert_functional_params
-        self.expert.distant.params = preset.expert_distant_params
-        
-        # Сбалансированные параметры
+        # Architecture (для совместимости с legacy кодом)
         self.architecture.moe_functional_params = preset.expert_functional_params
         self.architecture.moe_distant_params = preset.expert_distant_params
-        self.architecture.spatial_max_neighbors = 1000  # TODO: добавить в пресет
         
-        # Нормальные настройки памяти
+        # Memory & Performance
         self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
         self.memory_management.dataloader_workers = preset.dataloader_workers
         
     def _apply_optimized_mode(self):
-        """Финальный оптимизированный режим"""
-        # Используем централизованные пресеты
+        """Финальный оптимизированный режим - дополнительные настройки"""
+        # Основные параметры уже установлены в _initialize_components_from_presets
         preset = self.mode_presets.optimized
         
-        # Применяем настройки из пресета
-        self.lattice.dimensions = preset.lattice_dimensions
-        self.model.state_size = preset.model_state_size
-        self.model.target_params = preset.model_target_params
-        
-        # Минимальное логирование
-        self.logging.debug_mode = False
-        self.logging.level = "WARNING"
+        # Дополнительные настройки для OPTIMIZED режима
         self.logging.performance_tracking = False
-        # В optimized режиме отключаем все debug категории
         self.logging.debug_categories = []
         
-        # Полное обучение
-        self.training_embedding.max_total_samples = preset.training_max_samples
-        self.training_embedding.num_epochs = preset.training_num_epochs
-        self.training_embedding.test_mode = False
-        
-        # Максимальные параметры экспертов
-        self.expert.functional.params = preset.expert_functional_params
-        self.expert.distant.params = preset.expert_distant_params
-        
-        # Оптимизированные параметры
+        # Architecture (для совместимости с legacy кодом)
         self.architecture.moe_functional_params = preset.expert_functional_params
         self.architecture.moe_distant_params = preset.expert_distant_params
-        self.architecture.spatial_max_neighbors = 2000  # TODO: добавить в пресет
         
-        # Максимальные настройки памяти
+        # Memory & Performance
         self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
         self.memory_management.dataloader_workers = preset.dataloader_workers
         

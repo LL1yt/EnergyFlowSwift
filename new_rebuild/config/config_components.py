@@ -37,28 +37,23 @@ class ModeSettings:
 @dataclass
 class LatticeSettings:
     """Настройки 3D решетки"""
-
-    # dimensions: Tuple[int, int, int] = (10, 10, 10)
-    dimensions: Tuple[int, int, int] = (8, 8, 8)  # для прогоночных тестов
-    # dimensions: Tuple[int, int, int] = (37, 37, 37)  # Для тестов с большой решеткой
+    
+    # Основные параметры - устанавливаются через пресеты
+    dimensions: Tuple[int, int, int]
+    
+    # Адаптивный радиус - константы алгоритма (не дублирование!)
     adaptive_radius_enabled: bool = True
     adaptive_radius_ratio: float = 0.2
     adaptive_radius_max: float = 100.0
-    adaptive_radius_min: float = 1.0  # Минимум 1.0 для гарантии хотя бы ближайших соседей
+    adaptive_radius_min: float = 1.0
 
-    # Новые параметры для классификации соединений
-    local_distance_ratio: float = (
-        0.1  # - это промежуток от 0 до 10% связей(0.1 от максимального радиуса для конкретной решетки); связано с local_distance_ratio, так что важно не забыть их так же изменить
-    )
-    functional_distance_ratio: float = (
-        0.65  # - это промежуток от 10% до 65% связей(0.55 от максимального радиуса для конкретной решетки); связано с functional_distance_ratio, так что важно не забыть их так же изменить
-    )
-    distant_distance_ratio: float = (
-        1.0  # - это промежуток от 65% до 100% связей(0.35 от максимального радиуса для конкретной решетки); связано с distant_distance_ratio, так что важно не забыть их так же изменить
-    )
+    # Классификация соединений - алгоритмические пропорции (не дублирование!)
+    local_distance_ratio: float = 0.1      # 10% ближайших связей
+    functional_distance_ratio: float = 0.65 # до 65% связей для functional
+    distant_distance_ratio: float = 1.0     # до 100% всех связей
     functional_similarity_threshold: float = 0.3
 
-    # Настройки пространственной оптимизации (для MoE архитектуры)
+    # Пространственная оптимизация - алгоритмические константы
     enable_morton_encoding: bool = True
     target_performance_ms: float = 16.67  # Target 60 FPS
 
@@ -91,31 +86,25 @@ class LatticeSettings:
 @dataclass
 class ModelSettings:
     """Настройки модели GNN"""
+    
+    # Основные размеры - устанавливаются через пресеты
+    state_size: int
+    message_dim: int
+    hidden_dim: int
+    target_params: int
+    
+    # Динамический neighbor count - алгоритмическая константа
+    neighbor_count: int = -1    # -1 означает динамическое определение
+    external_input_size: int = 16
 
-    # === РАЗМЕРЫ ДЛЯ РЕАЛЬНОГО ОБУЧЕНИЯ 8x8x8 ===
-    state_size: int = 64  # Увеличено для emergent behavior
-    message_dim: int = 32  # Больше для лучшего обмена информацией
-    hidden_dim: int = 128  # Для RTX 5090 можем позволить больше
-    # hidden_dim: int = 32          # Старое значение для маленьких тестов
-
-    # === ДИНАМИЧЕСКИЙ NEIGHBOR COUNT ===
-    # neighbor_count: int = 26      # Статическое значение - DEPRECATED
-    neighbor_count: int = -1  # -1 означает динамическое определение
-    # Для 8x8x8 куба будет ~26 соседей, для больших кубов больше
-
-    external_input_size: int = 16  # Увеличено для эмбеддингов
-    # external_input_size: int = 8  # Старое значение
-
-    target_params: int = 50000  # Увеличено для реального обучения
-    # target_params: int = 8000     # Старое значение для быстрых тестов
-
+    # Архитектурные параметры - константы алгоритма
     activation: str = "gelu"
     use_attention: bool = True
     aggregation: str = "attention"
     num_layers: int = 1
-    num_heads: int = 4  # Количество голов внимания для multi-head attention
-    use_layer_norm: bool = True  # Использовать ли layer normalization
-    dropout_rate: float = 0.1  # Dropout rate для регуляризации
+    num_heads: int = 4
+    use_layer_norm: bool = True
+    dropout_rate: float = 0.1
 
 
 @dataclass
@@ -125,31 +114,20 @@ class NeighborSettings:
     # Стратегия поиска соседей
     finding_strategy: str = "tiered"
     dynamic_count: bool = True
-    # base_neighbor_count: int = 26
     max_neighbors: int = 20000  # Биологический лимит
 
-    # Adaptive Radius настройки
-    adaptive_radius_enabled: bool = True
-    adaptive_radius_ratio: float = 0.2
-    adaptive_radius_max: float = 500.0
-    adaptive_radius_min: float = 0.1
+    # Adaptive Radius (дублирует LatticeSettings - убираем)
+    # Используем значения из LatticeSettings
 
-    # Tiered Topology - пропорции связей по типам
-    local_tier: float = (
-        0.1  # 10% связей; связано с local_distance_ratio, так что важно не забыть их так же изменить
-    )
-    functional_tier: float = (
-        0.55  # 55% связей; связано с functional_distance_ratio, так что важно не забыть их так же изменить
-    )
-    distant_tier: float = (
-        0.35  # 35% связей; связано с distant_distance_ratio, так что важно не забыть их так же изменить
-    )
+    # Tiered Topology - пропорции связей по типам (соответствуют LatticeSettings)
+    local_tier: float = 0.1      # 10% связей 
+    functional_tier: float = 0.55 # 55% связей
+    distant_tier: float = 0.35   # 35% связей
 
-    # Пороги расстояний теперь вычисляются автоматически из LatticeSettings
-    # через метод get_distance_thresholds(lattice_settings)
+    # Порог функционального сходства
     functional_similarity_threshold: float = 0.3
 
-    # Локальная сетка для тестов и оптимизации
+    # Локальная сетка для оптимизации
     local_grid_cell_size: int = 8
 
     def get_distance_thresholds(
@@ -168,7 +146,9 @@ class NeighborSettings:
 class LocalExpertSettings:
     """Настройки для Local Expert"""
 
-    params: int = 2059
+    params: int                 # Устанавливается через пресеты
+    
+    # Алгоритмические константы
     type: str = "linear"
     alpha: float = 0.1
     beta: float = 0.9
@@ -184,10 +164,12 @@ class LocalExpertSettings:
 class FunctionalExpertSettings:
     """Настройки для Functional Expert"""
 
-    params: int = 8000
+    params: int                 # Устанавливается через пресеты
+    
+    # Алгоритмические константы
     type: str = "hybrid_gnn_cnf"
-    gnn_ratio: float = 0.6  # 60% параметров для GNN
-    cnf_ratio: float = 0.4  # 40% параметров для CNF
+    gnn_ratio: float = 0.6      # 60% параметров для GNN
+    cnf_ratio: float = 0.4      # 40% параметров для CNF
     use_attention: bool = True
     message_dim: int = 16
     hidden_dim: int = 32
@@ -199,7 +181,9 @@ class FunctionalExpertSettings:
 class DistantExpertSettings:
     """Настройки для Distant Expert (CNF)"""
 
-    params: int = 4000
+    params: int                 # Устанавливается через пресеты
+    
+    # Алгоритмические константы
     type: str = "cnf"
     integration_steps: int = 3
     adaptive_step_size: bool = True
@@ -250,18 +234,20 @@ class ExpertSettings:
 class TrainingSettings:
     """Настройки обучения"""
 
+    # Параметры, устанавливаемые через пресеты
+    batch_size: int
+    max_epochs: int
+    num_epochs: int
+    early_stopping_patience: int
+    checkpoint_frequency: int
+
+    # Алгоритмические константы
     learning_rate: float = 0.001
-    batch_size: int = 32
-    max_epochs: int = 1000
-    num_epochs: int = 100  # Добавляем для валидатора
     optimizer: str = "adamw"
-    optimizer_type: str = "adamw"  # Дублируем для совместимости с валидатором
     weight_decay: float = 0.01
     gradient_clip_norm: float = 1.0
-    early_stopping_patience: int = 50
     validation_split: float = 0.2
     save_checkpoints: bool = True
-    checkpoint_frequency: int = 100
 
 
 @dataclass
@@ -299,25 +285,29 @@ class EulerSettings:
 class CacheSettings:
     """Настройки кэширования"""
 
+    # Параметры, устанавливаемые через пресеты
+    enable_detailed_stats: bool
+    
+    # Алгоритмические константы
     enabled: bool = True
     enable_performance_monitoring: bool = True
-    enable_detailed_stats: bool = False
-    # auto_enable_threshold: int = 3000
-    # auto_disable_threshold: int = 1000
-    small_lattice_fallback: bool = False  # Использовать кэширование для маленьких решеток. во-первых, потому что мы тестируем на маленьких решетках, а во-вторых, потому что мы не используем fallback'и
+    small_lattice_fallback: bool = False          # Не используем fallback'и
+    
+    # GPU кэширование - константы конфигурации
     use_gpu_acceleration: bool = True
     gpu_batch_size: int = 10000
     prefer_gpu_for_large_lattices: bool = True
     gpu_memory_fraction: float = 0.8
-    gpu_cache_size_mb: int = 1024  # Размер GPU кэша в мегабайтах
-    neighbor_cache_size: int = 100000  # Размер кэша соседей
-    connection_cache_enabled: bool = True  # Включить кэширование соединений
-    persistent_cache_dir: str = "cache"  # Директория для постоянного кэша
+    gpu_cache_size_mb: int = 1024
     
-    # Эти значения вычисляются автоматически из LatticeSettings
-    # но нужны для совместимости с legacy кодом
-    local_radius: float = 1.0  # Будет переопределено из lattice settings
-    functional_similarity_threshold: float = 0.3
+    # Размеры кэшей - константы конфигурации
+    neighbor_cache_size: int = 100000
+    connection_cache_enabled: bool = True
+    persistent_cache_dir: str = "cache"
+    
+    # Legacy совместимость (вычисляются автоматически из LatticeSettings)
+    local_radius: float = 1.0                     # Будет переопределено
+    functional_similarity_threshold: float = 0.3  # Дублирует LatticeSettings
 
 
 @dataclass
@@ -403,20 +393,21 @@ class DeviceSettings:
 class LoggingSettings:
     """Настройки логирования"""
 
-    level: str = "ALL_DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL + custom DEBUG_* levels
-    # level: str = "DEBUG"  # Для тестов можно использовать DEBUG
-    debug_mode: bool = False  # По умолчанию используем level, а не debug_mode
-    debug_categories: List[str] = field(default_factory=list)  # Категории debug для включения
+    # Параметры, устанавливаемые через пресеты
+    level: str
+    debug_mode: bool
+    enable_profiling: bool
+    performance_tracking: bool
+    debug_categories: List[str] = field(default_factory=list)
+    
+    # Константы конфигурации
     log_to_file: bool = True
     log_file: str = "logs/cnf_debug.log"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    enable_profiling: bool = True
-    performance_tracking: bool = True
-    enable_file_logging: bool = True  # Включить логирование в файл
-    log_dir: str = "logs"  # Директория для логов
-    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"  # Дублируем для совместимости
+    log_dir: str = "logs"
+    enable_file_logging: bool = True
     
-    # Предустановленные наборы категорий для удобства
+    # Предустановленные наборы категорий - алгоритмические константы
     CACHE_DEBUG = ['cache']
     SPATIAL_DEBUG = ['spatial', 'memory']
     TRAINING_DEBUG = ['training', 'forward']
@@ -519,77 +510,50 @@ class EmbeddingSettings:
 class TrainingEmbeddingSettings:
     """Расширенные настройки обучения для эмбедингов"""
 
-    # === НАСТРОЙКИ ДЛЯ РЕАЛЬНОГО ОБУЧЕНИЯ 8x8x8 ===
-    # test_mode: bool = True              # ТЕСТОВЫЙ РЕЖИМ
-    test_mode: bool = False  # РЕАЛЬНОЕ ОБУЧЕНИЕ
+    # Параметры, устанавливаемые через пресеты
+    test_mode: bool
+    num_epochs: int
+    max_total_samples: int
 
-    # Эпохи обучения для реального training
-    num_epochs: int = 1  # Основные эпохи для первого эксперимента
-    # warmup_epochs: int = 10             # Старые настройки
-    # main_epochs: int = 100
-    # fine_tune_epochs: int = 50
+    # Алгоритмические константы - интервалы сохранения и валидации
+    validation_interval: int = 1        # Валидация каждую эпоху
+    save_checkpoint_every: int = 5      # Checkpoint каждые 5 эпох
+    log_interval: int = 10              # Лог каждые 10 батчей
+    early_stopping_patience: int = 10   # Early stopping
 
-    # Интервалы сохранения и валидации
-    validation_interval: int = 1  # Валидация каждую эпоху
-    save_checkpoint_every: int = 5  # Checkpoint каждые 5 эпох
-    log_interval: int = 10  # Лог каждые 10 батчей
-    early_stopping_patience: int = 10  # Early stopping
-
-    # === LOSS WEIGHTS ДЛЯ РЕАЛЬНОГО ОБУЧЕНИЯ ===
+    # Loss weights для обучения - алгоритмические константы
     reconstruction_weight: float = 1.0  # Основная задача
-    similarity_weight: float = 0.5  # Семантическая похожесть
-    diversity_weight: float = 0.2  # Разнообразие представлений
-    emergence_weight: float = 0.1  # Emergent behavior
+    similarity_weight: float = 0.5      # Семантическая похожесть
+    diversity_weight: float = 0.2       # Разнообразие представлений
+    emergence_weight: float = 0.1       # Emergent behavior
 
-    # Старые названия для совместимости (DEPRECATED)
-    # reconstruction_loss_weight: float = 1.0
-    # similarity_loss_weight: float = 0.5
-    # diversity_loss_weight: float = 0.1
-    # emergence_loss_weight: float = 0.2
-
-    # === СПЕЦИФИЧНЫЕ ПАРАМЕТРЫ ДЛЯ ЭМБЕДДИНГОВ ===
-    target_embedding_dim: int = 64  # Сжимаем 768 → 64 для куба 8x8x8
+    # Специфичные параметры для эмбеддингов - алгоритмические константы
+    target_embedding_dim: int = 64      # Сжимаем 768 → 64
     teacher_model: str = "distilbert-base-uncased"
     use_teacher_forcing: bool = True
-    lattice_steps: int = 5  # Количество шагов распространения
+    lattice_steps: int = 5              # Количество шагов распространения
 
-    # Curriculum learning
-    use_curriculum_learning: bool = False  # Отключено для первого эксперимента
-    # use_curriculum_learning: bool = True # Включить после успешных тестов
+    # Curriculum learning - алгоритмические константы
+    use_curriculum_learning: bool = False
     curriculum_start_difficulty: float = 0.1
     curriculum_end_difficulty: float = 1.0
     curriculum_schedule: str = "linear"
 
-    # === БАТЧИ ДЛЯ RTX 5090 ===
-    embedding_batch_size: int = 16  # Оптимально для 32GB памяти
-    # embedding_batch_size: int = 32      # Старое значение
-    gradient_accumulation_steps: int = 2  # Уменьшено для стабильности
+    # Батчи для RTX 5090 - константы конфигурации
+    embedding_batch_size: int = 16      # Оптимально для 32GB памяти
+    gradient_accumulation_steps: int = 2
+    gpu_memory_reserve_gb: float = 20.0
 
-    # Валидация
+    # Валидация - алгоритмические константы
     enable_semantic_validation: bool = True
-    enable_probing_tasks: bool = False  # Отключено для первого эксперимента
-    # enable_probing_tasks: bool = True   # Включить после стабилизации
+    enable_probing_tasks: bool = False  # Отключено пока
     probing_tasks: List[str] = None
     visualization_enabled: bool = False
     visualization_frequency: int = 10
-
-    # === ОГРАНИЧЕНИЯ ДАТАСЕТА ===
-    # Общий лимит на количество сэмплов в датасете (для всех источников вместе)
-    # None = без ограничений, int = максимальное количество сэмплов
-    # max_total_samples: Optional[int] = None  # Для реального обучения без ограничений
-    max_total_samples: int = 50  # Раскомментировать для ограниченного обучения
     
-    # GPU память, резервируемая для обучения (GB)
-    gpu_memory_reserve_gb: float = 20.0  # Оставляем 20GB для модели и обучения
-    
-    # === ТЕСТОВЫЕ ПАРАМЕТРЫ (ВРЕМЕННО) ===
-    # Эти параметры используются только когда test_mode = True
+    # Тестовые параметры - алгоритмические константы
     test_lattice_dim: int = 8
-    # test_lattice_dim: int = 37
-    test_dataset_size: int = (
-        5  # Для прогоночного обучения используем только 658 сэмплов (из dialogue cache)
-    )
-    # test_dataset_size: int = 1000  # Старое значение для быстрых тестов
+    test_dataset_size: int = 5
     test_validation_split: float = 0.2
     test_quick_iterations: int = 10
 
@@ -900,42 +864,102 @@ class ModePresets:
     
     @dataclass
     class DebugPreset:
-        """Настройки для DEBUG режима"""
+        """Настройки для DEBUG режима - быстрые тесты и отладка"""
+        # Lattice
         lattice_dimensions: Tuple[int, int, int] = (8, 8, 8)
+        
+        # Model
         model_state_size: int = 32
+        model_hidden_dim: int = 64
+        model_message_dim: int = 16
         model_target_params: int = 8000
+        
+        # Training
+        training_batch_size: int = 8
+        training_num_epochs: int = 5
+        training_early_stopping_patience: int = 5
+        training_checkpoint_frequency: int = 5
         training_max_samples: int = 50
-        training_num_epochs: int = 1
-        expert_functional_params: int = 2000
-        expert_distant_params: int = 1000
+        
+        # Experts
+        expert_local_params: int = 2000
+        expert_functional_params: int = 5000
+        expert_distant_params: int = 3000
+        
+        # Memory & Performance
         memory_reserve_gb: float = 2.0
         dataloader_workers: int = 2
         
+        # Logging
+        logging_level: str = "ALL_DEBUG"
+        logging_debug_mode: bool = True
+        logging_enable_profiling: bool = True
+        
     @dataclass
     class ExperimentPreset:
-        """Настройки для EXPERIMENT режима"""
+        """Настройки для EXPERIMENT режима - исследования и эксперименты"""
+        # Lattice
         lattice_dimensions: Tuple[int, int, int] = (15, 15, 15)
+        
+        # Model
         model_state_size: int = 64
+        model_hidden_dim: int = 128
+        model_message_dim: int = 32
         model_target_params: int = 25000
+        
+        # Training
+        training_batch_size: int = 16
+        training_num_epochs: int = 100
+        training_early_stopping_patience: int = 10
+        training_checkpoint_frequency: int = 25
         training_max_samples: int = 1000
-        training_num_epochs: int = 10
+        
+        # Experts
+        expert_local_params: int = 4000
         expert_functional_params: int = 8000
         expert_distant_params: int = 4000
+        
+        # Memory & Performance
         memory_reserve_gb: float = 10.0
         dataloader_workers: int = 4
         
+        # Logging
+        logging_level: str = "INFO"
+        logging_debug_mode: bool = False
+        logging_enable_profiling: bool = True
+        
     @dataclass
     class OptimizedPreset:
-        """Настройки для OPTIMIZED режима"""
+        """Настройки для OPTIMIZED режима - финальные прогоны"""
+        # Lattice
         lattice_dimensions: Tuple[int, int, int] = (30, 30, 30)
+        
+        # Model
         model_state_size: int = 128
+        model_hidden_dim: int = 256
+        model_message_dim: int = 64
         model_target_params: int = 100000
+        
+        # Training
+        training_batch_size: int = 32
+        training_num_epochs: int = 1000
+        training_early_stopping_patience: int = 50
+        training_checkpoint_frequency: int = 100
         training_max_samples: Optional[int] = None  # Без ограничений
-        training_num_epochs: int = 100
+        
+        # Experts
+        expert_local_params: int = 8000
         expert_functional_params: int = 15000
         expert_distant_params: int = 8000
+        
+        # Memory & Performance
         memory_reserve_gb: float = 20.0
         dataloader_workers: int = 8
+        
+        # Logging
+        logging_level: str = "WARNING"
+        logging_debug_mode: bool = False
+        logging_enable_profiling: bool = False
         
     # Экземпляры пресетов
     debug: DebugPreset = field(default_factory=DebugPreset)
