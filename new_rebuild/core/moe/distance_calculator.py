@@ -22,7 +22,7 @@ class DistanceCalculator:
         self.width, self.height, self.depth = lattice_dimensions
         self.total_cells = self.width * self.height * self.depth
 
-        logger.debug(f"DistanceCalculator initialized: {lattice_dimensions}")
+        logger.debug_init(f"DistanceCalculator initialized: {lattice_dimensions}")
 
     def linear_to_3d(self, linear_idx: int) -> Tuple[int, int, int]:
         """Преобразование линейного индекса в 3D координаты"""

@@ -255,7 +255,7 @@ class ChunkScheduler:
                 processing_time = (time.time() - start_time) * 1000  # ms
 
                 # Обновляем статистику
-                logger.debug(
+                logger.debug_spatial(
                     f"✅ Chunk {task.chunk_id} обработан за {processing_time:.1f}ms"
                 )
 

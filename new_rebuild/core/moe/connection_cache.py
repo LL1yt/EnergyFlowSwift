@@ -70,14 +70,14 @@ class ConnectionCacheManager:
             lattice_dimensions: Размеры 3D решетки (x, y, z)
             cache_config: Конфигурация кэширования
         """
-        logger.debug(f"ConnectionCacheManager.__init__ called with dimensions: {lattice_dimensions}")
+        logger.debug_init(f"ConnectionCacheManager.__init__ called with dimensions: {lattice_dimensions}")
         self.lattice_dimensions = lattice_dimensions
         self.total_cells = np.prod(lattice_dimensions)
 
         # Получаем конфигурацию
         try:
             config = get_project_config()
-            logger.debug(f"Got project config: {config.__class__.__name__}")
+            logger.debug_init(f"Got project config: {config.__class__.__name__}")
         except Exception as e:
             logger.error(f"Failed to get project config: {e}")
             raise
@@ -87,12 +87,12 @@ class ConnectionCacheManager:
         else:
             self.cache_config = cache_config
             
-        logger.debug(f"Cache config: {self.cache_config}")
+        logger.debug_init(f"Cache config: {self.cache_config}")
 
         # ИСПРАВЛЕНО: Всегда получаем актуальный adaptive_radius
         try:
             self.adaptive_radius = config.calculate_adaptive_radius()
-            logger.debug(f"Adaptive radius: {self.adaptive_radius}")
+            logger.debug_init(f"Adaptive radius: {self.adaptive_radius}")
         except Exception as e:
             logger.error(f"Failed to calculate adaptive radius: {e}")
             raise
@@ -108,7 +108,7 @@ class ConnectionCacheManager:
             self.distant_threshold = (
                 self.adaptive_radius * config.lattice.distant_distance_ratio
             )
-            logger.debug(f"Thresholds - local: {self.local_threshold}, functional: {self.functional_threshold}, distant: {self.distant_threshold}")
+            logger.debug_init(f"Thresholds - local: {self.local_threshold}, functional: {self.functional_threshold}, distant: {self.distant_threshold}")
         except Exception as e:
             logger.error(f"Failed to calculate thresholds: {e}")
             raise
@@ -190,7 +190,7 @@ class ConnectionCacheManager:
                 "cache_version": self.cache_config.get("cache_version", "2024.1"),
             }
             if logger.isEnabledFor(10):
-                logger.debug("--- Проверка совместимости кэша ---")
+                logger.debug_cache("--- Проверка совместимости кэша ---")
 
             for key, expected_value in checks.items():
                 cached_value = cache_data.get(key)
@@ -202,19 +202,19 @@ class ConnectionCacheManager:
                         abs_tol=1e-9,
                     ):
                         if logger.isEnabledFor(10):
-                            logger.debug(
+                            logger.debug_cache(
                                 f"❌ НЕ СОВПАДАЕТ (float): {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
                             )
                         is_compatible = False
                 elif cached_value != expected_value:
                     if logger.isEnabledFor(10):
-                        logger.debug(
+                        logger.debug_cache(
                             f"❌ НЕ СОВПАДАЕТ: {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
                         )
                     is_compatible = False
                 else:
                     if logger.isEnabledFor(10):
-                        logger.debug(f"✅ Совпадает: {key} = {cached_value}")
+                        logger.debug_cache(f"✅ Совпадает: {key} = {cached_value}")
 
             if not is_compatible:
                 logger.info("Кэш несовместим. Требуется пересоздание.")
@@ -243,7 +243,7 @@ class ConnectionCacheManager:
             # GPU/CPU кэш полностью совместим, убираем GPU из ключа
         }
         if logger.isEnabledFor(10):
-            logger.debug(f"🔑 Cache key data: {key_data}")
+            logger.debug_cache(f"🔑 Cache key data: {key_data}")
 
         key_str = str(sorted(key_data.items()))
         return hashlib.md5(key_str.encode()).hexdigest()
@@ -318,7 +318,7 @@ class ConnectionCacheManager:
 
             # Прогресс лог
             if cell_idx % 1000 == 0:
-                logger.debug(f"Pre-computed {cell_idx}/{self.total_cells} клеток")
+                logger.debug_cache(f"Pre-computed {cell_idx}/{self.total_cells} клеток")
 
         # Сохраняем кэш на диск
         self._save_cache_to_disk()

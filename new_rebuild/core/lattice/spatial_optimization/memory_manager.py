@@ -149,7 +149,7 @@ class MemoryPoolManager:
         self.device_manager.cleanup()
 
         self.stats["gc_calls"] += 1
-        logger.debug(
+        logger.debug_memory(
             f"   🧹 Memory cleanup через DeviceManager: GC вызван #{self.stats['gc_calls']}"
         )
 

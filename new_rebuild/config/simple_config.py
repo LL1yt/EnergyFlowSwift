@@ -48,6 +48,9 @@ from .config_components import (
     EmbeddingMappingSettings,
     MemoryManagementSettings,
     ArchitectureConstants,
+    # Spatial optimization helpers
+    ChunkInfo,
+    create_spatial_config_for_lattice,
     AlgorithmicStrategies,
     ModePresets,
     # Функции
@@ -134,7 +137,8 @@ class SimpleProjectConfig:
             level=self.logging.level,  # Передаем уровень из конфигурации
             log_file=self.logging.log_file if self.logging.log_to_file else None,
             enable_deduplication=False,
-            enable_context=True
+            enable_context=True,
+            debug_categories=self.logging.debug_categories  # Передаем категории debug
         )
         
         # Инициализация device manager с централизованным debug_mode из logging настроек
@@ -202,6 +206,8 @@ class SimpleProjectConfig:
         self.logging.debug_mode = True
         self.logging.level = "DEBUG"
         self.logging.performance_tracking = True
+        # В debug режиме включаем категории для отладки
+        self.logging.debug_categories = ['cache', 'init']
         
         # Быстрые настройки обучения
         self.training_embedding.max_total_samples = preset.training_max_samples
@@ -234,6 +240,8 @@ class SimpleProjectConfig:
         # Умеренное логирование
         self.logging.debug_mode = False
         self.logging.level = "INFO"
+        # В experiment режиме фокусируемся на training debug
+        self.logging.debug_categories = self.logging.TRAINING_DEBUG
         
         # Экспериментальные настройки
         self.training_embedding.max_total_samples = preset.training_max_samples
@@ -267,6 +275,8 @@ class SimpleProjectConfig:
         self.logging.debug_mode = False
         self.logging.level = "WARNING"
         self.logging.performance_tracking = False
+        # В optimized режиме отключаем все debug категории
+        self.logging.debug_categories = []
         
         # Полное обучение
         self.training_embedding.max_total_samples = preset.training_max_samples

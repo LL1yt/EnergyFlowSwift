@@ -15,10 +15,87 @@ import inspect
 import sys
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Any, Dict, Set
+from typing import Optional, Any, Dict, Set, List
 from pathlib import Path
 import threading
 import hashlib
+
+
+# === CUSTOM DEBUG LEVELS ===
+
+# Define custom debug levels (between DEBUG=10 and INFO=20)
+DEBUG_CACHE = 12      # Cache operations and lookups
+DEBUG_SPATIAL = 13    # Spatial optimization and neighbor finding
+DEBUG_FORWARD = 14    # Forward pass details
+DEBUG_MEMORY = 15     # Memory management and GPU operations
+DEBUG_TRAINING = 16   # Training progress and metrics
+DEBUG_INIT = 17       # Initialization and setup
+DEBUG_VERBOSE = 11    # Most verbose debug level
+
+# Register custom levels with logging module
+for level_name, level_value in [
+    ('DEBUG_CACHE', DEBUG_CACHE),
+    ('DEBUG_SPATIAL', DEBUG_SPATIAL),
+    ('DEBUG_FORWARD', DEBUG_FORWARD),
+    ('DEBUG_MEMORY', DEBUG_MEMORY),
+    ('DEBUG_TRAINING', DEBUG_TRAINING),
+    ('DEBUG_INIT', DEBUG_INIT),
+    ('DEBUG_VERBOSE', DEBUG_VERBOSE),
+]:
+    logging.addLevelName(level_value, level_name)
+
+
+# Add convenience methods to Logger class
+def debug_cache(self, message, *args, **kwargs):
+    """Log cache-related debug messages"""
+    if self.isEnabledFor(DEBUG_CACHE):
+        self._log(DEBUG_CACHE, message, args, **kwargs)
+
+
+def debug_spatial(self, message, *args, **kwargs):
+    """Log spatial-related debug messages"""
+    if self.isEnabledFor(DEBUG_SPATIAL):
+        self._log(DEBUG_SPATIAL, message, args, **kwargs)
+
+
+def debug_forward(self, message, *args, **kwargs):
+    """Log forward pass debug messages"""
+    if self.isEnabledFor(DEBUG_FORWARD):
+        self._log(DEBUG_FORWARD, message, args, **kwargs)
+
+
+def debug_memory(self, message, *args, **kwargs):
+    """Log memory-related debug messages"""
+    if self.isEnabledFor(DEBUG_MEMORY):
+        self._log(DEBUG_MEMORY, message, args, **kwargs)
+
+
+def debug_training(self, message, *args, **kwargs):
+    """Log training-related debug messages"""
+    if self.isEnabledFor(DEBUG_TRAINING):
+        self._log(DEBUG_TRAINING, message, args, **kwargs)
+
+
+def debug_init(self, message, *args, **kwargs):
+    """Log initialization debug messages"""
+    if self.isEnabledFor(DEBUG_INIT):
+        self._log(DEBUG_INIT, message, args, **kwargs)
+
+
+def debug_verbose(self, message, *args, **kwargs):
+    """Log most verbose debug messages"""
+    if self.isEnabledFor(DEBUG_VERBOSE):
+        self._log(DEBUG_VERBOSE, message, args, **kwargs)
+
+
+# Monkey-patch Logger class with new methods
+logging.Logger.debug_cache = debug_cache
+logging.Logger.debug_spatial = debug_spatial
+logging.Logger.debug_forward = debug_forward
+logging.Logger.debug_memory = debug_memory
+logging.Logger.debug_training = debug_training
+logging.Logger.debug_init = debug_init
+logging.Logger.debug_verbose = debug_verbose
 
 
 class UTF8StreamHandler(logging.StreamHandler):
@@ -191,9 +268,21 @@ class ModuleTrackingFormatter(logging.Formatter):
 class DebugModeFilter(logging.Filter):
     """Фильтр для контроля детализации логов в зависимости от debug_mode."""
 
-    def __init__(self, debug_mode: bool = False):
+    def __init__(self, debug_mode: bool = False, enabled_categories: List[str] = None):
         super().__init__()
         self.debug_mode = debug_mode
+        self.enabled_categories = enabled_categories or []
+        
+        # Map category names to log levels
+        self.category_levels = {
+            'cache': DEBUG_CACHE,
+            'spatial': DEBUG_SPATIAL,
+            'forward': DEBUG_FORWARD,
+            'memory': DEBUG_MEMORY,
+            'training': DEBUG_TRAINING,
+            'init': DEBUG_INIT,
+            'verbose': DEBUG_VERBOSE,
+        }
 
     def filter(self, record):
         # В debug_mode пропускаем все логи
@@ -201,9 +290,16 @@ class DebugModeFilter(logging.Filter):
             return True
 
         # В обычном режиме фильтруем детальные логи
-        # Пропускаем только INFO и выше, плюс важные DEBUG сообщения
+        # Пропускаем только INFO и выше
         if record.levelno >= logging.INFO:
             return True
+            
+        # Проверяем включенные категории debug
+        for category in self.enabled_categories:
+            if category in self.category_levels:
+                category_level = self.category_levels[category]
+                if record.levelno == category_level:
+                    return True
 
         # Важные DEBUG сообщения (содержат специальные маркеры)
         message = record.getMessage()
@@ -225,16 +321,20 @@ def setup_logging(
     log_file: Optional[str] = None,
     enable_deduplication: bool = False,
     enable_context: bool = True,
+    debug_categories: Optional[List[str]] = None,
 ) -> None:
     """
     Настраивает централизованное логирование.
 
     Args:
         debug_mode: Включить детальное логирование (переопределяет level)
-        level: Уровень логирования ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+        level: Уровень логирования ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", 
+               "DEBUG_CACHE", "DEBUG_SPATIAL", "DEBUG_FORWARD", "DEBUG_MEMORY", 
+               "DEBUG_TRAINING", "DEBUG_INIT", "DEBUG_VERBOSE")
         log_file: Файл для записи логов (опционально)
         enable_deduplication: ОТКЛЮЧЕНО - может скрыть реальные проблемы в коде
         enable_context: Включить контекстное логирование
+        debug_categories: Список категорий debug для включения (например: ['cache', 'spatial'])
     """
     # Получаем root logger
     root_logger = logging.getLogger()
@@ -261,13 +361,23 @@ def setup_logging(
             "WARNING": logging.WARNING,
             "ERROR": logging.ERROR,
             "CRITICAL": logging.CRITICAL,
+            # Custom debug levels
+            "DEBUG_CACHE": DEBUG_CACHE,
+            "DEBUG_SPATIAL": DEBUG_SPATIAL,
+            "DEBUG_FORWARD": DEBUG_FORWARD,
+            "DEBUG_MEMORY": DEBUG_MEMORY,
+            "DEBUG_TRAINING": DEBUG_TRAINING,
+            "DEBUG_INIT": DEBUG_INIT,
+            "DEBUG_VERBOSE": DEBUG_VERBOSE,
         }
         # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
         level_upper = level.upper()
         if level_upper not in level_map:
             raise RuntimeError(
                 f"❌ КРИТИЧЕСКАЯ ОШИБКА: Неизвестный уровень логирования '{level}'. "
-                f"Допустимые значения: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+                f"Допустимые значения: DEBUG, INFO, WARNING, ERROR, CRITICAL, "
+                f"DEBUG_CACHE, DEBUG_SPATIAL, DEBUG_FORWARD, DEBUG_MEMORY, "
+                f"DEBUG_TRAINING, DEBUG_INIT, DEBUG_VERBOSE"
             )
         log_level = level_map[level_upper]
     else:
@@ -301,7 +411,7 @@ def setup_logging(
     # Добавляем фильтры (БЕЗ дедупликации)
     # ИСПРАВЛЕНО: Не применяем DebugModeFilter если пользователь явно указал DEBUG уровень
     if not (level and level.upper() == "DEBUG"):
-        console_handler.addFilter(DebugModeFilter(debug_mode))
+        console_handler.addFilter(DebugModeFilter(debug_mode, enabled_categories=debug_categories))
     # НЕ добавляем AntiDuplicationFilter - может скрыть реальные проблемы
 
     root_logger.addHandler(console_handler)

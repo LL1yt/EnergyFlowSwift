@@ -238,7 +238,7 @@ class EmbeddingTrainer(TrainingInterface):
             self.performance_stats["total_times"].append(batch_time)
 
             if batch_idx % 10 == 0:
-                logger.debug(
+                logger.debug_training(
                     f"Batch {batch_idx}: loss={total_loss.item():.4f}, "
                     f"forward={forward_time:.3f}s, backward={backward_time:.3f}s"
                 )
@@ -286,9 +286,9 @@ class EmbeddingTrainer(TrainingInterface):
 
         # 4. Emergent dynamics (несколько шагов через MoE)
         # Устанавливаем начальные состояния в решетку
-        logger.debug(f"🔧 Setting lattice states: {lattice_states.shape}")
-        logger.debug(f"🔧 Lattice config dimensions: {self.config.lattice.dimensions}")
-        logger.debug(f"🔧 Expected cells: {self.config.lattice.total_cells}")
+        logger.debug_training(f"🔧 Setting lattice states: {lattice_states.shape}")
+        logger.debug_training(f"🔧 Lattice config dimensions: {self.config.lattice.dimensions}")
+        logger.debug_training(f"🔧 Expected cells: {self.config.lattice.total_cells}")
         
         self.lattice.states = lattice_states
         
@@ -298,7 +298,7 @@ class EmbeddingTrainer(TrainingInterface):
             
             # Проверка сходимости (опционально)
             if step > 0 and self._check_convergence(lattice_states, initial_states):
-                logger.debug(f"Сходимость достигнута на шаге {step}")
+                logger.debug_training(f"Сходимость достигнута на шаге {step}")
                 break
 
         # 5. 3D Lattice → Surface extraction

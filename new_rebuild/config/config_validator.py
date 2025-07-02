@@ -183,7 +183,7 @@ class ConfigValidator:
                 raise RuntimeError(
                     f"❌ КРИТИЧЕСКАЯ ОШИБКА [{section_name}]: "
                     f"Отсутствует обязательная конфигурация {description}. "
-                    f"Проверьте project_config.py"
+                    f"Проверьте new_rebuild\config и docs\CONFIG_MODES_SUMMARY.md"
                 )
     
     @staticmethod

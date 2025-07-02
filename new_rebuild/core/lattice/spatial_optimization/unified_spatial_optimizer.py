@@ -311,7 +311,7 @@ class UnifiedSpatialOptimizer:
         config = get_project_config()
         adaptive_radius = config.calculate_adaptive_radius()
         
-        logger.debug(f"🔍 Поиск соседей для клетки {cell_idx} (coords={coords}) с радиусом {adaptive_radius:.3f}")
+        logger.debug_spatial(f"🔍 Поиск соседей для клетки {cell_idx} (coords={coords}) с радиусом {adaptive_radius:.3f}")
         
         try:
             # Используем GPU processor для поиска соседей
@@ -330,7 +330,7 @@ class UnifiedSpatialOptimizer:
                     f"Адаптивный радиус {adaptive_radius:.3f} слишком мал для решетки {self.dimensions}"
                 )
             
-            logger.debug(f"✅ Найдено {len(neighbors)} соседей для клетки {cell_idx}: {neighbors[:5]}{'...' if len(neighbors) > 5 else ''}")
+            logger.debug_spatial(f"✅ Найдено {len(neighbors)} соседей для клетки {cell_idx}: {neighbors[:5]}{'...' if len(neighbors) > 5 else ''}")
             return neighbors
             
         except Exception as e:
@@ -347,9 +347,9 @@ class UnifiedSpatialOptimizer:
         start_time = time.time()
         num_cells = states.shape[0]
         
-        logger.debug(f"🔧 UNIFIED OPTIMIZER: processing {num_cells} cells")
-        logger.debug(f"🔧 OPTIMIZER DIMENSIONS: {self.dimensions}")
-        logger.debug(f"🔧 INPUT STATES SHAPE: {states.shape}")
+        logger.debug_spatial(f"🔧 UNIFIED OPTIMIZER: processing {num_cells} cells")
+        logger.debug_spatial(f"🔧 OPTIMIZER DIMENSIONS: {self.dimensions}")
+        logger.debug_spatial(f"🔧 INPUT STATES SHAPE: {states.shape}")
 
         # Определяем функцию обработки
         if processor_fn is None:
@@ -382,10 +382,10 @@ class UnifiedSpatialOptimizer:
             try:
                 # DEBUG: Reduced logging - only log errors and warnings
                 if cell_idx in [223, 256, 260, 320]:
-                    logger.debug(f"🔍 MoE processor called - cell_idx={cell_idx}")
-                    logger.debug(f"🔍 current_state.shape={current_state.shape}")
-                    logger.debug(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
-                    logger.debug(f"🔍 neighbor_indices={neighbor_indices}")
+                    logger.debug_spatial(f"🔍 MoE processor called - cell_idx={cell_idx}")
+                    logger.debug_spatial(f"🔍 current_state.shape={current_state.shape}")
+                    logger.debug_spatial(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
+                    logger.debug_spatial(f"🔍 neighbor_indices={neighbor_indices}")
                     if isinstance(neighbor_indices, (list, torch.Tensor)):
                         logger.debug(f"🔍 len(neighbor_indices)={len(neighbor_indices) if isinstance(neighbor_indices, list) else neighbor_indices.numel()}")
                     if full_lattice_states is not None:

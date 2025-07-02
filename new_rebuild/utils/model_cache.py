@@ -310,10 +310,10 @@ def get_model_cache_manager(
             from ..config.simple_config import get_project_config
 
             config = get_project_config()
-        logger.debug("🔧 Creating new global ModelCacheManager")
+        logger.debug_init("🔧 Creating new global ModelCacheManager")
         _global_cache_manager = ModelCacheManager(config)
     else:
-        logger.debug("♻️ Reusing existing global ModelCacheManager")
+        logger.debug_init("♻️ Reusing existing global ModelCacheManager")
 
     return _global_cache_manager
 

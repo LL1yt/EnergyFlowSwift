@@ -65,12 +65,12 @@ class MemoryMonitor:
                 torch.cuda.synchronize()
             except Exception:
                 # Игнорируем ошибки очистки при завершении программы
-                logger.debug(
+                logger.debug_memory(
                     f"⚠️ Игнорируем ошибки очистки при завершении программы"
                 )   
                 pass
 
-        logger.debug(f"🧹 Memory cleanup выполнен для {self.device}")
+        logger.debug_memory(f"🧹 Memory cleanup выполнен для {self.device}")
 
     def get_memory_stats(self) -> Dict[str, float]:
         """Получить статистику использования памяти"""
@@ -242,7 +242,7 @@ class DeviceManager:
         if tensor.device != self.device:
             self.tensor_transfers += 1
             if self.debug_mode and self.tensor_transfers <= 5:
-                logger.debug(
+                logger.debug_memory(
                     f"🔄 Перенос tensor {tensor.shape} с {tensor.device} на {self.device}"
                 )
 

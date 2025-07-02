@@ -71,7 +71,7 @@ class GPUMortonEncoder:
         # Предвычисленные маски для ускорения
         self._prepare_bit_masks()
 
-        logger.debug(
+        logger.debug_init(
             f"🔢 GPUMortonEncoder инициализирован для {dimensions}, {self.bits} бит"
         )
 

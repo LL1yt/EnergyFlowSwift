@@ -113,6 +113,9 @@ class ModelSettings:
     use_attention: bool = True
     aggregation: str = "attention"
     num_layers: int = 1
+    num_heads: int = 4  # Количество голов внимания для multi-head attention
+    use_layer_norm: bool = True  # Использовать ли layer normalization
+    dropout_rate: float = 0.1  # Dropout rate для регуляризации
 
 
 @dataclass
@@ -250,7 +253,9 @@ class TrainingSettings:
     learning_rate: float = 0.001
     batch_size: int = 32
     max_epochs: int = 1000
+    num_epochs: int = 100  # Добавляем для валидатора
     optimizer: str = "adamw"
+    optimizer_type: str = "adamw"  # Дублируем для совместимости с валидатором
     weight_decay: float = 0.01
     gradient_clip_norm: float = 1.0
     early_stopping_patience: int = 50
@@ -304,6 +309,10 @@ class CacheSettings:
     gpu_batch_size: int = 10000
     prefer_gpu_for_large_lattices: bool = True
     gpu_memory_fraction: float = 0.8
+    gpu_cache_size_mb: int = 1024  # Размер GPU кэша в мегабайтах
+    neighbor_cache_size: int = 100000  # Размер кэша соседей
+    connection_cache_enabled: bool = True  # Включить кэширование соединений
+    persistent_cache_dir: str = "cache"  # Директория для постоянного кэша
     
     # Эти значения вычисляются автоматически из LatticeSettings
     # но нужны для совместимости с legacy кодом
@@ -385,20 +394,34 @@ class DeviceSettings:
     memory_fraction: float = 0.9
     allow_tf32: bool = True
     deterministic: bool = False
+    device: str = "cuda"  # auto, cuda, cuda:0, cpu
+    dtype: str = "float32"  # float32, float16, bfloat16
+    compile_model: bool = False  # torch.compile для PyTorch 2.0+
 
 
 @dataclass
 class LoggingSettings:
     """Настройки логирования"""
 
-    level: str = "DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level: str = "ALL_DEBUG"  # DEBUG, INFO, WARNING, ERROR, CRITICAL + custom DEBUG_* levels
     # level: str = "DEBUG"  # Для тестов можно использовать DEBUG
     debug_mode: bool = False  # По умолчанию используем level, а не debug_mode
+    debug_categories: List[str] = field(default_factory=list)  # Категории debug для включения
     log_to_file: bool = True
     log_file: str = "logs/cnf_debug.log"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     enable_profiling: bool = True
     performance_tracking: bool = True
+    enable_file_logging: bool = True  # Включить логирование в файл
+    log_dir: str = "logs"  # Директория для логов
+    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"  # Дублируем для совместимости
+    
+    # Предустановленные наборы категорий для удобства
+    CACHE_DEBUG = ['cache']
+    SPATIAL_DEBUG = ['spatial', 'memory']
+    TRAINING_DEBUG = ['training', 'forward']
+    INIT_DEBUG = ['init']
+    ALL_DEBUG = ['cache', 'spatial', 'forward', 'memory', 'training', 'init', 'verbose']
 
 
 @dataclass
@@ -918,3 +941,47 @@ class ModePresets:
     debug: DebugPreset = field(default_factory=DebugPreset)
     experiment: ExperimentPreset = field(default_factory=ExperimentPreset)
     optimized: OptimizedPreset = field(default_factory=OptimizedPreset)
+
+
+# === SPATIAL OPTIMIZATION HELPERS ===
+
+@dataclass
+class ChunkInfo:
+    """Информация о чанке для пространственной оптимизации"""
+    start: Tuple[int, int, int]
+    end: Tuple[int, int, int]
+    size: Tuple[int, int, int]
+    chunk_id: int
+    total_cells: int
+    overlap: int = 0
+    
+    def contains_position(self, x: int, y: int, z: int) -> bool:
+        """Проверка, содержит ли чанк данную позицию"""
+        return (self.start[0] <= x < self.end[0] and
+                self.start[1] <= y < self.end[1] and
+                self.start[2] <= z < self.end[2])
+
+
+def create_spatial_config_for_lattice(lattice_dimensions: Tuple[int, int, int]) -> Dict[str, Any]:
+    """Создание конфигурации пространственной оптимизации для заданной решетки"""
+    total_cells = lattice_dimensions[0] * lattice_dimensions[1] * lattice_dimensions[2]
+    
+    # Адаптивное определение размера чанка на основе общего размера решетки
+    if total_cells <= 1000:
+        chunk_size = min(8, min(lattice_dimensions))
+    elif total_cells <= 10000:
+        chunk_size = min(16, min(lattice_dimensions))
+    elif total_cells <= 100000:
+        chunk_size = min(32, min(lattice_dimensions))
+    else:
+        chunk_size = min(64, min(lattice_dimensions))
+    
+    return {
+        "chunk_size": chunk_size,
+        "chunk_overlap": max(2, chunk_size // 8),
+        "max_chunks_in_memory": 8 if total_cells > 10000 else 4,
+        "enable_prefetching": total_cells > 1000,
+        "prefetch_queue_size": 4 if total_cells > 10000 else 2,
+        "memory_safety_factor": 0.75,
+        "optimization_mode": "aggressive" if total_cells > 100000 else "balanced"
+    }

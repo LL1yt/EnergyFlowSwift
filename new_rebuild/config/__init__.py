@@ -47,6 +47,9 @@ from .config_components import (
     MemoryManagementSettings,
     ArchitectureConstants,
     AlgorithmicStrategies,
+    # Spatial optimization helpers
+    ChunkInfo,
+    create_spatial_config_for_lattice,
 )
 
 # Legacy configuration (больше не используется напрямую)
@@ -89,4 +92,7 @@ __all__ = [
     "MemoryManagementSettings",
     "ArchitectureConstants",
     "AlgorithmicStrategies",
+    # Spatial optimization helpers
+    "ChunkInfo",
+    "create_spatial_config_for_lattice",
 ]

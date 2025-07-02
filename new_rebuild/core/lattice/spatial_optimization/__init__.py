@@ -48,8 +48,8 @@ from .memory_manager import MemoryPoolManager  # Still used
 # )  # DEPRECATED: use GPUSpatialProcessor
 
 # Конфигурационные классы (теперь из центрального конфига)
-from ....config.project_config import ChunkInfo, create_spatial_config_for_lattice
-from ....config.project_config import ProjectConfig
+from ....config.simple_config import ChunkInfo, create_spatial_config_for_lattice
+from ....config.simple_config import SimpleProjectConfig as ProjectConfig
 
 # GPU Spatial Optimization Components (из guide)
 from .adaptive_chunker import (
