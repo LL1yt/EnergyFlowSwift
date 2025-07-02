@@ -8,7 +8,7 @@ Connection Classifier - классификация связей между кл�
 
 НОВАЯ АРХИТЕКТУРА:
 - ConnectionCacheManager для pre-computed оптимизации
-- Fallback к оригинальной логике при отсутствии кэша
+- Строгая проверка конфигурации без fallback'ов
 - Автоматическое кэширование для повторного использования
 """
 
@@ -40,13 +40,13 @@ class UnifiedConnectionClassifier(nn.Module):
     ОПТИМИЗАЦИИ:
     - ConnectionCacheManager для pre-computed структур
     - Автоматическая инициализация кэша при первом запуске
-    - Fallback к оригинальной логике при необходимости
+    - Строгая валидация без fallback'ов
     - Быстрая batch обработка через кэш
 
     Использует:
-    - DistanceCalculator для пространственного анализа (fallback)
-    - FunctionalSimilarityAnalyzer для функциональной близости (fallback)
-    - Learnable пороги для адаптивной классификации
+    - DistanceCalculator для пространственного анализа
+    - FunctionalSimilarityAnalyzer для функциональной близости
+    - Фиксированные пороги из конфигурации
     """
 
     def __init__(
@@ -59,43 +59,65 @@ class UnifiedConnectionClassifier(nn.Module):
         self.lattice_dimensions = lattice_dimensions
         self.state_size = config.model.state_size
 
-        # Получаем настройки кэширования из конфигурации
-        cache_config = asdict(config.cache) if config.cache else {}
-        self.enable_cache = (
-            cache_config.get("enabled", True) if enable_cache is None else enable_cache
-        )
-        self.enable_performance_monitoring = cache_config.get(
-            "enable_performance_monitoring", False
-        )
-        self.enable_detailed_stats = cache_config.get("enable_detailed_stats", False)
+        # СТРОГАЯ ПРОВЕРКА настроек кэширования - БЕЗ FALLBACK
+        if not hasattr(config, 'cache') or config.cache is None:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует конфигурация config.cache. "
+                "Проверьте настройки кэширования в project_config.py"
+            )
+        
+        cache_config = asdict(config.cache)
+        
+        # Строгая проверка enable_cache
+        if enable_cache is None:
+            if 'enabled' not in cache_config:
+                raise RuntimeError(
+                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует параметр config.cache.enabled. "
+                    "Укажите, включено ли кэширование в конфигурации"
+                )
+            self.enable_cache = cache_config['enabled']
+        else:
+            self.enable_cache = enable_cache
+        
+        # Строгая проверка performance_monitoring
+        if 'enable_performance_monitoring' not in cache_config:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует config.cache.enable_performance_monitoring. "
+                "Укажите параметр мониторинга производительности в конфигурации"
+            )
+        self.enable_performance_monitoring = cache_config['enable_performance_monitoring']
+        
+        # Строгая проверка detailed_stats
+        if 'enable_detailed_stats' not in cache_config:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует config.cache.enable_detailed_stats. "
+                "Укажите параметр детальной статистики в конфигурации"
+            )
+        self.enable_detailed_stats = cache_config['enable_detailed_stats']
         
         logger.debug(f"Cache config: {cache_config}")
         logger.debug(f"Enable cache param: {enable_cache}")
         logger.debug(f"Final enable_cache: {self.enable_cache}")
 
-        # Модульные компоненты (для fallback)
+        # Модульные компоненты для вычислений
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
         self.similarity_analyzer = FunctionalSimilarityAnalyzer(self.state_size)
 
         # Pre-computed кэш менеджер
         if self.enable_cache:
             logger.info(f"Создаем ConnectionCacheManager для решетки {lattice_dimensions}")
-            try:
-                self.cache_manager = ConnectionCacheManager(
-                    lattice_dimensions, cache_config
-                )
-                # Создаем адаптер для синхронизации с spatial optimizer
-                self.cache_adapter = UnifiedCacheAdapter(self.cache_manager)
-                logger.info("ConnectionCacheManager и адаптер созданы успешно")
-                # НЕ инициализируем кэш здесь - ждем установки spatial optimizer
-            except Exception as e:
-                logger.error(f"Ошибка создания ConnectionCacheManager: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-                self.cache_manager = None
-                self.cache_adapter = None
+            # СТРОГАЯ ИНИЦИАЛИЗАЦИЯ - БЕЗ FALLBACK
+            # Если кэш включен, он ДОЛЖЕН работать
+            self.cache_manager = ConnectionCacheManager(
+                lattice_dimensions, cache_config
+            )
+            # Создаем адаптер для синхронизации с spatial optimizer
+            self.cache_adapter = UnifiedCacheAdapter(self.cache_manager)
+            logger.info("ConnectionCacheManager и адаптер созданы успешно")
+            # НЕ инициализируем кэш здесь - ждем установки spatial optimizer
         else:
-            logger.warning(f"Cache отключен (enable_cache={self.enable_cache})")
+            # Кэш явно отключен - это нормально
+            logger.info(f"Cache отключен по конфигурации (enable_cache={self.enable_cache})")
             self.cache_manager = None
             self.cache_adapter = None
 
@@ -521,7 +543,8 @@ class UnifiedConnectionClassifier(nn.Module):
                             manhattan_distance=conn.manhattan_distance,
                             category=conn.category,
                             strength=conn.strength,
-                            functional_similarity=getattr(conn, 'functional_similarity', None)
+                            # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
+                            functional_similarity=conn.functional_similarity if hasattr(conn, 'functional_similarity') else self._raise_missing_attr('functional_similarity', conn)
                         )
                         corrected_connections.append(corrected_conn)
                     else:
@@ -849,4 +872,16 @@ class UnifiedConnectionClassifier(nn.Module):
 
         logger.debug(
             f"📊 Stats updated: LOCAL+{local_count}, FUNCTIONAL+{functional_count}, DISTANT+{distant_count}"
+        )
+    
+    def _raise_missing_attr(self, attr_name: str, obj: Any) -> None:
+        """
+        Выбрасывает ошибку при отсутствии обязательного атрибута
+        
+        В соответствии с принципом: "лучше явная ошибка, чем скрытая проблема"
+        """
+        raise RuntimeError(
+            f"❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательный атрибут '{attr_name}' "
+            f"в объекте типа {type(obj).__name__}. "
+            f"Проверьте структуру ConnectionInfo и убедитесь, что все поля инициализированы"
         )

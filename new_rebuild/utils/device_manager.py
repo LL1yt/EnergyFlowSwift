@@ -65,6 +65,9 @@ class MemoryMonitor:
                 torch.cuda.synchronize()
             except Exception:
                 # Игнорируем ошибки очистки при завершении программы
+                logger.debug(
+                    f"⚠️ Игнорируем ошибки очистки при завершении программы"
+                )   
                 pass
 
         logger.debug(f"🧹 Memory cleanup выполнен для {self.device}")
@@ -127,51 +130,55 @@ class DeviceManager:
     def _detect_optimal_device(self, prefer_cuda: bool) -> torch.device:
         """
         Определяет оптимальное устройство
+        
+        СТРОГАЯ ПОЛИТИКА: Без fallback на CPU при недостатке памяти GPU
 
         Args:
             prefer_cuda: Предпочитать CUDA
 
         Returns:
             Оптимальное torch.device
+            
+        Raises:
+            RuntimeError: При недостатке памяти GPU или других проблемах
         """
-        if prefer_cuda and torch.cuda.is_available():
-            try:
-                # Проверяем количество устройств и их доступность
-                device_count = torch.cuda.device_count()
-                if device_count == 0:
-                    if self.debug_mode:
-                        logger.info(
-                            "💻 CUDA доступен, но устройств не найдено, используется CPU"
-                        )
-                    return torch.device("cpu")
-
-                # Проверяем доступную память GPU
-                device_properties = torch.cuda.get_device_properties(0)
-                gpu_memory_gb = device_properties.total_memory / (1024**3)
-
-                if gpu_memory_gb >= 8.0:  # Минимум 8GB для эффективной работы
-                    device = torch.device("cuda:0")
-                    if self.debug_mode:
-                        logger.info(
-                            f"CUDA device selected: {torch.cuda.get_device_name(0)} ({gpu_memory_gb:.1f}GB)"
-                        )
-                    return device
-                else:
-                    if self.debug_mode:
-                        logger.warning(
-                            f"⚠️ GPU память недостаточна ({gpu_memory_gb:.1f}GB < 8GB), используется CPU"
-                        )
-            except (RuntimeError, AssertionError) as e:
-                if self.debug_mode:
-                    logger.info(f"💻 CUDA ошибка ({str(e)}), используется CPU")
-
-        if self.debug_mode:
+        if prefer_cuda:
             if not torch.cuda.is_available():
-                logger.info("💻 CUDA недоступен, используется CPU")
-            else:
-                logger.info("💻 CPU выбран принудительно")
+                raise RuntimeError(
+                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Запрошено использование CUDA, но CUDA недоступен. "
+                    "Установите CUDA или явно укажите prefer_cuda=False в конфигурации"
+                )
+            
+            # Проверяем количество устройств
+            device_count = torch.cuda.device_count()
+            if device_count == 0:
+                raise RuntimeError(
+                    "❌ КРИТИЧЕСКАЯ ОШИБКА: CUDA доступен, но GPU устройств не найдено. "
+                    "Проверьте драйверы и подключение GPU"
+                )
 
-        return torch.device("cpu")
+            # Проверяем доступную память GPU
+            device_properties = torch.cuda.get_device_properties(0)
+            gpu_memory_gb = device_properties.total_memory / (1024**3)
+
+            if gpu_memory_gb < 8.0:  # Минимум 8GB для эффективной работы
+                raise RuntimeError(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Недостаточно памяти GPU "
+                    f"({gpu_memory_gb:.1f}GB < 8GB минимум). "
+                    f"Используйте GPU с большим объемом памяти или явно укажите prefer_cuda=False"
+                )
+            
+            device = torch.device("cuda:0")
+            if self.debug_mode:
+                logger.info(
+                    f"✅ CUDA device selected: {torch.cuda.get_device_name(0)} ({gpu_memory_gb:.1f}GB)"
+                )
+            return device
+        else:
+            # CPU явно запрошен - это нормально
+            if self.debug_mode:
+                logger.info("💻 CPU выбран по конфигурации")
+            return torch.device("cpu")
 
     def _log_device_info(self):
         """Логирование информации об устройстве"""

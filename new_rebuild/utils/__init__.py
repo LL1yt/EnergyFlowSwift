@@ -45,6 +45,19 @@ from .device_manager import (
     cleanup_memory,
 )
 
+from .hardcoded_checker import (
+    # Основные функции проверки
+    check_hardcoded_value,
+    strict_no_hardcoded,
+    no_hardcoded,
+    # Классы и исключения
+    HardcodedValueError,
+    allow_hardcoded,
+    # Функции валидации
+    check_class_init,
+    validate_no_hardcoded_in_module,
+)
+
 __all__ = [
     # Основные функции логирования
     "setup_logging",
@@ -75,4 +88,12 @@ __all__ = [
     "transfer_module",
     "get_optimal_device",
     "cleanup_memory",
+    # Hardcoded проверки
+    "check_hardcoded_value",
+    "strict_no_hardcoded",
+    "no_hardcoded",
+    "HardcodedValueError",
+    "allow_hardcoded",
+    "check_class_init",
+    "validate_no_hardcoded_in_module",
 ]

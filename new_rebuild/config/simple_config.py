@@ -17,6 +17,10 @@ from typing import Optional, Dict, Any
 import logging
 
 from .config_components import (
+    # Режимы конфигурации
+    ConfigMode,
+    ModeSettings,
+    # Основные компоненты
     LatticeSettings,
     ModelSettings,
     TrainingSettings,
@@ -39,6 +43,14 @@ from .config_components import (
     TrainingEmbeddingSettings,
     NeighborSettings,
     ExpertSettings,
+    # Новые компоненты для hardcoded значений
+    TrainingOptimizerSettings,
+    EmbeddingMappingSettings,
+    MemoryManagementSettings,
+    ArchitectureConstants,
+    AlgorithmicStrategies,
+    ModePresets,
+    # Функции
     create_basic_config,
     create_research_config,
     validate_config_components,
@@ -55,6 +67,9 @@ class SimpleProjectConfig:
     простые компоненты через композицию.
     """
 
+    # Режим работы конфигурации
+    mode: ModeSettings = field(default_factory=ModeSettings)
+    
     # Основные компоненты (всегда присутствуют)
     lattice: LatticeSettings = field(default_factory=LatticeSettings)
     model: ModelSettings = field(default_factory=ModelSettings)
@@ -92,12 +107,26 @@ class SimpleProjectConfig:
     neighbors: Optional[NeighborSettings] = field(default_factory=NeighborSettings)
     expert: Optional[ExpertSettings] = field(default_factory=ExpertSettings)
     connection: Optional[ConnectionSettings] = field(default_factory=ConnectionSettings)
+    
+    # Централизованные параметры (для миграции hardcoded значений)
+    training_optimizer: Optional[TrainingOptimizerSettings] = field(default_factory=TrainingOptimizerSettings)
+    embedding_mapping: Optional[EmbeddingMappingSettings] = field(default_factory=EmbeddingMappingSettings)
+    memory_management: Optional[MemoryManagementSettings] = field(default_factory=MemoryManagementSettings)
+    architecture: Optional[ArchitectureConstants] = field(default_factory=ArchitectureConstants)
+    strategies: Optional[AlgorithmicStrategies] = field(default_factory=AlgorithmicStrategies)
+    
+    # Предустановленные значения для режимов
+    mode_presets: Optional[ModePresets] = field(default_factory=ModePresets)
 
     # Runtime компоненты (вычисляются автоматически)
     device_manager: Optional[DeviceManager] = field(init=False, default=None)
 
     def __post_init__(self):
         """Автоматическая настройка после инициализации"""
+        # Применяем настройки режима ПЕРЕД всем остальным
+        if self.mode.auto_apply_overrides:
+            self._apply_mode_settings()
+            
         # ВАЖНО: Сначала настраиваем логирование на основе наших настроек
         from ..utils.logging import setup_logging
         setup_logging(
@@ -117,16 +146,161 @@ class SimpleProjectConfig:
         if self.expert and self.cache:
             self.expert.cache = self.cache
 
-        # Валидация конфигурации если включена
-        if self.validation and self.validation.validate_config:
-            self._validate_configuration()
+        # СТРОГАЯ ВАЛИДАЦИЯ - всегда выполняется
+        # В соответствии с принципом: "лучше явная ошибка, чем скрытая проблема"
+        self._validate_configuration()
 
         # Логирование инициализации
         if self.logging.debug_mode:
             self._log_initialization()
+            
+    def _apply_mode_settings(self):
+        """Применить настройки в зависимости от режима"""
+        global _global_migration_warned
+        
+        # В DEBUG режиме сбрасываем флаг, чтобы показывать предупреждения каждый раз
+        if self.mode.mode == ConfigMode.DEBUG:
+            _global_migration_warned = False
+        
+        # Показываем предупреждение только один раз за всю сессию (кроме DEBUG режима)
+        if not _global_migration_warned:
+            import warnings
+            warnings.warn(
+                "\n⚠️ НАПОМИНАНИЕ: Режимы конфигурации используют централизованные пресеты!\n"
+                "✅ Это хорошо, но помните:\n"
+                "   1. Всегда используйте значения из config вместо hardcoded в вашем коде\n"
+                "   2. Применяйте @no_hardcoded декоратор к новым функциям\n"
+                "   3. Используйте strict_no_hardcoded() для автоматической замены\n"
+                "📝 Пресеты находятся в config.mode_presets.{debug|experiment|optimized}",
+                UserWarning,
+                stacklevel=4
+            )
+            _global_migration_warned = True
+            
+        if self.mode.mode == ConfigMode.DEBUG:
+            self._apply_debug_mode()
+        elif self.mode.mode == ConfigMode.EXPERIMENT:
+            self._apply_experiment_mode()
+        elif self.mode.mode == ConfigMode.OPTIMIZED:
+            self._apply_optimized_mode()
+            
+        # Логируем информацию о режиме
+        if self.mode.log_mode_info:
+            logging.info(f"🎯 Config mode: {self.mode.mode.value.upper()}")
+            
+    def _apply_debug_mode(self):
+        """Режим отладки - быстрые тесты, много логов"""
+        # Используем централизованные пресеты вместо hardcoded значений
+        preset = self.mode_presets.debug
+        
+        # Применяем настройки из пресета
+        self.lattice.dimensions = preset.lattice_dimensions
+        self.model.state_size = preset.model_state_size
+        self.model.target_params = preset.model_target_params
+        
+        # Много логирования
+        self.logging.debug_mode = True
+        self.logging.level = "DEBUG"
+        self.logging.performance_tracking = True
+        
+        # Быстрые настройки обучения
+        self.training_embedding.max_total_samples = preset.training_max_samples
+        self.training_embedding.num_epochs = preset.training_num_epochs
+        self.training_embedding.test_mode = True
+        
+        # Минимальные параметры экспертов
+        self.expert.functional.params = preset.expert_functional_params
+        self.expert.distant.params = preset.expert_distant_params
+        
+        # Оптимизация для быстрых тестов
+        self.architecture.moe_functional_params = preset.expert_functional_params
+        self.architecture.moe_distant_params = preset.expert_distant_params
+        self.architecture.spatial_max_neighbors = 100  # TODO: добавить в пресет
+        
+        # Минимальные настройки памяти
+        self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
+        self.memory_management.dataloader_workers = preset.dataloader_workers
+        
+    def _apply_experiment_mode(self):
+        """Режим экспериментов - средние параметры"""
+        # Используем централизованные пресеты
+        preset = self.mode_presets.experiment
+        
+        # Применяем настройки из пресета
+        self.lattice.dimensions = preset.lattice_dimensions
+        self.model.state_size = preset.model_state_size
+        self.model.target_params = preset.model_target_params
+        
+        # Умеренное логирование
+        self.logging.debug_mode = False
+        self.logging.level = "INFO"
+        
+        # Экспериментальные настройки
+        self.training_embedding.max_total_samples = preset.training_max_samples
+        self.training_embedding.num_epochs = preset.training_num_epochs
+        self.training_embedding.test_mode = False
+        
+        # Средние параметры экспертов
+        self.expert.functional.params = preset.expert_functional_params
+        self.expert.distant.params = preset.expert_distant_params
+        
+        # Сбалансированные параметры
+        self.architecture.moe_functional_params = preset.expert_functional_params
+        self.architecture.moe_distant_params = preset.expert_distant_params
+        self.architecture.spatial_max_neighbors = 1000  # TODO: добавить в пресет
+        
+        # Нормальные настройки памяти
+        self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
+        self.memory_management.dataloader_workers = preset.dataloader_workers
+        
+    def _apply_optimized_mode(self):
+        """Финальный оптимизированный режим"""
+        # Используем централизованные пресеты
+        preset = self.mode_presets.optimized
+        
+        # Применяем настройки из пресета
+        self.lattice.dimensions = preset.lattice_dimensions
+        self.model.state_size = preset.model_state_size
+        self.model.target_params = preset.model_target_params
+        
+        # Минимальное логирование
+        self.logging.debug_mode = False
+        self.logging.level = "WARNING"
+        self.logging.performance_tracking = False
+        
+        # Полное обучение
+        self.training_embedding.max_total_samples = preset.training_max_samples
+        self.training_embedding.num_epochs = preset.training_num_epochs
+        self.training_embedding.test_mode = False
+        
+        # Максимальные параметры экспертов
+        self.expert.functional.params = preset.expert_functional_params
+        self.expert.distant.params = preset.expert_distant_params
+        
+        # Оптимизированные параметры
+        self.architecture.moe_functional_params = preset.expert_functional_params
+        self.architecture.moe_distant_params = preset.expert_distant_params
+        self.architecture.spatial_max_neighbors = 2000  # TODO: добавить в пресет
+        
+        # Максимальные настройки памяти
+        self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
+        self.memory_management.dataloader_workers = preset.dataloader_workers
+        
+        # Включить оптимизации производительности
+        if self.performance is None:
+            self.performance = PerformanceSettings()
+        self.performance.enable_jit = True
+        self.performance.benchmark_mode = True
 
     def _validate_configuration(self):
-        """Валидация конфигурации"""
+        """Строгая валидация конфигурации без fallback'ов"""
+        # Импортируем валидатор
+        from .config_validator import ConfigValidator
+        
+        # Запускаем полную валидацию
+        ConfigValidator.validate_full_config(self)
+        
+        # Дополнительная бизнес-логика валидации
         try:
             # Проверяем большие решетки без кэша
             if self.lattice.total_cells > 5000 and (
@@ -337,6 +511,9 @@ class SimpleProjectConfig:
 
 _global_config: Optional[SimpleProjectConfig] = None
 
+# Глобальный флаг для предупреждения о миграции (показываем только раз за сессию)
+_global_migration_warned: bool = False
+
 
 def get_project_config() -> SimpleProjectConfig:
     """Получить глобальный экземпляр конфигурации"""
@@ -358,6 +535,12 @@ def reset_project_config():
     _global_config = None
 
 
+def reset_migration_warning():
+    """Сбросить флаг предупреждения о миграции (для тестов)"""
+    global _global_migration_warned
+    _global_migration_warned = False
+
+
 # === ФАБРИЧНЫЕ ФУНКЦИИ ===
 
 
@@ -369,6 +552,75 @@ def create_simple_config(**overrides) -> SimpleProjectConfig:
         if hasattr(config, key):
             setattr(config, key, value)
 
+    return config
+
+
+def create_debug_config(**overrides) -> SimpleProjectConfig:
+    """Создать конфиг для отладки и быстрых тестов"""
+    # Создаем ModeSettings с нужным режимом
+    mode_settings = ModeSettings(mode=ConfigMode.DEBUG)
+    
+    # Создаем конфиг с этим режимом
+    config = SimpleProjectConfig(mode=mode_settings)
+    
+    # Применяем дополнительные переопределения
+    for key, value in overrides.items():
+        if hasattr(config, key):
+            # Если это словарь с настройками компонента
+            if isinstance(value, dict) and hasattr(getattr(config, key), '__dict__'):
+                component = getattr(config, key)
+                for k, v in value.items():
+                    if hasattr(component, k):
+                        setattr(component, k, v)
+            else:
+                setattr(config, key, value)
+    
+    return config
+
+
+def create_experiment_config(**overrides) -> SimpleProjectConfig:
+    """Создать конфиг для экспериментов"""
+    # Создаем ModeSettings с нужным режимом
+    mode_settings = ModeSettings(mode=ConfigMode.EXPERIMENT)
+    
+    # Создаем конфиг с этим режимом
+    config = SimpleProjectConfig(mode=mode_settings)
+    
+    # Применяем дополнительные переопределения
+    for key, value in overrides.items():
+        if hasattr(config, key):
+            # Если это словарь с настройками компонента
+            if isinstance(value, dict) and hasattr(getattr(config, key), '__dict__'):
+                component = getattr(config, key)
+                for k, v in value.items():
+                    if hasattr(component, k):
+                        setattr(component, k, v)
+            else:
+                setattr(config, key, value)
+    
+    return config
+
+
+def create_optimized_config(**overrides) -> SimpleProjectConfig:
+    """Создать оптимизированный конфиг"""
+    # Создаем ModeSettings с нужным режимом
+    mode_settings = ModeSettings(mode=ConfigMode.OPTIMIZED)
+    
+    # Создаем конфиг с этим режимом
+    config = SimpleProjectConfig(mode=mode_settings)
+    
+    # Применяем дополнительные переопределения
+    for key, value in overrides.items():
+        if hasattr(config, key):
+            # Если это словарь с настройками компонента
+            if isinstance(value, dict) and hasattr(getattr(config, key), '__dict__'):
+                component = getattr(config, key)
+                for k, v in value.items():
+                    if hasattr(component, k):
+                        setattr(component, k, v)
+            else:
+                setattr(config, key, value)
+    
     return config
 
 

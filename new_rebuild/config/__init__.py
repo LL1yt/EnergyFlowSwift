@@ -12,6 +12,9 @@ from .simple_config import (
     set_project_config,
     reset_project_config,
     create_simple_config,
+    create_debug_config,
+    create_experiment_config,
+    create_optimized_config,
     create_research_config_simple,
     create_production_config_simple,
 )
@@ -20,6 +23,10 @@ from .simple_config import (
 ProjectConfig = SimpleProjectConfig
 
 from .config_components import (
+    # Режимы конфигурации
+    ConfigMode,
+    ModeSettings,
+    # Основные компоненты
     LatticeSettings,
     ModelSettings,
     TrainingSettings,
@@ -34,6 +41,12 @@ from .config_components import (
     ExperimentSettings,
     PerformanceSettings,
     ValidationSettings,
+    # Новые централизованные настройки
+    TrainingOptimizerSettings,
+    EmbeddingMappingSettings,
+    MemoryManagementSettings,
+    ArchitectureConstants,
+    AlgorithmicStrategies,
 )
 
 # Legacy configuration (больше не используется напрямую)
@@ -47,8 +60,14 @@ __all__ = [
     "set_project_config",
     "reset_project_config",
     "create_simple_config",
+    "create_debug_config",
+    "create_experiment_config",
+    "create_optimized_config",
     "create_research_config_simple",
     "create_production_config_simple",
+    # Режимы конфигурации
+    "ConfigMode",
+    "ModeSettings",
     # Компоненты конфигурации
     "LatticeSettings",
     "ModelSettings",
@@ -64,4 +83,10 @@ __all__ = [
     "ExperimentSettings",
     "PerformanceSettings",
     "ValidationSettings",
+    # Новые централизованные настройки
+    "TrainingOptimizerSettings",
+    "EmbeddingMappingSettings",
+    "MemoryManagementSettings",
+    "ArchitectureConstants",
+    "AlgorithmicStrategies",
 ]

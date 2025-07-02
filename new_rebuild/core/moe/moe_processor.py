@@ -61,30 +61,75 @@ class MoEConnectionProcessor(nn.Module):
         self.memory_pool_manager = get_memory_pool_manager()
 
         # === ЦЕНТРАЛИЗОВАННАЯ КОНФИГУРАЦИЯ ===
-        self.state_size = state_size or config.model.state_size
-        self.lattice_dimensions = lattice_dimensions or config.lattice.dimensions
+        # Строгая проверка state_size
+        if state_size is None:
+            if not hasattr(config.model, 'state_size') or config.model.state_size is None:
+                raise RuntimeError(
+                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательный параметр config.model.state_size. "
+                    "Проверьте конфигурацию в project_config.py"
+                )
+            self.state_size = config.model.state_size
+        else:
+            self.state_size = state_size
+
+        # Строгая проверка lattice_dimensions
+        if lattice_dimensions is None:
+            if not hasattr(config.lattice, 'dimensions') or config.lattice.dimensions is None:
+                raise RuntimeError(
+                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательный параметр config.lattice.dimensions. "
+                    "Проверьте конфигурацию в project_config.py"
+                )
+            self.lattice_dimensions = config.lattice.dimensions
+        else:
+            self.lattice_dimensions = lattice_dimensions
+
         self.adaptive_radius = config.calculate_adaptive_radius()
-        # Используем neighbor_count из model settings как max_neighbors
-        self.max_neighbors = getattr(
-            config, "max_neighbors", config.model.neighbor_count
-        )
-        self.enable_cnf = enable_cnf if enable_cnf is not None else config.cnf.enabled
+        
+        # Строгая проверка max_neighbors
+        if hasattr(config, "max_neighbors"):
+            self.max_neighbors = config.max_neighbors
+        else:
+            if not hasattr(config.model, 'neighbor_count') or config.model.neighbor_count is None:
+                raise RuntimeError(
+                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательный параметр config.model.neighbor_count. "
+                    "Проверьте конфигурацию в project_config.py"
+                )
+            self.max_neighbors = config.model.neighbor_count
+
+        # Строгая проверка enable_cnf
+        if enable_cnf is not None:
+            self.enable_cnf = enable_cnf
+        else:
+            if not hasattr(config.cnf, 'enabled'):
+                raise RuntimeError(
+                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательный параметр config.cnf.enabled. "
+                    "Проверьте конфигурацию в project_config.py"
+                )
+            self.enable_cnf = config.cnf.enabled
 
         # Конфигурация распределения связей: 10%/55%/35%
-        # Используем fallback значения если neighbors не определен
-        if hasattr(config, "neighbors") and config.neighbors:
-            self.connection_ratios = {
-                "local": config.neighbors.local_tier,
-                "functional": config.neighbors.functional_tier,
-                "distant": config.neighbors.distant_tier,
-            }
-        else:
-            # Fallback значения
-            self.connection_ratios = {
-                "local": 0.1,
-                "functional": 0.55,
-                "distant": 0.35,
-            }
+        # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
+        if not hasattr(config, "neighbors") or config.neighbors is None:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует конфигурация config.neighbors. "
+                "Проверьте настройки в project_config.py. "
+                "Необходимо определить neighbors с полями local_tier, functional_tier, distant_tier"
+            )
+        
+        # Проверяем обязательные поля neighbors
+        required_neighbor_fields = ['local_tier', 'functional_tier', 'distant_tier']
+        for field in required_neighbor_fields:
+            if not hasattr(config.neighbors, field) or getattr(config.neighbors, field) is None:
+                raise RuntimeError(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательное поле config.neighbors.{field}. "
+                    f"Проверьте конфигурацию neighbors в project_config.py"
+                )
+        
+        self.connection_ratios = {
+            "local": config.neighbors.local_tier,
+            "functional": config.neighbors.functional_tier,
+            "distant": config.neighbors.distant_tier,
+        }
 
         # === КЛАССИФИКАТОР СВЯЗЕЙ С КЭШИРОВАНИЕМ ===
         self.connection_classifier = UnifiedConnectionClassifier(
@@ -93,24 +138,47 @@ class MoEConnectionProcessor(nn.Module):
         )
         
         # Spatial optimizer будет установлен позже через setter
-        self.spatial_optimizer = None
+        # self.spatial_optimizer = None
 
         # === ЭКСПЕРТЫ ===
         self.local_expert = SimpleLinearExpert(state_size=self.state_size)
 
-        # Используем fallback значения для параметров экспертов
-        functional_params = 8000  # Default value
-        distant_params = 4000  # Default value
-
-        if hasattr(config, "expert") and config.expert:
-            if hasattr(config.expert, "functional") and config.expert.functional:
-                functional_params = getattr(
-                    config.expert.functional, "params", functional_params
-                )
-            if hasattr(config.expert, "distant") and config.expert.distant:
-                distant_params = getattr(
-                    config.expert.distant, "params", distant_params
-                )
+        # СТРОГАЯ ПРОВЕРКА параметров экспертов - БЕЗ FALLBACK
+        if not hasattr(config, "expert") or config.expert is None:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует конфигурация config.expert. "
+                "Проверьте настройки экспертов в project_config.py"
+            )
+        
+        # Проверка functional expert
+        if not hasattr(config.expert, "functional") or config.expert.functional is None:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует config.expert.functional. "
+                "Настройте параметры functional expert в конфигурации"
+            )
+        
+        if not hasattr(config.expert.functional, "params") or config.expert.functional.params is None:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует config.expert.functional.params. "
+                "Укажите количество параметров для functional expert"
+            )
+        
+        functional_params = config.expert.functional.params
+        
+        # Проверка distant expert
+        if not hasattr(config.expert, "distant") or config.expert.distant is None:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует config.expert.distant. "
+                "Настройте параметры distant expert в конфигурации"
+            )
+        
+        if not hasattr(config.expert.distant, "params") or config.expert.distant.params is None:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует config.expert.distant.params. "
+                "Укажите количество параметров для distant expert"
+            )
+        
+        distant_params = config.expert.distant.params
 
         self.functional_expert = HybridGNN_CNF_Expert(
             state_size=self.state_size,
@@ -120,18 +188,31 @@ class MoEConnectionProcessor(nn.Module):
         )
 
         # 3. Distant Expert - долгосрочная память (LightweightCNF)
-        if self.enable_cnf:
-            self.distant_expert = GPUEnhancedCNF(
-                state_size=self.state_size,
-                connection_type=ConnectionType.DISTANT,
-                integration_steps=config.cnf.integration_steps,
-                batch_processing_mode=config.cnf.batch_processing_mode,
-                max_batch_size=config.cnf.max_batch_size,
-                adaptive_method=config.cnf.adaptive_method,
+        # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK для CNF
+        if not self.enable_cnf:
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: CNF отключен (config.cnf.enabled=False), "
+                "но MoE архитектура требует CNF для distant_expert. "
+                "Включите CNF в конфигурации: config.cnf.enabled = True"
             )
-        else:
-            # Fallback к простому linear если CNF отключен
-            self.distant_expert = SimpleLinearExpert(state_size=self.state_size)
+        
+        # Проверяем необходимые параметры CNF
+        cnf_required_fields = ['integration_steps', 'batch_processing_mode', 'max_batch_size', 'adaptive_method']
+        for field in cnf_required_fields:
+            if not hasattr(config.cnf, field) or getattr(config.cnf, field) is None:
+                raise RuntimeError(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательный параметр config.cnf.{field}. "
+                    f"Проверьте конфигурацию CNF в project_config.py"
+                )
+        
+        self.distant_expert = GPUEnhancedCNF(
+            state_size=self.state_size,
+            connection_type=ConnectionType.DISTANT,
+            integration_steps=config.cnf.integration_steps,
+            batch_processing_mode=config.cnf.batch_processing_mode,
+            max_batch_size=config.cnf.max_batch_size,
+            adaptive_method=config.cnf.adaptive_method,
+        )
 
         # === GATING NETWORK ===
         self.gating_network = GatingNetwork(state_size=self.state_size, num_experts=3)

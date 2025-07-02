@@ -9,7 +9,26 @@
 
 from dataclasses import dataclass, field
 from typing import Tuple, Dict, Any, List, Optional
+from enum import Enum
 import torch
+
+
+# === РЕЖИМЫ КОНФИГУРАЦИИ ===
+
+
+class ConfigMode(Enum):
+    """Режимы работы конфигурации для исследовательского проекта"""
+    DEBUG = "debug"          # Прогоночные тесты и отладка ошибок
+    EXPERIMENT = "experiment" # Эксперименты и исследования
+    OPTIMIZED = "optimized"   # Финальный оптимизированный конфиг
+
+
+@dataclass
+class ModeSettings:
+    """Настройки режима работы"""
+    mode: ConfigMode = ConfigMode.DEBUG
+    auto_apply_overrides: bool = True
+    log_mode_info: bool = True
 
 
 # === ОСНОВНЫЕ КОМПОНЕНТЫ ===
@@ -719,3 +738,183 @@ def merge_config_updates(
             result[key] = value
 
     return result
+
+
+# === ЦЕНТРАЛИЗОВАННЫЕ ПАРАМЕТРЫ ДЛЯ HARDCODED ЗНАЧЕНИЙ ===
+
+
+@dataclass
+class TrainingOptimizerSettings:
+    """Централизованные параметры оптимизатора и обучения"""
+    # Оптимизатор
+    learning_rate: float = 1e-4
+    weight_decay: float = 1e-5
+    
+    # Scheduler
+    scheduler_t0: int = 10
+    scheduler_t_mult: int = 2
+    
+    # Gradient clipping
+    gradient_clip_max_norm: float = 1.0
+    
+    # Частота логирования
+    log_batch_frequency: int = 10
+    
+    # Веса для агрегации состояний
+    surface_contribution_weight: float = 0.7
+    volume_contribution_weight: float = 0.3
+
+
+@dataclass
+class EmbeddingMappingSettings:
+    """Настройки маппинга эмбеддингов в решетку"""
+    surface_coverage: float = 0.8
+    lattice_steps: int = 5
+    convergence_threshold: float = 1e-4
+    
+    # Веса для loss функций
+    lattice_loss_weight: float = 0.1
+    spatial_consistency_weight: float = 0.05
+    
+    # Архитектурные параметры
+    attention_num_heads: int = 4
+    dropout_rate: float = 0.1
+    
+    # Инициализация
+    position_embedding_scale: float = 0.1
+    
+    # Размеры для uniform placement
+    target_surface_points: int = 64
+
+
+@dataclass
+class MemoryManagementSettings:
+    """Настройки управления памятью и производительностью"""
+    # Garbage collection
+    cleanup_threshold: int = 100
+    
+    # Минимальные требования
+    min_gpu_memory_gb: float = 8.0
+    
+    # Лимиты логирования
+    tensor_transfer_log_limit: int = 5
+    
+    # Размеры данных
+    embedding_size_bytes: int = 768 * 4
+    
+    # Резервирование памяти
+    training_memory_reserve_gb: float = 20.0
+    memory_safety_factor: float = 0.8
+    
+    # DataLoader настройки
+    dataloader_workers: int = 8
+    prefetch_factor: int = 6
+    
+    # GPU memory safety
+    gpu_memory_safety_factor: float = 0.85
+    cpu_memory_safety_factor: float = 0.85
+
+
+@dataclass
+class ArchitectureConstants:
+    """Архитектурные константы и параметры"""
+    # MoE параметры экспертов
+    moe_functional_params: int = 8000
+    moe_distant_params: int = 4000
+    moe_num_experts: int = 3
+    moe_gating_hidden_dim: int = 64
+    
+    # CNF параметры
+    cnf_max_batch_size: int = 100
+    cnf_hidden_dim_ratio: float = 0.5  # hidden_dim = state_size * ratio
+    cnf_min_hidden_dim: int = 16
+    cnf_dropout_rate: float = 0.1
+    cnf_damping_strength: float = 0.1
+    cnf_target_params: int = 3000
+    
+    # Пространственная оптимизация
+    spatial_cell_size: int = 2
+    spatial_max_neighbors: int = 1000
+    spatial_log_frequency: int = 500
+    spatial_chunk_overlap: int = 8
+    
+    # Алгоритмические константы
+    spatial_consistency_range: int = 27  # 3x3x3 cube
+    max_comparison_cells: int = 100
+    
+    # Stack search depth
+    stack_search_depth: int = 15
+    
+    # EMA веса для функционального сходства
+    ema_weight_current: float = 0.9
+    ema_weight_history: float = 0.1
+    
+    # Teacher embedding dimension (например, от DistilBERT)
+    teacher_embedding_dim: int = 768
+
+
+@dataclass
+class AlgorithmicStrategies:
+    """Строковые константы и стратегии алгоритмов"""
+    # Placement strategies
+    placement_strategies: List[str] = field(default_factory=lambda: ["faces", "edges", "corners", "uniform"])
+    
+    # Extraction strategies
+    extraction_strategies: List[str] = field(default_factory=lambda: ["surface_mean", "weighted_surface", "volume_projection"])
+    
+    # CNF batch processing modes
+    cnf_processing_modes: List[str] = field(default_factory=lambda: ["single", "batch", "adaptive"])
+    
+    # Default strategies
+    default_placement_strategy: str = "faces"
+    default_extraction_strategy: str = "surface_mean"
+    default_cnf_mode: str = "adaptive"
+
+
+@dataclass
+class ModePresets:
+    """Предустановленные значения для разных режимов конфигурации"""
+    
+    @dataclass
+    class DebugPreset:
+        """Настройки для DEBUG режима"""
+        lattice_dimensions: Tuple[int, int, int] = (8, 8, 8)
+        model_state_size: int = 32
+        model_target_params: int = 8000
+        training_max_samples: int = 50
+        training_num_epochs: int = 1
+        expert_functional_params: int = 2000
+        expert_distant_params: int = 1000
+        memory_reserve_gb: float = 2.0
+        dataloader_workers: int = 2
+        
+    @dataclass
+    class ExperimentPreset:
+        """Настройки для EXPERIMENT режима"""
+        lattice_dimensions: Tuple[int, int, int] = (15, 15, 15)
+        model_state_size: int = 64
+        model_target_params: int = 25000
+        training_max_samples: int = 1000
+        training_num_epochs: int = 10
+        expert_functional_params: int = 8000
+        expert_distant_params: int = 4000
+        memory_reserve_gb: float = 10.0
+        dataloader_workers: int = 4
+        
+    @dataclass
+    class OptimizedPreset:
+        """Настройки для OPTIMIZED режима"""
+        lattice_dimensions: Tuple[int, int, int] = (30, 30, 30)
+        model_state_size: int = 128
+        model_target_params: int = 100000
+        training_max_samples: Optional[int] = None  # Без ограничений
+        training_num_epochs: int = 100
+        expert_functional_params: int = 15000
+        expert_distant_params: int = 8000
+        memory_reserve_gb: float = 20.0
+        dataloader_workers: int = 8
+        
+    # Экземпляры пресетов
+    debug: DebugPreset = field(default_factory=DebugPreset)
+    experiment: ExperimentPreset = field(default_factory=ExperimentPreset)
+    optimized: OptimizedPreset = field(default_factory=OptimizedPreset)
