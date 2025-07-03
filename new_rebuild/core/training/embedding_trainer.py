@@ -290,19 +290,30 @@ class EmbeddingTrainer(TrainingInterface):
         logger.debug_training(f"🔧 Lattice config dimensions: {self.config.lattice.dimensions}")
         logger.debug_training(f"🔧 Expected cells: {self.config.lattice.total_cells}")
         
-        self.lattice.states = lattice_states
+        # ИСПРАВЛЕНО: Lattice ожидает [total_cells, state_size], убираем batch dimension
+        # Для batch_size=1 просто берем первый элемент
+        if lattice_states.shape[0] == 1:
+            self.lattice.states = lattice_states[0]  # [total_cells, state_size]
+        else:
+            # Для batch_size > 1 нужна другая логика
+            raise NotImplementedError("Batch processing not yet supported in lattice")
         
         for step in range(self.lattice_settings.lattice_steps):
             # Выполняем шаг решетки (обновляет внутренние состояния)
-            lattice_states = self.lattice.forward()
+            self.lattice.forward()  # Updates internal states
+            
+            # Получаем обновленные состояния и добавляем batch dimension обратно
+            current_lattice_states = self.lattice.states.unsqueeze(0)  # [1, total_cells, state_size]
             
             # Проверка сходимости (опционально)
-            if step > 0 and self._check_convergence(lattice_states, initial_states):
+            if step > 0 and self._check_convergence(current_lattice_states, initial_states):
                 logger.debug_training(f"Сходимость достигнута на шаге {step}")
                 break
 
         # 5. 3D Lattice → Surface extraction
-        final_surface = self.lattice_extractor(lattice_states)  # [batch, 64]
+        # Получаем финальные состояния с batch dimension
+        final_lattice_states = self.lattice.states.unsqueeze(0)  # [1, total_cells, state_size]
+        final_surface = self.lattice_extractor(final_lattice_states)  # [batch, 64]
         
         # Преобразуем плоский вектор обратно в 2D surface для transformer
         # Для куба 8×8×8, поверхность имеет размер 8×8 = 64
@@ -316,7 +327,7 @@ class EmbeddingTrainer(TrainingInterface):
         # 7. Вычисление loss'ов (включая пространственную согласованность)
         losses = self._compute_losses(
             input_embeddings, output_embeddings, target_embeddings, texts,
-            initial_states, lattice_states
+            initial_states, final_lattice_states
         )
 
         return losses

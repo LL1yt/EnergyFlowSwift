@@ -43,15 +43,16 @@ class LatticeSettings:
     
     # Адаптивный радиус - константы алгоритма (не дублирование!)
     adaptive_radius_enabled: bool = True
-    adaptive_radius_ratio: float = 0.6
+    adaptive_radius_ratio: float = 0.2
     adaptive_radius_max: float = 100.0
     adaptive_radius_min: float = 1.0
 
     # Классификация соединений - алгоритмические пропорции (не дублирование!)
-    local_distance_ratio: float = 0.2      # 10% ближайших связей
-    functional_distance_ratio: float = 0.65 # до 65% связей для functional
-    distant_distance_ratio: float = 1.0     # до 100% всех связей
+    local_distance_ratio: float = 0.5      # 10% ближайших связей (от 0.0 до 0.1) для примера, может отличаться от текущих настроек
+    functional_distance_ratio: float = 0.85 # до 65% связей для functional (от 0.1 до 0.65)
+    distant_distance_ratio: float = 1.0     # до 100% всех связей (от 0.65 до 1.0)
     functional_similarity_threshold: float = 0.3
+    # 0 ≤ LOCAL < local_distance_ratio*Adaptive_radius; local_distance_ratio*Adaptive_radius ≤ FUNCTIONAL: ≤ functional_distance_ratio*Adaptive_radius; functional_distance_ratio*Adaptive_radius < DISTANT ≤ distant_distance_ratio*Adaptive_radius 
 
     # Пространственная оптимизация - алгоритмические константы
     enable_morton_encoding: bool = True
@@ -881,7 +882,10 @@ class ModePresets:
     class DebugPreset:
         """Настройки для DEBUG режима - быстрые тесты и отладка"""
         # Lattice
-        lattice_dimensions: Tuple[int, int, int] = (10, 10, 10)
+        lattice_dimensions: Tuple[int, int, int] = (15, 15, 15)
+        
+        # Adaptive radius settings for small lattice
+        lattice_adaptive_radius_ratio: float = 0.2  # Much smaller ratio for debug mode (15% of max dimension)
         
         # Model
         model_state_size: int = 24  # Общий для всех экспертов

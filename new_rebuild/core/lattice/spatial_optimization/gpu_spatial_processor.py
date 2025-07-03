@@ -829,11 +829,13 @@ class GPUSpatialProcessor:
                     neighbor_states = torch.empty(0, all_states.shape[-1], device=self.device)
                 
                 # Применяем функцию обработки к одной клетке
+                # ИСПРАВЛЕНО: Преобразуем cell_idx в int, так как MoE processor ожидает int
+                # ИСПРАВЛЕНО: Преобразуем neighbor_indices в список int'ов
                 processed_state = processor_fn(
                     cell_state,
                     neighbor_states,
-                    cell_idx,
-                    neighbor_indices
+                    cell_idx.item() if isinstance(cell_idx, torch.Tensor) else cell_idx,
+                    neighbor_indices.tolist() if isinstance(neighbor_indices, torch.Tensor) else neighbor_indices
                 )
                 
                 if all_states.dim() == 3:  # [batch, cells, features]
@@ -905,6 +907,9 @@ class GPUSpatialProcessor:
         Returns:
             Список индексов соседних клеток
         """
+        # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ для диагностики
+        logger.info(f"🔍 [GPUSpatialProcessor.find_neighbors] Вызван для coords={coords}, radius={radius}")
+        
         # Ленивая инициализация spatial hash, если он пустой
         self._ensure_spatial_hash_initialized()
         
@@ -936,8 +941,16 @@ class GPUSpatialProcessor:
                     if center_idx in neighbors_list:
                         neighbors_list.remove(center_idx)
             
+            # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ результата
+            logger.info(f"   [GPUSpatialProcessor.find_neighbors] Найдено {len(neighbors_list)} соседей")
+            if len(neighbors_list) > 10:
+                logger.info(f"   Первые 10 соседей: {neighbors_list[:10]}...")
+            else:
+                logger.info(f"   Все соседи: {neighbors_list}")
+            
             return neighbors_list
         else:
+            logger.info(f"   [GPUSpatialProcessor.find_neighbors] Соседей не найдено!")
             return []
     
     def _ensure_spatial_hash_initialized(self):

@@ -408,6 +408,18 @@ class MoEConnectionProcessor(nn.Module):
             neighbor_states=neighbor_states,
         )
         logger.debug_forward(f"[{cell_idx}] Классификация завершена.")
+        
+        # DEBUG: Log classification results
+        local_count = len(classifications.get(ConnectionCategory.LOCAL, []))
+        functional_count = len(classifications.get(ConnectionCategory.FUNCTIONAL, []))
+        distant_count = len(classifications.get(ConnectionCategory.DISTANT, []))
+        total_classified = local_count + functional_count + distant_count
+        
+        logger.debug_forward(f"[{cell_idx}] Classification results:")
+        logger.debug_forward(f"  - LOCAL: {local_count} connections")
+        logger.debug_forward(f"  - FUNCTIONAL: {functional_count} connections")
+        logger.debug_forward(f"  - DISTANT: {distant_count} connections")
+        logger.debug_forward(f"  - TOTAL classified: {total_classified} / {neighbor_count} neighbors")
 
         # === 2. ОБРАБОТКА КАЖДЫМ ЭКСПЕРТОМ ===
         logger.debug_forward(f"[{cell_idx}] Шаг 2: Обработка экспертами...")

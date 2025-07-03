@@ -304,6 +304,10 @@ class SimpleProjectConfig:
         self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
         self.memory_management.dataloader_workers = preset.dataloader_workers
         
+        # Override adaptive radius for small debug lattice
+        if hasattr(preset, 'lattice_adaptive_radius_ratio'):
+            self.lattice.adaptive_radius_ratio = preset.lattice_adaptive_radius_ratio
+        
     def _apply_experiment_mode(self):
         """Режим экспериментов - дополнительные настройки"""
         # Основные параметры уже установлены в _initialize_components_from_presets

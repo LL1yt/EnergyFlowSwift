@@ -310,7 +310,16 @@ class UnifiedSpatialOptimizer:
         config = get_project_config()
         adaptive_radius = config.calculate_adaptive_radius()
         
-        logger.debug_spatial(f"🔍 Поиск соседей для клетки {cell_idx} (coords={coords}) с радиусом {adaptive_radius:.3f}")
+        # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ для диагностики
+        logger.info(f"🔍 [find_neighbors_by_radius_safe] Поиск соседей для клетки {cell_idx}:")
+        logger.info(f"   Координаты: {coords}")
+        logger.info(f"   Размеры решетки: {self.dimensions}")
+        logger.info(f"   Adaptive radius ratio: {config.lattice.adaptive_radius_ratio}")
+        logger.info(f"   Вычисленный adaptive_radius: {adaptive_radius:.3f}")
+        logger.info(f"   Пороги классификации:")
+        logger.info(f"   - LOCAL: < {adaptive_radius * config.lattice.local_distance_ratio:.3f}")
+        logger.info(f"   - FUNCTIONAL: <= {adaptive_radius * config.lattice.functional_distance_ratio:.3f}")
+        logger.info(f"   - DISTANT: <= {adaptive_radius * config.lattice.distant_distance_ratio:.3f}")
         
         try:
             # Используем GPU processor для поиска соседей
@@ -379,8 +388,17 @@ class UnifiedSpatialOptimizer:
 
         def moe_processor(current_state, neighbor_states, cell_idx, neighbor_indices):
             try:
-                # DEBUG: Reduced logging - only log errors and warnings
-                if cell_idx in [223, 256, 260, 320]:
+                # DEBUG: Track cell processing
+                if not hasattr(self, '_processed_cells'):
+                    self._processed_cells = set()
+                
+                if cell_idx in self._processed_cells:
+                    logger.warning(f"⚠️ Cell {cell_idx} is being processed again!")
+                else:
+                    self._processed_cells.add(cell_idx)
+                
+                # DEBUG: Log specific cells
+                if cell_idx in [677] or logger.isEnabledFor(11):  # DEBUG_VERBOSE
                     logger.debug_spatial(f"🔍 MoE processor called - cell_idx={cell_idx}")
                     logger.debug_spatial(f"🔍 current_state.shape={current_state.shape}")
                     logger.debug_spatial(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")

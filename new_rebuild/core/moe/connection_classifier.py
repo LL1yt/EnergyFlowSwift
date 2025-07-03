@@ -508,58 +508,37 @@ class UnifiedConnectionClassifier(nn.Module):
                 else neighbor_indices.tolist()
             )
             
-            # Создаем mapping: global_neighbor_idx -> local_idx (1-based, т.к. 0 = cell)
-            global_to_local = {global_idx: local_idx + 1 
-                             for local_idx, global_idx in enumerate(neighbor_indices_list)}
+            # ИСПРАВЛЕНО: Передаем глобальные индексы соседей напрямую в кэш
+            # Кэш содержит связи с глобальными target_idx, поэтому нужно передавать глобальные индексы
             
-            # Локальные индексы для кэша (начинаются с 1, т.к. 0 = cell_state)
-            local_neighbor_indices = list(range(1, len(neighbor_indices_list) + 1))
-
+            logger.debug(f"🔍 Calling cache_manager.get_cached_connections:")
+            logger.debug(f"   cell_idx={cell_idx}")
+            logger.debug(f"   neighbor_indices={neighbor_indices_list[:5]}... (len={len(neighbor_indices_list)})")
+            logger.debug(f"   all_states.shape={all_states.shape}")
+            
             result = self.cache_manager.get_cached_connections(
                 cell_idx=cell_idx,
-                neighbor_indices=local_neighbor_indices,  # Используем локальные индексы
+                neighbor_indices=neighbor_indices_list,  # Используем глобальные индексы
                 states=all_states,
                 functional_similarity_threshold=self.functional_similarity_threshold,
             )
-
-            # Преобразуем локальные индексы в результате обратно в глобальные
-            # Создаем обратный mapping: local_idx -> global_idx
-            local_to_global = {local_idx + 1: global_idx 
-                             for local_idx, global_idx in enumerate(neighbor_indices_list)}
-            local_to_global[0] = cell_idx  # Клетка сама с собой
             
-            # Исправляем индексы в результатах
-            corrected_result = {}
-            for category, connections in result.items():
-                corrected_connections = []
-                for conn in connections:
-                    # Преобразуем target_idx из локального в глобальный
-                    if hasattr(conn, 'target_idx') and conn.target_idx in local_to_global:
-                        # Создаем новый ConnectionInfo с правильным target_idx
-                        corrected_conn = ConnectionInfo(
-                            source_idx=conn.source_idx,
-                            target_idx=local_to_global[conn.target_idx],  # Глобальный индекс
-                            euclidean_distance=conn.euclidean_distance,
-                            manhattan_distance=conn.manhattan_distance,
-                            category=conn.category,
-                            strength=conn.strength,
-                            # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
-                            functional_similarity=conn.functional_similarity if hasattr(conn, 'functional_similarity') else self._raise_missing_attr('functional_similarity', conn)
-                        )
-                        corrected_connections.append(corrected_conn)
-                    else:
-                        corrected_connections.append(conn)  # Оставляем как есть
-                corrected_result[category] = corrected_connections
+            logger.debug(f"🔍 Cache result:")
+            for cat, conns in result.items():
+                logger.debug(f"   {cat}: {len(conns)} connections")
 
+            # ИСПРАВЛЕНО: Больше не нужно преобразовывать индексы, так как теперь используем глобальные индексы
+            # result уже содержит правильные глобальные индексы
+            
             # ИСПРАВЛЕНО: Обновляем статистику при cache hit
-            self._update_stats_from_result(corrected_result)
+            self._update_stats_from_result(result)
 
             self.performance_stats["cache_hits"] += 1
             logger.debug(f"✅ Cache hit для клетки {cell_idx}")
             logger.debug(
-                f"📊 Cache result: LOCAL={len(corrected_result.get(ConnectionCategory.LOCAL, []))}, FUNCTIONAL={len(corrected_result.get(ConnectionCategory.FUNCTIONAL, []))}, DISTANT={len(corrected_result.get(ConnectionCategory.DISTANT, []))}"
+                f"📊 Cache result: LOCAL={len(result.get(ConnectionCategory.LOCAL, []))}, FUNCTIONAL={len(result.get(ConnectionCategory.FUNCTIONAL, []))}, DISTANT={len(result.get(ConnectionCategory.DISTANT, []))}"
             )
-            return corrected_result
+            return result
 
         except Exception as e:
             # Согласно CLAUDE.md - никаких fallback'ов, сразу поднимаем ошибку

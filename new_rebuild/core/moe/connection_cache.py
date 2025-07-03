@@ -237,6 +237,8 @@ class ConnectionCacheManager:
             self.distance_cache = cache_data["distance_cache"]
             self.total_cells = cache_data["total_cells"]
             logger.info(f"✅ Кэш совместим и успешно загружен с диска: {cache_file}")
+            logger.info(f"   Загружено клеток в кэше: {len(self.cache)}")
+            logger.info(f"   Примеры ключей кэша: {list(self.cache.keys())[:10]}")
             return True
 
         except Exception as e:
@@ -480,7 +482,8 @@ class ConnectionCacheManager:
             }
 
             # Классифицируем по расстоянию
-            if euclidean_dist <= self.local_threshold:
+            # LOCAL: 0 < distance < local_threshold
+            if euclidean_dist < self.local_threshold:
                 category = ConnectionCategory.LOCAL
                 connections["local"].append(
                     CachedConnectionInfo(
@@ -491,18 +494,8 @@ class ConnectionCacheManager:
                     )
                 )
 
-            elif euclidean_dist >= self.distant_threshold:
-                category = ConnectionCategory.DISTANT
-                connections["distant"].append(
-                    CachedConnectionInfo(
-                        target_idx=neighbor_idx,
-                        euclidean_distance=euclidean_dist,
-                        manhattan_distance=manhattan_dist,
-                        category=category,
-                    )
-                )
-
-            else:
+            # FUNCTIONAL: local_threshold ≤ distance ≤ functional_threshold
+            elif euclidean_dist <= self.functional_threshold:
                 # Кандидат для функциональной проверки
                 connections["functional_candidates"].append(
                     CachedConnectionInfo(
@@ -510,6 +503,18 @@ class ConnectionCacheManager:
                         euclidean_distance=euclidean_dist,
                         manhattan_distance=manhattan_dist,
                         category=ConnectionCategory.FUNCTIONAL,  # Предварительно
+                    )
+                )
+
+            # DISTANT: functional_threshold < distance ≤ distant_threshold
+            else:
+                category = ConnectionCategory.DISTANT
+                connections["distant"].append(
+                    CachedConnectionInfo(
+                        target_idx=neighbor_idx,
+                        euclidean_distance=euclidean_dist,
+                        manhattan_distance=manhattan_dist,
+                        category=category,
                     )
                 )
 
@@ -535,8 +540,9 @@ class ConnectionCacheManager:
             Классифицированные связи по категориям
         """
         if cell_idx not in self.cache:
-            # Временно убираем спам предупреждений
-            # logger.warning(f"Кэш не найден для клетки {cell_idx}")
+            logger.warning(f"Кэш не найден для клетки {cell_idx}")
+            logger.debug_cache(f"Cache size: {len(self.cache)}, Cache keys sample: {list(self.cache.keys())[:10] if self.cache else 'Empty'}")
+            logger.debug_cache(f"Looking for cell_idx: {cell_idx}, type: {type(cell_idx)}")
             return {cat: [] for cat in ConnectionCategory}
 
         cached_data = self.cache[cell_idx]
@@ -544,9 +550,66 @@ class ConnectionCacheManager:
 
         # Создаем set для быстрого поиска
         neighbor_set = set(neighbor_indices)
+        
+        # DEBUG: Log cache contents and neighbor indices
+        logger.debug_cache(f"🔍 get_cached_connections for cell {cell_idx}:")
+        logger.debug_cache(f"   neighbor_indices: {list(neighbor_indices)[:10]}... (len={len(neighbor_indices)})")
+        logger.debug_cache(f"   cached_data type: {type(cached_data)}")
+        logger.debug_cache(f"   cached_data keys: {list(cached_data.keys()) if isinstance(cached_data, dict) else 'Not a dict!'}")
+        # Определяем формат ключей для логирования
+        if isinstance(cached_data, dict):
+            if ConnectionCategory.LOCAL in cached_data:
+                local_count = len(cached_data.get(ConnectionCategory.LOCAL, []))
+                functional_count = len(cached_data.get(ConnectionCategory.FUNCTIONAL, []))
+                distant_count = len(cached_data.get(ConnectionCategory.DISTANT, []))
+            else:
+                local_count = len(cached_data.get('local', []))
+                functional_count = len(cached_data.get('functional_candidates', []))
+                distant_count = len(cached_data.get('distant', []))
+        else:
+            local_count = 'N/A'
+            functional_count = 'N/A'
+            distant_count = 'N/A'
+            
+        logger.debug_cache(f"   cached local connections: {local_count}")
+        logger.debug_cache(f"   cached functional_candidates: {functional_count}")
+        logger.debug_cache(f"   cached distant connections: {distant_count}")
+        
+        # Check first few cached connections
+        if isinstance(cached_data, dict) and cached_data.get('local'):
+            first_local = cached_data['local'][0]
+            if hasattr(first_local, 'target_idx'):
+                logger.debug_cache(f"   First local connection target_idx: {first_local.target_idx}")
+            else:
+                logger.debug_cache(f"   First local connection target_idx: {first_local.get('target_idx', 'N/A')}")
 
+        # Проверяем структуру кэша
+        if not isinstance(cached_data, dict):
+            logger.error(f"❌ Cache data for cell {cell_idx} is not a dict: {type(cached_data)}")
+            return {cat: [] for cat in ConnectionCategory}
+            
+        # Проверяем наличие необходимых ключей - поддерживаем оба формата (string и enum)
+        # Старый формат использует строки, новый формат использует enum
+        has_string_keys = "local" in cached_data
+        has_enum_keys = ConnectionCategory.LOCAL in cached_data
+        
+        if not has_string_keys and not has_enum_keys:
+            logger.error(f"❌ Cache data for cell {cell_idx} has unexpected format")
+            logger.error(f"   Available keys: {list(cached_data.keys())}")
+            return {cat: [] for cat in ConnectionCategory}
+
+        # Определяем какой формат ключей используется
+        if has_enum_keys:
+            local_key = ConnectionCategory.LOCAL
+            functional_key = ConnectionCategory.FUNCTIONAL
+            distant_key = ConnectionCategory.DISTANT
+        else:
+            local_key = "local"
+            functional_key = "functional_candidates"
+            distant_key = "distant"
+        
         # LOCAL связи - прямо из кэша
-        for conn in cached_data["local"]:
+        for conn in cached_data.get(local_key, []):
             # Обрабатываем оба формата: объект CachedConnectionInfo или словарь
             if hasattr(conn, 'target_idx'):
                 target_idx = conn.target_idx
@@ -570,7 +633,7 @@ class ConnectionCacheManager:
                 )
 
         # DISTANT связи - прямо из кэша
-        for conn in cached_data["distant"]:
+        for conn in cached_data.get(distant_key, []):
             # Обрабатываем оба формата: объект CachedConnectionInfo или словарь
             if hasattr(conn, 'target_idx'):
                 target_idx = conn.target_idx
@@ -595,7 +658,7 @@ class ConnectionCacheManager:
 
         # FUNCTIONAL кандидаты - требуют проверки similarity
         functional_candidates = []
-        for conn in cached_data["functional_candidates"]:
+        for conn in cached_data.get(functional_key, []):
             # Обрабатываем оба формата: объект CachedConnectionInfo или словарь
             if hasattr(conn, 'target_idx'):
                 target_idx = conn.target_idx
