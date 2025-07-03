@@ -152,9 +152,21 @@ class HybridGNN_CNF_Expert(nn.Module):
             gating_params=sum(p.numel() for p in self.adaptive_gating.parameters()),
         )
 
-        logger.info(
-            f"HybridGNN_CNF_Expert: {total_params} параметров (цель: {self.target_params})"
-        )
+        # Получаем пороги из конфига для информативности
+        try:
+            from ...config import get_project_config
+            config = get_project_config()
+            local_pct = config.lattice.local_distance_ratio * 100
+            functional_pct = config.lattice.functional_distance_ratio * 100
+        except:
+            local_pct, functional_pct = 10, 65  # fallback
+            
+        logger.info(f"[Functional Expert] HybridGNN_CNF инициализирован:")
+        logger.info(f"   Параметров: {total_params} (target: {self.target_params})")
+        logger.info(f"   GNN компонент: {sum(p.numel() for p in self.gnn_component.parameters())} параметров")
+        logger.info(f"   CNF компонент: {sum(p.numel() for p in self.cnf_component.parameters())} параметров")
+        logger.info(f"   Neighbor count: {'dynamic' if self.neighbor_count == -1 else self.neighbor_count}")
+        logger.info(f"   Обрабатывает FUNCTIONAL соседей ({local_pct:.0f}%-{functional_pct:.0f}% от adaptive_radius)")
 
     def forward(
         self,

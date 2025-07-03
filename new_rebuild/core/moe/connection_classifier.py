@@ -95,9 +95,9 @@ class UnifiedConnectionClassifier(nn.Module):
             )
         self.enable_detailed_stats = cache_config['enable_detailed_stats']
         
-        logger.debug(f"Cache config: {cache_config}")
-        logger.debug(f"Enable cache param: {enable_cache}")
-        logger.debug(f"Final enable_cache: {self.enable_cache}")
+        logger.debug(f"[UnifiedConnectionClassifier.__init__] Получена конфигурация кэша из config.cache: {cache_config}")
+        logger.debug(f"[UnifiedConnectionClassifier.__init__] Параметр enable_cache передан в конструктор: {enable_cache}")
+        logger.debug(f"[UnifiedConnectionClassifier.__init__] Финальное значение self.enable_cache: {self.enable_cache}")
 
         # Модульные компоненты для вычислений
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
@@ -105,7 +105,7 @@ class UnifiedConnectionClassifier(nn.Module):
 
         # Pre-computed кэш менеджер
         if self.enable_cache:
-            logger.info(f"Создаем ConnectionCacheManager для решетки {lattice_dimensions}")
+            logger.info(f"[UnifiedConnectionClassifier] Кэш включен, создаем ConnectionCacheManager для решетки {lattice_dimensions}")
             # СТРОГАЯ ИНИЦИАЛИЗАЦИЯ - БЕЗ FALLBACK
             # Если кэш включен, он ДОЛЖЕН работать
             self.cache_manager = ConnectionCacheManager(
@@ -113,7 +113,7 @@ class UnifiedConnectionClassifier(nn.Module):
             )
             # Создаем адаптер для синхронизации с spatial optimizer
             self.cache_adapter = UnifiedCacheAdapter(self.cache_manager)
-            logger.info("ConnectionCacheManager и адаптер созданы успешно")
+            logger.info("[UnifiedConnectionClassifier] ConnectionCacheManager и UnifiedCacheAdapter созданы успешно")
             # НЕ инициализируем кэш здесь - ждем установки spatial optimizer
         else:
             # Кэш явно отключен - это нормально

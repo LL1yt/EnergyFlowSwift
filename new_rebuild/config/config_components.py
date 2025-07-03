@@ -43,12 +43,12 @@ class LatticeSettings:
     
     # Адаптивный радиус - константы алгоритма (не дублирование!)
     adaptive_radius_enabled: bool = True
-    adaptive_radius_ratio: float = 0.3
+    adaptive_radius_ratio: float = 0.6
     adaptive_radius_max: float = 100.0
     adaptive_radius_min: float = 1.0
 
     # Классификация соединений - алгоритмические пропорции (не дублирование!)
-    local_distance_ratio: float = 0.1      # 10% ближайших связей
+    local_distance_ratio: float = 0.2      # 10% ближайших связей
     functional_distance_ratio: float = 0.65 # до 65% связей для functional
     distant_distance_ratio: float = 1.0     # до 100% всех связей
     functional_similarity_threshold: float = 0.3

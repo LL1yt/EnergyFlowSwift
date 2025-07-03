@@ -301,6 +301,20 @@ class GPUEnhancedCNF(nn.Module):
                 else adaptive_method
             ),
         )
+        
+        # Получаем пороги из конфига для информативности
+        try:
+            config = get_project_config()
+            functional_pct = config.lattice.functional_distance_ratio * 100
+            distant_pct = config.lattice.distant_distance_ratio * 100
+        except:
+            functional_pct, distant_pct = 65, 100  # fallback
+            
+        logger.info(f"[Distant Expert] GPUEnhancedCNF инициализирован:")
+        logger.info(f"   Параметров: {total_params}")
+        logger.info(f"   Neural ODE: {sum(p.numel() for p in self.neural_ode.parameters())} параметров")
+        logger.info(f"   Batch mode: {batch_processing_mode.value if isinstance(batch_processing_mode, Enum) else batch_processing_mode}")
+        logger.info(f"   Обрабатывает DISTANT соседей ({functional_pct:.0f}%-{distant_pct:.0f}% от adaptive_radius)")
 
     def _create_derivative_function(self, neighbor_influences: torch.Tensor):
         """Создает derivative function для solver'а"""

@@ -70,14 +70,14 @@ class ConnectionCacheManager:
             lattice_dimensions: Размеры 3D решетки (x, y, z)
             cache_config: Конфигурация кэширования
         """
-        logger.debug_init(f"ConnectionCacheManager.__init__ called with dimensions: {lattice_dimensions}")
+        logger.debug_init(f"[ConnectionCacheManager.__init__] Начало инициализации для решетки размером: {lattice_dimensions}")
         self.lattice_dimensions = lattice_dimensions
         self.total_cells = np.prod(lattice_dimensions)
 
         # Получаем конфигурацию
         try:
             config = get_project_config()
-            logger.debug_init(f"Got project config: {config.__class__.__name__}")
+            logger.debug_init(f"[ConnectionCacheManager.__init__] Успешно получен project config: {config.__class__.__name__}")
         except Exception as e:
             logger.error(f"Failed to get project config: {e}")
             raise
@@ -87,12 +87,12 @@ class ConnectionCacheManager:
         else:
             self.cache_config = cache_config
             
-        logger.debug_init(f"Cache config: {self.cache_config}")
+        logger.debug_init(f"[ConnectionCacheManager.__init__] Получена конфигурация кэша (передана из UnifiedConnectionClassifier): {self.cache_config}")
 
         # ИСПРАВЛЕНО: Всегда получаем актуальный adaptive_radius
         try:
             self.adaptive_radius = config.calculate_adaptive_radius()
-            logger.debug_init(f"Adaptive radius: {self.adaptive_radius}")
+            logger.debug_init(f"[ConnectionCacheManager.__init__] Вычислен adaptive_radius из конфигурации: {self.adaptive_radius}")
         except Exception as e:
             logger.error(f"Failed to calculate adaptive radius: {e}")
             raise
@@ -108,7 +108,10 @@ class ConnectionCacheManager:
             self.distant_threshold = (
                 self.adaptive_radius * config.lattice.distant_distance_ratio
             )
-            logger.debug_init(f"Thresholds - local: {self.local_threshold}, functional: {self.functional_threshold}, distant: {self.distant_threshold}")
+            logger.debug_init(f"[ConnectionCacheManager.__init__] Вычислены пороги классификации на основе adaptive_radius и коэффициентов из конфига:")
+            logger.debug_init(f"  - LOCAL threshold: {self.local_threshold} (radius * {config.lattice.local_distance_ratio})")
+            logger.debug_init(f"  - FUNCTIONAL threshold: {self.functional_threshold} (radius * {config.lattice.functional_distance_ratio})")
+            logger.debug_init(f"  - DISTANT threshold: {self.distant_threshold} (radius * {config.lattice.distant_distance_ratio})")
         except Exception as e:
             logger.error(f"Failed to calculate thresholds: {e}")
             raise
@@ -144,21 +147,30 @@ class ConnectionCacheManager:
             self.total_lookup_time = 0.0
             self.total_rebuild_time = 0.0
 
-        logger.info(f"🔧 ConnectionCacheManager initialized:")
-        logger.info(f"   Lattice: {lattice_dimensions} ({self.total_cells} cells)")
-        logger.info(f"   Adaptive radius: {self.adaptive_radius}")
+        # Вычисляем примерное количество соседей для каждого порога используя центральный конфиг
+        approx_local_neighbors = config.estimate_neighbors_in_radius(self.local_threshold)
+        approx_functional_neighbors = config.estimate_neighbors_in_radius(self.functional_threshold) - approx_local_neighbors
+        approx_distant_neighbors = config.estimate_neighbors_in_radius(self.distant_threshold) - approx_local_neighbors - approx_functional_neighbors
+        
+        logger.info(f"🔧 [ConnectionCacheManager] Инициализация завершена:")
+        logger.info(f"   Решетка: {lattice_dimensions} ({self.total_cells} клеток)")
+        logger.info(f"   Адаптивный радиус: {self.adaptive_radius}")
         logger.info(
-            f"   Thresholds: LOCAL≤{self.local_threshold}, FUNCTIONAL≤{self.functional_threshold}, DISTANT≥{self.distant_threshold}"
+            f"   Пороги: LOCAL≤{self.local_threshold}, FUNCTIONAL≤{self.functional_threshold}, DISTANT≤{self.distant_threshold}"
         )
-        logger.info(f"   Performance monitoring: {self.enable_performance_monitoring}")
-        logger.info(f"   Detailed stats: {self.enable_detailed_stats}")
+        logger.info(f"   Примерное количество соседей:")
+        logger.info(f"     - LOCAL: ~{approx_local_neighbors} клеток (в радиусе {self.local_threshold})")
+        logger.info(f"     - FUNCTIONAL: ~{approx_functional_neighbors} клеток (между {self.local_threshold} и {self.functional_threshold})")
+        logger.info(f"     - DISTANT: ~{approx_distant_neighbors} клеток (между {self.functional_threshold} и {self.distant_threshold})")
+        logger.info(f"   Мониторинг производительности: {'включен' if self.enable_performance_monitoring else 'выключен'}")
+        logger.info(f"   Детальная статистика: {'включена' if self.enable_detailed_stats else 'выключена'}")
 
         # GPU информация
         if self.use_gpu:
             gpu_name = torch.cuda.get_device_name(0)
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            logger.info(f"🚀 GPU acceleration: {gpu_name} ({gpu_memory:.1f}GB)")
-            logger.info(f"   GPU batch size: {self.gpu_batch_size}")
+            logger.info(f"🚀 [ConnectionCacheManager] GPU ускорение: {gpu_name} ({gpu_memory:.1f}GB)")
+            logger.info(f"   Размер батча для GPU операций: {self.gpu_batch_size}")
         else:
             logger.info("💻 CPU mode: GPU not available or disabled")
 

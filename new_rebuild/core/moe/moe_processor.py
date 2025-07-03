@@ -85,16 +85,21 @@ class MoEConnectionProcessor(nn.Module):
 
         self.adaptive_radius = config.calculate_adaptive_radius()
         
-        # Строгая проверка max_neighbors
-        if hasattr(config, "max_neighbors"):
-            self.max_neighbors = config.max_neighbors
+        # Получаем max_neighbors из NeighborSettings
+        if not hasattr(config, "neighbors") or not hasattr(config.neighbors, 'max_neighbors'):
+            raise RuntimeError(
+                "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательный параметр config.neighbors.max_neighbors. "
+                "Проверьте конфигурацию в project_config.py"
+            )
+        self.max_neighbors = config.neighbors.max_neighbors
+        
+        # neighbor_count из ModelSettings используется для динамического определения
+        if hasattr(config.model, 'neighbor_count'):
+            self.dynamic_neighbors = (config.model.neighbor_count == -1)
         else:
-            if not hasattr(config.model, 'neighbor_count') or config.model.neighbor_count is None:
-                raise RuntimeError(
-                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Отсутствует обязательный параметр config.model.neighbor_count. "
-                    "Проверьте конфигурацию в project_config.py"
-                )
-            self.max_neighbors = config.model.neighbor_count
+            self.dynamic_neighbors = True
+            
+        logger.debug(f"[MoEConnectionProcessor] max_neighbors={self.max_neighbors}, dynamic_neighbors={self.dynamic_neighbors}")
 
         # Строгая проверка enable_cnf
         if enable_cnf is not None:
@@ -180,12 +185,14 @@ class MoEConnectionProcessor(nn.Module):
         
         distant_params = config.expert.distant.params
 
+        # Для функционального эксперта используем динамическое определение соседей
         self.functional_expert = HybridGNN_CNF_Expert(
             state_size=self.state_size,
-            neighbor_count=self.max_neighbors,
+            neighbor_count=-1 if self.dynamic_neighbors else self.max_neighbors,  # -1 означает динамическое определение
             target_params=functional_params,
             cnf_params=distant_params,
         )
+        logger.info(f"[MoEConnectionProcessor] Functional expert создан с neighbor_count={-1 if self.dynamic_neighbors else self.max_neighbors}")
 
         # 3. Distant Expert - долгосрочная память (LightweightCNF)
         # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK для CNF

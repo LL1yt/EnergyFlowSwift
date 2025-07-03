@@ -97,11 +97,19 @@ class OptimizedSimpleLinearExpert(nn.Module):
             config=local_config,
         )
 
-        logger.info(
-            f"OptimizedSimpleLinearExpert: {total_params} параметров "
-            f"(архитектура: {local_config.neighbor_agg_hidden1}->{local_config.neighbor_agg_hidden2} | "
-            f"{processor_input_size}->{local_config.processor_hidden}->{state_size})"
-        )
+        # Получаем пороги из конфига для информативности
+        try:
+            from ...config import get_project_config
+            config = get_project_config()
+            local_ratio_pct = config.lattice.local_distance_ratio * 100
+        except:
+            local_ratio_pct = 10  # fallback
+            
+        logger.info(f"[Local Expert] OptimizedSimpleLinearExpert инициализирован:")
+        logger.info(f"   Параметров: {total_params} (target: {target_params})")
+        logger.info(f"   Архитектура: {local_config.neighbor_agg_hidden1}->{local_config.neighbor_agg_hidden2} | "
+                   f"{processor_input_size}->{local_config.processor_hidden}->{state_size}")
+        logger.info(f"   Обрабатывает LOCAL соседей (≤{local_ratio_pct:.0f}% от adaptive_radius)")
 
     def forward(
         self, current_state: torch.Tensor, neighbor_states: torch.Tensor, **kwargs

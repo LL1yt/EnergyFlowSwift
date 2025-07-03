@@ -464,6 +464,59 @@ class SimpleProjectConfig:
                 min(radius, self.lattice.adaptive_radius_max),
             )
         )
+    
+    def estimate_neighbors_in_radius(self, radius: float) -> int:
+        """
+        Оценка количества соседей в заданном радиусе для 3D решетки.
+        
+        Использует формулу объема сферы с учетом дискретности решетки.
+        
+        Args:
+            radius: Радиус для подсчета соседей
+            
+        Returns:
+            Примерное количество соседей
+        """
+        import math
+        
+        if radius <= 0:
+            return 0
+        
+        # Объем сферы: 4/3 * π * r³
+        volume = (4/3) * math.pi * (radius ** 3)
+        
+        # Ограничиваем максимальным количеством клеток минус 1 (исключаем саму клетку)
+        total_cells = self.lattice.dimensions[0] * self.lattice.dimensions[1] * self.lattice.dimensions[2]
+        estimated = min(int(volume), total_cells - 1)
+        
+        return estimated
+    
+    def get_neighbor_counts_by_type(self) -> Dict[str, int]:
+        """
+        Получает примерное количество соседей для каждого типа связей
+        на основе адаптивного радиуса и порогов классификации.
+        
+        Returns:
+            Словарь с количеством соседей по типам: {local, functional, distant}
+        """
+        adaptive_radius = self.calculate_adaptive_radius()
+        
+        # Вычисляем пороги
+        local_threshold = adaptive_radius * self.lattice.local_distance_ratio
+        functional_threshold = adaptive_radius * self.lattice.functional_distance_ratio
+        distant_threshold = adaptive_radius * self.lattice.distant_distance_ratio
+        
+        # Оцениваем количество соседей для каждого порога
+        local_neighbors = self.estimate_neighbors_in_radius(local_threshold)
+        functional_neighbors = self.estimate_neighbors_in_radius(functional_threshold) - local_neighbors
+        distant_neighbors = self.estimate_neighbors_in_radius(distant_threshold) - local_neighbors - functional_neighbors
+        
+        return {
+            "local": local_neighbors,
+            "functional": functional_neighbors,
+            "distant": distant_neighbors,
+            "total": local_neighbors + functional_neighbors + distant_neighbors
+        }
 
     def get_component(self, name: str) -> Optional[Any]:
         """Получить компонент конфигурации по имени"""
