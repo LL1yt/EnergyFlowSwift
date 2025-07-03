@@ -258,11 +258,10 @@ class UnifiedSpatialOptimizer:
 
         # Инициализируем только GPU компоненты
         self.gpu_processor = GPUSpatialProcessor(self.dimensions, self.config)
-        self.chunker = (
-            AdaptiveGPUChunker(self.dimensions, self.config)
-            if self.config.enable_adaptive_chunking
-            else None
-        )
+        # Используем chunker из GPUSpatialProcessor, а не создаем новый
+        self.chunker = self.gpu_processor.chunker if self.config.enable_adaptive_chunking else None
+        if self.chunker:
+            logger.info(f"[UnifiedSpatialOptimizer] Используется chunker из GPUSpatialProcessor с {len(self.chunker._chunks)} chunks")
 
         self.perf_history = []
         self._setup_moe_integration()

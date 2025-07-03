@@ -309,8 +309,7 @@ class AdaptiveGPUChunker:
             "adaptive_rebalancing_events": 0,
         }
 
-        # Device management
-        self.device_manager = get_device_manager()
+        # Device management - уже инициализирован выше на строке 291
         self.device = self.device_manager.get_device()
 
         # Memory management
@@ -364,7 +363,7 @@ class AdaptiveGPUChunker:
                         available_memory_mb,
                     )
                     
-                    logger.debug(
+                    logger.debug_init(
                         f"📦 CHUNK {chunk_id}: size={len(chunk_info.cell_indices)} cells, "
                         f"coords=({start_x},{start_y},{start_z})-({end_x},{end_y},{end_z})"
                     )

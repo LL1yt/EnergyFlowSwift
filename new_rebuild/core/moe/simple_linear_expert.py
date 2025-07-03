@@ -99,14 +99,15 @@ class OptimizedSimpleLinearExpert(nn.Module):
 
         # Получаем пороги из конфига для информативности
         try:
-            from ...config import get_project_config
-            config = get_project_config()
+            from ...config import get_project_config as get_config
+            config = get_config()
             local_ratio_pct = config.lattice.local_distance_ratio * 100
-        except:
-            local_ratio_pct = 10  # fallback
+        except Exception as e:
+            logger.warning(f"Не удалось получить конфиг для логирования порогов: {e}. в проекте мы не используем fallback")
+            # local_ratio_pct = 10  # fallback
             
         logger.info(f"[Local Expert] OptimizedSimpleLinearExpert инициализирован:")
-        logger.info(f"   Параметров: {total_params} (target: {target_params})")
+        logger.info(f"   Параметров: {total_params} (target: {self.target_params})")
         logger.info(f"   Архитектура: {local_config.neighbor_agg_hidden1}->{local_config.neighbor_agg_hidden2} | "
                    f"{processor_input_size}->{local_config.processor_hidden}->{state_size}")
         logger.info(f"   Обрабатывает LOCAL соседей (≤{local_ratio_pct:.0f}% от adaptive_radius)")

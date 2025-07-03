@@ -304,11 +304,13 @@ class GPUEnhancedCNF(nn.Module):
         
         # Получаем пороги из конфига для информативности
         try:
-            config = get_project_config()
+            from ...config import get_project_config as get_config
+            config = get_config()
             functional_pct = config.lattice.functional_distance_ratio * 100
             distant_pct = config.lattice.distant_distance_ratio * 100
-        except:
-            functional_pct, distant_pct = 65, 100  # fallback
+        except Exception as e:
+            logger.warning(f"Не удалось получить конфиг для логирования порогов: {e}. в проекте мы не используем fallback")
+            # functional_pct, distant_pct = 65, 100  # fallback
             
         logger.info(f"[Distant Expert] GPUEnhancedCNF инициализирован:")
         logger.info(f"   Параметров: {total_params}")

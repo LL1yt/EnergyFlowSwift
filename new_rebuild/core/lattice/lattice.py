@@ -62,6 +62,7 @@ class Lattice3D(nn.Module):
         from ...utils.logging import log_init
 
         if self.config.logging.debug_mode:
+            logger.info(f"🔧 Начало инициализации Lattice3D для MoE архитектуры...")
             log_init(
                 "Lattice3D_MoE",
                 dimensions=self.config.lattice.dimensions,

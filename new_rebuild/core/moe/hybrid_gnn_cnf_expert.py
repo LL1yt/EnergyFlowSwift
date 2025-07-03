@@ -98,7 +98,7 @@ class HybridGNN_CNF_Expert(nn.Module):
         self.neighbor_count = (
             neighbor_count
             if neighbor_count is not None
-            else config.neighbors.max_neighbors
+            else config.neighbors.neighbor_count
         )
         self.target_params = target_params or config.expert.functional.params
         self.cnf_params = cnf_params or config.expert.distant.params
@@ -109,7 +109,7 @@ class HybridGNN_CNF_Expert(nn.Module):
         # Используем параметры из настроек функционального эксперта
         self.gnn_component = VectorizedGNNCell(
             state_size=self.state_size,
-            neighbor_count=self.neighbor_count,
+            neighbor_count='dynamic' if self.neighbor_count == -1 else self.neighbor_count,
             message_dim=config.expert.functional.message_dim,
             hidden_dim=config.expert.functional.hidden_dim,
             external_input_size=config.model.external_input_size,
@@ -146,7 +146,7 @@ class HybridGNN_CNF_Expert(nn.Module):
             total_params=total_params,
             target_params=self.target_params,
             state_size=self.state_size,
-            neighbor_count=self.neighbor_count,
+            neighbor_count='dynamic' if self.neighbor_count == -1 else self.neighbor_count,
             gnn_params=sum(p.numel() for p in self.gnn_component.parameters()),
             cnf_params=sum(p.numel() for p in self.cnf_component.parameters()),
             gating_params=sum(p.numel() for p in self.adaptive_gating.parameters()),
@@ -154,12 +154,13 @@ class HybridGNN_CNF_Expert(nn.Module):
 
         # Получаем пороги из конфига для информативности
         try:
-            from ...config import get_project_config
-            config = get_project_config()
+            from ...config import get_project_config as get_config
+            config = get_config()
             local_pct = config.lattice.local_distance_ratio * 100
             functional_pct = config.lattice.functional_distance_ratio * 100
-        except:
-            local_pct, functional_pct = 10, 65  # fallback
+        except Exception as e:
+            logger.warning(f"Не удалось получить конфиг для логирования порогов: {e}. в проекте мы не используем fallback")
+            # local_pct, functional_pct = 10, 65  # fallback
             
         logger.info(f"[Functional Expert] HybridGNN_CNF инициализирован:")
         logger.info(f"   Параметров: {total_params} (target: {self.target_params})")
