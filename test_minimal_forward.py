@@ -13,6 +13,7 @@ from new_rebuild.config import (
 
 # Создаем и устанавливаем конфиг глобально ДО импорта других модулей
 config = create_debug_config()
+
 set_project_config(config)
 
 # Теперь импортируем остальные модули
@@ -32,7 +33,7 @@ def main():
     # Получаем параметры из централизованного конфига
     num_passes = config.validation.num_forward_passes
     batch_size = config.training.batch_size
-    embedding_dim = config.embeddings.teacher_dim  # 768 для distilbert
+    embedding_dim = config.embedding.teacher_dim  # 768 для distilbert
     
     logger.info(f"📊 Running {num_passes} forward passes...")
     logger.info(f"📊 Batch size: {batch_size}, Embedding dim: {embedding_dim}")

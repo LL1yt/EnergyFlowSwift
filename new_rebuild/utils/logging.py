@@ -350,10 +350,7 @@ def setup_logging(
             logger.removeHandler(handler)
 
     # Определяем уровень логирования
-    if debug_mode:
-        # debug_mode переопределяет level
-        log_level = logging.DEBUG
-    elif level:
+    if level:
         # Используем заданный уровень
         level_map = {
             "DEBUG": logging.DEBUG,
@@ -380,6 +377,9 @@ def setup_logging(
                 f"DEBUG_TRAINING, DEBUG_INIT, DEBUG_VERBOSE"
             )
         log_level = level_map[level_upper]
+    elif debug_mode:
+        # debug_mode используется только если level не задан явно
+        log_level = logging.DEBUG
     else:
         # По умолчанию INFO
         log_level = logging.INFO

@@ -260,15 +260,15 @@ class MoEConnectionProcessor(nn.Module):
             # Safe logging for neighbor_indices (could be list or tensor)
             if neighbor_indices is not None:
                 if isinstance(neighbor_indices, torch.Tensor):
-                    logger.debug_forward(f"🔍 neighbor_indices=tensor({neighbor_indices.tolist()}), len={neighbor_indices.numel()}")
+                    logger.debug_verbose(f"🔍 neighbor_indices=tensor({neighbor_indices.tolist()}), len={neighbor_indices.numel()}")
                 else:
-                    logger.debug_forward(f"🔍 neighbor_indices={neighbor_indices}, len={len(neighbor_indices)}")
+                    logger.debug_verbose(f"🔍 neighbor_indices={neighbor_indices}, len={len(neighbor_indices)}")
             else:
-                logger.debug_forward("🔍 neighbor_indices=None, len=0")
+                logger.debug_verbose("🔍 neighbor_indices=None, len=0")
             logger.debug_forward(f"🔍 spatial_optimizer={spatial_optimizer is not None}")
             logger.debug_forward(f"🔍 kwargs keys={list(kwargs.keys())}")
             if 'full_lattice_states' in kwargs:
-                logger.debug(f"🔍 full_lattice_states.shape={kwargs['full_lattice_states'].shape}")
+                logger.debug_forward(f"🔍 full_lattice_states.shape={kwargs['full_lattice_states'].shape}")
         """
         Основной forward pass с упрощенной логикой
 
@@ -323,7 +323,7 @@ class MoEConnectionProcessor(nn.Module):
                     else:
                         raise RuntimeError(f"Неожиданная размерность full_lattice_states: {full_states.shape}")
 
-                    logger.debug(
+                    logger.debug_forward(
                         f"🔍 ОСНОВНОЙ РЕЖИМ: spatial_optimizer для клетки {cell_idx}: найдено {len(neighbor_indices)} валидных соседей, neighbor_states.shape={neighbor_states.shape}"
                     )
                 else:
@@ -356,8 +356,8 @@ class MoEConnectionProcessor(nn.Module):
                 )
             
             full_states = kwargs["full_lattice_states"]
-            logger.debug(f"🔍 BEFORE extraction: full_states.shape={full_states.shape}")
-            logger.debug(f"🔍 neighbor_indices for cell {cell_idx}: {neighbor_indices}")
+            logger.debug_forward(f"🔍 BEFORE extraction: full_states.shape={full_states.shape}")
+            logger.debug_forward(f"🔍 neighbor_indices for cell {cell_idx}: {neighbor_indices}")
             
             # Правильное извлечение состояний соседей с учетом batch dimension
             # Преобразуем neighbor_indices в list если это tensor
@@ -376,7 +376,7 @@ class MoEConnectionProcessor(nn.Module):
             else:
                 raise RuntimeError(f"Неожиданная размерность full_lattice_states: {full_states.shape}")
             
-            logger.debug(
+            logger.debug_forward(
                 f"✅ Извлечены состояния соседей из full_lattice_states для клетки {cell_idx}, shape={neighbor_states.shape}"
             )
 
@@ -407,7 +407,7 @@ class MoEConnectionProcessor(nn.Module):
             cell_state=current_state,
             neighbor_states=neighbor_states,
         )
-        logger.debug(f"[{cell_idx}] Классификация завершена.")
+        logger.debug_forward(f"[{cell_idx}] Классификация завершена.")
 
         # === 2. ОБРАБОТКА КАЖДЫМ ЭКСПЕРТОМ ===
         logger.debug_forward(f"[{cell_idx}] Шаг 2: Обработка экспертами...")
@@ -438,7 +438,7 @@ class MoEConnectionProcessor(nn.Module):
             # Flatten маску для правильной индексации
             local_mask_flat = local_mask.flatten()
             local_neighbor_states = neighbor_states[local_mask_flat]
-            logger.debug(
+            logger.debug_forward(
                 f"[{cell_idx}] Local neighbor states shape: {local_neighbor_states.shape}"
             )
 
@@ -454,7 +454,7 @@ class MoEConnectionProcessor(nn.Module):
                 local_neighbor_states,
                 use_reentrant=False,
             )
-            logger.debug(
+            logger.debug_forward(
                 f"[{cell_idx}] Local expert output shape: {local_output.shape}"
             )
 
@@ -481,7 +481,7 @@ class MoEConnectionProcessor(nn.Module):
             # Flatten маску для правильной индексации
             functional_mask_flat = functional_mask.flatten()
             functional_neighbor_states = neighbor_states[functional_mask_flat]
-            logger.debug(
+            logger.debug_forward(
                 f"[{cell_idx}] Functional neighbor states shape: {functional_neighbor_states.shape}"
             )
 
@@ -497,7 +497,7 @@ class MoEConnectionProcessor(nn.Module):
                 functional_neighbor_states,
                 use_reentrant=False,
             )
-            logger.debug(
+            logger.debug_forward(
                 f"[{cell_idx}] Functional expert output shape: {functional_output.shape}"
             )
         else:
@@ -521,7 +521,7 @@ class MoEConnectionProcessor(nn.Module):
             # Flatten маску для правильной индексации
             distant_mask_flat = distant_mask.flatten()
             distant_neighbor_states = neighbor_states[distant_mask_flat]
-            logger.debug(
+            logger.debug_forward(
                 f"[{cell_idx}] Distant neighbor states shape: {distant_neighbor_states.shape}"
             )
 
@@ -537,7 +537,7 @@ class MoEConnectionProcessor(nn.Module):
                 distant_neighbor_states,
                 use_reentrant=False,
             )
-            logger.debug(
+            logger.debug_forward(
                 f"[{cell_idx}] Distant expert output shape: {distant_output.shape}"
             )
         else:
@@ -564,7 +564,7 @@ class MoEConnectionProcessor(nn.Module):
             else:
                 # --- ИСПРАВЛЕНИЕ: Агрегация состояний соседей ---
                 # Усредняем состояния всех соседей для получения единого вектора контекста
-                logger.debug(
+                logger.debug_forward(
                     f"[{cell_idx}] Агрегация neighbor_states... Shape: {neighbor_states.shape}"
                 )
                 if neighbor_states.numel() > 0:
@@ -574,18 +574,18 @@ class MoEConnectionProcessor(nn.Module):
                     neighbor_activity = torch.zeros(
                         1, self.state_size, device=device, dtype=current_state.dtype
                     )
-                logger.debug(
+                logger.debug_forward(
                     f"[{cell_idx}] neighbor_activity shape: {neighbor_activity.shape}"
                 )
 
                 # Вызов GatingNetwork с корректными по форме тензорами
-                logger.debug(f"[{cell_idx}] Вызов GatingNetwork...")
+                logger.debug_forward(f"[{cell_idx}] Вызов GatingNetwork...")
                 combined_output, expert_weights = self.gating_network(
                     current_state=current_state,  # [1, state_size]
                     neighbor_activity=neighbor_activity,  # [1, state_size]
                     expert_outputs=expert_outputs,
                 )
-                logger.debug(
+                logger.debug_forward(
                     f"[{cell_idx}] GatingNetwork завершен. combined_output: {combined_output.shape}, expert_weights: {expert_weights.shape}"
                 )
 
@@ -618,7 +618,7 @@ class MoEConnectionProcessor(nn.Module):
         )
 
         # Отдельное логирование expert_weights
-        logger.debug(
+        logger.debug_training(
             f"[{cell_idx}] Expert weights: {expert_weights.squeeze().tolist()}"
         )
 

@@ -481,7 +481,8 @@ class EmbeddingSettings:
 
     # === НАСТРОЙКИ ДЛЯ РЕАЛЬНОГО ОБУЧЕНИЯ ===
     teacher_model: str = "distilbert-base-uncased"
-    input_dim: int = 768  # DistilBERT dimension
+    teacher_dim: int = 768  # Размерность эмбеддингов от teacher модели (DistilBERT)
+    input_dim: int = 768  # Входная размерность (совпадает с teacher_dim)
     output_dim: int = 64  # Для куба 8x8x8 (512/8 = 64)
     teacher_embedding_dim: int = 768  # Старая совместимость
 
@@ -920,7 +921,7 @@ class ModePresets:
         dataloader_workers: int = 2
         
         # Logging
-        logging_level: str = "ALL_DEBUG"
+        logging_level: str = "DEBUG_CACHE"
         logging_debug_mode: bool = True
         logging_enable_profiling: bool = True
         
