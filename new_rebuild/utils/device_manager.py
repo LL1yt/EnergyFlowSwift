@@ -27,7 +27,16 @@ class MemoryMonitor:
         self.device = device
         self.allocation_count = 0
         self.peak_memory_mb = 0.0
-        self.cleanup_threshold = 100  # GC каждые 100 операций
+        self._cleanup_threshold = None  # Ленивая инициализация
+
+    @property 
+    def cleanup_threshold(self) -> int:
+        """Получает cleanup_threshold из централизованной конфигурации (ленивая инициализация)"""
+        if self._cleanup_threshold is None:
+            from ..config import get_project_config
+            config = get_project_config()
+            self._cleanup_threshold = config.memory_management.cleanup_threshold
+        return self._cleanup_threshold
 
     def can_allocate(self, required_memory_bytes: int) -> bool:
         """
@@ -63,14 +72,14 @@ class MemoryMonitor:
             try:
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
-            except Exception:
+            except Exception as e:
                 # Игнорируем ошибки очистки при завершении программы
                 logger.debug_memory(
-                    f"⚠️ Игнорируем ошибки очистки при завершении программы"
+                    f"⚠️ Игнорируем ошибки очистки при завершении программы {e}"
                 )   
                 pass
 
-        logger.debug_memory(f"🧹 Memory cleanup выполнен для {self.device}")
+        logger.info(f"🧹 Memory cleanup выполнен для {self.device}")
 
     def get_memory_stats(self) -> Dict[str, float]:
         """Получить статистику использования памяти"""
@@ -119,6 +128,7 @@ class DeviceManager:
         self.debug_mode = debug_mode
         self.device = self._detect_optimal_device(prefer_cuda)
         self.memory_monitor = MemoryMonitor(self.device)
+        self._cleanup_on_del = False  # Отключаем cleanup в деструкторе для производительности
 
         # Счетчики для статистики
         self.tensor_transfers = 0
@@ -292,11 +302,12 @@ class DeviceManager:
         self.allocations += 1
         self.memory_monitor.allocation_count += 1
 
-        # Периодический cleanup
+        # Периодический cleanup (но не при первой аллокации)
         if (
-            self.memory_monitor.allocation_count % self.memory_monitor.cleanup_threshold
-            == 0
+            self.memory_monitor.allocation_count > 0 and
+            self.memory_monitor.allocation_count % self.memory_monitor.cleanup_threshold == 0
         ):
+            logger.debug_init(f"📊 Периодический cleanup allocation_count: {self.memory_monitor.allocation_count} % allocation_count: {self.memory_monitor.cleanup_threshold} = {self.memory_monitor.allocation_count % self.memory_monitor.cleanup_threshold}")
             self.memory_monitor.cleanup()
 
         return tensor
@@ -379,13 +390,19 @@ class DeviceManager:
                 logger.info(
                     f"🧹 DeviceManager cleanup: {stats['tensor_transfers']} переносов, {stats['total_allocations']} выделений"
                 )
-        except Exception:
-            # Игнорируем ошибки при завершении программы
+        except Exception as e:
+            # Игнорируем ошибки очистки при завершении программы
+            logger.debug_memory(
+                f"⚠️ Игнорируем ошибки очистки при завершении программы {e}. а если ошибка не связана с заверешением программы, то это баг, который нужно исправить, но мы игнорируем его просто так- добро пожаловать в мир багов и проблем с памятью!  и вайбкодинга  😅"
+            )  
             pass
 
     def __del__(self):
-        """Cleanup при удалении объекта"""
-        if hasattr(self, "memory_monitor"):
+        """Cleanup при удалении объекта - контролируется флагом"""
+        if self._cleanup_on_del and hasattr(self, "memory_monitor"):
+            logger.info(
+                    f"🧹 DeviceManager cleanup: _cleanup_on_del"
+                )
             self.cleanup()
 
 

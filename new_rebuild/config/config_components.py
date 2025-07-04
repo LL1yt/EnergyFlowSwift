@@ -793,8 +793,8 @@ class EmbeddingMappingSettings:
 @dataclass
 class MemoryManagementSettings:
     """Настройки управления памятью и производительностью"""
-    # Garbage collection
-    cleanup_threshold: int = 100
+    # Garbage collection - будет переопределен из пресетов
+    cleanup_threshold: int = 1000  # Значение по умолчанию, переопределяется пресетами
     
     # Минимальные требования
     min_gpu_memory_gb: float = 8.0
@@ -923,9 +923,10 @@ class ModePresets:
         # Memory & Performance
         memory_reserve_gb: float = 2.0
         dataloader_workers: int = 2
+        cleanup_threshold: int = 5000  # Редкие cleanups для DEBUG
         
         # Logging
-        logging_level: str = "DEBUG_MEMORY"
+        logging_level: str = "DEBUG_INIT"
         logging_debug_mode: bool = True
         logging_enable_profiling: bool = True
         
@@ -975,6 +976,7 @@ class ModePresets:
         # Memory & Performance
         memory_reserve_gb: float = 10.0
         dataloader_workers: int = 4
+        cleanup_threshold: int = 1000  # Умеренные cleanups для EXPERIMENT
         
         # Logging
         logging_level: str = "INFO"
@@ -1027,6 +1029,7 @@ class ModePresets:
         # Memory & Performance
         memory_reserve_gb: float = 20.0
         dataloader_workers: int = 8
+        cleanup_threshold: int = 10000  # Минимальные cleanups для OPTIMIZED
         
         # Logging
         logging_level: str = "WARNING"

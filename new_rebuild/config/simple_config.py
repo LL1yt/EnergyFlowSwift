@@ -150,7 +150,8 @@ class SimpleProjectConfig:
         
         # Инициализация device manager с централизованным debug_mode из logging настроек
         self.device_manager = get_device_manager(
-            prefer_cuda=self.device.prefer_cuda, debug_mode=self.logging.debug_mode
+            prefer_cuda=self.device.prefer_cuda, 
+            debug_mode=self.logging.debug_mode
         )
 
         # Связываем cache с expert settings
@@ -303,6 +304,7 @@ class SimpleProjectConfig:
         # Memory & Performance
         self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
         self.memory_management.dataloader_workers = preset.dataloader_workers
+        self.memory_management.cleanup_threshold = preset.cleanup_threshold
         
         # Override adaptive radius for small debug lattice
         if hasattr(preset, 'lattice_adaptive_radius_ratio'):
@@ -323,6 +325,7 @@ class SimpleProjectConfig:
         # Memory & Performance
         self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
         self.memory_management.dataloader_workers = preset.dataloader_workers
+        self.memory_management.cleanup_threshold = preset.cleanup_threshold
         
     def _apply_optimized_mode(self):
         """Финальный оптимизированный режим - дополнительные настройки"""
@@ -340,6 +343,7 @@ class SimpleProjectConfig:
         # Memory & Performance
         self.memory_management.training_memory_reserve_gb = preset.memory_reserve_gb
         self.memory_management.dataloader_workers = preset.dataloader_workers
+        self.memory_management.cleanup_threshold = preset.cleanup_threshold
         
         # Включить оптимизации производительности
         if self.performance is None:
