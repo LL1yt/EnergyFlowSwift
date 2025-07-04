@@ -18,7 +18,7 @@ Connection Cache Manager - Pre-computed кэширование классифи�
 
 import torch
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Dict, List, Tuple, Optional, Set, Any
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import pickle
@@ -432,8 +432,9 @@ class ConnectionCacheManager:
 
                 # Находим соседей в радиусе (исключая саму клетку)
                 for i, cell_idx in enumerate(range(start_idx, end_idx)):
-                    # Маска для соседей в радиусе (исключая саму клетку)
-                    neighbor_mask = (distances[i] <= self.adaptive_radius) & (
+                    # ИСПРАВЛЕНИЕ: Используем distant_threshold вместо adaptive_radius
+                    # Это гарантирует, что все найденные соседи попадут в одну из трех категорий
+                    neighbor_mask = (distances[i] <= self.distant_threshold) & (
                         distances[i] > 0
                     )
                     neighbor_indices = torch.where(neighbor_mask)[0].cpu().tolist()
@@ -450,6 +451,13 @@ class ConnectionCacheManager:
 
             self._all_neighbors_cache = all_neighbors
             logger.info(f"✅ GPU: Вычислены соседи для {len(all_neighbors)} клеток")
+            
+            # Логирование для диагностики
+            total_neighbors = sum(len(neighbors) for neighbors in all_neighbors.values())
+            avg_neighbors = total_neighbors / len(all_neighbors) if all_neighbors else 0
+            logger.info(f"   Среднее количество соседей на клетку: {avg_neighbors:.1f}")
+            logger.info(f"   Используемый порог: {self.distant_threshold} (distant_threshold)")
+            
             return all_neighbors
 
         except Exception as e:
@@ -519,6 +527,75 @@ class ConnectionCacheManager:
                 )
 
         return connections
+
+    def get_neighbors_and_classification(
+        self, 
+        cell_idx: int, 
+        states: Optional[torch.Tensor] = None,
+        functional_similarity_threshold: float = 0.3
+    ) -> Dict[str, Any]:
+        """
+        Возвращает соседей И их классификацию одним вызовом
+        
+        Args:
+            cell_idx: Индекс клетки
+            states: Состояния всех клеток для функциональной проверки
+            functional_similarity_threshold: Порог для функциональной близости
+            
+        Returns:
+            {
+                "local": {"indices": [...], "states": tensor, "connections": [ConnectionInfo]},
+                "functional": {"indices": [...], "states": tensor, "connections": [ConnectionInfo]},
+                "distant": {"indices": [...], "states": tensor, "connections": [ConnectionInfo]}
+            }
+        """
+        # Получаем всех соседей из кэша
+        if self._all_neighbors_cache is None:
+            raise RuntimeError("Cache not initialized. Call _precompute_all_neighbors() first.")
+            
+        if cell_idx not in self._all_neighbors_cache:
+            logger.warning(f"Cell {cell_idx} not found in cache, returning empty neighbors")
+            return {
+                "local": {"indices": [], "states": torch.empty(0, self.state_size), "connections": []},
+                "functional": {"indices": [], "states": torch.empty(0, self.state_size), "connections": []},
+                "distant": {"indices": [], "states": torch.empty(0, self.state_size), "connections": []}
+            }
+            
+        neighbor_indices = self._all_neighbors_cache[cell_idx]
+        
+        # Используем существующий метод для классификации
+        classified_connections = self.get_cached_connections(
+            cell_idx=cell_idx,
+            neighbor_indices=neighbor_indices,
+            states=states,
+            functional_similarity_threshold=functional_similarity_threshold
+        )
+        
+        # Формируем результат с индексами и состояниями
+        result = {}
+        for category in [ConnectionCategory.LOCAL, ConnectionCategory.FUNCTIONAL, ConnectionCategory.DISTANT]:
+            connections = classified_connections.get(category, [])
+            indices = [conn.target_idx for conn in connections]
+            
+            # Извлекаем состояния соседей если states переданы
+            if states is not None and indices:
+                if states.dim() == 3:  # [batch, num_cells, state_size]
+                    neighbor_states = states[0, indices, :]
+                elif states.dim() == 2:  # [num_cells, state_size]
+                    neighbor_states = states[indices]
+                else:
+                    raise RuntimeError(f"Unexpected states dimension: {states.shape}")
+            else:
+                neighbor_states = torch.empty(0, self.state_size if hasattr(self, 'state_size') else states.shape[-1] if states is not None else 0)
+                
+            category_name = category.value.lower()
+            result[category_name] = {
+                "indices": indices,
+                "states": neighbor_states,
+                "connections": connections
+            }
+            
+        return result
 
     def get_cached_connections(
         self,
@@ -778,7 +855,7 @@ class ConnectionCacheManager:
                         )
 
         except IndexError as e:
-            logger.warning(f"Ошибка доступа к состояниям: {e}")
+            logger.warning(f"⚠️⚠️⚠️ Ошибка доступа к состояниям: {e}")
 
         return functional_connections
 

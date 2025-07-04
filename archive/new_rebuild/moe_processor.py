@@ -235,6 +235,20 @@ class MoEConnectionProcessor(nn.Module):
         self.device_manager.transfer_module(self)
         logger.info(f"MoEConnectionProcessor перенесен на устройство: {self.device}")
         
+    def set_spatial_optimizer(self, spatial_optimizer):
+        """
+        DEPRECATED: Устанавливает spatial optimizer для синхронизации логики поиска соседей
+        
+        В новой архитектуре spatial optimizer больше не используется для поиска соседей.
+        Вместо этого используется предварительно вычисленный кэш через connection_classifier.
+        
+        Этот метод оставлен только для обратной совместимости и инициализации кэша.
+        """
+        self.spatial_optimizer = spatial_optimizer
+        # Передаем его в connection classifier для синхронизации кэша
+        self.connection_classifier.set_spatial_optimizer(spatial_optimizer)
+        logger.info("Spatial optimizer установлен в MoE processor (DEPRECATED - только для инициализации кэша)")
+
     def forward(
         self,
         current_state: torch.Tensor,

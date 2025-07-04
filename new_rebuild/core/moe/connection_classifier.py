@@ -182,6 +182,43 @@ class UnifiedConnectionClassifier(nn.Module):
             f"UnifiedConnectionClassifier initialized for {lattice_dimensions}, cache: {cache_status}, performance monitoring: {performance_status}"
         )
         
+    def get_cached_neighbors_and_classification(
+        self,
+        cell_idx: int,
+        states: Optional[torch.Tensor] = None,
+        functional_similarity_threshold: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Возвращает соседей И их классификацию одним вызовом из кэша
+        
+        Args:
+            cell_idx: Индекс клетки
+            states: Состояния всех клеток для функциональной проверки
+            functional_similarity_threshold: Порог для функциональной близости
+            
+        Returns:
+            {
+                "local": {"indices": [...], "states": tensor, "connections": [ConnectionInfo]},
+                "functional": {"indices": [...], "states": tensor, "connections": [ConnectionInfo]},
+                "distant": {"indices": [...], "states": tensor, "connections": [ConnectionInfo]}
+            }
+        """
+        if not self.enable_cache:
+            raise RuntimeError(
+                "❌ get_cached_neighbors_and_classification вызван, но кэш отключен. "
+                "Включите кэш в конфигурации: config.cache.enabled = True"
+            )
+            
+        if functional_similarity_threshold is None:
+            functional_similarity_threshold = self.functional_similarity_threshold
+            
+        # Делегируем cache manager'у
+        return self.cache_manager.get_neighbors_and_classification(
+            cell_idx=cell_idx,
+            states=states,
+            functional_similarity_threshold=functional_similarity_threshold
+        )
+        
     def set_spatial_optimizer(self, spatial_optimizer: Optional['UnifiedSpatialOptimizer']):
         """Устанавливает spatial optimizer для синхронизации логики поиска соседей"""
         if self.cache_adapter is not None:

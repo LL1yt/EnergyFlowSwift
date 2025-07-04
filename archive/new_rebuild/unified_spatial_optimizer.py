@@ -294,6 +294,85 @@ class UnifiedSpatialOptimizer:
         """GPU-ускоренный поиск соседей."""
         return self.gpu_processor.find_neighbors(coords, radius)
 
+    def find_neighbors_by_radius_safe(self, cell_idx: int) -> List[int]:
+        """
+        DEPRECATED: Безопасный поиск соседей для клетки по адаптивному радиусу.
+        
+        В новой архитектуре этот метод НЕ используется для MoE обработки.
+        Соседи теперь получаются из предварительно вычисленного кэша
+        через connection_classifier.get_cached_neighbors_and_classification()
+        
+        Метод оставлен только для обратной совместимости и инициализации кэша.
+
+        Args:
+            cell_idx: Индекс клетки в решетке
+
+        Returns:
+            Список индексов соседних клеток (БЕЗ самой клетки)
+        """
+        from ..position import Position3D
+
+        # Получаем координаты клетки
+        pos_helper = Position3D(self.dimensions)
+        coords = pos_helper.to_3d_coordinates(cell_idx)
+
+        # Получаем конфигурацию радиуса
+        config = get_project_config()
+        adaptive_radius = config.calculate_adaptive_radius()
+
+        # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ для диагностики
+        logger.debug_spatial(
+            f"🔍 [find_neighbors_by_radius_safe] Поиск соседей для клетки {cell_idx}:"
+        )
+        logger.debug_spatial(f"   Координаты: {coords}")
+        logger.debug_spatial(f"   Размеры решетки: {self.dimensions}")
+        logger.debug_spatial(
+            f"   Adaptive radius ratio: {config.lattice.adaptive_radius_ratio}"
+        )
+        logger.debug_spatial(f"   Вычисленный adaptive_radius: {adaptive_radius:.3f}")
+        logger.debug_spatial(f"   Пороги классификации:")
+        logger.debug_spatial(
+            f"   - LOCAL: < {adaptive_radius * config.lattice.local_distance_ratio:.3f}"
+        )
+        logger.debug_spatial(
+            f"   - FUNCTIONAL: <= {adaptive_radius * config.lattice.functional_distance_ratio:.3f}"
+        )
+        logger.debug_spatial(
+            f"   - DISTANT: <= {adaptive_radius * config.lattice.distant_distance_ratio:.3f}"
+        )
+
+        try:
+            distant_threshold = adaptive_radius * config.lattice.distant_distance_ratio
+            logger.debug_spatial(f"   DISTANT threshold: {distant_threshold:.3f}")
+            # Используем GPU processor для поиска соседей
+            neighbors = self.gpu_processor.find_neighbors(coords, distant_threshold)
+
+            # НЕ включаем саму клетку - она не является соседом самой себе
+
+            # Проверяем что у клетки есть соседи
+            if len(neighbors) == 0:
+                logger.error(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Клетка {cell_idx} (coords={coords}) не имеет соседей!"
+                )
+                logger.error(f"   Адаптивный радиус: {adaptive_radius:.3f}")
+                logger.error(f"   Размеры решетки: {self.dimensions}")
+                logger.error(
+                    f"   Это невозможно в 3D кубе - проверьте конфигурацию радиуса!"
+                )
+                raise RuntimeError(
+                    f"Клетка {cell_idx} изолирована (0 соседей). "
+                    f"Адаптивный радиус {adaptive_radius:.3f} слишком мал для решетки {self.dimensions}"
+                )
+
+            logger.debug_spatial(
+                f"✅ Найдено {len(neighbors)} соседей для клетки {cell_idx}: {neighbors[:5]}{'...' if len(neighbors) > 5 else ''}"
+            )
+            return neighbors
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка поиска соседей для клетки {cell_idx}: {e}")
+            # Возвращаем пустой список - клетка изолирована
+            return []
 
     def optimize_lattice_forward(
         self, states: torch.Tensor, processor_fn: Optional[Callable] = None

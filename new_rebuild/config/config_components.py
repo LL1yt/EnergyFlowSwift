@@ -50,7 +50,7 @@ class LatticeSettings:
     # Классификация соединений - алгоритмические пропорции (не дублирование!)
     local_distance_ratio: float = 0.5      # 10% ближайших связей (от 0.0 до 0.1) для примера, может отличаться от текущих настроек
     functional_distance_ratio: float = 0.85 # до 65% связей для functional (от 0.1 до 0.65)
-    distant_distance_ratio: float = 1.0     # до 100% всех связей (от 0.65 до 1.0)
+    distant_distance_ratio: float = 0.99     # до 100% всех связей (от 0.65 до 1.0)
     functional_similarity_threshold: float = 0.3
     # 0 ≤ LOCAL < local_distance_ratio*Adaptive_radius; local_distance_ratio*Adaptive_radius ≤ FUNCTIONAL: ≤ functional_distance_ratio*Adaptive_radius; functional_distance_ratio*Adaptive_radius < DISTANT ≤ distant_distance_ratio*Adaptive_radius 
 

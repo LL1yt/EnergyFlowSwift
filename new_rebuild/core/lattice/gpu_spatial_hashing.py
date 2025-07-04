@@ -295,11 +295,36 @@ class GPUSpatialHashGrid:
                         if hash_val in self.grid_hash_table:
                             candidates.update(self.grid_hash_table[hash_val])
 
-            # Преобразуем в tensor
+            # ИСПРАВЛЕНИЕ: Фильтруем кандидатов по точному расстоянию
             if candidates:
-                neighbor_indices = torch.tensor(
+                candidate_indices = torch.tensor(
                     list(candidates), device=self.device, dtype=torch.long
                 )
+
+                # Получаем координаты кандидатов
+                candidate_coords = self.cell_coordinates[candidate_indices]
+
+                # Вычисляем расстояния от query point до всех кандидатов
+                distances = torch.norm(candidate_coords.float() - point.float(), dim=1)
+
+                # Фильтруем только тех, кто действительно в радиусе
+                valid_mask = distances <= radius
+                neighbor_indices = candidate_indices[valid_mask]
+
+                # Логирование для диагностики
+                if len(candidate_indices) != len(neighbor_indices):
+                    logger.debug_spatial(
+                        f"🔍 Spatial hash фильтрация: {len(candidate_indices)} кандидатов "
+                        f"→ {len(neighbor_indices)} соседей (радиус={radius:.3f})"
+                    )
+                    excluded_count = len(candidate_indices) - len(neighbor_indices)
+                    if excluded_count > 0:
+                        excluded_distances = distances[~valid_mask]
+                        if len(excluded_distances) > 0:
+                            logger.debug_spatial(
+                                f"   Исключено {excluded_count} кандидатов с расстояниями: "
+                                f"{excluded_distances[:5].tolist()}..."
+                            )
             else:
                 neighbor_indices = torch.empty(0, device=self.device, dtype=torch.long)
 

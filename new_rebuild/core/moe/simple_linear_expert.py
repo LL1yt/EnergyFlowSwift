@@ -131,7 +131,7 @@ class OptimizedSimpleLinearExpert(nn.Module):
         elif neighbor_states.dim() == 2:
             # neighbor_states имеет размер [num_neighbors, state_size]
             # Это нормально для одиночной обработки (без batch)
-            logger.warning(f"⚠️ 2 размерность neighbor_states, возможно потерян batch_size, используем default_batch_size={self.default_batch_size} ")
+            logger.warning(f"⚠️ neighbor_states.dim() = 2, возможно потерян batch_size, используем default_batch_size={self.default_batch_size} ")
             num_neighbors, _ = neighbor_states.shape
             batch_size = self.default_batch_size
         else:
