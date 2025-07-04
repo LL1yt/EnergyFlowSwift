@@ -925,7 +925,7 @@ class ModePresets:
         dataloader_workers: int = 2
         
         # Logging
-        logging_level: str = "DEBUG_CACHE"
+        logging_level: str = "DEBUG_MEMORY"
         logging_debug_mode: bool = True
         logging_enable_profiling: bool = True
         
