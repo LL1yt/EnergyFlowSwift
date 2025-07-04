@@ -937,7 +937,7 @@ class ModePresets:
     class ExperimentPreset:
         """Настройки для EXPERIMENT режима - исследования и эксперименты"""
         # Lattice
-        lattice_dimensions: Tuple[int, int, int] = (15, 15, 15)
+        lattice_dimensions: Tuple[int, int, int] = (30, 30, 30)
         
         # Model
         model_state_size: int = 64  # Общий для всех экспертов
@@ -989,7 +989,7 @@ class ModePresets:
     class OptimizedPreset:
         """Настройки для OPTIMIZED режима - финальные прогоны"""
         # Lattice
-        lattice_dimensions: Tuple[int, int, int] = (30, 30, 30)
+        lattice_dimensions: Tuple[int, int, int] = (50, 50, 50)
         
         # Model
         model_state_size: int = 128  # Общий для всех экспертов

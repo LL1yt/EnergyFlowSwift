@@ -182,6 +182,11 @@ class UnifiedConnectionClassifier(nn.Module):
             f"UnifiedConnectionClassifier initialized for {lattice_dimensions}, cache: {cache_status}, performance monitoring: {performance_status}"
         )
         
+        # Инициализируем кэш сразу, так как set_spatial_optimizer больше не используется
+        if self.enable_cache and self.cache_manager is not None:
+            logger.info("Инициализация кэша при создании UnifiedConnectionClassifier...")
+            self._initialize_cache()
+        
     def get_cached_neighbors_and_classification(
         self,
         cell_idx: int,
@@ -257,18 +262,9 @@ class UnifiedConnectionClassifier(nn.Module):
                         )
                     return
                 
-                # Если кэш не найден на диске, проверяем наличие spatial optimizer
-                if (self.cache_adapter is not None and 
-                    self.cache_adapter.spatial_optimizer is not None):
-                    logger.info("Кэш не найден на диске. Используем spatial optimizer для предвычисления кэша")
-                    new_cache = self.cache_adapter.precompute_with_spatial_optimizer()
-                    self.cache_manager.cache = new_cache
-                    self.cache_manager.is_precomputed = True
-                    self.cache_manager._save_cache_to_disk()
-                else:
-                    # Иначе используем встроенную логику
-                    logger.error("❌ Spatial optimizer не установлен! Это критическая ошибка.")
-                    raise RuntimeError("Spatial optimizer обязателен для работы системы")
+                # Если кэш не найден на диске, используем встроенную логику
+                logger.info("Кэш не найден на диске. Используем встроенную логику для предвычисления кэша")
+                self.cache_manager.precompute_all_connections(force_rebuild=True)
 
                 # Логируем статистику кэша
                 stats = self.cache_manager.get_cache_stats()

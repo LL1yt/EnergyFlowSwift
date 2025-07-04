@@ -90,8 +90,8 @@ class Lattice3D(nn.Module):
         # Устанавливаем MoE processor в унифицированный оптимизатор
         self.spatial_optimizer.moe_processor = self.moe_processor
         
-        # Устанавливаем spatial optimizer в MoE processor для синхронизации кэша
-        self.moe_processor.set_spatial_optimizer(self.spatial_optimizer)
+        # В новой архитектуре spatial optimizer больше не нужен MoE processor'у
+        # так как он использует только кэш для получения соседей
 
         # Размещение I/O точек
         from .enums import PlacementStrategy

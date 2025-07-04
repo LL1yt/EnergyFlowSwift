@@ -132,6 +132,7 @@ class ConnectionCacheManager:
         self.cache: Dict[int, Dict[str, List[CachedConnectionInfo]]] = {}
         self.distance_cache: Dict[Tuple[int, int], Dict[str, float]] = {}
         self.is_precomputed = False
+        self._all_neighbors_cache = None  # Инициализируется при первом вызове _compute_all_neighbors()
 
         # Статистика (включается по настройкам)
         self.enable_performance_monitoring = self.cache_config.get(
@@ -551,7 +552,8 @@ class ConnectionCacheManager:
         """
         # Получаем всех соседей из кэша
         if self._all_neighbors_cache is None:
-            raise RuntimeError("Cache not initialized. Call _precompute_all_neighbors() first.")
+            logger.warning("⚠️ _all_neighbors_cache not initialized, computing neighbors now...")
+            self._all_neighbors_cache = self._compute_all_neighbors()
             
         if cell_idx not in self._all_neighbors_cache:
             logger.warning(f"Cell {cell_idx} not found in cache, returning empty neighbors")
@@ -616,6 +618,11 @@ class ConnectionCacheManager:
         Returns:
             Классифицированные связи по категориям
         """
+        # Проверяем инициализацию кэша
+        if not self.is_precomputed:
+            logger.warning("⚠️ Cache not precomputed, initializing now...")
+            self.precompute_all_connections(force_rebuild=False)
+            
         if cell_idx not in self.cache:
             logger.warning(f"Кэш не найден для клетки {cell_idx}")
             logger.debug_cache(f"Cache size: {len(self.cache)}, Cache keys sample: {list(self.cache.keys())[:10] if self.cache else 'Empty'}")

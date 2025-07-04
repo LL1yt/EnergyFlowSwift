@@ -791,42 +791,13 @@ class GPUSpatialProcessor:
                 # Получаем координаты клетки
                 cell_coords = self.chunker.pos_helper.to_3d_coordinates(cell_idx.item())
                 
-                # Используем spatial hash для поиска соседей
-                try:
-                    # Конвертируем координаты в tensor для spatial hash
-                    coords_tensor = torch.tensor(
-                        [cell_coords], device=self.device, dtype=torch.float32
-                    )
-                    
-                    # Ищем соседей в радиусе (адаптивный радиус)
-                    config = get_project_config()
-                    search_radius = config.calculate_adaptive_radius()
-                    
-                    neighbor_lists = self.adaptive_hash.query_radius_batch(
-                        coords_tensor, search_radius
-                    )
-                    
-                    neighbor_indices = neighbor_lists[0] if neighbor_lists else torch.empty(
-                        0, device=self.device, dtype=torch.long
-                    )
-                    
-                except Exception as e:
-                    logger.debug(f"⚠️ Не удалось найти соседей для клетки {cell_idx}: {e}")
-                    neighbor_indices = torch.empty(0, device=self.device, dtype=torch.long)
+                # В новой архитектуре с кэшем соседи будут получены внутри MoE processor
+                # Здесь просто передаем пустые списки
+                neighbor_indices = torch.empty(0, device=self.device, dtype=torch.long)
                 
-                # Собираем состояния соседей
-                if len(neighbor_indices) > 0:
-                    # Get neighbor states from all_states
-                    if all_states.dim() == 3:  # [batch, cells, features]
-                        # Extract neighbor states for all batches
-                        neighbor_states = all_states[:, neighbor_indices, :]  # [batch, num_neighbors, features]
-                        # For now, average across batch dimension for neighbors
-                        # This is a simplification - in production you might want batch-aware neighbor processing
-                        neighbor_states = neighbor_states.mean(dim=0)  # [num_neighbors, features]
-                    else:
-                        neighbor_states = all_states[neighbor_indices]  # [num_neighbors, features]
-                else:
-                    neighbor_states = torch.empty(0, all_states.shape[-1], device=self.device)
+                # В новой архитектуре состояния соседей будут получены из кэша в MoE processor
+                # Здесь передаем пустой тензор
+                neighbor_states = torch.empty(0, all_states.shape[-1], device=self.device)
                 
                 # Применяем функцию обработки к одной клетке
                 # ИСПРАВЛЕНО: Преобразуем cell_idx в int, так как MoE processor ожидает int
