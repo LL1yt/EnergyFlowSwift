@@ -237,6 +237,10 @@ class ConnectionCacheManager:
             self.cache = cache_data["cache"]
             self.distance_cache = cache_data["distance_cache"]
             self.total_cells = cache_data["total_cells"]
+            
+            # Восстанавливаем _all_neighbors_cache из загруженного кэша
+            self._restore_all_neighbors_cache_from_cache()
+            
             logger.info(f"✅ Кэш совместим и успешно загружен с диска: {cache_file}")
             logger.info(f"   Загружено клеток в кэше: {len(self.cache)}")
             logger.info(f"   Примеры ключей кэша: {list(self.cache.keys())[:10]}")
@@ -245,6 +249,33 @@ class ConnectionCacheManager:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки кэша: {e}")
             return False
+
+    def _restore_all_neighbors_cache_from_cache(self):
+        """Восстанавливает _all_neighbors_cache из загруженного основного кэша"""
+        if not self.cache:
+            logger.warning("Основной кэш пуст, невозможно восстановить _all_neighbors_cache")
+            return
+            
+        self._all_neighbors_cache = {}
+        
+        # Восстанавливаем индексы соседей из основного кэша
+        for cell_idx, connections in self.cache.items():
+            neighbors = set()
+            
+            # Собираем все индексы соседей из всех типов связей
+            for conn_type in ["local", "functional_candidates", "distant"]:
+                if conn_type in connections:
+                    for conn_info in connections[conn_type]:
+                        neighbors.add(conn_info.target_idx)
+            
+            self._all_neighbors_cache[cell_idx] = list(neighbors)
+        
+        total_neighbors = sum(len(neighbors) for neighbors in self._all_neighbors_cache.values())
+        avg_neighbors = total_neighbors / len(self._all_neighbors_cache) if self._all_neighbors_cache else 0
+        
+        logger.info(f"✅ Восстановлен _all_neighbors_cache из основного кэша:")
+        logger.info(f"   Клеток: {len(self._all_neighbors_cache)}")
+        logger.info(f"   Среднее количество соседей на клетку: {avg_neighbors:.1f}")
 
     def _get_cache_key(self) -> str:
         """Генерирует уникальный ключ для кэша на основе конфигурации"""
@@ -346,12 +377,13 @@ class ConnectionCacheManager:
 
     def _compute_all_neighbors(self) -> Dict[int, List[int]]:
         """Вычисляет всех соседей для каждой клетки в радиусе adaptive_radius"""
-        if hasattr(self, "_all_neighbors_cache"):
+        if self._all_neighbors_cache is not None:
             return self._all_neighbors_cache
 
         if self.use_gpu:
             logger.info("🚀 Вычисляем всех соседей на GPU...")
-            return self._compute_all_neighbors_gpu()
+            self._all_neighbors_cache = self._compute_all_neighbors_gpu()
+            return self._all_neighbors_cache
         else:
             logger.error("❌ GPU не доступен для вычисления соседей")
             raise RuntimeError("GPU обязателен для работы системы с RTX 5090")
