@@ -245,23 +245,9 @@ class MoEConnectionProcessor(nn.Module):
         spatial_optimizer=None,  # DEPRECATED - больше не используется
         **kwargs,
     ) -> Dict[str, Any]:
-        # DEBUG: Reduced logging - only log for specific problematic cells
-        if cell_idx in [223, 256, 260, 320] or logger.isEnabledFor(10):
-            logger.debug_forward(f"🔍 MoE FORWARD called for cell {cell_idx}")
-            logger.debug_forward(f"🔍 current_state.shape={current_state.shape}")
-            logger.debug_forward(f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}")
-            # Safe logging for neighbor_indices (could be list or tensor)
-            if neighbor_indices is not None:
-                if isinstance(neighbor_indices, torch.Tensor):
-                    logger.debug_verbose(f"🔍 neighbor_indices=tensor({neighbor_indices.tolist()}), len={neighbor_indices.numel()}")
-                else:
-                    logger.debug_verbose(f"🔍 neighbor_indices={neighbor_indices}, len={len(neighbor_indices)}")
-            else:
-                logger.debug_verbose("🔍 neighbor_indices=None, len=0")
-            logger.debug_forward(f"🔍 spatial_optimizer={spatial_optimizer is not None}")
-            logger.debug_forward(f"🔍 kwargs keys={list(kwargs.keys())}")
-            if 'full_lattice_states' in kwargs:
-                logger.debug_forward(f"🔍 full_lattice_states.shape={kwargs['full_lattice_states'].shape}")
+        # DEBUG: Only log for extreme debug mode
+        if logger.isEnabledFor(11):  # DEBUG_VERBOSE only
+            logger.debug_verbose(f"🔍 MoE FORWARD called for cell {cell_idx}")
         """
         Основной forward pass с упрощенной логикой (ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)
 
@@ -315,26 +301,16 @@ class MoEConnectionProcessor(nn.Module):
         if external_input is not None:
             external_input = self.device_manager.ensure_device(external_input)
         
-        # Логирование результатов классификации из кэша
-        logger.debug_forward(f"[{cell_idx}] Cache-based classification results:")
-        logger.debug_forward(f"  - LOCAL: {len(neighbors_data['local']['indices'])} connections")
-        logger.debug_forward(f"  - FUNCTIONAL: {len(neighbors_data['functional']['indices'])} connections")
-        logger.debug_forward(f"  - DISTANT: {len(neighbors_data['distant']['indices'])} connections")
-        logger.debug_forward(f"  - TOTAL: {total_neighbors} neighbors")
+        # Cache-based classification results (no logging for performance)
 
         # === 2. ОБРАБОТКА КАЖДЫМ ЭКСПЕРТОМ (НОВАЯ АРХИТЕКТУРА) ===
-        logger.debug_forward(f"[{cell_idx}] Шаг 2: Обработка экспертами...")
         expert_outputs = []
         tensors_to_return = []
 
         # Local Expert
         local_data = neighbors_data["local"]
-        logger.debug_forward(f"[{cell_idx}] Local expert, {len(local_data['indices'])} соседей.")
         if local_data["indices"]:
             local_neighbor_states = local_data["states"]
-            logger.debug_forward(
-                f"[{cell_idx}] Local neighbor states shape: {local_neighbor_states.shape}"
-            )
 
             def local_expert_wrapper(current, neighbors):
                 res = self.local_expert(current, neighbors)
@@ -361,14 +337,8 @@ class MoEConnectionProcessor(nn.Module):
 
         # Functional Expert
         functional_data = neighbors_data["functional"]
-        logger.debug_forward(
-            f"[{cell_idx}] Functional expert, {len(functional_data['indices'])} соседей."
-        )
         if functional_data["indices"]:
             functional_neighbor_states = functional_data["states"]
-            logger.debug_forward(
-                f"[{cell_idx}] Functional neighbor states shape: {functional_neighbor_states.shape}"
-            )
 
             def functional_expert_wrapper(current, neighbors):
                 res = self.functional_expert(current, neighbors)
@@ -382,9 +352,7 @@ class MoEConnectionProcessor(nn.Module):
                 functional_neighbor_states,
                 use_reentrant=False,
             )
-            logger.debug_forward(
-                f"[{cell_idx}] Functional expert output shape: {functional_output.shape}"
-            )
+            # Functional expert output processed
         else:
             functional_output = self.memory_pool_manager.get_tensor(
                 (1, self.state_size), dtype=current_state.dtype
@@ -394,12 +362,8 @@ class MoEConnectionProcessor(nn.Module):
 
         # Distant Expert (только если CNF включен)
         distant_data = neighbors_data["distant"]
-        logger.debug_forward(f"[{cell_idx}] Distant expert, {len(distant_data['indices'])} соседей.")
         if self.enable_cnf and distant_data["indices"]:
             distant_neighbor_states = distant_data["states"]
-            logger.debug_forward(
-                f"[{cell_idx}] Distant neighbor states shape: {distant_neighbor_states.shape}"
-            )
 
             def distant_expert_wrapper(current, neighbors):
                 res = self.distant_expert(current, neighbors)
@@ -413,9 +377,7 @@ class MoEConnectionProcessor(nn.Module):
                 distant_neighbor_states,
                 use_reentrant=False,
             )
-            logger.debug_forward(
-                f"[{cell_idx}] Distant expert output shape: {distant_output.shape}"
-            )
+            # Distant expert output processed
         else:
             distant_output = self.memory_pool_manager.get_tensor(
                 (1, self.state_size), dtype=current_state.dtype
@@ -424,9 +386,6 @@ class MoEConnectionProcessor(nn.Module):
         expert_outputs.append(distant_output.squeeze(0))
 
         # === 3. КОМБИНИРОВАНИЕ РЕЗУЛЬТАТОВ ===
-        logger.debug_forward(
-            f"[{cell_idx}] Шаг 3: Комбинирование результатов. expert_outputs: {[t.shape for t in expert_outputs]}"
-        )
         try:
             # Предотвращение ошибки с пустыми expert_outputs
             if not expert_outputs:
@@ -448,18 +407,13 @@ class MoEConnectionProcessor(nn.Module):
                 if all_neighbor_states:
                     # Объединяем все состояния соседей
                     combined_neighbor_states = torch.cat(all_neighbor_states, dim=0)
-                    logger.debug_forward(
-                        f"[{cell_idx}] Агрегация neighbor_states... Shape: {combined_neighbor_states.shape}"
-                    )
                     neighbor_activity = torch.mean(combined_neighbor_states, dim=0, keepdim=True)
                 else:
                     # Если нет соседей, используем нулевой вектор
                     neighbor_activity = torch.zeros(
                         1, self.state_size, device=device, dtype=current_state.dtype
                     )
-                logger.debug_forward(
-                    f"[{cell_idx}] neighbor_activity shape: {neighbor_activity.shape}"
-                )
+                # neighbor_activity computed
 
                 # Вызов GatingNetwork с корректными по форме тензорами
                 logger.debug_forward(f"[{cell_idx}] Вызов GatingNetwork...")

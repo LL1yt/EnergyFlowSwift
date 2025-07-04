@@ -356,8 +356,8 @@ class GPUSpatialHashGrid:
             self.query_cache.clear()
             logger.debug("🧹 Query cache очищен для оптимизации памяти")
 
-        # Принудительная очистка GPU памяти
-        self.device_manager.cleanup()
+        # Принудительная очистка GPU памяти - отключена, используем периодический cleanup
+        # self.device_manager.cleanup()
 
     def get_memory_usage(self) -> Dict[str, float]:
         """Получить статистику использования памяти"""

@@ -116,6 +116,15 @@ class Lattice3D(nn.Module):
         # Инициализация состояний клеток
         self.states = self._initialize_states()
 
+        # Проверяем размерности при инициализации
+        import numpy as np
+        self.expected_cells = np.prod(self.config.lattice.dimensions)
+        if self.expected_cells != self.states.shape[0]:
+            raise RuntimeError(
+                f"Lattice dimensions mismatch: expected {self.expected_cells} cells, "
+                f"got {self.states.shape[0]} (shape: {self.states.shape})"
+            )
+
         # Отслеживание производительности
         self.perf_stats = {
             "total_steps": 0,
@@ -170,23 +179,15 @@ class Lattice3D(nn.Module):
         Returns:
             torch.Tensor: Новые состояния всех клеток
         """
-        start_time = time.time()
+        # Performance timing only if debug mode enabled
+        start_time = time.time() if self.config.logging.debug_mode else None
 
         self.logger.info(f"🚀 LATTICE FORWARD: states shape {self.states.shape}")
         self.logger.info(f"🚀 LATTICE DIMENSIONS: {self.config.lattice.dimensions}")
 
         # MoE processor уже создан при инициализации
 
-        # DEBUG: Проверяем размерности
-        import numpy as np
-        expected_cells = np.prod(self.config.lattice.dimensions)
-        # ИСПРАВЛЕНО: states должны быть [total_cells, state_size], поэтому shape[0] = количество клеток
-        actual_cells = self.states.shape[0]
-        if expected_cells != actual_cells:
-            self.logger.error(f"❌ DIMENSION MISMATCH: Expected {expected_cells} cells from lattice {self.config.lattice.dimensions}, but states has {actual_cells} cells")
-            self.logger.error(f"States shape: {self.states.shape}")
-            self.logger.error(f"Expected shape: [{expected_cells}, {self.config.model.state_size}]")
-            raise RuntimeError(f"Lattice dimensions mismatch: expected {expected_cells} cells, got {actual_cells}")
+        # Dimension validation moved to initialization for performance
 
         # Unified Spatial Optimizer автоматически выберет лучший режим обработки
         optimization_result = self.spatial_optimizer.optimize_lattice_forward(
@@ -196,7 +197,7 @@ class Lattice3D(nn.Module):
         # Извлекаем новые состояния и дополнительную информацию
         new_states = optimization_result.new_states
 
-        # Логируем производительность если включен debug режим
+        # Performance logging only in debug mode
         if self.config.logging.debug_mode:
             self.logger.info(
                 f"Spatial optimization: {optimization_result.processing_time_ms:.1f}ms, "
@@ -208,8 +209,10 @@ class Lattice3D(nn.Module):
         self.states = new_states
 
         # Обновляем статистику
-        step_time = time.time() - start_time
-        self._update_performance_stats(step_time, optimization_result)
+        step_time = (time.time() - start_time) if start_time is not None else 0.0
+        # Performance stats only in debug mode
+        if self.config.logging.debug_mode:
+            self._update_performance_stats(step_time, optimization_result)
 
         return self.states
 
@@ -318,8 +321,13 @@ class Lattice3D(nn.Module):
             self.logger.info("🧹 Unified Spatial Optimizer ресурсы освобождены")
 
     def __del__(self):
-        """Деструктор для автоматической очистки ресурсов - временно отключен для отладки"""
-        pass
+        """Деструктор для автоматической очистки ресурсов."""
+        try:
+            self.logger.info("🧹 Деструктор для Lattice3D: ресурсы освобождены")
+            self.cleanup()
+        except Exception as e:
+            self.logger.info("🧹 Деструктор для Lattice3D ошибка: {e}")
+            pass  # Игнорируем ошибки при деструкции
 
 
 def create_lattice() -> Lattice3D:

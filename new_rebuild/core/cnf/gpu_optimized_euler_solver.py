@@ -929,8 +929,8 @@ class GPUOptimizedEulerSolver(nn.Module):
         # Очищаем memory pool
         self._memory_pool.clear()
 
-        # Принудительная очистка GPU памяти
-        self.device_manager.cleanup()
+        # Принудительная очистка GPU памяти - отключена, используем периодический cleanup
+        # self.device_manager.cleanup()
 
         # Сбрасываем некоторую статистику
         self.performance_stats["gpu_memory_peak_mb"] = 0.0
@@ -944,8 +944,8 @@ class GPUOptimizedEulerSolver(nn.Module):
         # Очищаем memory pool
         self._memory_pool.clear()
 
-        # Финальная очистка памяти
-        self.device_manager.cleanup()
+        # Финальная очистка памяти - отключена, используем периодический cleanup
+        # self.device_manager.cleanup()
 
 
 # === FACTORY FUNCTIONS ===

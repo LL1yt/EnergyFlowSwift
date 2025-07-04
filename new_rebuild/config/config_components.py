@@ -809,6 +809,9 @@ class MemoryManagementSettings:
     training_memory_reserve_gb: float = 20.0
     memory_safety_factor: float = 0.8
     
+    # Интервал maintenance tasks в секундах
+    maintenance_interval_seconds: int = 666
+    
     # DataLoader настройки
     dataloader_workers: int = 8
     prefetch_factor: int = 6

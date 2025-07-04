@@ -126,6 +126,9 @@ class MemoryPoolManager:
 
         # Периодически запускаем garbage collection
         if self.allocation_count % self.config["garbage_collect_frequency"] == 0:
+            logger.debug_memory(
+                f"   🧹 Периодически запускаем garbage collection allocation_count: {self.allocation_count}"
+            )
             self.garbage_collect()
 
         # Обновляем пиковое использование памяти
@@ -145,11 +148,11 @@ class MemoryPoolManager:
             if len(pool) > 5:  # Оставляем только 5 newest tensor'ов
                 pool[:] = pool[-5:]
 
-        # Используем DeviceManager для централизованной очистки памяти
-        self.device_manager.cleanup()
+        # Используем DeviceManager для централизованной очистки памяти - отключено, используем периодический cleanup
+        # self.device_manager.cleanup()
 
         self.stats["gc_calls"] += 1
-        logger.debug_memory(
+        logger.info(
             f"   🧹 Memory cleanup через DeviceManager: GC вызван #{self.stats['gc_calls']}"
         )
 

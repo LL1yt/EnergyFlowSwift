@@ -870,10 +870,11 @@ class ConnectionCacheManager:
                 if target_idx < states.shape[0]:
                     neighbor_state = states[target_idx]
 
-                    # Косинусное сходство
-                    similarity = torch.cosine_similarity(
+                    # Косинусное сходство (keep on GPU)
+                    similarity_tensor = torch.cosine_similarity(
                         cell_state.unsqueeze(0), neighbor_state.unsqueeze(0), dim=1
-                    ).item()
+                    )
+                    similarity = similarity_tensor.squeeze().cpu().item()
 
                     # ИСПРАВЛЕНО: Для случайных данных используем более мягкий критерий
                     # Если similarity > -0.5 (не сильно противоположные), считаем функциональным
@@ -926,10 +927,14 @@ class ConnectionCacheManager:
         )
         valid_mask = neighbor_indices >= 0
 
+        # Convert to CPU once for batch processing
+        cell_indices_cpu = cell_indices.cpu()
+        neighbor_indices_cpu = neighbor_indices.cpu()
+        
         # Обрабатываем каждую клетку в batch
         for batch_idx in range(batch_size):
-            cell_idx = cell_indices[batch_idx].item()
-            neighbors = neighbor_indices[batch_idx]
+            cell_idx = cell_indices_cpu[batch_idx].item()
+            neighbors = neighbor_indices_cpu[batch_idx]
             valid_neighbors = neighbors[neighbors >= 0].tolist()
 
             if not valid_neighbors:
@@ -945,7 +950,7 @@ class ConnectionCacheManager:
                 if neighbor_idx < 0:
                     continue
 
-                neighbor_idx = neighbor_idx.item()
+                neighbor_idx_val = neighbor_idx.item() if hasattr(neighbor_idx, 'item') else neighbor_idx
 
                 # Ищем в результатах классификации
                 for category, connections in classifications.items():

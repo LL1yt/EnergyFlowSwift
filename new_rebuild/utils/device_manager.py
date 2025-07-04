@@ -307,7 +307,8 @@ class DeviceManager:
             self.memory_monitor.allocation_count > 0 and
             self.memory_monitor.allocation_count % self.memory_monitor.cleanup_threshold == 0
         ):
-            logger.debug_init(f"📊 Периодический cleanup allocation_count: {self.memory_monitor.allocation_count} % allocation_count: {self.memory_monitor.cleanup_threshold} = {self.memory_monitor.allocation_count % self.memory_monitor.cleanup_threshold}")
+            logger.info(f"� TRIGGER: Периодический cleanup сработал! allocation_count: {self.memory_monitor.allocation_count}, cleanup_threshold: {self.memory_monitor.cleanup_threshold}")
+            logger.info(f"📊 Статистика тензоров: {self.tensor_transfers} переносов, {self.allocations} выделений")
             self.memory_monitor.cleanup()
 
         return tensor
@@ -382,6 +383,11 @@ class DeviceManager:
     def cleanup(self):
         """Полная очистка памяти"""
         try:
+            # Добавляем стек вызовов для отладки
+            import traceback
+            stack = traceback.format_stack()
+            caller_info = "".join(stack[-3:-1])  # Берем 2 уровня вверх
+            
             if hasattr(self, "memory_monitor") and self.memory_monitor:
                 self.memory_monitor.cleanup()
 
@@ -390,6 +396,7 @@ class DeviceManager:
                 logger.info(
                     f"🧹 DeviceManager cleanup: {stats['tensor_transfers']} переносов, {stats['total_allocations']} выделений"
                 )
+                logger.info(f"📍 Вызван из:\n{caller_info}")
         except Exception as e:
             # Игнорируем ошибки очистки при завершении программы
             logger.debug_memory(

@@ -109,6 +109,11 @@ class GPUSpatialProcessor:
         self.device_manager = get_device_manager()
         self.device = self.device_manager.get_device()
 
+        # Таймер для maintenance tasks
+        import time
+        self.last_maintenance_time = time.time()
+        self.maintenance_interval = get_project_config().memory_management.maintenance_interval_seconds
+
         # Инициализируем компоненты
         self._initialize_components()
 
@@ -173,13 +178,14 @@ class GPUSpatialProcessor:
         self.mapping_lock = threading.RLock()
 
     def _start_background_processing(self):
-        """Запускает фоновую обработку запросов"""
-        self.processing_active = True
+        """Запускает фоновую обработку запросов - ПОЛНОСТЬЮ ОТКЛЮЧЕНО для производительности"""
+        self.processing_active = False  # Отключаем background processing
+        self.processing_thread = None   # Не создаем thread
 
-        # Запускаем async event loop в отдельном потоке
-        self.processing_thread = threading.Thread(target=self._run_async_processing)
-        self.processing_thread.daemon = True
-        self.processing_thread.start()
+        # Async event loop НЕ запускается - экономим ресурсы
+        # self.processing_thread = threading.Thread(target=self._run_async_processing)
+        # self.processing_thread.daemon = True
+        # self.processing_thread.start()
 
     def _run_async_processing(self):
         """Запускает async обработку в отдельном потоке"""
@@ -204,8 +210,8 @@ class GPUSpatialProcessor:
                     query = self.query_queue.get(timeout=1.0)
                     await self._process_spatial_query(query)
                 except Empty:
-                    # Периодические задачи обслуживания
-                    await self._perform_maintenance_tasks()
+                    # Периодические задачи обслуживания - отключены для производительности
+                    pass
 
             except Exception as e:
                 logger.error(f"❌ Ошибка обработки spatial query: {e}")
@@ -637,23 +643,23 @@ class GPUSpatialProcessor:
 
         logger.info("✅ Оптимизация производительности завершена")
 
-    def shutdown(self):
-        """Завершение работы processor'а"""
-        logger.info("🛑 Завершение работы GPUSpatialProcessor")
+    # def shutdown(self):
+        # """Завершение работы processor'а"""
+        # logger.info("🛑 Завершение работы GPUSpatialProcessor")
 
         # Останавливаем background processing
-        self.processing_active = False
+        # self.processing_active = False
 
-        if hasattr(self, "processing_thread") and self.processing_thread.is_alive():
-            self.processing_thread.join(timeout=5.0)
+        # if hasattr(self, "processing_thread") and self.processing_thread and self.processing_thread.is_alive():
+            # self.processing_thread.join(timeout=5.0)
 
         # Завершаем работу компонентов
-        self.chunker.cleanup()
+        # self.chunker.cleanup()
 
         # Финальная очистка памяти
-        self.device_manager.cleanup()
+        # self.device_manager.cleanup()
 
-        logger.info("✅ GPUSpatialProcessor завершен")
+        # logger.info("✅ GPUSpatialProcessor завершен")
 
     # === PUBLIC API ===
     

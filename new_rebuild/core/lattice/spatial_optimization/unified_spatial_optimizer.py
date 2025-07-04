@@ -304,9 +304,8 @@ class UnifiedSpatialOptimizer:
         start_time = time.time()
         num_cells = states.shape[0]
 
-        logger.debug_spatial(f"🔧 UNIFIED OPTIMIZER: processing {num_cells} cells")
-        logger.debug_spatial(f"🔧 OPTIMIZER DIMENSIONS: {self.dimensions}")
-        logger.debug_spatial(f"🔧 INPUT STATES SHAPE: {states.shape}")
+        # Unified optimizer processing (no debug logging for performance)
+
 
         # Определяем функцию обработки
         if processor_fn is None:
@@ -344,37 +343,8 @@ class UnifiedSpatialOptimizer:
 
         def moe_processor(current_state, neighbor_states, cell_idx, neighbor_indices):
             try:
-                # DEBUG: Track cell processing
-                if not hasattr(self, "_processed_cells"):
-                    self._processed_cells = set()
 
-                if cell_idx in self._processed_cells:
-                    logger.warning(f"⚠️ Cell {cell_idx} is being processed again!")
-                else:
-                    self._processed_cells.add(cell_idx)
-
-                # DEBUG: Log specific cells
-                if cell_idx in [677] or logger.isEnabledFor(11):  # DEBUG_VERBOSE
-                    logger.debug_spatial(
-                        f"🔍 MoE processor called - cell_idx={cell_idx}"
-                    )
-                    logger.debug_spatial(
-                        f"🔍 current_state.shape={current_state.shape}"
-                    )
-                    logger.debug_spatial(
-                        f"🔍 neighbor_states.shape={neighbor_states.shape if neighbor_states is not None else 'None'}"
-                    )
-                    logger.debug_spatial(f"🔍 neighbor_indices={neighbor_indices}")
-                    if isinstance(neighbor_indices, (list, torch.Tensor)):
-                        logger.debug(
-                            f"🔍 len(neighbor_indices)={len(neighbor_indices) if isinstance(neighbor_indices, list) else neighbor_indices.numel()}"
-                        )
-                    if full_lattice_states is not None:
-                        logger.debug(
-                            f"🔍 full_lattice_states.shape={full_lattice_states.shape}"
-                        )
-                    else:
-                        logger.debug("🔍 full_lattice_states=None")
+                # MoE processor called (no debug logging for performance)
 
                 # НОВАЯ АРХИТЕКТУРА: neighbor_states и neighbor_indices игнорируются
                 # Они будут получены из кэша внутри MoE processor
