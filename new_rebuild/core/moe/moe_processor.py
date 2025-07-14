@@ -504,9 +504,8 @@ class MoEConnectionProcessor(nn.Module):
         if weights.dim() == 2:
             weights = weights.squeeze(0)  # [1, 3] -> [3]
 
-        self.usage_stats["expert_weights"]["local"] += weights[0].item()
-        self.usage_stats["expert_weights"]["functional"] += weights[1].item()
-        self.usage_stats["expert_weights"]["distant"] += weights[2].item()
+        # Statistics collection disabled for performance in production
+        # Debug mode check removed - stats always disabled for performance
 
     def get_usage_stats(self) -> Dict[str, Any]:
         """Получить статистику использования"""

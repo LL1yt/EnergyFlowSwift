@@ -91,6 +91,7 @@ class GPUOptimizedEulerSolver(nn.Module):
         if config is None:
             config = get_project_config().euler
         self.config = config
+        self.full_config = get_project_config()  # For accessing logging settings
         self.device_manager = get_device_manager()
         self.device = self.device_manager.get_device()
 
@@ -301,25 +302,22 @@ class GPUOptimizedEulerSolver(nn.Module):
         # Вычисляем производные
         derivatives = derivative_fn(t, states, *args, **kwargs)
 
+        # Initialize step_info for return value
+        step_info = {}
+        
         # Проверка на NaN/Inf
-        nan_mask = torch.isnan(derivatives).any(dim=-1)
-        inf_mask = torch.isinf(derivatives).any(dim=-1)
-        invalid_mask = nan_mask | inf_mask
+        # Validation only in debug mode to avoid GPU-CPU sync
+        if self.full_config.logging.debug_mode:
+            nan_mask = torch.isnan(derivatives).any(dim=-1)
+            inf_mask = torch.isinf(derivatives).any(dim=-1)
+            invalid_mask = nan_mask | inf_mask
 
-        step_info = {
-            "nan_count": nan_mask.sum().item(),
-            "inf_count": inf_mask.sum().item(),
-            "invalid_ratio": invalid_mask.float().mean().item(),
-        }
-
-        if invalid_mask.sum().item() > 0:
-            logger.warning(
-                f"Invalid derivatives detected: {invalid_mask.sum().item()}/{batch_size}"
-            )
-            # Заменяем invalid derivatives на нули
-            derivatives = torch.where(
-                invalid_mask.unsqueeze(-1), torch.zeros_like(derivatives), derivatives
-            )
+            if invalid_mask.any():
+                logger.warning("Invalid derivatives detected in batch")
+                # Заменяем invalid derivatives на нули
+                derivatives = torch.where(
+                    invalid_mask.unsqueeze(-1), torch.zeros_like(derivatives), derivatives
+                )
 
         # Vectorized Euler step
         if torch.is_tensor(dt):
@@ -336,15 +334,13 @@ class GPUOptimizedEulerSolver(nn.Module):
             next_states
         ).any(dim=-1)
 
-        if result_invalid_mask.sum().item() > 0:
-            logger.warning(
-                f"Invalid next_states detected: {result_invalid_mask.sum().item()}/{batch_size}"
-            )
+        if self.full_config.logging.debug_mode and result_invalid_mask.any():
+            logger.warning("Invalid next_states detected in batch")
             # Возвращаем original states для invalid cases
             next_states = torch.where(
                 result_invalid_mask.unsqueeze(-1), states, next_states
             )
-            step_info["result_invalid_count"] = result_invalid_mask.sum().item()
+            # step_info["result_invalid_count"] removed for performance
 
         return next_states, step_info
 
@@ -412,7 +408,7 @@ class GPUOptimizedEulerSolver(nn.Module):
 
                 # Считаем adaptive adjustments
                 adjustment_mask = torch.abs(adaptive_dt - base_dt) > 0.01
-                total_adaptive_adjustments += adjustment_mask.sum().item()
+                # total_adaptive_adjustments += adjustment_mask.sum().item()  # removed for performance
 
             elif self.config.adaptive_method == AdaptiveMethod.ACTIVITY_BASED:
                 # Compute derivatives для activity-based adaptation
@@ -546,13 +542,13 @@ class GPUOptimizedEulerSolver(nn.Module):
         # Маска активных траекторий
         active_mask = torch.ones(batch_size, dtype=torch.bool, device=self.device)
 
-        while steps_taken < max_steps and active_mask.sum().item() > 0:
+        while steps_taken < max_steps and active_mask.any():
             # Оставшееся время для каждой траектории
             remaining_time = integration_time_tensor - current_time
             dt = torch.min(dt, remaining_time)
 
             # Обрабатываем только активные траектории
-            if active_mask.sum().item() < batch_size:
+            if not active_mask.all():
                 active_indices = torch.where(active_mask)[0]
                 batch_current_states = current_states[active_indices]
                 batch_dt = dt[active_indices]

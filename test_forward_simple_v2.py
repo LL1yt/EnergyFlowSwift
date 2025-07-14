@@ -9,6 +9,8 @@ from new_rebuild.config import set_project_config, create_debug_config
 
 config = create_debug_config()
 config.lattice.adaptive_radius_ratio = 0.2  # radius = 2.0 для 10x10x10
+# Disable debug mode for maximum performance
+config.logging.debug_mode = False
 set_project_config(config)
 
 from new_rebuild.utils.logging import get_logger
