@@ -224,7 +224,11 @@ class UnifiedEmbeddingDataset(Dataset):
         loaded_count = 0
         for file in files:
             try:
-                data = torch.load(file, map_location=map_location)
+                # Для GPU-ONLY режима загружаем сразу на GPU
+                if self.device_manager.is_cuda() and not self.config.device.fallback_cpu:
+                    data = torch.load(file, map_location=self.device_manager.get_device())
+                else:
+                    data = torch.load(file, map_location=map_location)
                 
                 # Обрабатываем структуру из анализа: questions [4, 768], answers [4, 768]
                 embeddings = []
@@ -232,15 +236,25 @@ class UnifiedEmbeddingDataset(Dataset):
                 if 'questions' in data and isinstance(data['questions'], torch.Tensor):
                     questions = data['questions']
                     if questions.dim() == 2:  # [batch, 768]
-                        embeddings.extend([questions[i] for i in range(questions.size(0))])
+                        # Векторизованная обработка вместо списковых comprehension
+                        embeddings.append(questions)
                 
                 if 'answers' in data and isinstance(data['answers'], torch.Tensor):
                     answers = data['answers'] 
                     if answers.dim() == 2:  # [batch, 768]
-                        embeddings.extend([answers[i] for i in range(answers.size(0))])
+                        # Векторизованная обработка вместо списковых comprehension
+                        embeddings.append(answers)
                 
-                for emb in embeddings:
-                    if self._is_valid_embedding(emb):
+                # Объединяем все embeddings в один тензор для пакетной обработки
+                if embeddings:
+                    batch_embeddings = torch.cat(embeddings, dim=0)  # [total_batch, 768]
+                    
+                    # Пакетная валидация всех embeddings сразу
+                    valid_mask = self._batch_validate_embeddings(batch_embeddings)
+                    valid_embeddings = batch_embeddings[valid_mask]
+                    
+                    # Добавляем valid embeddings по одному (для совместимости с существующим кодом)
+                    for emb in valid_embeddings:
                         self.embeddings.append(emb)
                         self.metadata.append({
                             "source": "dialogue_cache",
@@ -285,12 +299,12 @@ class UnifiedEmbeddingDataset(Dataset):
                         if key in data:
                             emb_data = data[key]
                             if isinstance(emb_data, torch.Tensor) and emb_data.dim() == 2:
-                                # [num_samples, 768] -> list of [768] tensors
-                                embeddings.extend([emb_data[i] for i in range(emb_data.size(0))])
+                                # [num_samples, 768] -> list of [768] tensors (векторизованно)
+                                embeddings.extend(emb_data.unbind(0))
                 
                 elif isinstance(data, torch.Tensor):
                     if data.dim() == 2:  # [batch, dim]
-                        embeddings.extend([data[i] for i in range(data.size(0))])
+                        embeddings.extend(data.unbind(0))  # Векторизованно
                     elif data.dim() == 1:  # [dim]
                         embeddings.append(data)
                 
@@ -446,11 +460,14 @@ class UnifiedEmbeddingDataset(Dataset):
             self.embeddings = [valid_embeddings_batch[i] for i in range(valid_embeddings_batch.size(0))]
             self.metadata = valid_metadata
             
-            # Shuffle на GPU
+            # Shuffle на GPU (убираем .cpu() вызовы)
             if len(self.embeddings) > 0:
                 indices = torch.randperm(len(self.embeddings), device=embeddings_batch.device)
-                self.embeddings = [self.embeddings[i] for i in indices.cpu()]
-                self.metadata = [self.metadata[i] for i in indices.cpu()]
+                # Векторизованная перестановка без CPU transfer
+                embeddings_tensor = torch.stack(self.embeddings)
+                shuffled_embeddings = embeddings_tensor[indices]
+                self.embeddings = [shuffled_embeddings[i] for i in range(len(shuffled_embeddings))]
+                self.metadata = [self.metadata[i] for i in range(len(indices))]
             
             logger.info(f"✅ GPU validation completed: {len(self.embeddings)} valid samples")
             
@@ -479,6 +496,18 @@ class UnifiedEmbeddingDataset(Dataset):
             del valid_embeddings_batch
         gc.collect()
         torch.cuda.empty_cache()
+    
+    def _batch_validate_embeddings(self, embeddings_batch: torch.Tensor) -> torch.Tensor:
+        """
+        Пакетная валидация embeddings (алиас для _gpu_validate_batch)
+        
+        Args:
+            embeddings_batch: [N, 768] tensor
+            
+        Returns:
+            valid_mask: [N] boolean tensor
+        """
+        return self._gpu_validate_batch(embeddings_batch)
     
     def _gpu_validate_batch(self, embeddings_batch: torch.Tensor) -> torch.Tensor:
         """
@@ -594,28 +623,44 @@ def create_training_dataloader(
     
     # Принудительные GPU оптимизации для RTX 5090
     if use_gpu_only:
-        # Windows multiprocessing fix: используем заданное количество воркеров
-        optimal_num_workers = num_workers if num_workers is not None else 0
-        prefetch_factor = 6 if optimal_num_workers > 0 else 2
-        # ВАЖНО: pin_memory=False для GPU тензоров (они уже на GPU)
-        pin_memory = False
+        # Оптимизированные настройки для RTX 5090 GPU-ONLY режима
+        optimal_num_workers = num_workers if num_workers is not None else 16  # Увеличено до 16 для RTX 5090
+        prefetch_factor = 16 if optimal_num_workers > 0 else 4  # Увеличено до 16 для RTX 5090
+        # ВАЖНО: pin_memory=True для оптимизации CPU->GPU переноса
+        pin_memory = True  # Изменено с False на True
         logger.info(f"⚡ GPU-ONLY DataLoader optimizations enabled (workers: {optimal_num_workers})")
-        logger.info("🔧 pin_memory=False (tensors already on GPU)")
+        logger.info("🔧 pin_memory=True (optimized CPU->GPU transfer)")
     else:
         optimal_num_workers = 8 if is_cuda else num_workers
         prefetch_factor = 4 if is_cuda else 2
         pin_memory = is_cuda
     
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=optimal_num_workers,
-        pin_memory=pin_memory,
-        drop_last=True,  # Для стабильности размеров батчей
-        persistent_workers=True if optimal_num_workers > 0 else False,  # PyTorch 2.x оптимизация
-        prefetch_factor=prefetch_factor if optimal_num_workers > 0 else None
-    )
+    # Оптимизированный DataLoader для максимальной GPU утилизации
+    if use_gpu_only:
+        # Для GPU-only режима отключаем multiprocessing для лучшей GPU утилизации
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=0,  # Отключаем multiprocessing для GPU-only
+            pin_memory=True,
+            drop_last=True,
+            persistent_workers=False,
+            prefetch_factor=None
+        )
+        logger.info("🚀 GPU-ONLY DataLoader: multiprocessing disabled for maximum GPU utilization")
+    else:
+        # Стандартный DataLoader для hybrid режима
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=optimal_num_workers,
+            pin_memory=pin_memory,
+            drop_last=True,  # Для стабильности размеров батчей
+            persistent_workers=True if optimal_num_workers > 0 else False,  # PyTorch 2.x оптимизация
+            prefetch_factor=prefetch_factor if optimal_num_workers > 0 else None
+        )
     
     mode_info = "⚡ GPU-ONLY" if use_gpu_only else "🔄 GPU/CPU Hybrid"
     logger.info(f"🚀 {mode_info} DataLoader for RTX 5090:")

@@ -68,7 +68,9 @@ class PrecomputedEmbeddingLoader:
 
         try:
             # Загружаем данные
-            data = torch.load(embeddings_file, map_location="cpu")
+            # Используем GPU если доступно
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            data = torch.load(embeddings_file, map_location=device)
 
             # Проверяем структуру данных
             required_keys = ["question_embeddings", "answer_embeddings"]
@@ -139,7 +141,9 @@ class PrecomputedEmbeddingLoader:
         for file_path in embedding_files:
             try:
                 # Загружаем метаданные без полной загрузки
-                data = torch.load(file_path, map_location="cpu")
+                # Используем GPU если доступно
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                data = torch.load(file_path, map_location=device)
 
                 info = {
                     "file_path": str(file_path),

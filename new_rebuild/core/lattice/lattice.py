@@ -19,6 +19,7 @@ from datetime import datetime
 
 # Импорты из new_rebuild
 from ...config import get_project_config
+
 # from ..cells import create_cell  # Не нужен в MoE архитектуре
 
 # Локальные импорты из lattice модуля
@@ -82,14 +83,14 @@ class Lattice3D(nn.Module):
 
         # Создаем MoE processor один раз при инициализации
         self.moe_processor = self._create_moe_processor()
-        
+
         # Создаем унифицированный оптимизатор с MoE processor
         self.spatial_optimizer = create_unified_spatial_optimizer(
             dimensions=self.config.lattice.dimensions, config=spatial_config
         )
         # Устанавливаем MoE processor в унифицированный оптимизатор
         self.spatial_optimizer.moe_processor = self.moe_processor
-        
+
         # В новой архитектуре spatial optimizer больше не нужен MoE processor'у
         # так как он использует только кэш для получения соседей
 
@@ -118,6 +119,7 @@ class Lattice3D(nn.Module):
 
         # Проверяем размерности при инициализации
         import numpy as np
+
         self.expected_cells = np.prod(self.config.lattice.dimensions)
         if self.expected_cells != self.states.shape[0]:
             raise RuntimeError(
@@ -140,7 +142,6 @@ class Lattice3D(nn.Module):
                 f"     CELL_TYPE: MoE (Multiple Experts)\n"
                 f"     SPATIAL_OPTIMIZER: {type(self.spatial_optimizer).__name__}"
             )
-
 
     def _create_moe_processor(self):
         """Создаёт MoE processor для MoE архитектуры"""
@@ -318,15 +319,15 @@ class Lattice3D(nn.Module):
         """Освобождает ресурсы унифицированного оптимизатора."""
         if hasattr(self.spatial_optimizer, "cleanup"):
             self.spatial_optimizer.cleanup()
-            self.logger.info("🧹 Unified Spatial Optimizer ресурсы освобождены")
+            logger.info("🧹 Unified Spatial Optimizer ресурсы освобождены")
 
     def __del__(self):
         """Деструктор для автоматической очистки ресурсов."""
         try:
-            self.logger.info("🧹 Деструктор для Lattice3D: ресурсы освобождены")
+            logger.info("🧹 Деструктор для Lattice3D: ресурсы освобождены")
             self.cleanup()
         except Exception as e:
-            self.logger.info("🧹 Деструктор для Lattice3D ошибка: {e}")
+            logger.info("🧹 Деструктор для Lattice3D ошибка: {e}")
             pass  # Игнорируем ошибки при деструкции
 
 

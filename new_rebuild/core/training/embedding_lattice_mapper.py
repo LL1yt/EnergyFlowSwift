@@ -157,35 +157,50 @@ class EmbeddingToLatticeMapper(nn.Module):
         surface_indices = []
         
         if self.lattice_settings.placement_strategy == "faces":
-            # Размещаем на всех 6 гранях куба
-            for x in range(x_max):
-                for y in range(y_max):
-                    for z in range(z_max):
-                        # Проверяем, находится ли клетка на грани
-                        if (x == 0 or x == x_max-1 or 
-                            y == 0 or y == y_max-1 or 
-                            z == 0 or z == z_max-1):
-                            idx = x * y_max * z_max + y * z_max + z
-                            surface_indices.append(idx)
+            # Векторизованное размещение на всех 6 гранях куба
+            # Создаем сетку координат
+            x_coords, y_coords, z_coords = torch.meshgrid(
+                torch.arange(x_max), torch.arange(y_max), torch.arange(z_max), indexing='ij'
+            )
+            
+            # Маска для граней (векторизованная проверка)
+            surface_mask = (
+                (x_coords == 0) | (x_coords == x_max-1) |
+                (y_coords == 0) | (y_coords == y_max-1) |
+                (z_coords == 0) | (z_coords == z_max-1)
+            )
+            
+            # Получаем индексы поверхностных клеток
+            surface_coords = torch.stack([x_coords, y_coords, z_coords], dim=-1)[surface_mask]
+            surface_indices = (surface_coords[:, 0] * y_max * z_max + 
+                             surface_coords[:, 1] * z_max + 
+                             surface_coords[:, 2]).tolist()
         
         elif self.lattice_settings.placement_strategy == "corners":
-            # Только углы куба
-            corners = [
-                (0, 0, 0), (0, 0, z_max-1), (0, y_max-1, 0), (0, y_max-1, z_max-1),
-                (x_max-1, 0, 0), (x_max-1, 0, z_max-1), (x_max-1, y_max-1, 0), (x_max-1, y_max-1, z_max-1)
-            ]
-            for x, y, z in corners:
-                idx = x * y_max * z_max + y * z_max + z
-                surface_indices.append(idx)
+            # Векторизованное размещение углов куба
+            corners = torch.tensor([
+                [0, 0, 0], [0, 0, z_max-1], [0, y_max-1, 0], [0, y_max-1, z_max-1],
+                [x_max-1, 0, 0], [x_max-1, 0, z_max-1], [x_max-1, y_max-1, 0], [x_max-1, y_max-1, z_max-1]
+            ])
+            surface_indices = (corners[:, 0] * y_max * z_max + 
+                             corners[:, 1] * z_max + 
+                             corners[:, 2]).tolist()
         
         elif self.lattice_settings.placement_strategy == "uniform":
-            # Равномерное распределение по всему объему
+            # Векторизованное равномерное распределение
             step = max(1, int(np.cbrt(np.prod(self.lattice_dims) / 64)))  # Примерно 64 точки
-            for x in range(0, x_max, step):
-                for y in range(0, y_max, step):
-                    for z in range(0, z_max, step):
-                        idx = x * y_max * z_max + y * z_max + z
-                        surface_indices.append(idx)
+            
+            # Создаем векторизованную сетку с шагом
+            x_range = torch.arange(0, x_max, step)
+            y_range = torch.arange(0, y_max, step)
+            z_range = torch.arange(0, z_max, step)
+            
+            x_coords, y_coords, z_coords = torch.meshgrid(x_range, y_range, z_range, indexing='ij')
+            coords = torch.stack([x_coords.flatten(), y_coords.flatten(), z_coords.flatten()], dim=-1)
+            
+            surface_indices = (coords[:, 0] * y_max * z_max + 
+                             coords[:, 1] * z_max + 
+                             coords[:, 2]).tolist()
         
         logger.debug(f"Surface indices ({self.lattice_settings.placement_strategy}): {len(surface_indices)} клеток")
         return surface_indices

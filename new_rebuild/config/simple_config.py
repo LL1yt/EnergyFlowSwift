@@ -556,7 +556,7 @@ class SimpleProjectConfig:
             self.validation = ValidationSettings()
 
         # Настраиваем для исследований
-        self.logging.debug_mode = True
+        self.logging.debug_mode = False  # Отключено для лучшей производительности
         self.logging.performance_tracking = True
         if self.cache:
             self.cache.enable_detailed_stats = True

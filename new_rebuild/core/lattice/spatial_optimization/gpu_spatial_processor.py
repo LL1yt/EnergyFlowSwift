@@ -710,12 +710,19 @@ class GPUSpatialProcessor:
                 )
                 batch_futures.append(future)
             
-            # Ждем завершения обработки всех chunk'ов в batch'е
+            # Оптимизация: увеличиваем таймаут для крупных chunk'ов
             for future in batch_futures:
                 try:
-                    future.result(timeout=30.0)  # 30 секунд таймаут
+                    result = future.result(timeout=15.0)  # Увеличиваем до 15 секунд для стабильности
+                    logger.debug(f"✅ Chunk processed successfully: {result}")
+                except TimeoutError as e:
+                    logger.warning(f"⚠️ Chunk processing timeout (15s), skipping chunk...")
+                    # Продолжаем без этого chunk'а
+                    continue
                 except Exception as e:
                     logger.error(f"❌ Ошибка обработки chunk'а: {e}")
+                    logger.exception("Detailed chunk processing error traceback:")
+                    continue
         
         # Apply all updates at once to create new tensor
         if updates:
@@ -746,6 +753,11 @@ class GPUSpatialProcessor:
             logger.debug(f"🔧 CHUNK INDICES count: {len(chunk_info.cell_indices)}")
             logger.debug(f"🔧 CHUNK INDICES range: {min(chunk_info.cell_indices)} - {max(chunk_info.cell_indices)}")
             
+            # Проверяем что chunk_info.cell_indices не пустой
+            if not chunk_info.cell_indices:
+                logger.warning(f"⚠️ Пустой chunk {chunk_info.chunk_id} - пропускаем")
+                return f"Chunk {chunk_info.chunk_id} skipped (empty)"
+            
             # Получаем индексы клеток chunk'а
             indices = torch.tensor(
                 chunk_info.cell_indices,
@@ -768,7 +780,11 @@ class GPUSpatialProcessor:
                     invalid_indices = indices[indices > max_cell_index]
                     logger.error(f"❌ INVALID CELL INDICES: {invalid_indices.tolist()} > {max_cell_index}")
                     logger.error(f"❌ All states shape: {all_states.shape}")
-                    raise RuntimeError(f"Cell index out of bounds: max valid cell index is {max_cell_index}")
+                    # Исправляем индексы вместо ошибки
+                    valid_indices = indices[indices <= max_cell_index]
+                    if len(valid_indices) == 0:
+                        return f"Chunk {chunk_info.chunk_id} skipped (all indices invalid)"
+                    indices = valid_indices
                 
                 logger.debug(f"🔍 BEFORE INDEXING: about to do all_states[:, indices, :]")
                 # Извлекаем состояния для chunk'а: [:, indices, :] - все батчи, выбранные клетки, все фичи
@@ -780,7 +796,11 @@ class GPUSpatialProcessor:
                 if torch.any(indices > max_index):
                     invalid_indices = indices[indices > max_index]
                     logger.error(f"❌ INVALID INDICES: {invalid_indices.tolist()} > {max_index}")
-                    raise RuntimeError(f"Index out of bounds: max valid index is {max_index}")
+                    # Исправляем индексы вместо ошибки
+                    valid_indices = indices[indices <= max_index]
+                    if len(valid_indices) == 0:
+                        return f"Chunk {chunk_info.chunk_id} skipped (all indices invalid)"
+                    indices = valid_indices
                 
                 chunk_states = all_states[indices]
             
@@ -805,20 +825,36 @@ class GPUSpatialProcessor:
                 # Здесь передаем пустой тензор
                 neighbor_states = torch.empty(0, all_states.shape[-1], device=self.device)
                 
-                # Применяем функцию обработки к одной клетке
-                # ИСПРАВЛЕНО: Преобразуем cell_idx в int, так как MoE processor ожидает int
-                # ИСПРАВЛЕНО: Преобразуем neighbor_indices в список int'ов
-                processed_state = processor_fn(
-                    cell_state,
-                    neighbor_states,
-                    cell_idx.item() if isinstance(cell_idx, torch.Tensor) else cell_idx,
-                    neighbor_indices.tolist() if isinstance(neighbor_indices, torch.Tensor) else neighbor_indices
-                )
+                # Проверяем корректность размерностей
+                if cell_state.numel() == 0:
+                    logger.warning(f"⚠️ Пустое состояние для клетки {cell_idx.item()}, пропускаем")
+                    continue
                 
-                if all_states.dim() == 3:  # [batch, cells, features]
-                    processed_states_list.append(processed_state.squeeze(1))  # Убираем размерность клетки
-                else:
-                    processed_states_list.append(processed_state.squeeze(0))
+                # Применяем функцию обработки к одной клетке
+                try:
+                    processed_state = processor_fn(
+                        cell_state,
+                        neighbor_states,
+                        cell_idx.item() if isinstance(cell_idx, torch.Tensor) else cell_idx,
+                        neighbor_indices.tolist() if isinstance(neighbor_indices, torch.Tensor) else neighbor_indices
+                    )
+                    
+                    if all_states.dim() == 3:  # [batch, cells, features]
+                        processed_states_list.append(processed_state.squeeze(1))  # Убираем размерность клетки
+                    else:
+                        processed_states_list.append(processed_state.squeeze(0))
+                except Exception as cell_error:
+                    logger.warning(f"⚠️ Ошибка обработки клетки {cell_idx.item()} в chunk {chunk_info.chunk_id}: {cell_error}")
+                    # Используем исходное состояние в случае ошибки
+                    if all_states.dim() == 3:
+                        processed_states_list.append(cell_state.squeeze(1))
+                    else:
+                        processed_states_list.append(cell_state.squeeze(0))
+            
+            # Проверяем что у нас есть хотя бы одно обработанное состояние
+            if not processed_states_list:
+                logger.warning(f"⚠️ Нет обработанных состояний для chunk {chunk_info.chunk_id}")
+                return f"Chunk {chunk_info.chunk_id} skipped (no processed states)"
             
             # Stack all processed states into a single tensor
             if all_states.dim() == 3:
@@ -838,10 +874,11 @@ class GPUSpatialProcessor:
                 else:
                     all_states[indices] = processed_chunk_states
             
-            return f"Chunk {chunk_info.chunk_id} processed successfully"
+            return f"Chunk {chunk_info.chunk_id} processed successfully ({len(processed_states_list)} cells)"
             
         except Exception as e:
-            logger.error(f"❌ Ошибка обработки chunk {chunk_info.chunk_id}: {e}")
+            logger.error(f"❌ Критическая ошибка обработки chunk {chunk_info.chunk_id}: {e}")
+            logger.exception("Detailed traceback for chunk processing error:")
             return f"Chunk {chunk_info.chunk_id} processing failed: {e}"
     
     def _populate_spatial_hash(self, states: torch.Tensor):

@@ -927,15 +927,16 @@ class ConnectionCacheManager:
         )
         valid_mask = neighbor_indices >= 0
 
-        # Convert to CPU once for batch processing - avoid repeated .item() calls
-        cell_indices_cpu = cell_indices.cpu().numpy()
-        neighbor_indices_cpu = neighbor_indices.cpu().numpy()
+        # Используем GPU операции вместо CPU numpy
+        # cell_indices_cpu = cell_indices.cpu().numpy()  # Убираем CPU transfer
+        # neighbor_indices_cpu = neighbor_indices.cpu().numpy()  # Убираем CPU transfer
         
-        # Обрабатываем каждую клетку в batch
+        # Обрабатываем каждую клетку в batch на GPU
         for batch_idx in range(batch_size):
-            cell_idx = int(cell_indices_cpu[batch_idx])
-            neighbors = neighbor_indices_cpu[batch_idx]
-            valid_neighbors = neighbors[neighbors >= 0].tolist()
+            cell_idx = int(cell_indices[batch_idx].item())  # Только .item() для скаляра
+            neighbors = neighbor_indices[batch_idx]
+            valid_mask = neighbors >= 0
+            valid_neighbors = neighbors[valid_mask].tolist()  # Только финальный результат в список
 
             if not valid_neighbors:
                 continue
@@ -945,12 +946,12 @@ class ConnectionCacheManager:
                 cell_idx, valid_neighbors, states, functional_similarity_threshold
             )
 
-            # Заполняем маски
+            # Заполняем маски (оптимизировано для GPU)
             for neighbor_pos, neighbor_idx in enumerate(neighbors):
                 if neighbor_idx < 0:
                     continue
 
-                neighbor_idx_val = int(neighbor_idx)
+                neighbor_idx_val = int(neighbor_idx.item())  # Только .item() для скаляра
 
                 # Ищем в результатах классификации
                 for category, connections in classifications.items():

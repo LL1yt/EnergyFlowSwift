@@ -71,7 +71,8 @@ class MemoryMonitor:
         if self.device.type == "cuda" and torch.cuda.is_available():
             try:
                 torch.cuda.empty_cache()
-                torch.cuda.synchronize()
+                # Убираем автоматическую синхронизацию для лучшей производительности
+                # torch.cuda.synchronize()  # Отключено для GPU оптимизации
             except Exception as e:
                 # Игнорируем ошибки очистки при завершении программы
                 logger.debug_memory(
@@ -116,17 +117,19 @@ class MemoryMonitor:
 class DeviceManager:
     """Централизованное управление устройствами и памятью"""
 
-    def __init__(self, prefer_cuda: bool = True, debug_mode: bool = True):
+    def __init__(self, prefer_cuda: bool = True, debug_mode: bool = True, strict_gpu: bool = False):
         """
         Инициализация DeviceManager
 
         Args:
             prefer_cuda: Предпочитать CUDA если доступен
             debug_mode: Включить подробное логирование (передается из config.logging.debug_mode)
+            strict_gpu: Строгий GPU-only режим (без CPU fallback)
         """
         self.prefer_cuda = prefer_cuda
         self.debug_mode = debug_mode
-        self.device = self._detect_optimal_device(prefer_cuda)
+        self.strict_gpu = strict_gpu
+        self.device = self._detect_optimal_device(prefer_cuda, strict_gpu)
         self.memory_monitor = MemoryMonitor(self.device)
         self._cleanup_on_del = False  # Отключаем cleanup в деструкторе для производительности
 
@@ -137,7 +140,7 @@ class DeviceManager:
         if debug_mode:
             self._log_device_info()
 
-    def _detect_optimal_device(self, prefer_cuda: bool) -> torch.device:
+    def _detect_optimal_device(self, prefer_cuda: bool, strict_gpu: bool = False) -> torch.device:
         """
         Определяет оптимальное устройство
         
@@ -145,6 +148,7 @@ class DeviceManager:
 
         Args:
             prefer_cuda: Предпочитать CUDA
+            strict_gpu: Строгий GPU-only режим (без CPU fallback)
 
         Returns:
             Оптимальное torch.device
@@ -152,12 +156,23 @@ class DeviceManager:
         Raises:
             RuntimeError: При недостатке памяти GPU или других проблемах
         """
-        if prefer_cuda:
+        if strict_gpu and not torch.cuda.is_available():
+            raise RuntimeError(
+                "❌ STRICT GPU MODE: CUDA required but not available. "
+                "Install CUDA or disable strict_gpu mode."
+            )
+            
+        if prefer_cuda or strict_gpu:
             if not torch.cuda.is_available():
-                raise RuntimeError(
-                    "❌ КРИТИЧЕСКАЯ ОШИБКА: Запрошено использование CUDA, но CUDA недоступен. "
-                    "Установите CUDA или явно укажите prefer_cuda=False в конфигурации"
-                )
+                if strict_gpu:
+                    raise RuntimeError(
+                        "❌ STRICT GPU MODE: CUDA required but not available."
+                    )
+                else:
+                    raise RuntimeError(
+                        "❌ КРИТИЧЕСКАЯ ОШИБКА: Запрошено использование CUDA, но CUDA недоступен. "
+                        "Установите CUDA или явно укажите prefer_cuda=False в конфигурации"
+                    )
             
             # Проверяем количество устройств
             device_count = torch.cuda.device_count()
@@ -360,10 +375,22 @@ class DeviceManager:
     def is_cuda(self) -> bool:
         """Проверяет, используется ли CUDA."""
         return self.device.type == "cuda"
+    
+    def enable_strict_gpu_mode(self):
+        """Активирует строгий GPU-only режим"""
+        if not self.is_cuda():
+            raise RuntimeError("Cannot enable strict GPU mode: CUDA not available")
+        self.strict_gpu = True
+        logger.info("🔒 Strict GPU-only mode enabled - no CPU fallbacks allowed")
+    
+    def disable_strict_gpu_mode(self):
+        """Деактивирует строгий GPU-only режим"""
+        self.strict_gpu = False
+        logger.info("🔓 Strict GPU-only mode disabled - CPU fallbacks allowed")
 
-    def synchronize(self):
-        """Синхронизация устройства (важно для CUDA)"""
-        if self.device.type == "cuda":
+    def synchronize(self, force=False):
+        """Синхронизация устройства (только когда необходимо)"""
+        if force and self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
 
     def get_memory_stats(self) -> Dict[str, Any]:

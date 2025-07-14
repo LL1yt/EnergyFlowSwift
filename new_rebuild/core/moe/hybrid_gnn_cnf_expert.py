@@ -238,8 +238,13 @@ class HybridGNN_CNF_Expert(nn.Module):
 
         # 5. Комбинирование результатов на основе gating
         # gating_weight: 0 = только GNN, 1 = только CNF
-        gnn_contribution = (1 - gating_weight) * gnn_result
-        cnf_contribution = gating_weight * cnf_result
+        # Создаем копии для избежания in-place operations при checkpoint
+        gating_weight_safe = gating_weight.clone()
+        gnn_result_safe = gnn_result.clone()
+        cnf_result_safe = cnf_result.clone()
+        
+        gnn_contribution = (1 - gating_weight_safe) * gnn_result_safe
+        cnf_contribution = gating_weight_safe * cnf_result_safe
 
         # 6. Финальная обработка комбинированного результата
         combined_input = torch.cat([gnn_contribution, cnf_contribution], dim=-1)
@@ -247,11 +252,11 @@ class HybridGNN_CNF_Expert(nn.Module):
 
         return {
             "new_state": final_result,
-            "gnn_result": gnn_result,
-            "cnf_result": cnf_result,
-            "gnn_contribution": (1 - gating_weight).mean().item(),
-            "cnf_contribution": gating_weight.mean().item(),
-            "gating_weight": gating_weight.mean().item(),
+            "gnn_result": gnn_result_safe,
+            "cnf_result": cnf_result_safe,
+            "gnn_contribution": (1 - gating_weight_safe).mean().item(),
+            "cnf_contribution": gating_weight_safe.mean().item(),
+            "gating_weight": gating_weight_safe.mean().item(),
         }
 
     def get_parameter_info(self) -> Dict[str, Any]:

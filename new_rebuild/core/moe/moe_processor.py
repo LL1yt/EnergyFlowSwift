@@ -303,87 +303,169 @@ class MoEConnectionProcessor(nn.Module):
         
         # Cache-based classification results (no logging for performance)
 
-        # === 2. ОБРАБОТКА КАЖДЫМ ЭКСПЕРТОМ (НОВАЯ АРХИТЕКТУРА) ===
+        # === 2. ОБРАБОТКА КАЖДЫМ ЭКСПЕРТОМ (ПАРАЛЛЕЛЬНАЯ АРХИТЕКТУРА) ===
         expert_outputs = []
         tensors_to_return = []
 
-        # Local Expert
+        # Подготавливаем данные для параллельной обработки
         local_data = neighbors_data["local"]
-        if local_data["indices"]:
-            local_neighbor_states = local_data["states"]
-
-            def local_expert_wrapper(current, neighbors):
-                res = self.local_expert(current, neighbors)
-                if isinstance(res, dict):
-                    return res.get("output", res.get("new_state", current))
-                return res
-
-            local_output = checkpoint(
-                local_expert_wrapper,
-                current_state,
-                local_neighbor_states,
-                use_reentrant=False,
-            )
-            logger.debug_forward(
-                f"[{cell_idx}] Local expert output shape: {local_output.shape}"
-            )
-
-        else:
-            local_output = self.memory_pool_manager.get_tensor(
-                (1, self.state_size), dtype=current_state.dtype
-            )
-            tensors_to_return.append(local_output)
-        expert_outputs.append(local_output.squeeze(0))
-
-        # Functional Expert
         functional_data = neighbors_data["functional"]
-        if functional_data["indices"]:
-            functional_neighbor_states = functional_data["states"]
-
-            def functional_expert_wrapper(current, neighbors):
-                res = self.functional_expert(current, neighbors)
-                if isinstance(res, dict):
-                    return res.get("output", res.get("new_state", current))
-                return res
-
-            functional_output = checkpoint(
-                functional_expert_wrapper,
-                current_state,
-                functional_neighbor_states,
-                use_reentrant=False,
-            )
-            # Functional expert output processed
-        else:
-            functional_output = self.memory_pool_manager.get_tensor(
-                (1, self.state_size), dtype=current_state.dtype
-            )
-            tensors_to_return.append(functional_output)
-        expert_outputs.append(functional_output.squeeze(0))
-
-        # Distant Expert (только если CNF включен)
         distant_data = neighbors_data["distant"]
-        if self.enable_cnf and distant_data["indices"]:
-            distant_neighbor_states = distant_data["states"]
 
-            def distant_expert_wrapper(current, neighbors):
-                res = self.distant_expert(current, neighbors)
-                if isinstance(res, dict):
-                    return res.get("output", res.get("new_state", current))
-                return res
+        # Для небольших решеток (≤32) используем параллельную обработку экспертов
+        if self.device_manager.is_cuda() and max(current_state.shape) <= 1024:  # Оптимизация для GPU
+            # Параллельная обработка с использованием CUDA streams
+            with torch.cuda.device(self.device_manager.device):
+                # Создаем отдельные stream'ы для каждого эксперта
+                local_stream = torch.cuda.Stream()
+                functional_stream = torch.cuda.Stream()
+                distant_stream = torch.cuda.Stream() if self.enable_cnf else None
 
-            distant_output = checkpoint(
-                distant_expert_wrapper,
-                current_state,
-                distant_neighbor_states,
-                use_reentrant=False,
-            )
-            # Distant expert output processed
+                # Async обработка экспертов
+                with torch.cuda.stream(local_stream):
+                    if local_data["indices"]:
+                        local_neighbor_states = local_data["states"]
+                        def local_expert_wrapper(current, neighbors):
+                            res = self.local_expert(current, neighbors)
+                            if isinstance(res, dict):
+                                return res.get("output", res.get("new_state", current))
+                            return res
+                        local_output = checkpoint(
+                            local_expert_wrapper,
+                            current_state,
+                            local_neighbor_states,
+                            use_reentrant=False,
+                        )
+                    else:
+                        local_output = self.memory_pool_manager.get_tensor(
+                            (1, self.state_size), dtype=current_state.dtype
+                        )
+                        tensors_to_return.append(local_output)
+
+                with torch.cuda.stream(functional_stream):
+                    if functional_data["indices"]:
+                        functional_neighbor_states = functional_data["states"]
+                        def functional_expert_wrapper(current, neighbors):
+                            res = self.functional_expert(current, neighbors)
+                            if isinstance(res, dict):
+                                return res.get("output", res.get("new_state", current))
+                            return res
+                        # Отключаем checkpoint для functional expert из-за in-place operations
+                        # functional_output = checkpoint(
+                        #     functional_expert_wrapper,
+                        #     current_state,
+                        #     functional_neighbor_states,
+                        #     use_reentrant=False,
+                        # )
+                        functional_output = functional_expert_wrapper(
+                            current_state,
+                            functional_neighbor_states
+                        )
+                    else:
+                        functional_output = self.memory_pool_manager.get_tensor(
+                            (1, self.state_size), dtype=current_state.dtype
+                        )
+                        tensors_to_return.append(functional_output)
+
+                if self.enable_cnf and distant_stream:
+                    with torch.cuda.stream(distant_stream):
+                        if distant_data["indices"]:
+                            distant_neighbor_states = distant_data["states"]
+                            def distant_expert_wrapper(current, neighbors):
+                                res = self.distant_expert(current, neighbors)
+                                if isinstance(res, dict):
+                                    return res.get("output", res.get("new_state", current))
+                                return res
+                            distant_output = checkpoint(
+                                distant_expert_wrapper,
+                                current_state,
+                                distant_neighbor_states,
+                                use_reentrant=False,
+                            )
+                        else:
+                            distant_output = self.memory_pool_manager.get_tensor(
+                                (1, self.state_size), dtype=current_state.dtype
+                            )
+                            tensors_to_return.append(distant_output)
+
+                # Убираем блокирующие синхронизации - PyTorch автоматически управляет stream'ами
+                # local_stream.synchronize()      # Отключено для GPU оптимизации
+                # functional_stream.synchronize() # Отключено для GPU оптимизации
+                # if distant_stream:
+                #     distant_stream.synchronize() # Отключено для GPU оптимизации
+
         else:
-            distant_output = self.memory_pool_manager.get_tensor(
-                (1, self.state_size), dtype=current_state.dtype
-            )
-            tensors_to_return.append(distant_output)
-        expert_outputs.append(distant_output.squeeze(0))
+            # Fallback к последовательной обработке для больших решеток
+            # Local Expert
+            if local_data["indices"]:
+                local_neighbor_states = local_data["states"]
+                def local_expert_wrapper(current, neighbors):
+                    res = self.local_expert(current, neighbors)
+                    if isinstance(res, dict):
+                        return res.get("output", res.get("new_state", current))
+                    return res
+                local_output = checkpoint(
+                    local_expert_wrapper,
+                    current_state,
+                    local_neighbor_states,
+                    use_reentrant=False,
+                )
+            else:
+                local_output = self.memory_pool_manager.get_tensor(
+                    (1, self.state_size), dtype=current_state.dtype
+                )
+                tensors_to_return.append(local_output)
+
+            # Functional Expert
+            if functional_data["indices"]:
+                functional_neighbor_states = functional_data["states"]
+                def functional_expert_wrapper(current, neighbors):
+                    res = self.functional_expert(current, neighbors)
+                    if isinstance(res, dict):
+                        return res.get("output", res.get("new_state", current))
+                    return res
+                # Отключаем checkpoint для functional expert из-за in-place operations
+                # functional_output = checkpoint(
+                #     functional_expert_wrapper,
+                #     current_state,
+                #     functional_neighbor_states,
+                #     use_reentrant=False,
+                # )
+                functional_output = functional_expert_wrapper(
+                    current_state,
+                    functional_neighbor_states
+                )
+            else:
+                functional_output = self.memory_pool_manager.get_tensor(
+                    (1, self.state_size), dtype=current_state.dtype
+                )
+                tensors_to_return.append(functional_output)
+
+            # Distant Expert (только если CNF включен)
+            if self.enable_cnf and distant_data["indices"]:
+                distant_neighbor_states = distant_data["states"]
+                def distant_expert_wrapper(current, neighbors):
+                    res = self.distant_expert(current, neighbors)
+                    if isinstance(res, dict):
+                        return res.get("output", res.get("new_state", current))
+                    return res
+                distant_output = checkpoint(
+                    distant_expert_wrapper,
+                    current_state,
+                    distant_neighbor_states,
+                    use_reentrant=False,
+                )
+            else:
+                distant_output = self.memory_pool_manager.get_tensor(
+                    (1, self.state_size), dtype=current_state.dtype
+                )
+                tensors_to_return.append(distant_output)
+
+        # Добавляем результаты в expert_outputs
+        expert_outputs.append(local_output.squeeze(0))
+        expert_outputs.append(functional_output.squeeze(0))
+        if self.enable_cnf:
+            expert_outputs.append(distant_output.squeeze(0))
 
         # === 3. КОМБИНИРОВАНИЕ РЕЗУЛЬТАТОВ ===
         try:

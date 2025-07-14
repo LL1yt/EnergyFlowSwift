@@ -330,6 +330,16 @@ class AdaptiveGPUChunker:
         optimal_chunk_size = self._calculate_optimal_chunk_size(available_memory_mb)
         x_dim, y_dim, z_dim = self.dimensions
 
+        # Отключаем чанкинг для маленьких решеток (оптимизация GPU утилизации)
+        max_dimension = max(x_dim, y_dim, z_dim)
+        if max_dimension <= 32:  # Для решеток ≤32 обходим чанкинг
+            logger.info(f"🚀 Small lattice ({self.dimensions}) - disabling chunking for better GPU utilization")
+            # Создаем один chunk для всей решетки
+            chunk_info = self._create_adaptive_chunk_info(
+                0, (0, 0, 0), (x_dim, y_dim, z_dim), available_memory_mb
+            )
+            return [chunk_info]
+
         # Вычисляем количество chunk'ов по каждой оси
         x_chunks = max(1, (x_dim + optimal_chunk_size - 1) // optimal_chunk_size)
         y_chunks = max(1, (y_dim + optimal_chunk_size - 1) // optimal_chunk_size)

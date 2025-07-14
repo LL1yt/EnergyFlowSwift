@@ -298,21 +298,27 @@ class EmbeddingTrainer(TrainingInterface):
             # Для batch_size > 1 нужна другая логика
             raise NotImplementedError("Batch processing not yet supported in lattice")
         
-        for step in range(self.lattice_settings.lattice_steps):
-            # Выполняем шаг решетки (обновляет внутренние состояния)
-            self.lattice.forward()  # Updates internal states
-            
-            # Получаем обновленные состояния и добавляем batch dimension обратно
-            current_lattice_states = self.lattice.states.unsqueeze(0)  # [1, total_cells, state_size]
-            
-            # Проверка сходимости (опционально)
-            if step > 0 and self._check_convergence(current_lattice_states, initial_states):
-                logger.debug_training(f"Сходимость достигнута на шаге {step}")
-                break
+        # Переиспользуем тензоры для экономии памяти
+        with torch.no_grad():
+            current_lattice_states = None
+            for step in range(self.lattice_settings.lattice_steps):
+                # Выполняем шаг решетки (обновляет внутренние состояния)
+                self.lattice.forward()  # Updates internal states
+                
+                # Переиспользуем тензор без создания новых копий
+                if current_lattice_states is not None:
+                    current_lattice_states.data = self.lattice.states.unsqueeze(0).data
+                else:
+                    current_lattice_states = self.lattice.states.unsqueeze(0)  # [1, total_cells, state_size]
+                
+                # Проверка сходимости (опционально)
+                if step > 0 and self._check_convergence(current_lattice_states, initial_states):
+                    logger.debug_training(f"Сходимость достигнута на шаге {step}")
+                    break
 
         # 5. 3D Lattice → Surface extraction
-        # Получаем финальные состояния с batch dimension
-        final_lattice_states = self.lattice.states.unsqueeze(0)  # [1, total_cells, state_size]
+        # Получаем финальные состояния с batch dimension (переиспользуем тензор)
+        final_lattice_states = current_lattice_states if current_lattice_states is not None else self.lattice.states.unsqueeze(0)
         final_surface = self.lattice_extractor(final_lattice_states)  # [batch, 64]
         
         # Преобразуем плоский вектор обратно в 2D surface для transformer
@@ -417,22 +423,30 @@ class EmbeddingTrainer(TrainingInterface):
         """
         batch_size, total_cells, state_size = lattice_states.shape
         
-        # Простая аппроксимация: соседние клетки должны иметь похожие состояния
-        # Для куба 8×8×8 берем ближайших соседей по индексам
-        consistency_loss = 0.0
-        num_comparisons = 0
-        
-        # Сравниваем каждую клетку с ее непосредственными соседями
+        # Векторизованная spatial consistency loss (убираем nested loops)
+        # Используем расстояние только между соседними клетками
         lattice_dim = round(total_cells ** (1/3))  # Предполагаем кубическую решетку
         
-        for i in range(min(100, total_cells)):  # Ограничиваем для производительности
-            for j in range(i+1, min(i+27, total_cells)):  # Проверяем соседей
-                diff = torch.norm(lattice_states[:, i] - lattice_states[:, j], dim=-1)
-                consistency_loss += diff.mean()
-                num_comparisons += 1
+        # Создаем маску для соседних клеток (векторизованно)
+        num_samples = min(100, total_cells)  # Ограничиваем для производительности
         
-        if num_comparisons > 0:
-            consistency_loss /= num_comparisons
+        # Векторизованное вычисление расстояний между соседними клетками
+        if num_samples > 1:
+            # Берем случайную выборку клеток
+            indices = torch.randperm(total_cells)[:num_samples].to(lattice_states.device)
+            
+            # Создаем пары соседей векторизованно
+            sampled_states = lattice_states[:, indices]  # [batch, num_samples, state_size]
+            
+            # Вычисляем расстояния между соседними клетками векторизованно
+            # Сдвигаем индексы для получения соседей
+            neighbor_indices = torch.clamp(indices + 1, 0, total_cells - 1)
+            neighbor_states = lattice_states[:, neighbor_indices]  # [batch, num_samples, state_size]
+            
+            # Векторизованное вычисление L2 расстояний
+            consistency_loss = torch.norm(sampled_states - neighbor_states, dim=-1).mean()
+        else:
+            consistency_loss = torch.tensor(0.0, device=lattice_states.device)
             
         return consistency_loss
 

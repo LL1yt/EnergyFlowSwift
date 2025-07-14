@@ -18,14 +18,16 @@ import torch
 
 class ConfigMode(Enum):
     """Режимы работы конфигурации для исследовательского проекта"""
-    DEBUG = "debug"          # Прогоночные тесты и отладка ошибок
-    EXPERIMENT = "experiment" # Эксперименты и исследования
-    OPTIMIZED = "optimized"   # Финальный оптимизированный конфиг
+
+    DEBUG = "debug"  # Прогоночные тесты и отладка ошибок
+    EXPERIMENT = "experiment"  # Эксперименты и исследования
+    OPTIMIZED = "optimized"  # Финальный оптимизированный конфиг
 
 
 @dataclass
 class ModeSettings:
     """Настройки режима работы"""
+
     mode: ConfigMode = ConfigMode.DEBUG
     auto_apply_overrides: bool = True
     log_mode_info: bool = True
@@ -37,10 +39,10 @@ class ModeSettings:
 @dataclass
 class LatticeSettings:
     """Настройки 3D решетки"""
-    
+
     # Основные параметры - устанавливаются через пресеты
     dimensions: Tuple[int, int, int]
-    
+
     # Адаптивный радиус - константы алгоритма (не дублирование!)
     adaptive_radius_enabled: bool = True
     adaptive_radius_ratio: float = 0.2
@@ -48,11 +50,15 @@ class LatticeSettings:
     adaptive_radius_min: float = 1.0
 
     # Классификация соединений - алгоритмические пропорции (не дублирование!)
-    local_distance_ratio: float = 0.4      # 10% ближайших связей (от 0.0 до 0.1) для примера, может отличаться от текущих настроек
-    functional_distance_ratio: float = 0.80 # до 65% связей для functional (от 0.1 до 0.65)
-    distant_distance_ratio: float = 0.99     # до 100% всех связей (от 0.65 до 1.0)
+    local_distance_ratio: float = (
+        0.4  # 10% ближайших связей (от 0.0 до 0.1) для примера, может отличаться от текущих настроек
+    )
+    functional_distance_ratio: float = (
+        0.80  # до 65% связей для functional (от 0.1 до 0.65)
+    )
+    distant_distance_ratio: float = 0.99  # до 100% всех связей (от 0.65 до 1.0)
     functional_similarity_threshold: float = 0.3
-    # 0 ≤ LOCAL < local_distance_ratio*Adaptive_radius; local_distance_ratio*Adaptive_radius ≤ FUNCTIONAL: ≤ functional_distance_ratio*Adaptive_radius; functional_distance_ratio*Adaptive_radius < DISTANT ≤ distant_distance_ratio*Adaptive_radius 
+    # 0 ≤ LOCAL < local_distance_ratio*Adaptive_radius; local_distance_ratio*Adaptive_radius ≤ FUNCTIONAL: ≤ functional_distance_ratio*Adaptive_radius; functional_distance_ratio*Adaptive_radius < DISTANT ≤ distant_distance_ratio*Adaptive_radius
 
     # Пространственная оптимизация - алгоритмические константы
     enable_morton_encoding: bool = True
@@ -87,12 +93,12 @@ class LatticeSettings:
 @dataclass
 class ModelSettings:
     """Настройки модели - общие параметры для всех экспертов"""
-    
+
     # Основной параметр - устанавливается через пресеты
     state_size: int  # ОБЩИЙ для всех экспертов!
-    
+
     # Динамический neighbor count - алгоритмическая константа
-    neighbor_count: int = -1    # -1 означает динамическое определение
+    neighbor_count: int = -1  # -1 означает динамическое определение
     external_input_size: int = 16
 
     # Архитектурные параметры - константы алгоритма
@@ -119,9 +125,9 @@ class NeighborSettings:
     # Используем значения из LatticeSettings
 
     # Tiered Topology - пропорции связей по типам (соответствуют LatticeSettings)
-    local_tier: float = 0.1      # 10% связей 
-    functional_tier: float = 0.55 # 55% связей
-    distant_tier: float = 0.35   # 35% связей
+    local_tier: float = 0.1  # 10% связей
+    functional_tier: float = 0.55  # 55% связей
+    distant_tier: float = 0.35  # 35% связей
 
     # Порог функционального сходства
     functional_similarity_threshold: float = 0.3
@@ -145,18 +151,18 @@ class NeighborSettings:
 class LocalExpertSettings:
     """Настройки для Local Expert"""
 
-    params: int                 # Устанавливается через пресеты
-    
+    params: int  # Устанавливается через пресеты
+
     # Алгоритмические константы
     type: str = "linear"
     alpha: float = 0.1
     beta: float = 0.9
-    
+
     # Параметры для настройки количества параметров модели
     neighbor_agg_hidden1: int = 32  # Можно менять для изменения размера модели
     neighbor_agg_hidden2: int = 16  # Можно менять для изменения размера модели
-    processor_hidden: int = 64      # Можно менять для изменения размера модели
-    
+    processor_hidden: int = 64  # Можно менять для изменения размера модели
+
     max_neighbors_buffer: int = 200
     use_attention: bool = True
     default_batch_size: int = 1
@@ -166,18 +172,18 @@ class LocalExpertSettings:
 class FunctionalExpertSettings:
     """Настройки для Functional Expert"""
 
-    params: int                 # Устанавливается через пресеты
-    
+    params: int  # Устанавливается через пресеты
+
     # Алгоритмические константы
     type: str = "hybrid_gnn_cnf"
-    gnn_ratio: float = 0.6      # 60% параметров для GNN
-    cnf_ratio: float = 0.4      # 40% параметров для CNF
+    gnn_ratio: float = 0.6  # 60% параметров для GNN
+    cnf_ratio: float = 0.4  # 40% параметров для CNF
     use_attention: bool = True
-    
+
     # Параметры для настройки количества параметров модели
-    message_dim: int = 16       # Можно менять для изменения размера модели
-    hidden_dim: int = 32        # Можно менять для изменения размера модели
-    
+    message_dim: int = 16  # Можно менять для изменения размера модели
+    hidden_dim: int = 32  # Можно менять для изменения размера модели
+
     integration_steps: int = 3
     adaptive_step_size: bool = True
 
@@ -186,8 +192,8 @@ class FunctionalExpertSettings:
 class DistantExpertSettings:
     """Настройки для Distant Expert (CNF)"""
 
-    params: int                 # Устанавливается через пресеты
-    
+    params: int  # Устанавливается через пресеты
+
     # Алгоритмические константы
     type: str = "cnf"
     integration_steps: int = 3
@@ -196,7 +202,7 @@ class DistantExpertSettings:
     max_batch_size: int = 1024
     adaptive_method: str = "LIPSCHITZ_BASED"
     memory_efficient: bool = True
-    
+
     # Параметры для VectorizedNeuralODE (можно менять для изменения размера модели)
     ode_hidden_dim: Optional[int] = None  # None = max(16, state_size // 2)
     ode_dropout_rate: float = 0.1
@@ -298,26 +304,26 @@ class CacheSettings:
 
     # Параметры, устанавливаемые через пресеты
     enable_detailed_stats: bool
-    
+
     # Алгоритмические константы
     enabled: bool = True
     enable_performance_monitoring: bool = True
-    small_lattice_fallback: bool = False          # Не используем fallback'и
-    
+    small_lattice_fallback: bool = False  # Не используем fallback'и
+
     # GPU кэширование - константы конфигурации
     use_gpu_acceleration: bool = True
     gpu_batch_size: int = 10000
     prefer_gpu_for_large_lattices: bool = True
     gpu_memory_fraction: float = 0.8
     gpu_cache_size_mb: int = 1024
-    
+
     # Размеры кэшей - константы конфигурации
     neighbor_cache_size: int = 100000
     connection_cache_enabled: bool = True
     persistent_cache_dir: str = "cache"
-    
+
     # Legacy совместимость (вычисляются автоматически из LatticeSettings)
-    local_radius: float = 1.0                     # Будет переопределено
+    local_radius: float = 1.0  # Будет переопределено
     functional_similarity_threshold: float = 0.3  # Дублирует LatticeSettings
 
 
@@ -391,7 +397,7 @@ class DeviceSettings:
 
     prefer_cuda: bool = True
     # debug_mode: bool = False  # УДАЛЕНО - используем централизованный debug_mode из LoggingSettings
-    fallback_cpu: bool = False # не используем в проекте fallbackи
+    fallback_cpu: bool = False  # не используем в проекте fallbackи
     memory_fraction: float = 0.9
     allow_tf32: bool = True
     deterministic: bool = False
@@ -410,20 +416,20 @@ class LoggingSettings:
     enable_profiling: bool
     performance_tracking: bool
     debug_categories: List[str] = field(default_factory=list)
-    
+
     # Константы конфигурации
     log_to_file: bool = True
     log_file: str = "logs/cnf_debug.log"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     log_dir: str = "logs"
     enable_file_logging: bool = True
-    
+
     # Предустановленные наборы категорий - алгоритмические константы
-    CACHE_DEBUG = ['cache']
-    SPATIAL_DEBUG = ['spatial', 'memory']
-    TRAINING_DEBUG = ['training', 'forward']
-    INIT_DEBUG = ['init']
-    ALL_DEBUG = ['cache', 'spatial', 'forward', 'memory', 'training', 'init', 'verbose']
+    CACHE_DEBUG = ["cache"]
+    SPATIAL_DEBUG = ["spatial", "memory"]
+    TRAINING_DEBUG = ["training", "forward"]
+    INIT_DEBUG = ["init"]
+    ALL_DEBUG = ["cache", "spatial", "forward", "memory", "training", "init", "verbose"]
 
 
 @dataclass
@@ -451,9 +457,9 @@ class AdaptiveChunkerSettings:
     max_chunks_in_memory: int = 8
     max_concurrent_chunks: int = 4
     chunk_overlap: int = 8
-    min_chunk_size: int = 32
-    # max_chunk_size: int = 256
-    max_chunk_size: int = 64  # Для тестовых (8,8,8) решеток
+    min_chunk_size: int = 62
+    max_chunk_size: int = 512
+    # max_chunk_size: int = 64  # Для тестовых (8,8,8) решеток
     memory_safety_factor: float = 0.75
     enable_prefetching: bool = True
     prefetch_queue_size: int = 2
@@ -528,22 +534,22 @@ class TrainingEmbeddingSettings:
     max_total_samples: int
 
     # Алгоритмические константы - интервалы сохранения и валидации
-    validation_interval: int = 1        # Валидация каждую эпоху
-    save_checkpoint_every: int = 5      # Checkpoint каждые 5 эпох
-    log_interval: int = 10              # Лог каждые 10 батчей
-    early_stopping_patience: int = 10   # Early stopping
+    validation_interval: int = 1  # Валидация каждую эпоху
+    save_checkpoint_every: int = 5  # Checkpoint каждые 5 эпох
+    log_interval: int = 10  # Лог каждые 10 батчей
+    early_stopping_patience: int = 10  # Early stopping
 
     # Loss weights для обучения - алгоритмические константы
     reconstruction_weight: float = 1.0  # Основная задача
-    similarity_weight: float = 0.5      # Семантическая похожесть
-    diversity_weight: float = 0.2       # Разнообразие представлений
-    emergence_weight: float = 0.1       # Emergent behavior
+    similarity_weight: float = 0.5  # Семантическая похожесть
+    diversity_weight: float = 0.2  # Разнообразие представлений
+    emergence_weight: float = 0.1  # Emergent behavior
 
     # Специфичные параметры для эмбеддингов - алгоритмические константы
-    target_embedding_dim: int = 64      # Сжимаем 768 → 64
+    target_embedding_dim: int = 64  # Сжимаем 768 → 64
     teacher_model: str = "distilbert-base-uncased"
     use_teacher_forcing: bool = True
-    lattice_steps: int = 5              # Количество шагов распространения
+    lattice_steps: int = 5  # Количество шагов распространения
 
     # Curriculum learning - алгоритмические константы
     use_curriculum_learning: bool = False
@@ -552,7 +558,7 @@ class TrainingEmbeddingSettings:
     curriculum_schedule: str = "linear"
 
     # Батчи для RTX 5090 - константы конфигурации
-    embedding_batch_size: int = 16      # Оптимально для 32GB памяти
+    embedding_batch_size: int = 64  # Увеличено с 16 для лучшей GPU утилизации
     gradient_accumulation_steps: int = 2
     gpu_memory_reserve_gb: float = 20.0
 
@@ -562,7 +568,7 @@ class TrainingEmbeddingSettings:
     probing_tasks: List[str] = None
     visualization_enabled: bool = False
     visualization_frequency: int = 10
-    
+
     # Тестовые параметры - алгоритмические константы
     test_lattice_dim: int = 8
     test_dataset_size: int = 5
@@ -612,7 +618,7 @@ class ValidationSettings:
     auto_fix_conflicts: bool = True
     check_memory_requirements: bool = True
     estimate_compute_time: bool = False
-    
+
     # Настройки для тестирования
     num_forward_passes: int = 1  # Количество forward pass'ов для теста стабильности
     stability_threshold: float = 0.1  # Порог стабильности (10% по умолчанию)
@@ -621,11 +627,11 @@ class ValidationSettings:
 @dataclass
 class ConnectionSettings:
     """Настройки связей между клетками"""
-    
+
     # Базовые параметры связей
     strength: float = 1.0  # Стандартная сила связи
     functional_similarity: float = 0.3  # Порог функционального сходства
-    
+
     # Дополнительные параметры для будущего расширения
     decay_factor: float = 0.9  # Коэффициент затухания связи
     min_strength: float = 0.1  # Минимальная сила связи
@@ -749,20 +755,21 @@ def merge_config_updates(
 @dataclass
 class TrainingOptimizerSettings:
     """Централизованные параметры оптимизатора и обучения"""
+
     # Оптимизатор
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
-    
+
     # Scheduler
     scheduler_t0: int = 10
     scheduler_t_mult: int = 2
-    
+
     # Gradient clipping
     gradient_clip_max_norm: float = 1.0
-    
+
     # Частота логирования
     log_batch_frequency: int = 10
-    
+
     # Веса для агрегации состояний
     surface_contribution_weight: float = 0.7
     volume_contribution_weight: float = 0.3
@@ -771,21 +778,22 @@ class TrainingOptimizerSettings:
 @dataclass
 class EmbeddingMappingSettings:
     """Настройки маппинга эмбеддингов в решетку"""
+
     surface_coverage: float = 0.8
     lattice_steps: int = 5
     convergence_threshold: float = 1e-4
-    
+
     # Веса для loss функций
     lattice_loss_weight: float = 0.1
     spatial_consistency_weight: float = 0.05
-    
+
     # Архитектурные параметры
     attention_num_heads: int = 4
     dropout_rate: float = 0.1
-    
+
     # Инициализация
     position_embedding_scale: float = 0.1
-    
+
     # Размеры для uniform placement
     target_surface_points: int = 64
 
@@ -793,29 +801,30 @@ class EmbeddingMappingSettings:
 @dataclass
 class MemoryManagementSettings:
     """Настройки управления памятью и производительностью"""
+
     # Garbage collection - будет переопределен из пресетов
     cleanup_threshold: int = 1000  # Значение по умолчанию, переопределяется пресетами
-    
+
     # Минимальные требования
     min_gpu_memory_gb: float = 8.0
-    
+
     # Лимиты логирования
     tensor_transfer_log_limit: int = 5
-    
+
     # Размеры данных
     embedding_size_bytes: int = 768 * 4
-    
+
     # Резервирование памяти
     training_memory_reserve_gb: float = 20.0
     memory_safety_factor: float = 0.8
-    
+
     # Интервал maintenance tasks в секундах
     maintenance_interval_seconds: int = 666
-    
+
     # DataLoader настройки
     dataloader_workers: int = 8
     prefetch_factor: int = 6
-    
+
     # GPU memory safety
     gpu_memory_safety_factor: float = 0.85
     cpu_memory_safety_factor: float = 0.85
@@ -824,12 +833,13 @@ class MemoryManagementSettings:
 @dataclass
 class ArchitectureConstants:
     """Архитектурные константы и параметры"""
+
     # MoE параметры экспертов
     moe_functional_params: int = 8000
     moe_distant_params: int = 4000
     moe_num_experts: int = 3
     moe_gating_hidden_dim: int = 64
-    
+
     # CNF параметры
     cnf_max_batch_size: int = 100
     cnf_hidden_dim_ratio: float = 0.5  # hidden_dim = state_size * ratio
@@ -837,24 +847,24 @@ class ArchitectureConstants:
     cnf_dropout_rate: float = 0.1
     cnf_damping_strength: float = 0.1
     cnf_target_params: int = 3000
-    
+
     # Пространственная оптимизация
     spatial_cell_size: int = 2
-    spatial_max_neighbors: int = 20000 # Биологический лимит
+    spatial_max_neighbors: int = 20000  # Биологический лимит
     spatial_log_frequency: int = 500
     spatial_chunk_overlap: int = 8
-    
+
     # Алгоритмические константы
     spatial_consistency_range: int = 27  # 3x3x3 cube
     max_comparison_cells: int = 100
-    
+
     # Stack search depth
     stack_search_depth: int = 15
-    
+
     # EMA веса для функционального сходства
     ema_weight_current: float = 0.9
     ema_weight_history: float = 0.1
-    
+
     # Teacher embedding dimension (например, от DistilBERT)
     teacher_embedding_dim: int = 768
 
@@ -862,15 +872,26 @@ class ArchitectureConstants:
 @dataclass
 class AlgorithmicStrategies:
     """Строковые константы и стратегии алгоритмов"""
+
     # Placement strategies
-    placement_strategies: List[str] = field(default_factory=lambda: ["faces", "edges", "corners", "uniform"])
-    
+    placement_strategies: List[str] = field(
+        default_factory=lambda: ["faces", "edges", "corners", "uniform"]
+    )
+
     # Extraction strategies
-    extraction_strategies: List[str] = field(default_factory=lambda: ["surface_mean", "weighted_surface", "volume_projection"])
-    
+    extraction_strategies: List[str] = field(
+        default_factory=lambda: [
+            "surface_mean",
+            "weighted_surface",
+            "volume_projection",
+        ]
+    )
+
     # CNF batch processing modes
-    cnf_processing_modes: List[str] = field(default_factory=lambda: ["single", "batch", "adaptive"])
-    
+    cnf_processing_modes: List[str] = field(
+        default_factory=lambda: ["single", "batch", "adaptive"]
+    )
+
     # Default strategies
     default_placement_strategy: str = "faces"
     default_extraction_strategy: str = "surface_mean"
@@ -880,169 +901,180 @@ class AlgorithmicStrategies:
 @dataclass
 class ModePresets:
     """Предустановленные значения для разных режимов конфигурации"""
-    
+
     @dataclass
     class DebugPreset:
         """Настройки для DEBUG режима - быстрые тесты и отладка"""
+
         # Lattice
         lattice_dimensions: Tuple[int, int, int] = (15, 15, 15)
-        
+
         # Adaptive radius settings for small lattice
-        lattice_adaptive_radius_ratio: float = 0.2  # Much smaller ratio for debug mode (15% of max dimension)
-        
+        lattice_adaptive_radius_ratio: float = (
+            0.2  # Much smaller ratio for debug mode (15% of max dimension)
+        )
+
         # Model
         model_state_size: int = 24  # Общий для всех экспертов
-        
+
         # Training
-        training_batch_size: int = 8
+        training_batch_size: int = 32  # Увеличено с 8 для лучшей GPU утилизации
         training_num_epochs: int = 5
         training_early_stopping_patience: int = 5
         training_checkpoint_frequency: int = 5
         training_max_samples: int = 50
-        
+
         # Experts (уменьшены для DEBUG)
         expert_local_params: int = 1500  # было 2000
         expert_functional_params: int = 4000  # было 5000
         expert_distant_params: int = 2500  # было 3000
-        
+
         # Дополнительные параметры экспертов для DEBUG
         # Local expert
         expert_local_neighbor_agg_hidden1: int = 12  # меньше для быстрых тестов
         expert_local_neighbor_agg_hidden2: int = 12  # меньше для быстрых тестов
-        expert_local_processor_hidden: int = 12      # меньше для быстрых тестов
-        
+        expert_local_processor_hidden: int = 12  # меньше для быстрых тестов
+
         # Functional expert
         expert_functional_hidden_dim: int = 12  # меньше для быстрых тестов
         expert_functional_message_dim: int = 8  # меньше для быстрых тестов
-        
+
         # Distant expert (CNF)
         expert_distant_ode_hidden_dim: int = 48  # меньше для быстрых тестов
         expert_distant_ode_dropout_rate: float = 0.05  # меньше dropout для тестов
-        
+
         # Gating network
         expert_gating_params: int = 800  # примерно
         expert_gating_hidden_dim: int = 24  # для достижения ~800 параметров
-        
+
         # Memory & Performance
         memory_reserve_gb: float = 2.0
         dataloader_workers: int = 2
         cleanup_threshold: int = 5000  # Редкие cleanups для DEBUG
-        
+
         # Logging
         logging_level: str = "DEBUG_INIT"
-        logging_debug_mode: bool = True
+        logging_debug_mode: bool = False  # Отключено для лучшей производительности
         logging_enable_profiling: bool = True
-        
+
         # Validation settings для тестов
-        validation_num_forward_passes: int = 3  # Несколько проходов для теста стабильности
-        validation_stability_threshold: float = 0.15  # 15% допустимая вариация в debug режиме
-        
+        validation_num_forward_passes: int = (
+            3  # Несколько проходов для теста стабильности
+        )
+        validation_stability_threshold: float = (
+            0.15  # 15% допустимая вариация в debug режиме
+        )
+
     @dataclass
     class ExperimentPreset:
         """Настройки для EXPERIMENT режима - исследования и эксперименты"""
+
         # Lattice
         lattice_dimensions: Tuple[int, int, int] = (30, 30, 30)
-        
+
         # Model
         model_state_size: int = 64  # Общий для всех экспертов
-        
+
         # Training
-        training_batch_size: int = 16
+        training_batch_size: int = 48  # Увеличено с 16 для лучшей GPU утилизации
         training_num_epochs: int = 100
         training_early_stopping_patience: int = 10
         training_checkpoint_frequency: int = 25
         training_max_samples: int = 1000
-        
+
         # Experts
         expert_local_params: int = 4000
         expert_functional_params: int = 8000
         expert_distant_params: int = 4000
-        
+
         # Дополнительные параметры экспертов для EXPERIMENT
         # Local expert
         expert_local_neighbor_agg_hidden1: int = 32  # стандартные значения
         expert_local_neighbor_agg_hidden2: int = 16
         expert_local_processor_hidden: int = 64
-        
+
         # Functional expert
-        expert_functional_hidden_dim: int = 32   # стандартные значения
+        expert_functional_hidden_dim: int = 32  # стандартные значения
         expert_functional_message_dim: int = 16
-        
+
         # Distant expert (CNF)
-        expert_distant_ode_hidden_dim: Optional[int] = None  # авто: max(16, state_size // 2)
+        expert_distant_ode_hidden_dim: Optional[int] = (
+            None  # авто: max(16, state_size // 2)
+        )
         expert_distant_ode_dropout_rate: float = 0.1  # стандартный dropout
-        
+
         # Gating network
         expert_gating_params: int = 2000  # целевое значение
         expert_gating_hidden_dim: int = 64  # стандартное значение
-        
+
         # Memory & Performance
         memory_reserve_gb: float = 10.0
         dataloader_workers: int = 4
         cleanup_threshold: int = 1000  # Умеренные cleanups для EXPERIMENT
-        
+
         # Logging
         logging_level: str = "INFO"
         logging_debug_mode: bool = False
         logging_enable_profiling: bool = True
-        
+
         # Validation settings для экспериментов
         validation_num_forward_passes: int = 5  # Больше проходов для экспериментов
         validation_stability_threshold: float = 0.1  # 10% стандартный порог
-        
+
     @dataclass
     class OptimizedPreset:
         """Настройки для OPTIMIZED режима - финальные прогоны"""
+
         # Lattice
         lattice_dimensions: Tuple[int, int, int] = (50, 50, 50)
-        
+
         # Model
         model_state_size: int = 128  # Общий для всех экспертов
-        
+
         # Training
-        training_batch_size: int = 32
+        training_batch_size: int = 64  # Увеличено с 32 для лучшей GPU утилизации
         training_num_epochs: int = 1000
         training_early_stopping_patience: int = 50
         training_checkpoint_frequency: int = 100
         training_max_samples: Optional[int] = None  # Без ограничений
-        
+
         # Experts
         expert_local_params: int = 8000
         expert_functional_params: int = 15000
         expert_distant_params: int = 8000
-        
+
         # Дополнительные параметры экспертов для OPTIMIZED
         # Local expert
         expert_local_neighbor_agg_hidden1: int = 64  # увеличены для производительности
         expert_local_neighbor_agg_hidden2: int = 32
         expert_local_processor_hidden: int = 128
-        
+
         # Functional expert
-        expert_functional_hidden_dim: int = 64   # увеличены для производительности
+        expert_functional_hidden_dim: int = 64  # увеличены для производительности
         expert_functional_message_dim: int = 32
-        
+
         # Distant expert (CNF)
         expert_distant_ode_hidden_dim: int = 64  # увеличено для производительности
         expert_distant_ode_dropout_rate: float = 0.15  # больше regularization
-        
+
         # Gating network
         expert_gating_params: int = 3000  # больше для сложных решений
         expert_gating_hidden_dim: int = 128  # увеличено для производительности
-        
+
         # Memory & Performance
         memory_reserve_gb: float = 20.0
         dataloader_workers: int = 8
         cleanup_threshold: int = 10000  # Минимальные cleanups для OPTIMIZED
-        
+
         # Logging
         logging_level: str = "WARNING"
         logging_debug_mode: bool = False
         logging_enable_profiling: bool = False
-        
+
         # Validation settings для финальных прогонов
         validation_num_forward_passes: int = 10  # Много проходов для точной проверки
         validation_stability_threshold: float = 0.05  # 5% более строгий порог
-        
+
     # Экземпляры пресетов
     debug: DebugPreset = field(default_factory=DebugPreset)
     experiment: ExperimentPreset = field(default_factory=ExperimentPreset)
@@ -1051,27 +1083,33 @@ class ModePresets:
 
 # === SPATIAL OPTIMIZATION HELPERS ===
 
+
 @dataclass
 class ChunkInfo:
     """Информация о чанке для пространственной оптимизации"""
+
     start: Tuple[int, int, int]
     end: Tuple[int, int, int]
     size: Tuple[int, int, int]
     chunk_id: int
     total_cells: int
     overlap: int = 0
-    
+
     def contains_position(self, x: int, y: int, z: int) -> bool:
         """Проверка, содержит ли чанк данную позицию"""
-        return (self.start[0] <= x < self.end[0] and
-                self.start[1] <= y < self.end[1] and
-                self.start[2] <= z < self.end[2])
+        return (
+            self.start[0] <= x < self.end[0]
+            and self.start[1] <= y < self.end[1]
+            and self.start[2] <= z < self.end[2]
+        )
 
 
-def create_spatial_config_for_lattice(lattice_dimensions: Tuple[int, int, int]) -> Dict[str, Any]:
+def create_spatial_config_for_lattice(
+    lattice_dimensions: Tuple[int, int, int],
+) -> Dict[str, Any]:
     """Создание конфигурации пространственной оптимизации для заданной решетки"""
     total_cells = lattice_dimensions[0] * lattice_dimensions[1] * lattice_dimensions[2]
-    
+
     # Адаптивное определение размера чанка на основе общего размера решетки
     if total_cells <= 1000:
         chunk_size = min(8, min(lattice_dimensions))
@@ -1081,7 +1119,7 @@ def create_spatial_config_for_lattice(lattice_dimensions: Tuple[int, int, int]) 
         chunk_size = min(32, min(lattice_dimensions))
     else:
         chunk_size = min(64, min(lattice_dimensions))
-    
+
     return {
         "chunk_size": chunk_size,
         "chunk_overlap": max(2, chunk_size // 8),
@@ -1089,5 +1127,5 @@ def create_spatial_config_for_lattice(lattice_dimensions: Tuple[int, int, int]) 
         "enable_prefetching": total_cells > 1000,
         "prefetch_queue_size": 4 if total_cells > 10000 else 2,
         "memory_safety_factor": 0.75,
-        "optimization_mode": "aggressive" if total_cells > 100000 else "balanced"
+        "optimization_mode": "aggressive" if total_cells > 100000 else "balanced",
     }

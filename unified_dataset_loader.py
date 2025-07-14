@@ -84,7 +84,9 @@ class UnifiedEmbeddingDataset(Dataset):
         loaded_count = 0
         for file in files:
             try:
-                data = torch.load(file, map_location='cpu')
+                # Используем GPU если доступно
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                data = torch.load(file, map_location=device)
                 
                 # Извлекаем эмбеддинги из dialogue data
                 embeddings = self._extract_embeddings_from_dialogue(data)
@@ -139,7 +141,9 @@ class UnifiedEmbeddingDataset(Dataset):
         loaded_count = 0
         for file in files:
             try:
-                data = torch.load(file, map_location='cpu')
+                # Используем GPU если доступно
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                data = torch.load(file, map_location=device)
                 
                 if isinstance(data, torch.Tensor):
                     if data.dim() == 2:  # [batch, dim]
@@ -194,7 +198,9 @@ class UnifiedEmbeddingDataset(Dataset):
         loaded_count = 0
         for file in cache_files:
             try:
-                data = torch.load(file, map_location='cpu')
+                # Используем GPU если доступно
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                data = torch.load(file, map_location=device)
                 
                 if isinstance(data, torch.Tensor):
                     if data.dim() == 2:  # [batch, dim]
