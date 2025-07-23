@@ -309,7 +309,10 @@ class UnifiedSpatialOptimizer:
 
         # Определяем функцию обработки
         if processor_fn is None:
-            if self.moe_processor:
+            # Приоритет: batch_adapter > moe_processor > default
+            if hasattr(self, 'batch_adapter') and self.batch_adapter:
+                processor_fn = self._create_batch_processor_fn(full_lattice_states=states)
+            elif self.moe_processor:
                 processor_fn = self._create_moe_processor_fn(full_lattice_states=states)
             else:
                 processor_fn = self._create_default_processor_fn()
@@ -330,6 +333,56 @@ class UnifiedSpatialOptimizer:
         self._record_performance(processing_time_ms, self.mode, num_cells)
 
         return result
+    
+    def _create_batch_processor_fn(
+        self, full_lattice_states: torch.Tensor = None
+    ) -> Callable:
+        """
+        Создает processor function для batch обработки через BatchAdapter
+        """
+        def batch_processor(current_state, neighbor_states, cell_idx, neighbor_indices):
+            try:
+                # Для batch обработки нам нужно обрабатывать chunk клеток сразу
+                # current_state может быть [chunk_size, state_size] или [1, state_size]
+                
+                if current_state.dim() == 1:
+                    current_state = current_state.unsqueeze(0)
+                    
+                chunk_size = current_state.shape[0]
+                
+                if chunk_size == 1:
+                    # Одиночная клетка - можем использовать batch adapter
+                    cell_indices = torch.tensor([cell_idx], device=current_state.device)
+                else:
+                    # Chunk клеток - создаем индексы
+                    # cell_idx должен быть началом chunk'а
+                    cell_indices = torch.arange(
+                        cell_idx, cell_idx + chunk_size, 
+                        device=current_state.device
+                    )
+                
+                # Используем batch adapter для обработки
+                result = self.batch_adapter.process_cells(
+                    cell_indices=cell_indices,
+                    full_lattice_states=full_lattice_states,
+                    external_inputs=None
+                )
+                
+                return result
+                
+            except Exception as e:
+                # Fallback к оригинальному MoE processor при ошибке
+                logger.warning(f"Batch processing failed, falling back to per-cell: {e}")
+                return self.moe_processor(
+                    current_state=current_state[0:1] if current_state.dim() > 1 else current_state.unsqueeze(0),
+                    neighbor_states=neighbor_states,
+                    cell_idx=cell_idx,
+                    neighbor_indices=neighbor_indices,
+                    spatial_optimizer=self,
+                    full_lattice_states=full_lattice_states,
+                )
+        
+        return batch_processor
 
     def _create_moe_processor_fn(
         self, full_lattice_states: torch.Tensor = None

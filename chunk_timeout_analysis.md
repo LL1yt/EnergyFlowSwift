@@ -1,12 +1,15 @@
 # Chunk Processing Timeout Analysis
+
 ## Investigation Results
 
 ### Problem Summary
+
 15+ second timeouts occurring during lattice forward passes with 15×15×15 grid (3375 cells)
 
 ### Root Causes Identified
 
 #### 1. **Per-Cell Processing Overhead** (Primary)
+
 - **3375 individual MoE forward passes** executed sequentially
 - Each forward pass involves:
   - Complex neighbor classification (3-tier system)
@@ -14,17 +17,20 @@
   - Gating network computation
   - Memory allocations for neighbor states
 
-#### 2. **Inefficient Chunk Sizing**
+#### 2. **Inefficient Chunk Sizing**(реализовано)
+
 - Current chunk size calculation produces chunks with 50-200+ cells
 - Large chunks create memory pressure and processing bottlenecks
 - No optimization for medium-sized grids (15×15×15)
 
 #### 3. **CUDA Synchronization Bottlenecks**
+
 - Blocking operations per cell processing
 - No batch processing optimization
 - Sequential neighbor state extraction
 
 #### 4. **Memory Pressure**
+
 - Excessive tensor allocations during neighbor calculations
 - Inefficient memory reuse patterns
 - CPU-GPU transfer overhead
@@ -32,9 +38,10 @@
 ### Performance Bottlenecks
 
 #### Processing Breakdown (Per Cell)
+
 ```
 Neighbor Classification: ~2-3ms
-Local Expert Processing: ~1-2ms  
+Local Expert Processing: ~1-2ms
 Functional Expert: ~3-5ms
 Distant Expert (CNF): ~5-8ms
 Gating Network: ~1ms
@@ -45,6 +52,7 @@ Total per cell: ~15-23ms
 ```
 
 #### Memory Usage Pattern
+
 - **States tensor**: 3375 × 24 = 81KB (small)
 - **Neighbor states**: Up to 26 neighbors × 3375 cells × 24 = 2.1MB
 - **Intermediate tensors**: 5-10MB per processing step
@@ -55,6 +63,7 @@ Total per cell: ~15-23ms
 #### Immediate Fixes (High Priority)
 
 1. **Reduce Chunk Size**
+
    ```python
    # For 15×15×15 grids, use max 8-16 cells per chunk
    optimal_chunk_size = 8  # Fixed for medium grids
@@ -62,6 +71,7 @@ Total per cell: ~15-23ms
    ```
 
 2. **Implement Batch Processing**
+
    ```python
    # Instead of per-cell processing:
    # Current: 3375 × individual forward passes
@@ -69,6 +79,7 @@ Total per cell: ~15-23ms
    ```
 
 3. **Pre-compute Neighbor Cache**
+
    ```python
    # Cache neighbor indices during initialization
    # Avoid recomputation for each cell
@@ -84,11 +95,13 @@ Total per cell: ~15-23ms
 #### Medium-term Optimizations
 
 1. **Vectorized Neighbor Operations**
+
    - Process entire chunks at once
    - Use tensor operations instead of loops
    - Implement batched neighbor state extraction
 
 2. **Memory Pool Optimization**
+
    - Reuse tensor buffers
    - Minimize allocations during processing
    - Pre-allocate working tensors
@@ -101,6 +114,7 @@ Total per cell: ~15-23ms
 ### Expected Performance Improvement
 
 #### Current vs Optimized
+
 ```
 Current: 15+ seconds (timeout)
 Optimized: 0.5-2 seconds (target)
@@ -108,6 +122,7 @@ Improvement: 7.5-30x faster processing
 ```
 
 #### Chunk Processing Impact
+
 ```
 15×15×15 grid (3375 cells)
 - Current: 1-2 large chunks → 15s timeout

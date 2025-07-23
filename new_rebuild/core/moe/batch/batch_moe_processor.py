@@ -161,32 +161,47 @@ class BatchMoEProcessor(nn.Module):
         # 5. Применяем gating network
         gating_start = time.time()
         
-        # Подготавливаем вход для gating network
-        if external_inputs is not None:
-            gating_input = torch.cat([current_states, external_inputs], dim=-1)
-        else:
-            gating_input = current_states
+        # Подготавливаем neighbor_activity - усредненная активность соседей
+        # Это упрощенная версия для batch обработки
+        neighbor_activity = torch.zeros_like(current_states)
         
-        # Получаем веса от gating network
-        gating_weights = self.gating_network(gating_input)  # [batch_size, 3]
+        # Заполняем neighbor_activity на основе соседей каждого типа
+        if "local" in neighbor_states_dict and batch_neighbors.local_mask.any():
+            local_activity = neighbor_states_dict["local"].mean(dim=1)  # Усредняем по соседям
+            neighbor_activity[batch_neighbors.local_mask] = local_activity
+            
+        if "functional" in neighbor_states_dict and batch_neighbors.functional_mask.any():
+            functional_activity = neighbor_states_dict["functional"].mean(dim=1)
+            neighbor_activity[batch_neighbors.functional_mask] += functional_activity
+            
+        if "distant" in neighbor_states_dict and batch_neighbors.distant_mask.any():
+            distant_activity = neighbor_states_dict["distant"].mean(dim=1)
+            neighbor_activity[batch_neighbors.distant_mask] += distant_activity
         
-        # 6. Комбинируем выходы экспертов
-        # Stack expert outputs: [batch_size, 3, state_size]
-        expert_stack = torch.stack([
+        # Нормализуем neighbor_activity
+        num_neighbor_types = (batch_neighbors.local_mask.float() + 
+                            batch_neighbors.functional_mask.float() + 
+                            batch_neighbors.distant_mask.float())
+        num_neighbor_types = num_neighbor_types.clamp(min=1).unsqueeze(-1)
+        neighbor_activity = neighbor_activity / num_neighbor_types
+        
+        # Подготавливаем список выходов экспертов
+        expert_outputs_list = [
             expert_outputs.local_outputs,
             expert_outputs.functional_outputs,
             expert_outputs.distant_outputs
-        ], dim=1)
+        ]
         
-        # Применяем веса: [batch_size, 3, 1] * [batch_size, 3, state_size]
-        gating_weights_expanded = gating_weights.unsqueeze(-1)
-        weighted_outputs = expert_stack * gating_weights_expanded
+        # Вызываем gating network с правильными аргументами
+        combined_output, gating_weights = self.gating_network(
+            current_state=current_states,
+            neighbor_activity=neighbor_activity,
+            expert_outputs=expert_outputs_list
+        )
         
-        # Суммируем взвешенные выходы
-        combined_output = weighted_outputs.sum(dim=1)  # [batch_size, state_size]
-        
-        # 7. Residual connection
-        final_output = combined_output + current_states
+        # 6. Результат уже скомбинирован внутри gating_network
+        # 7. Residual connection уже применен внутри gating_network
+        final_output = combined_output
         
         gating_time_ms = (time.time() - gating_start) * 1000
         

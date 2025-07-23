@@ -218,11 +218,42 @@ class BatchExpertProcessor:
         states = states.to(self.device)
         neighbor_states = neighbor_states.to(self.device)
         
-        result = expert(states, neighbor_states)
+        # Обрабатываем каждый элемент batch'а отдельно для совместимости с текущими экспертами
+        batch_size = states.shape[0]
+        results = []
         
-        # Обрабатываем различные форматы вывода экспертов
-        if isinstance(result, dict):
-            result = result.get("output", result.get("new_state", states))
+        for i in range(batch_size):
+            # Извлекаем состояние одной клетки
+            single_state = states[i:i+1]  # Сохраняем batch dimension [1, state_size]
+            
+            # Извлекаем соседей для этой клетки
+            if neighbor_states.dim() == 3:
+                single_neighbors = neighbor_states[i]  # [max_neighbors, state_size]
+                # Убираем padding (нулевые соседи)
+                non_zero_mask = single_neighbors.abs().sum(dim=-1) > 0
+                if non_zero_mask.any():
+                    single_neighbors = single_neighbors[non_zero_mask]
+                else:
+                    # Если нет соседей, создаем фиктивного
+                    single_neighbors = torch.zeros(1, self.state_size, device=self.device)
+            else:
+                single_neighbors = neighbor_states
+            
+            # Вызываем эксперта для одной клетки
+            single_result = expert(single_state, single_neighbors)
+            
+            # Обрабатываем результат
+            if isinstance(single_result, dict):
+                single_result = single_result.get("output", single_result.get("new_state", single_state))
+            
+            # Убеждаемся что результат имеет правильную форму
+            if single_result.dim() > 1:
+                single_result = single_result.squeeze(0)  # Убираем batch dimension
+                
+            results.append(single_result)
+        
+        # Стекаем результаты обратно в batch
+        result = torch.stack(results, dim=0)  # [batch_size, state_size]
         
         # Убеждаемся что размерности правильные
         if result.dim() > 2:
