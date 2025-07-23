@@ -390,34 +390,48 @@ class AdaptiveGPUChunker:
     def _calculate_optimal_chunk_size(self, available_memory_mb: float) -> int:
         config = get_project_config()
         memory_cfg = config.memory
-
-        total_cells = np.prod(self.dimensions)
-        target_memory_per_chunk_mb = (
-            available_memory_mb * 0.75 / self.config.max_chunks_in_memory
-        )
-        memory_per_cell_bytes = memory_cfg.memory_per_cell_base
-        cells_per_chunk = int(
-            target_memory_per_chunk_mb * 1024**2 / memory_per_cell_bytes
-        )
-        if cells_per_chunk <= 0:
-            chunk_size = max(self.dimensions) // memory_cfg.chunk_size_fallback_div
-        else:
-            chunk_size = max(
-                self.config.min_chunk_size, int(cells_per_chunk ** (1 / 3))
+        
+        # Determine optimal chunk size based on lattice dimensions
+        max_dim = max(self.dimensions)
+        
+        # For medium-sized grids (15x15x15), use smaller chunks to avoid timeouts
+        if max_dim <= 20:
+            # Use 8 cells per chunk for 15x15x15 grids as recommended in analysis
+            optimal_size = 8
+            logger.info(
+                f"📏 CHUNK SIZE: Using fixed size {optimal_size} for medium grid {self.dimensions}"
             )
-        # Используем эффективные размеры chunk'ов из конфигурации
-        config = get_project_config()
-        effective_max_chunk_size = config.effective_max_chunk_size
-        effective_min_chunk_size = config.effective_min_chunk_size
-
-        max_chunk_size = max(effective_max_chunk_size, effective_min_chunk_size)
-        min_chunk_size = effective_min_chunk_size
-        optimal_size = max(min_chunk_size, min(chunk_size, max_chunk_size))
+        elif max_dim <= 30:
+            # Slightly larger chunks for 30x30x30 grids
+            optimal_size = 12
+        else:
+            # For larger grids, calculate based on memory
+            total_cells = np.prod(self.dimensions)
+            target_memory_per_chunk_mb = (
+                available_memory_mb * 0.75 / self.config.max_chunks_in_memory
+            )
+            memory_per_cell_bytes = memory_cfg.memory_per_cell_base
+            cells_per_chunk = int(
+                target_memory_per_chunk_mb * 1024**2 / memory_per_cell_bytes
+            )
+            if cells_per_chunk <= 0:
+                chunk_size = max(self.dimensions) // memory_cfg.chunk_size_fallback_div
+            else:
+                chunk_size = max(
+                    self.config.min_chunk_size, int(cells_per_chunk ** (1 / 3))
+                )
+            
+            # Apply configured limits
+            effective_max_chunk_size = config.effective_max_chunk_size
+            effective_min_chunk_size = config.effective_min_chunk_size
+            
+            max_chunk_size = max(effective_max_chunk_size, effective_min_chunk_size)
+            min_chunk_size = effective_min_chunk_size
+            optimal_size = max(min_chunk_size, min(chunk_size, max_chunk_size))
 
         logger.info(
             f"📏 CHUNK SIZE CALCULATION: optimal={optimal_size}, "
-            f"effective_min={effective_min_chunk_size}, effective_max={effective_max_chunk_size}, "
-            f"computed_chunk={chunk_size}, memory={available_memory_mb:.1f}MB"
+            f"dimensions={self.dimensions}, memory={available_memory_mb:.1f}MB"
         )
 
         return optimal_size
