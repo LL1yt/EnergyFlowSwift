@@ -81,27 +81,27 @@ class AdaptiveMemoryPredictor:
         self.device_manager = get_device_manager()
         self.historical_usage = []
         config = get_project_config()
-        
+
         # Проверяем наличие необходимых конфигураций - без fallback!
         if not hasattr(config, "adaptive_chunker") or config.adaptive_chunker is None:
             raise ValueError(
                 "AdaptiveMemoryPredictor требует настроенную adaptive_chunker конфигурацию! "
                 "Убедитесь, что config.adaptive_chunker настроен в SimpleProjectConfig."
             )
-        
+
         if not hasattr(config, "memory") or config.memory is None:
             raise ValueError(
                 "AdaptiveMemoryPredictor требует настроенную memory конфигурацию! "
                 "Убедитесь, что config.memory настроен в SimpleProjectConfig."
             )
-        
+
         chunker_cfg = config.adaptive_chunker
         memory_cfg = config.memory
-        
+
         # Из adaptive_chunker config
         self.max_history = chunker_cfg.max_history
-        
-        # Из memory config  
+
+        # Из memory config
         self.memory_per_cell_base = memory_cfg.memory_per_cell_base
         self.memory_overhead_factor = memory_cfg.memory_overhead_factor
         self.min_available_memory_mb = memory_cfg.min_available_memory_mb
@@ -313,7 +313,9 @@ class AdaptiveGPUChunker:
         self.device = self.device_manager.get_device()
 
         # Memory management
-        self.memory_manager = get_memory_pool_manager()  # Пусть сам получает конфигурацию
+        self.memory_manager = (
+            get_memory_pool_manager()
+        )  # Пусть сам получает конфигурацию
 
         logger.info(
             f"🎯 AdaptiveGPUChunker создан: {len(self._chunks)} chunks на {self.device}"
@@ -332,8 +334,10 @@ class AdaptiveGPUChunker:
 
         # Отключаем чанкинг для маленьких решеток (оптимизация GPU утилизации)
         max_dimension = max(x_dim, y_dim, z_dim)
-        if max_dimension <= 32:  # Для решеток ≤32 обходим чанкинг
-            logger.info(f"🚀 Small lattice ({self.dimensions}) - disabling chunking for better GPU utilization")
+        if max_dimension <= 8:  # Для решеток ≤8 обходим чанкинг
+            logger.info(
+                f"🚀 Small lattice ({self.dimensions}) - disabling chunking for better GPU utilization"
+            )
             # Создаем один chunk для всей решетки
             chunk_info = self._create_adaptive_chunk_info(
                 0, (0, 0, 0), (x_dim, y_dim, z_dim), available_memory_mb
@@ -344,7 +348,7 @@ class AdaptiveGPUChunker:
         x_chunks = max(1, (x_dim + optimal_chunk_size - 1) // optimal_chunk_size)
         y_chunks = max(1, (y_dim + optimal_chunk_size - 1) // optimal_chunk_size)
         z_chunks = max(1, (z_dim + optimal_chunk_size - 1) // optimal_chunk_size)
-        
+
         logger.info(
             f"🔧 CHUNKER GRID: {x_chunks}×{y_chunks}×{z_chunks} = {x_chunks*y_chunks*z_chunks} chunks "
             f"for lattice {self.dimensions} with chunk_size {optimal_chunk_size}"
@@ -372,7 +376,7 @@ class AdaptiveGPUChunker:
                         (end_x, end_y, end_z),
                         available_memory_mb,
                     )
-                    
+
                     logger.debug_init(
                         f"📦 CHUNK {chunk_id}: size={len(chunk_info.cell_indices)} cells, "
                         f"coords=({start_x},{start_y},{start_z})-({end_x},{end_y},{end_z})"
@@ -386,7 +390,7 @@ class AdaptiveGPUChunker:
     def _calculate_optimal_chunk_size(self, available_memory_mb: float) -> int:
         config = get_project_config()
         memory_cfg = config.memory
-        
+
         total_cells = np.prod(self.dimensions)
         target_memory_per_chunk_mb = (
             available_memory_mb * 0.75 / self.config.max_chunks_in_memory
@@ -398,12 +402,14 @@ class AdaptiveGPUChunker:
         if cells_per_chunk <= 0:
             chunk_size = max(self.dimensions) // memory_cfg.chunk_size_fallback_div
         else:
-            chunk_size = max(self.config.min_chunk_size, int(cells_per_chunk ** (1 / 3)))
+            chunk_size = max(
+                self.config.min_chunk_size, int(cells_per_chunk ** (1 / 3))
+            )
         # Используем эффективные размеры chunk'ов из конфигурации
         config = get_project_config()
         effective_max_chunk_size = config.effective_max_chunk_size
         effective_min_chunk_size = config.effective_min_chunk_size
-        
+
         max_chunk_size = max(effective_max_chunk_size, effective_min_chunk_size)
         min_chunk_size = effective_min_chunk_size
         optimal_size = max(min_chunk_size, min(chunk_size, max_chunk_size))
@@ -478,7 +484,9 @@ class AdaptiveGPUChunker:
 
     def _compute_neighbor_chunks(self):
         """Вычисляет соседние chunk'и для каждого chunk'а"""
-        overlap = self.config.chunk_overlap if hasattr(self.config, "chunk_overlap") else 8
+        overlap = (
+            self.config.chunk_overlap if hasattr(self.config, "chunk_overlap") else 8
+        )
 
         for chunk in self._chunks:
             neighbor_chunk_ids = []
@@ -522,11 +530,15 @@ class AdaptiveGPUChunker:
             # Устанавливаем приоритет на основе memory pressure
             if chunk.memory_pressure_level > self.config.memory_pressure_high:
                 chunk.processing_priority = max(
-                    1, chunk.processing_priority - self.config.processing_priority_low_delta
+                    1,
+                    chunk.processing_priority
+                    - self.config.processing_priority_low_delta,
                 )
             elif chunk.memory_pressure_level < self.config.memory_pressure_low:
                 chunk.processing_priority = min(
-                    100, chunk.processing_priority + self.config.processing_priority_high_delta
+                    100,
+                    chunk.processing_priority
+                    + self.config.processing_priority_high_delta,
                 )
 
     def get_chunk_by_coords(self, coords: Coordinates3D) -> AdaptiveChunkInfo:
@@ -620,18 +632,22 @@ class AdaptiveGPUChunker:
             indices = torch.tensor(
                 chunk_info.cell_indices, device="cpu", dtype=torch.long
             )
-            
+
             # Handle batch dimension properly
             if all_states.dim() == 3:  # [batch, cells, features]
                 batch_size, num_cells, features = all_states.shape
                 max_cell_index = num_cells - 1
-                
+
                 # Validate indices
                 if torch.any(indices > max_cell_index):
                     invalid_indices = indices[indices > max_cell_index]
-                    logger.error(f"❌ INVALID CELL INDICES in prefetch: {invalid_indices.tolist()} > {max_cell_index}")
-                    raise RuntimeError(f"Cell index out of bounds in prefetch: max valid cell index is {max_cell_index}")
-                
+                    logger.error(
+                        f"❌ INVALID CELL INDICES in prefetch: {invalid_indices.tolist()} > {max_cell_index}"
+                    )
+                    raise RuntimeError(
+                        f"Cell index out of bounds in prefetch: max valid cell index is {max_cell_index}"
+                    )
+
                 # Extract states for all batches: [:, indices, :]
                 chunk_info.prefetched_data = all_states[:, indices, :].to(
                     self.device_manager.get_device(), non_blocking=True
@@ -641,7 +657,7 @@ class AdaptiveGPUChunker:
                 chunk_info.prefetched_data = all_states[indices].to(
                     self.device_manager.get_device(), non_blocking=True
                 )
-                
+
             self.prefetch_events[chunk_id].record()
 
     def process_chunk_async(

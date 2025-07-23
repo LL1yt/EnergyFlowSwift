@@ -457,8 +457,8 @@ class AdaptiveChunkerSettings:
     max_chunks_in_memory: int = 8
     max_concurrent_chunks: int = 4
     chunk_overlap: int = 8
-    min_chunk_size: int = 62
-    max_chunk_size: int = 512
+    min_chunk_size: int = 8
+    max_chunk_size: int = 16
     # max_chunk_size: int = 64  # Для тестовых (8,8,8) решеток
     memory_safety_factor: float = 0.75
     enable_prefetching: bool = True
