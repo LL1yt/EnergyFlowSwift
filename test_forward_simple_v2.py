@@ -8,7 +8,10 @@ import time
 from new_rebuild.config import set_project_config, create_debug_config
 
 config = create_debug_config()
-config.lattice.adaptive_radius_ratio = 0.2  # radius = 2.0 для 10x10x10
+# Увеличиваем радиус, чтобы захватить больше соседей
+config.lattice.adaptive_radius_ratio = 0.4  # radius = 6.0 для 15x15x15, покроет distant_threshold = 5.94
+# Убеждаемся, что кэш включен
+config.cache.enabled = True
 # Disable debug mode for maximum performance
 config.logging.debug_mode = False
 set_project_config(config)

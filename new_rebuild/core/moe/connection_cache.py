@@ -118,6 +118,14 @@ class ConnectionCacheManager:
 
         # Инициализируем distance calculator
         self.distance_calculator = DistanceCalculator(lattice_dimensions)
+        
+        # Получаем state_size из конфигурации
+        try:
+            self.state_size = config.model.state_size
+            logger.debug_init(f"[ConnectionCacheManager.__init__] Получен state_size из конфигурации: {self.state_size}")
+        except Exception as e:
+            logger.error(f"Failed to get state_size from config: {e}")
+            raise
 
         # GPU настройки
         # Проверяем доступность GPU
@@ -182,12 +190,22 @@ class ConnectionCacheManager:
             True если кэш успешно загружен, иначе False.
         """
         try:
-            cache_key = self._get_cache_key()
-            cache_file = f"cache/connection_cache_{cache_key}.pkl"
-
+            # Пробуем сначала загрузить кэш с новым описательным именем
+            descriptive_filename = self._get_descriptive_cache_filename()
+            cache_file = f"cache/connection_{descriptive_filename}.pkl"
+            
+            # Если файл с новым именем не найден, пробуем старое имя для совместимости
             if not os.path.exists(cache_file):
-                logger.info(f"Кэш файл не найден: {cache_file}")
-                return False
+                cache_key = self._get_cache_key()
+                cache_file = f"cache/connection_cache_{cache_key}.pkl"
+                
+                if not os.path.exists(cache_file):
+                    logger.info(f"Кэш файл не найден ни с новым, ни со старым именем")
+                    return False
+                else:
+                    logger.info(f"Используем старое имя кэш файла: {cache_file}")
+            else:
+                logger.info(f"Используем новое описательное имя кэш файла: {cache_file}")
 
             with open(cache_file, "rb") as f:
                 cache_data = pickle.load(f)
@@ -293,13 +311,39 @@ class ConnectionCacheManager:
 
         key_str = str(sorted(key_data.items()))
         return hashlib.md5(key_str.encode()).hexdigest()
+    
+    def _get_descriptive_cache_filename(self) -> str:
+        """Генерирует описательное имя файла кэша с датой и ключевыми параметрами"""
+        from datetime import datetime
+        
+        # Получаем текущую дату
+        current_date = datetime.now().strftime("%Y%m%d")
+        
+        # Извлекаем размеры решетки
+        x, y, z = self.lattice_dimensions
+        lattice_str = f"{x}x{y}x{z}"
+        
+        # Получаем adaptive_radius_ratio из конфигурации
+        config = get_project_config()
+        adaptive_radius_ratio = getattr(config, 'adaptive_radius_ratio', 'unknown')
+        
+        # Форматируем adaptive_radius для краткости
+        adaptive_radius_str = f"{self.adaptive_radius:.2f}"
+        
+        # Создаем короткий hash для уникальности
+        hash_key = self._get_cache_key()[:8]  # Первые 8 символов хэша
+        
+        # Составляем описательное имя
+        descriptive_name = f"cache_{current_date}_{lattice_str}_r{adaptive_radius_str}_ar{adaptive_radius_ratio}_{hash_key}"
+        
+        return descriptive_name
 
     def _save_cache_to_disk(self):
         """Сохранение кэша на диск с метаданными"""
         try:
             os.makedirs("cache", exist_ok=True)
-            cache_key = self._get_cache_key()
-            cache_file = f"cache/connection_cache_{cache_key}.pkl"
+            descriptive_filename = self._get_descriptive_cache_filename()
+            cache_file = f"cache/connection_{descriptive_filename}.pkl"
 
             # Подготавливаем данные для сохранения с полной совместимостью
             cache_data = {
@@ -337,12 +381,15 @@ class ConnectionCacheManager:
         Основной метод для предвычисления всех связей.
         Использует GPU для ускорения если доступно.
         """
+        logger.info(f"🔍 precompute_all_connections called with force_rebuild={force_rebuild}, is_precomputed={self.is_precomputed}")
+        
         if self.is_precomputed and not force_rebuild:
             logger.info("✅ Кэш уже в памяти, переиспользование.")
             return
 
         if not force_rebuild and self._load_cache_from_disk():
             self.is_precomputed = True
+            logger.info("✅ Кэш загружен с диска")
             return
 
         # --- Логика пересоздания кэша ---
@@ -356,6 +403,7 @@ class ConnectionCacheManager:
         for cell_idx in range(self.total_cells):
             neighbors = all_neighbors[cell_idx]
             if not neighbors:
+                logger.warning(f"Клетка {cell_idx} не имеет соседей, но в теории такого не может быть, так что нужно подробнее рассмотреть этот момент")
                 continue
 
             # Классифицируем связи для этой клетки
@@ -491,6 +539,15 @@ class ConnectionCacheManager:
             logger.info(f"   Среднее количество соседей на клетку: {avg_neighbors:.1f}")
             logger.info(f"   Используемый порог: {self.distant_threshold} (distant_threshold)")
             
+            # ВАЖНО: Проверка, что все клетки имеют соседей
+            cells_without_neighbors = [idx for idx, neighs in all_neighbors.items() if not neighs]
+            if cells_without_neighbors:
+                logger.error(f"❌ ОШИБКА: {len(cells_without_neighbors)} клеток без соседей!")
+                logger.error(f"   Примеры изолированных клеток: {cells_without_neighbors[:10]}")
+                logger.error(f"   Это невозможно в 3D решетке! Проверьте пороги:")
+                logger.error(f"   - distant_threshold = {self.distant_threshold}")
+                logger.error(f"   - lattice_dimensions = {self.lattice_dimensions}")
+            
             return all_neighbors
 
         except Exception as e:
@@ -586,9 +643,12 @@ class ConnectionCacheManager:
         if self._all_neighbors_cache is None:
             logger.warning("⚠️ _all_neighbors_cache not initialized, computing neighbors now...")
             self._all_neighbors_cache = self._compute_all_neighbors()
+            logger.info(f"✅ _all_neighbors_cache computed, total cells: {len(self._all_neighbors_cache)}")
             
         if cell_idx not in self._all_neighbors_cache:
             logger.warning(f"Cell {cell_idx} not found in cache, returning empty neighbors")
+            logger.debug(f"Cache keys sample: {list(self._all_neighbors_cache.keys())[:10] if self._all_neighbors_cache else 'Empty'}")
+            logger.debug(f"Total cells in cache: {len(self._all_neighbors_cache) if self._all_neighbors_cache else 0}")
             return {
                 "local": {"indices": [], "states": torch.empty(0, self.state_size), "connections": []},
                 "functional": {"indices": [], "states": torch.empty(0, self.state_size), "connections": []},

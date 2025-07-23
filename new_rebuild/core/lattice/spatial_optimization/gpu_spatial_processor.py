@@ -839,10 +839,17 @@ class GPUSpatialProcessor:
                         neighbor_indices.tolist() if isinstance(neighbor_indices, torch.Tensor) else neighbor_indices
                     )
                     
-                    if all_states.dim() == 3:  # [batch, cells, features]
-                        processed_states_list.append(processed_state.squeeze(1))  # Убираем размерность клетки
+                    # Проверяем, если результат - словарь (от MoE processor)
+                    if isinstance(processed_state, dict):
+                        # Извлекаем новое состояние из словаря
+                        actual_state = processed_state.get('new_state', processed_state.get('output', cell_state))
                     else:
-                        processed_states_list.append(processed_state.squeeze(0))
+                        actual_state = processed_state
+                    
+                    if all_states.dim() == 3:  # [batch, cells, features]
+                        processed_states_list.append(actual_state.squeeze(1))  # Убираем размерность клетки
+                    else:
+                        processed_states_list.append(actual_state.squeeze(0))
                 except Exception as cell_error:
                     logger.warning(f"⚠️ Ошибка обработки клетки {cell_idx.item()} в chunk {chunk_info.chunk_id}: {cell_error}")
                     # Используем исходное состояние в случае ошибки

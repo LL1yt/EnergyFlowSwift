@@ -911,7 +911,7 @@ class ModePresets:
 
         # Adaptive radius settings for small lattice
         lattice_adaptive_radius_ratio: float = (
-            0.2  # Much smaller ratio for debug mode (15% of max dimension)
+            0.4  # Much smaller ratio for debug mode (15% of max dimension)
         )
 
         # Model

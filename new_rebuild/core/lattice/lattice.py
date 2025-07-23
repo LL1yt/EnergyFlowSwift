@@ -85,8 +85,8 @@ class Lattice3D(nn.Module):
         self.moe_processor = self._create_moe_processor()
         
         # Создаем batch adapter для эффективной обработки
-        from ..moe.batch import BatchAdapter
-        self.batch_adapter = BatchAdapter(self.moe_processor)
+        from ..moe.batch import BatchProcessingAdapter
+        self.batch_adapter = BatchProcessingAdapter(self.moe_processor)
 
         # Создаем унифицированный оптимизатор с MoE processor
         self.spatial_optimizer = create_unified_spatial_optimizer(
