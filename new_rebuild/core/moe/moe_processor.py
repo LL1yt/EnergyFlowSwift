@@ -300,6 +300,17 @@ class MoEConnectionProcessor(nn.Module):
         current_state = self.device_manager.ensure_device(current_state)
         if external_input is not None:
             external_input = self.device_manager.ensure_device(external_input)
+            
+        # Проверяем размерность current_state и приводим к правильной форме
+        if current_state.dim() == 1:
+            # Если одномерный [state_size], добавляем batch dimension
+            current_state = current_state.unsqueeze(0)  # [1, state_size]
+        elif current_state.dim() == 3:
+            # Если трехмерный [batch, 1, state_size], убираем лишнее измерение
+            current_state = current_state.squeeze(1)  # [batch, state_size]
+            if current_state.shape[0] > 1:
+                # Берем только первую клетку из батча
+                current_state = current_state[0:1]  # [1, state_size]
         
         # Cache-based classification results (no logging for performance)
 
@@ -325,6 +336,9 @@ class MoEConnectionProcessor(nn.Module):
                 with torch.cuda.stream(local_stream):
                     if local_data["indices"]:
                         local_neighbor_states = local_data["states"]
+                        # Добавляем batch dimension к neighbor_states если нужно
+                        if local_neighbor_states.dim() == 2:
+                            local_neighbor_states = local_neighbor_states.unsqueeze(0)  # [1, num_neighbors, state_size]
                         def local_expert_wrapper(current, neighbors):
                             res = self.local_expert(current, neighbors)
                             if isinstance(res, dict):
@@ -345,6 +359,9 @@ class MoEConnectionProcessor(nn.Module):
                 with torch.cuda.stream(functional_stream):
                     if functional_data["indices"]:
                         functional_neighbor_states = functional_data["states"]
+                        # Добавляем batch dimension к neighbor_states если нужно
+                        if functional_neighbor_states.dim() == 2:
+                            functional_neighbor_states = functional_neighbor_states.unsqueeze(0)  # [1, num_neighbors, state_size]
                         def functional_expert_wrapper(current, neighbors):
                             res = self.functional_expert(current, neighbors)
                             if isinstance(res, dict):
@@ -371,6 +388,9 @@ class MoEConnectionProcessor(nn.Module):
                     with torch.cuda.stream(distant_stream):
                         if distant_data["indices"]:
                             distant_neighbor_states = distant_data["states"]
+                            # Добавляем batch dimension к neighbor_states если нужно
+                            if distant_neighbor_states.dim() == 2:
+                                distant_neighbor_states = distant_neighbor_states.unsqueeze(0)  # [1, num_neighbors, state_size]
                             def distant_expert_wrapper(current, neighbors):
                                 res = self.distant_expert(current, neighbors)
                                 if isinstance(res, dict):
@@ -399,6 +419,9 @@ class MoEConnectionProcessor(nn.Module):
             # Local Expert
             if local_data["indices"]:
                 local_neighbor_states = local_data["states"]
+                # Добавляем batch dimension к neighbor_states если нужно
+                if local_neighbor_states.dim() == 2:
+                    local_neighbor_states = local_neighbor_states.unsqueeze(0)  # [1, num_neighbors, state_size]
                 def local_expert_wrapper(current, neighbors):
                     res = self.local_expert(current, neighbors)
                     if isinstance(res, dict):
@@ -419,6 +442,9 @@ class MoEConnectionProcessor(nn.Module):
             # Functional Expert
             if functional_data["indices"]:
                 functional_neighbor_states = functional_data["states"]
+                # Добавляем batch dimension к neighbor_states если нужно
+                if functional_neighbor_states.dim() == 2:
+                    functional_neighbor_states = functional_neighbor_states.unsqueeze(0)  # [1, num_neighbors, state_size]
                 def functional_expert_wrapper(current, neighbors):
                     res = self.functional_expert(current, neighbors)
                     if isinstance(res, dict):
@@ -444,6 +470,9 @@ class MoEConnectionProcessor(nn.Module):
             # Distant Expert (только если CNF включен)
             if self.enable_cnf and distant_data["indices"]:
                 distant_neighbor_states = distant_data["states"]
+                # Добавляем batch dimension к neighbor_states если нужно
+                if distant_neighbor_states.dim() == 2:
+                    distant_neighbor_states = distant_neighbor_states.unsqueeze(0)  # [1, num_neighbors, state_size]
                 def distant_expert_wrapper(current, neighbors):
                     res = self.distant_expert(current, neighbors)
                     if isinstance(res, dict):

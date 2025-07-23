@@ -371,16 +371,14 @@ class UnifiedSpatialOptimizer:
                 return result
                 
             except Exception as e:
-                # Fallback к оригинальному MoE processor при ошибке
-                logger.warning(f"Batch processing failed, falling back to per-cell: {e}")
-                return self.moe_processor(
-                    current_state=current_state[0:1] if current_state.dim() > 1 else current_state.unsqueeze(0),
-                    neighbor_states=neighbor_states,
-                    cell_idx=cell_idx,
-                    neighbor_indices=neighbor_indices,
-                    spatial_optimizer=self,
-                    full_lattice_states=full_lattice_states,
-                )
+                # Не используем fallback - выбрасываем ошибку для отладки
+                import traceback
+                logger.error(f"❌ Batch processing failed: {e}")
+                logger.error(f"Traceback:\n{traceback.format_exc()}")
+                logger.error(f"cell_indices type: {type(cell_indices)}")
+                logger.error(f"current_state shape: {current_state.shape}")
+                logger.error(f"full_lattice_states shape: {full_lattice_states.shape}")
+                raise RuntimeError(f"Batch processing failed: {e}") from e
         
         return batch_processor
 

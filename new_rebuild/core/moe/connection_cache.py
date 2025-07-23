@@ -325,7 +325,7 @@ class ConnectionCacheManager:
         
         # Получаем adaptive_radius_ratio из конфигурации
         config = get_project_config()
-        adaptive_radius_ratio = getattr(config, 'adaptive_radius_ratio', 'unknown')
+        adaptive_radius_ratio = getattr(config, 'lattice_adaptive_radius_ratio', 'unknown')
         
         # Форматируем adaptive_radius для краткости
         adaptive_radius_str = f"{self.adaptive_radius:.2f}"

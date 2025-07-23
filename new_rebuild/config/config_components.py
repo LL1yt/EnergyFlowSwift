@@ -970,7 +970,12 @@ class ModePresets:
         """Настройки для EXPERIMENT режима - исследования и эксперименты"""
 
         # Lattice
-        lattice_dimensions: Tuple[int, int, int] = (30, 30, 30)
+        lattice_dimensions: Tuple[int, int, int] = (40, 40, 40)
+
+        # Adaptive radius settings for small lattice
+        lattice_adaptive_radius_ratio: float = (
+            0.3  # Much smaller ratio for debug mode (15% of max dimension)
+        )
 
         # Model
         model_state_size: int = 64  # Общий для всех экспертов
@@ -1026,7 +1031,12 @@ class ModePresets:
         """Настройки для OPTIMIZED режима - финальные прогоны"""
 
         # Lattice
-        lattice_dimensions: Tuple[int, int, int] = (50, 50, 50)
+        lattice_dimensions: Tuple[int, int, int] = (100, 100, 100)
+
+        # Adaptive radius settings for small lattice
+        lattice_adaptive_radius_ratio: float = (
+            0.2  # Much smaller ratio for debug mode (15% of max dimension)
+        )
 
         # Model
         model_state_size: int = 128  # Общий для всех экспертов
