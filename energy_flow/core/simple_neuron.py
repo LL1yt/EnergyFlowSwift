@@ -86,7 +86,7 @@ class SimpleNeuron(nn.Module):
         # Подсчет параметров
         total_params = sum(p.numel() for p in self.parameters())
         logger.info(f"SimpleNeuron initialized with {total_params:,} parameters")
-        logger.debug(f"Architecture: input={input_dim} → hidden={hidden_dim} → output={output_dim}")
+        logger.debug(f"Architecture: input={input_dim} → hidden={self.hidden_dim} → output={self.output_dim}")
     
     def _init_weights(self):
         """Инициализация весов Xavier/He"""

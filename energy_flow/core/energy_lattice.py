@@ -78,6 +78,9 @@ class EnergyLattice(nn.Module):
         self.active_flows: Dict[int, EnergyFlow] = {}
         self.next_flow_id = 0
         
+        # Буфер для выходных потоков (буферизованный сбор)
+        self.output_buffer: Dict[Tuple[int, int], List[EnergyFlow]] = {}  # (x,y) -> [flows]
+        
         # Статистика
         self.stats = {
             'total_created': 0,
@@ -195,11 +198,10 @@ class EnergyLattice(nn.Module):
         flow.hidden_state = new_hidden
         flow.age += 1
         
-        # Проверяем достижение выходной стороны
+        # Буферизуем потоки при достижении выхода
         if new_position[2] >= self.depth - 1:
-            flow.is_active = False
-            self.stats['total_completed'] += 1
-            logger.debug(f"Flow {flow_id} reached output side at age {flow.age}")
+            self._buffer_output_flow(flow_id)
+            logger.debug(f"Flow {flow_id} reached output side at age {flow.age} (buffered for collection)")
     
     def spawn_flows(self, parent_id: int, spawn_energies: List[torch.Tensor]) -> List[int]:
         """
@@ -245,71 +247,150 @@ class EnergyLattice(nn.Module):
                 self.stats['total_died'] += 1
             logger.debug(f"Flow {flow_id} deactivated: {reason}")
     
-    def collect_output_energy(self) -> Tuple[torch.Tensor, List[int]]:
+    def _buffer_output_flow(self, flow_id: int):
+        """Помещает поток в буфер выходных потоков"""
+        if flow_id not in self.active_flows:
+            return
+        
+        flow = self.active_flows[flow_id]
+        
+        # Корректируем позицию если поток вышел за пределы
+        if flow.position[2] > self.depth - 1:
+            corrected_flow = EnergyFlow(
+                id=flow.id,
+                position=torch.tensor([
+                    flow.position[0], 
+                    flow.position[1], 
+                    self.depth - 1  # Устанавливаем на выходную сторону
+                ], device=self.device),
+                energy=flow.energy,
+                hidden_state=flow.hidden_state,
+                parent_id=flow.parent_id,
+                age=flow.age,
+                is_active=flow.is_active
+            )
+            buffered_flow = corrected_flow
+        else:
+            buffered_flow = flow
+        
+        # Определяем клетку на выходной стороне
+        x = int(torch.clamp(buffered_flow.position[0], 0, self.width - 1).item())
+        y = int(torch.clamp(buffered_flow.position[1], 0, self.height - 1).item())
+        key = (x, y)
+        
+        # Добавляем в буфер
+        if key not in self.output_buffer:
+            self.output_buffer[key] = []
+        self.output_buffer[key].append(buffered_flow)
+        
+        # Деактивируем поток после буферизации
+        flow.is_active = False
+        self.stats['total_completed'] += 1
+        
+        logger.debug(f"Flow {flow_id} buffered to output cell ({x}, {y})")
+    
+    def get_buffered_flows_count(self) -> int:
+        """Возвращает количество потоков в выходном буфере"""
+        return sum(len(flows) for flows in self.output_buffer.values())
+    
+    def clear_output_buffer(self):
+        """Очищает буфер выходных потоков"""
+        cleared_count = self.get_buffered_flows_count()
+        self.output_buffer.clear()
+        logger.debug(f"Cleared output buffer ({cleared_count} flows)")
+    
+    def collect_buffered_energy(self) -> Tuple[torch.Tensor, List[int]]:
         """
-        Собирает энергию с выходной стороны (z=depth-1)
+        Собирает энергию из буфера выходных потоков
         
         Returns:
-            output_embeddings: [num_outputs, embedding_dim] - собранные эмбеддинги
-            flow_ids: ID потоков, достигших выхода
+            output_embeddings: [batch, embedding_dim] - собранные эмбеддинги
+            flow_ids: ID потоков в буфере
         """
-        output_flows = []
-        flow_ids = []
-        
-        # Собираем потоки на выходной стороне
-        for flow_id, flow in self.active_flows.items():
-            if not flow.is_active:
-                continue
-                
-            # Проверяем, достиг ли поток выходной стороны
-            z_pos = flow.position[2].item()
-            if z_pos >= self.depth - 1:
-                output_flows.append(flow)
-                flow_ids.append(flow_id)
-        
-        if not output_flows:
-            # Возвращаем пустой тензор правильной размерности
+        if not self.output_buffer:
+            logger.debug("No flows in output buffer")
             return torch.zeros(0, self.embedding_dim, device=self.device), []
         
-        # Группируем по выходным клеткам
-        output_grid = {}  # (x, y) -> List[energy]
-        
-        for flow in output_flows:
-            x = int(torch.clamp(flow.position[0], 0, self.width - 1).item())
-            y = int(torch.clamp(flow.position[1], 0, self.height - 1).item())
-            
-            key = (x, y)
-            if key not in output_grid:
-                output_grid[key] = []
-            output_grid[key].append(flow.energy)
-        
-        # Агрегируем энергии в клетках
+        flow_ids = []
+        # Используем существующую логику взвешенного усреднения
         output_embeddings = []
+        aggregation_stats = []
+        
+        logger.debug(f"Collecting from buffer: {len(self.output_buffer)} cells with flows")
         
         for y in range(self.height):
             for x in range(self.width):
                 key = (x, y)
-                if key in output_grid:
-                    # Усредняем энергии в клетке
-                    cell_energies = torch.stack(output_grid[key])
-                    aggregated = cell_energies.mean(dim=0)
+                if key in self.output_buffer:
+                    flows_in_cell = self.output_buffer[key]
+                    
+                    # Собираем ID всех потоков в этой клетке
+                    for flow in flows_in_cell:
+                        flow_ids.append(flow.id)
+                    
+                    if len(flows_in_cell) == 1:
+                        # Один поток - просто берем его энергию
+                        aggregated = flows_in_cell[0].energy
+                        stats = f"single_flow(id={flows_in_cell[0].id})"
+                    else:
+                        # Несколько потоков - взвешенное усреднение
+                        energies = torch.stack([flow.energy for flow in flows_in_cell])
+                        
+                        # Вычисляем веса (энергия * возраст)
+                        weights = []
+                        for flow in flows_in_cell:
+                            energy_magnitude = torch.norm(flow.energy).item()
+                            age_factor = 1.0 + flow.age * 0.1
+                            weight = energy_magnitude * age_factor
+                            weights.append(weight)
+                        
+                        weights = torch.tensor(weights, device=self.device)
+                        weights = weights / weights.sum()  # Нормализуем
+                        
+                        # Взвешенное усреднение
+                        aggregated = (energies * weights.unsqueeze(-1)).sum(dim=0)
+                        
+                        # Статистика
+                        flow_ids_cell = [flow.id for flow in flows_in_cell]
+                        avg_age = sum(flow.age for flow in flows_in_cell) / len(flows_in_cell)
+                        stats = f"weighted_avg({len(flows_in_cell)}_flows, ids={flow_ids_cell}, avg_age={avg_age:.1f})"
+                        
+                        logger.debug(f"Cell ({x},{y}): {stats}")
+                    
+                    aggregation_stats.append(stats)
                 else:
                     # Пустая клетка
                     aggregated = torch.zeros(self.embedding_dim, device=self.device)
                 
                 output_embeddings.append(aggregated)
         
-        # Собираем в один тензор
+        # Собираем в тензор
         output_embeddings = torch.stack(output_embeddings)  # [width*height, embedding_dim]
         
-        # Объединяем части эмбеддингов обратно в 768D
-        # Reshape и flatten для восстановления исходного эмбеддинга
+        # Восстанавливаем исходную размерность эмбеддинга
         output_embeddings = output_embeddings.view(-1)[:self.config.input_embedding_dim]
         output_embeddings = output_embeddings.unsqueeze(0)  # [1, 768]
         
-        logger.info(f"Collected energy from {len(output_flows)} flows at output side")
+        # Статистика
+        cells_with_flows = len([stats for stats in aggregation_stats if 'flow' in stats])
+        multi_flow_cells = len([stats for stats in aggregation_stats if 'weighted_avg' in stats])
+        
+        logger.info(f"Collected energy from {len(flow_ids)} buffered flows")
+        logger.info(f"Output grid: {cells_with_flows}/{self.width*self.height} cells with flows, "
+                   f"{multi_flow_cells} cells with multiple flows")
         
         return output_embeddings, flow_ids
+    
+    def collect_output_energy(self) -> Tuple[torch.Tensor, List[int]]:
+        """
+        Совместимость: собирает энергию из буфера
+        
+        Returns:
+            output_embeddings: [batch, embedding_dim] - собранные эмбеддинги
+            flow_ids: ID потоков, достигших выхода
+        """
+        # Просто используем новый буферизованный метод
+        return self.collect_buffered_energy()
     
     def _cleanup_inactive_flows(self):
         """Удаляет неактивные потоки из памяти"""
@@ -334,6 +415,7 @@ class EnergyLattice(nn.Module):
     def reset(self):
         """Сбрасывает состояние решетки"""
         self.active_flows.clear()
+        self.output_buffer.clear()  # Очищаем буфер
         self.next_flow_id = 0
         self.stats = {
             'total_created': 0,

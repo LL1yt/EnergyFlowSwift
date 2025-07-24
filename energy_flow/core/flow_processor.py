@@ -96,21 +96,26 @@ class FlowProcessor(nn.Module):
         # Основной цикл распространения
         for step in range(max_steps):
             active_flows = self.lattice.get_active_flows()
-            if not active_flows:
-                logger.info(f"No active flows at step {step}, stopping")
+            buffered_count = self.lattice.get_buffered_flows_count()
+            
+            # Проверяем условие завершения: нет активных потоков И нет потоков в буфере
+            if not active_flows and buffered_count == 0:
+                logger.info(f"No active flows and empty buffer at step {step}, stopping")
                 break
             
-            # Один шаг распространения
-            self.step(active_flows)
+            # Если есть активные потоки - обрабатываем их
+            if active_flows:
+                self.step(active_flows)
             
             # Логирование прогресса
             if step % self.config.log_interval == 0:
                 stats = self.lattice.get_statistics()
+                buffered_count = self.lattice.get_buffered_flows_count()
                 logger.info(f"Step {step}: {stats['current_active']} active flows, "
-                          f"{stats['total_completed']} completed")
+                          f"{stats['total_completed']} completed, {buffered_count} buffered")
         
-        # Собираем выходную энергию
-        output_embeddings, completed_flows = self.lattice.collect_output_energy()
+        # Собираем выходную энергию из буфера (гибридный подход)
+        output_embeddings, completed_flows = self._collect_final_output()
         
         # Если нет выходов, возвращаем нули
         if output_embeddings.shape[0] == 0:
@@ -134,6 +139,43 @@ class FlowProcessor(nn.Module):
                    f"{final_stats['total_died']} died")
         
         return output_embeddings
+    
+    def _collect_final_output(self) -> Tuple[torch.Tensor, List[int]]:
+        """
+        Гибридный сбор финальной энергии
+        
+        Проверяет активные потоки и буфер, собирает энергию когда все готово.
+        
+        Returns:
+            output_embeddings: [batch, embedding_dim] - собранные эмбеддинги
+            completed_flows: ID завершенных потоков
+        """
+        active_flows = self.lattice.get_active_flows()
+        buffered_count = self.lattice.get_buffered_flows_count()
+        
+        logger.debug(f"Final collection: {len(active_flows)} active flows, {buffered_count} buffered flows")
+        
+        # Если есть активные потоки на выходной стороне - добавляем их в буфер
+        active_at_output = 0
+        for flow in active_flows:
+            z_pos = flow.position[2].item()
+            if z_pos >= self.config.lattice_depth - 1:
+                # Поток достиг выхода но еще не буферизован
+                self.lattice._buffer_output_flow(flow.id)
+                active_at_output += 1
+        
+        if active_at_output > 0:
+            logger.debug(f"Moved {active_at_output} remaining flows to output buffer")
+        
+        # Теперь собираем все из буфера
+        output_embeddings, completed_flows = self.lattice.collect_buffered_energy()
+        
+        # Очищаем буфер после сбора (FlowProcessor координирует жизненный цикл)
+        if completed_flows:
+            self.lattice.clear_output_buffer()
+            logger.info(f"Collected and cleared {len(completed_flows)} flows from output buffer")
+        
+        return output_embeddings, completed_flows
     
     def step(self, active_flows: Optional[List] = None):
         """
@@ -175,8 +217,8 @@ class FlowProcessor(nn.Module):
         energies = torch.stack([f.energy for f in flows])     # [batch, embedding_dim]
         hidden_states = torch.stack([f.hidden_state for f in flows])  # [batch, layers, hidden]
         
-        # Транспонируем hidden states для GRU
-        hidden_states = hidden_states.transpose(0, 1)  # [layers, batch, hidden]
+        # Транспонируем hidden states для GRU и делаем непрерывными
+        hidden_states = hidden_states.transpose(0, 1).contiguous()  # [layers, batch, hidden]
         
         # 1. SimpleNeuron обрабатывает позиции и энергии
         neuron_output = self.neuron(positions, energies)  # [batch, neuron_output_dim]
@@ -189,8 +231,8 @@ class FlowProcessor(nn.Module):
             positions
         )
         
-        # Транспонируем обратно
-        new_hidden = new_hidden.transpose(0, 1)  # [batch, layers, hidden]
+        # Транспонируем обратно и делаем непрерывными
+        new_hidden = new_hidden.transpose(0, 1).contiguous()  # [batch, layers, hidden]
         
         # 3. Обрабатываем результаты для каждого потока
         for idx, flow in enumerate(flows):

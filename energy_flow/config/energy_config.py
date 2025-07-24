@@ -33,8 +33,8 @@ class EnergyConfig:
     carrier_dropout: float = 0.1
     
     # SimpleNeuron
-    neuron_hidden_dim: int = 64
-    neuron_output_dim: int = 128  # Должен совпадать с входом GRU
+    neuron_hidden_dim: int = 32
+    neuron_output_dim: int = 64  # Должен совпадать с входом GRU
     
     # Размерности эмбеддингов
     input_embedding_dim: int = 768  # Стандартный размер от language models
@@ -104,7 +104,8 @@ def create_debug_config() -> EnergyConfig:
         lattice_width=20,
         lattice_height=20,
         lattice_depth=10,
-        max_active_flows=100,
+        max_active_flows=1000,
+        energy_threshold=0.01,  # Очень низкий порог для отладки
         batch_size=8,
         carrier_hidden_size=256,  # Уменьшенный размер для отладки
         carrier_num_layers=2,

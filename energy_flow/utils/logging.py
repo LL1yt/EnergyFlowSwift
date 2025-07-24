@@ -626,6 +626,42 @@ def log_cell_component_params(
         logger.info(f"     {component}: {count:,} params ({percentage:.1f}%)")
 
 
+# === НЕДОСТАЮЩИЕ ФУНКЦИИ ===
+
+def log_memory_state(operation: str = "memory_check", **kwargs):
+    """Логирует состояние памяти GPU/CPU"""
+    logger = get_logger()
+    
+    try:
+        import torch
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            cached = torch.cuda.memory_reserved() / 1024**3
+            logger.debug_memory(f"GPU Memory - {operation}: allocated={allocated:.2f}GB, cached={cached:.2f}GB")
+    except ImportError:
+        logger.debug_memory(f"Memory check - {operation}: PyTorch not available")
+
+def log_training_step(step: int, loss: float, **metrics):
+    """Логирует шаг обучения"""
+    logger = get_logger()
+    metrics_str = ", ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" 
+                           for k, v in metrics.items())
+    logger.debug_training(f"Step {step}: loss={loss:.4f}, {metrics_str}")
+
+def log_validation_step(step: int, metrics: dict):
+    """Логирует шаг валидации"""
+    logger = get_logger()
+    metrics_str = ", ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" 
+                           for k, v in metrics.items())
+    logger.info(f"Validation {step}: {metrics_str}")
+
+def log_model_info(model_name: str, total_params: int, **info):
+    """Логирует информацию о модели"""
+    logger = get_logger()
+    logger.info(f"Model {model_name}: {total_params:,} parameters")
+    for key, value in info.items():
+        logger.info(f"  {key}: {value}")
+
 # === LEGACY COMPATIBILITY ===
 
 

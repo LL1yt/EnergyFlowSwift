@@ -81,13 +81,13 @@ class EnergyCarrier(nn.Module):
             nn.Linear(self.hidden_size // 2, self.embedding_dim)
         )
         
-        # 2. Следующая позиция (только вперед по Z)
+        # 2. Следующая позиция - предсказываем абсолютные координаты
         self.position_projection = nn.Sequential(
             nn.Linear(self.hidden_size, 64),
             nn.GELU(),
             nn.Dropout(self.dropout),
-            nn.Linear(64, 3),  # x, y, z координаты
-            nn.Tanh()  # Ограничиваем диапазон
+            nn.Linear(64, 3),  # x, y, z координаты (абсолютные)
+            # Убираем Tanh - позволяем модели предсказывать любые координаты
         )
         
         # 3. Порождение новых потоков
@@ -159,14 +159,13 @@ class EnergyCarrier(nn.Module):
         energy_value = self.energy_projection(gru_output)  # [batch, embedding_dim]
         
         # 2. Вычисляем следующую позицию
-        position_delta = self.position_projection(gru_output)  # [batch, 3]
+        predicted_position = self.position_projection(gru_output)  # [batch, 3]
         
         # Применяем ограничения движения (только вперед по Z)
-        if current_position is not None:
-            next_position = self._compute_next_position(current_position, position_delta)
+        if predicted_position is not None:
+            next_position = self._compute_next_position(predicted_position)
         else:
-            # Если позиция не задана, возвращаем относительное смещение
-            next_position = position_delta
+            logger.error("Predicted position is None")
         
         # 3. Определяем порождение новых потоков
         spawn_prob = self.spawn_gate(gru_output).squeeze(-1)  # [batch]
@@ -206,34 +205,41 @@ class EnergyCarrier(nn.Module):
         return output, new_hidden
     
     def _compute_next_position(self, 
-                              current_position: torch.Tensor, 
-                              position_delta: torch.Tensor) -> torch.Tensor:
+                              predicted_position: torch.Tensor) -> torch.Tensor:
         """
-        Вычисляет следующую позицию с ограничениями
+        Вычисляет следующую позицию согласно PLAN.md
+        
+        Логика движения потоков:
+        1. Поток движется туда, куда указывает next_position (без принуждения)
+        2. Проверка валидности движения происходит на уровне FlowProcessor/EnergyLattice
+        3. Если поток не движется вперед по Z - он будет убит в FlowProcessor
+        4. Если поток выходит за пределы по Z - он завершается и используется для выходного эмбеддинга
         
         Args:
             current_position: [batch, 3] - текущие координаты
-            position_delta: [batch, 3] - предсказанное смещение
+            predicted_position: [batch, 3] - предсказанное смещение
             
         Returns:
-            next_position: [batch, 3] - следующая позиция
+            next_position: [batch, 3] - следующая позиция (целые координаты)
+            
+        TODO: При выходе за пределы решетки по X,Y направлять поток к ближайшей точке выходной стороны
+        TODO: Реализовать умное усреднение для нескольких потоков в одной выходной точке
+        TODO: Добавить более умную логику навигации через обучение после создания trainer
         """
-        # Масштабируем дельту
-        scaled_delta = position_delta * 5.0  # Максимальный прыжок ~5 клеток
+        # Масштабируем дельту (EnergyCarrier определяет направление и дистанцию)
+        scaled_delta = predicted_position # * 5.0   Максимальный прыжок ~5 клеток без прыжков пока.
         
-        # Применяем смещение
-        next_position = current_position + scaled_delta
+        # Применяем смещение БЕЗ принуждения движения вперед
+        next_position = scaled_delta
         
-        # Ограничиваем движение только вперед по Z
-        next_position[:, 2] = torch.maximum(
-            next_position[:, 2], 
-            current_position[:, 2] + 0.5  # Минимальное движение вперед
-        )
-        
-        # Ограничиваем координаты размерами решетки
+        # Только ограничиваем координаты размерами решетки (не убиваем поток здесь)
+        # Логика убийства/завершения потоков будет в FlowProcessor
         next_position[:, 0] = torch.clamp(next_position[:, 0], 0, self.config.lattice_width - 1)
         next_position[:, 1] = torch.clamp(next_position[:, 1], 0, self.config.lattice_height - 1)
-        next_position[:, 2] = torch.clamp(next_position[:, 2], 0, self.config.lattice_depth - 1)
+        # Z координату НЕ ограничиваем - позволяем выходить за пределы для детекции завершения
+        
+        # Округляем до целых значений для дискретной решетки
+        next_position = torch.round(next_position)
         
         return next_position
     
