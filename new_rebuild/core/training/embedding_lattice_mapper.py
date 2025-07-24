@@ -26,25 +26,6 @@ from ..lattice.position import Position3D
 logger = get_logger(__name__)
 
 
-@dataclass
-class EmbeddingLatticeSettings:
-    """Настройки интеграции эмбедингов с решеткой"""
-    
-    # Размещение на поверхности
-    placement_strategy: str = "faces"  # "faces", "edges", "corners", "uniform"
-    surface_coverage: float = 0.8  # Покрытие поверхности
-    
-    # Динамика решетки
-    lattice_steps: int = 5  # Количество шагов эмерджентной динамики
-    convergence_threshold: float = 1e-4  # Порог сходимости
-    
-    # Извлечение результатов
-    extraction_strategy: str = "surface_mean"  # "surface_mean", "weighted_surface", "volume_projection"
-    
-    # Обучение
-    lattice_loss_weight: float = 0.1  # Вес loss'а внутренней динамики
-    spatial_consistency_weight: float = 0.05  # Вес пространственной согласованности
-
 
 class EmbeddingToLatticeMapper(nn.Module):
     """
@@ -63,7 +44,7 @@ class EmbeddingToLatticeMapper(nn.Module):
         self.state_size = config.model.state_size  # 32
         
         # Настройки маппинга
-        self.lattice_settings = EmbeddingLatticeSettings()
+        self.lattice_settings = EmbeddingLatticeSettings() # используем централизованные настройки
         
         logger.info(f"EmbeddingToLatticeMapper: {self.lattice_dims} → state_size={self.state_size}")
         
@@ -354,7 +335,7 @@ class LatticeToEmbeddingExtractor(nn.Module):
         self.state_size = config.model.state_size  # 32
         
         # Настройки извлечения
-        self.lattice_settings = EmbeddingLatticeSettings()
+        self.lattice_settings = EmbeddingLatticeSettings() # используем централизованные настройки
         
         logger.info(f"LatticeToEmbeddingExtractor: state_size={self.state_size} → {self.surface_dim}")
         
