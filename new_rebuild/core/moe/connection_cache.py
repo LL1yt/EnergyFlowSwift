@@ -186,26 +186,43 @@ class ConnectionCacheManager:
     def _load_cache_from_disk(self) -> bool:
         """
         Загрузка кэша с диска с полной проверкой совместимости.
+        Игнорирует дату в имени файла при поиске существующего кэша.
         Returns:
             True если кэш успешно загружен, иначе False.
         """
         try:
-            # Пробуем сначала загрузить кэш с новым описательным именем
-            descriptive_filename = self._get_descriptive_cache_filename()
-            cache_file = f"cache/connection_{descriptive_filename}.pkl"
+            import glob
+            import re
             
-            # Если файл с новым именем не найден, пробуем старое имя для совместимости
-            if not os.path.exists(cache_file):
-                cache_key = self._get_cache_key()
-                cache_file = f"cache/connection_cache_{cache_key}.pkl"
-                
-                if not os.path.exists(cache_file):
-                    logger.info(f"Кэш файл не найден ни с новым, ни со старым именем")
-                    return False
-                else:
-                    logger.info(f"Используем старое имя кэш файла: {cache_file}")
+            # Получаем параметры для поиска кэша без учета даты
+            x, y, z = self.lattice_dimensions
+            lattice_str = f"{x}x{y}x{z}"
+            adaptive_radius_str = f"{self.adaptive_radius:.2f}"
+            config = get_project_config()
+            adaptive_radius_ratio = getattr(config, 'lattice_adaptive_radius_ratio', 'unknown')
+            hash_key = self._get_cache_key()[:8]
+            
+            # Создаем паттерн для поиска файлов без учета даты
+            # Паттерн: connection_cache_YYYYMMDD_{lattice_str}_r{radius}_ar{ratio}_{hash}.pkl
+            pattern = f"cache/connection_cache_*_{lattice_str}_r{adaptive_radius_str}_ar{adaptive_radius_ratio}_{hash_key}.pkl"
+            
+            # Ищем все подходящие файлы
+            matching_files = glob.glob(pattern)
+            
+            # Также проверяем старый формат именования для обратной совместимости
+            old_pattern = f"cache/connection_cache_{self._get_cache_key()}.pkl"
+            old_files = glob.glob(old_pattern)
+            matching_files.extend(old_files)
+            
+            cache_file = None
+            
+            if matching_files:
+                # Используем самый свежий файл (по дате модификации)
+                cache_file = max(matching_files, key=os.path.getmtime)
+                logger.info(f"✅ Найден подходящий кэш файл: {cache_file}")
             else:
-                logger.info(f"Используем новое описательное имя кэш файла: {cache_file}")
+                logger.info(f"Кэш файл не найден по паттерну: {pattern}")
+                return False
 
             with open(cache_file, "rb") as f:
                 cache_data = pickle.load(f)
@@ -242,7 +259,7 @@ class ConnectionCacheManager:
                         logger.debug_cache(
                             f"❌ НЕ СОВПАДАЕТ: {key} | Ожидалось: {expected_value} | В кэше: {cached_value}"
                         )
-                    is_compatible = False
+                        is_compatible = False
                 else:
                     if logger.isEnabledFor(10):
                         logger.debug_cache(f"✅ Совпадает: {key} = {cached_value}")
