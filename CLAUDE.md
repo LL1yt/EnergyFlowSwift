@@ -1,72 +1,8 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code when working with code in this repository.
-
-## Project Overview
-
-Research project implementing a **3D Cellular Neural Network** inspired by biological brain structures. Uses cellular automata-like structures in a 3D lattice where each cell runs the same neural network prototype but processes signals from neighboring cells.
-
 ### Контекст проекта
 
 - Исследовательский проект на одного разработчика
-- Структура: AA/ (легаси), AA/new_rebuild/ (активная разработка), AA/archive/ (старые версии)
+- Структура: AA/ , AA/new_rebuild/ (легаси), AA/archive/ (старые версии) AA/energy_flow/ (активная разработка)
 - Тесты запускаются из корня AA/
-- new_rebuild\Working_solutions_from_the_Legacy_project_that_can_be_used.md - примеры рабочих решений
-
-## Архитектура new_rebuild
-
-### config/ - Централизованная конфигурация
-
-- **`__init__.py`** - Экспорт ProjectConfig и фабричных функций
-- **`config_components.py`** - Модульные компоненты конфигурации
-- **`simple_config.py`** - `SimpleProjectConfig` - единая точка доступа ко всем настройкам
-
-### core/ - Ядро архитектуры
-
-#### cells/ - Клетки нейронной сети
-
-#### moe/ - Mixture of Experts
-
-- **`moe_processor.py`** - `MoEConnectionProcessor` с тремя экспертами:
-  - Local Expert (SimpleLinear)
-  - Functional Expert (HybridGNN_CNF)
-  - Distant Expert (GPUEnhancedCNF)
-
-#### cnf/ - Continuous Normalizing Flows
-
-- **`gpu_enhanced_cnf.py`** - `GPUEnhancedCNF` с векторизованным Neural ODE
-- **`gpu_optimized_euler_solver.py`** - Адаптивная интеграция с Lipschitz control
-
-#### lattice/ - 3D решетка
-
-- **`lattice.py`** - `Lattice3D` - управление клетками и MoE
-
-#### lattice/spatial_optimization/
-
-#### training/ - Обучение
-
-- **`embedding_trainer.py`** - `EmbeddingTrainer` - цикл: эмбединги → куб → эмбединги → текст
-- **`embedding_lattice_mapper.py`** - Маппинг эмбеддингов в решетку
-
-#### inference/ - Инференс
-
-- **`text_decoder.py`** - `SimpleTextDecoder` и `JointTextDecoder` для декодирования в текст
-
-#### common/ - Общие компоненты
-
-- **`embedding_transformer.py`** - Преобразование размерностей эмбеддингов (768D ↔ lattice)
-- **`interfaces.py`** - Абстрактные интерфейсы системы
-
-### utils/ - Утилиты
-
-- **`logging.py`** - Централизованное логирование с custom debug levels
-- **`device_manager.py`** - `DeviceManager` для GPU/CPU управления
-- **`model_cache.py`** - Кэширование моделей
-- **`hardcoded_checker.py`** - Защита от hardcoded значений
-
-### docs/ - Документация
-
-- **`todo.md`** - Задачи на будущее
 
 ## Принципы работы
 
@@ -78,7 +14,6 @@ Research project implementing a **3D Cellular Neural Network** inspired by biolo
 ### Основные принципы
 
 - Централизованные конфигурации и логирование
-- Нам не нужны сложные тесты. мы проверяем работоспособность и потом тестируем на реальных реализациях обучения, например `test_forward_simple_v2.py`
 - Минимальные церемонии, максимальная эффективность
 - Современные языковые возможности
 - Прямолинейные решения вместо сложных абстракций
@@ -123,3 +58,69 @@ set_project_config(config)
 - `DEBUG_MEMORY` (15) - управление памятью
 - `DEBUG_TRAINING` (16) - прогресс обучения
 - `DEBUG_INIT` (17) - инициализация
+- `DEBUG_ENERGY` (18) - энергетические потоки (energy_flow)
+- `DEBUG_SPAWN` (19) - создание новых потоков
+- `DEBUG_CONVERGENCE` (20) - статистика достижения выхода
+
+## Архитектура energy_flow
+
+### Концепция
+
+Энергетическая архитектура, где RNN-модели ("энергия") распространяются через 3D решетку простых нейронов. Ключевое отличие - параллельная обработка независимых потоков вместо последовательной обработки клеток.
+
+### config/ - Конфигурация энергетической системы
+
+- **`energy_config.py`** - `EnergyConfig` с параметрами решетки и потоков
+- **`base_config.py`** - Адаптированная базовая конфигурация
+
+### core/ - Ядро энергетической архитектуры
+
+#### energy_carrier.py - RNN-based энергетические потоки
+
+- LSTM с ~10M параметров (hidden_size=1024, 3 слоя)
+- Может создавать новые потоки при высокой энергии
+- Определяет следующую позицию (только вперед)
+
+#### simple_neuron.py - Простой нейрон-автомат
+
+- ~1000 параметров (32→64→16)
+- Общие веса для всех клеток
+- Трансформирует энергию и определяет направление
+
+#### energy_lattice.py - 3D решетка для потоков
+
+- Управление активными потоками
+- Размещение входной энергии
+- Сбор выходной энергии
+
+#### flow_processor.py - Механизм распространения
+
+- Параллельная обработка всех потоков
+- Энергия движется только вперед (по Z)
+- Управление бюджетом потоков
+
+### training/ - Обучение
+
+- **`energy_trainer.py`** - Тренировочный цикл через сравнение выходных эмбеддингов
+
+### Размеры решетки для energy_flow
+
+- **DEBUG**: 20x20x10 (толщина 10 слоев)
+- **EXPERIMENT**: 50x50x20
+- **OPTIMIZED**: 100x100x50
+
+### Использование energy_flow
+
+```python
+from energy_flow.config import create_experiment_config
+from energy_flow.core import EnergyLattice, SimpleNeuron, FlowProcessor
+from energy_flow.training import EnergyTrainer
+
+config = create_experiment_config()
+lattice = EnergyLattice(config)
+neuron = SimpleNeuron(config)
+processor = FlowProcessor(lattice, neuron, config)
+
+trainer = EnergyTrainer(processor, config)
+trainer.train(input_embeddings, target_embeddings)
+```
