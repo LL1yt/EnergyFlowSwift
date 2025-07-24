@@ -663,14 +663,26 @@ class ConnectionCacheManager:
             logger.info(f"✅ _all_neighbors_cache computed, total cells: {len(self._all_neighbors_cache)}")
             
         if cell_idx not in self._all_neighbors_cache:
-            logger.warning(f"Cell {cell_idx} not found in cache, returning empty neighbors")
-            logger.debug(f"Cache keys sample: {list(self._all_neighbors_cache.keys())[:10] if self._all_neighbors_cache else 'Empty'}")
-            logger.debug(f"Total cells in cache: {len(self._all_neighbors_cache) if self._all_neighbors_cache else 0}")
-            return {
-                "local": {"indices": [], "states": torch.empty(0, self.state_size), "connections": []},
-                "functional": {"indices": [], "states": torch.empty(0, self.state_size), "connections": []},
-                "distant": {"indices": [], "states": torch.empty(0, self.state_size), "connections": []}
-            }
+            # Подробная диагностика вместо fallback
+            logger.error(f"🔍 CACHE DIAGNOSTIC: Cell {cell_idx} not found in cache")
+            logger.error(f"   Cache initialized: {self._all_neighbors_cache is not None}")
+            logger.error(f"   Total cells in cache: {len(self._all_neighbors_cache) if self._all_neighbors_cache else 0}")
+            logger.error(f"   Expected total cells: {self.total_cells}")
+            logger.error(f"   Cell index type: {type(cell_idx)}")
+            logger.error(f"   Cell index value: {cell_idx}")
+            
+            if self._all_neighbors_cache:
+                keys = list(self._all_neighbors_cache.keys())
+                logger.error(f"   Cache key range: {min(keys)} - {max(keys)}")
+                logger.error(f"   Cache keys sample: {keys[:10]}")
+                logger.error(f"   Cache key types: {[type(k) for k in keys[:5]]}")
+            
+            # УБИРАЕМ FALLBACK - выбрасываем ошибку
+            raise RuntimeError(
+                f"❌ КРИТИЧЕСКАЯ ОШИБКА КЭША: Клетка {cell_idx} не найдена в кэше соседей. "
+                f"Кэш содержит {len(self._all_neighbors_cache) if self._all_neighbors_cache else 0} клеток, "
+                f"ожидается {self.total_cells}. Проверьте инициализацию кэша в batch режиме."
+            )
             
         neighbor_indices = self._all_neighbors_cache[cell_idx]
         

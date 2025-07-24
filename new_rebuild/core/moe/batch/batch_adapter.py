@@ -58,23 +58,14 @@ class BatchProcessingAdapter:
         else:
             self.batch_processor = None
             
-        # Статистика производительности
+        # Статистика batch производительности
         self.performance_stats = {
-            "per_cell_calls": 0,
             "batch_calls": 0,
-            "per_cell_time_ms": 0.0,
             "batch_time_ms": 0.0,
             "cells_processed": 0,
-            "batch_speedup": 0.0,
         }
     
-    def should_use_batch(self, num_cells: int) -> bool:
-        """Определяет, использовать ли batch обработку"""
-        return (
-            self.enable_batch and 
-            self.batch_processor is not None and
-            num_cells >= self.batch_size_threshold
-        )
+    # УДАЛЕН: should_use_batch - всегда используем batch обработку
     
     def process_cells(
         self,
@@ -93,12 +84,9 @@ class BatchProcessingAdapter:
         Returns:
             Dict[cell_idx -> new_state] для каждой клетки
         """
-        num_cells = len(cell_indices)
-        
-        if self.should_use_batch(num_cells):
-            return self._process_batch(cell_indices, full_lattice_states, external_inputs)
-        else:
-            return self._process_per_cell(cell_indices, full_lattice_states, external_inputs)
+        # ТОЛЬКО BATCH ОБРАБОТКА - убрана fallback логика
+        logger.debug_spatial(f"🔄 Batch processing {len(cell_indices)} cells")
+        return self._process_batch(cell_indices, full_lattice_states, external_inputs)
     
     def _process_batch(
         self,
@@ -145,74 +133,16 @@ class BatchProcessingAdapter:
             
         except Exception as e:
             logger.error(f"❌ Batch processing failed: {e}")
-            
-            if self.fallback_on_error:
-                logger.info("⚠️ Falling back to per-cell processing")
-                return self._process_per_cell(cell_indices, full_lattice_states, external_inputs)
-            else:
-                raise
+            logger.error(f"   cell_indices: {cell_indices}")
+            logger.error(f"   full_lattice_states shape: {full_lattice_states.shape}")
+            # УБРАЛИ FALLBACK - сразу выбрасываем ошибку для отладки
+            raise
     
-    def _process_per_cell(
-        self,
-        cell_indices: List[int],
-        full_lattice_states: torch.Tensor,
-        external_inputs: Optional[torch.Tensor] = None
-    ) -> Dict[int, torch.Tensor]:
-        """Per-cell обработка (legacy режим)"""
-        start_time = time.time()
-        result = {}
-        
-        for i, cell_idx in enumerate(cell_indices):
-            # Извлекаем состояние клетки
-            current_state = full_lattice_states[cell_idx]
-            
-            # Внешний вход для конкретной клетки
-            ext_input = external_inputs[i] if external_inputs is not None else None
-            
-            # Вызываем оригинальный forward
-            output = self.moe_processor.forward(
-                current_state=current_state,
-                neighbor_states=None,  # Будет получено из кэша
-                cell_idx=cell_idx,
-                neighbor_indices=[],  # Будет получено из кэша
-                external_input=ext_input,
-                full_lattice_states=full_lattice_states
-            )
-            
-            # Извлекаем новое состояние
-            new_state = output.get("new_state", current_state)
-            result[cell_idx] = new_state
-        
-        # Обновляем статистику
-        elapsed_ms = (time.time() - start_time) * 1000
-        self.performance_stats["per_cell_calls"] += 1
-        self.performance_stats["per_cell_time_ms"] += elapsed_ms
-        self.performance_stats["cells_processed"] += len(cell_indices)
-        
-        if self.enable_profiling:
-            logger.debug(
-                f"🐌 Per-cell processed {len(cell_indices)} cells in {elapsed_ms:.1f}ms "
-                f"({elapsed_ms/len(cell_indices):.2f}ms per cell)"
-            )
-        
-        return result
+    # УДАЛЕН: _process_per_cell метод - используем только batch обработку
     
-    def get_performance_comparison(self) -> Dict[str, Any]:
-        """Получить сравнение производительности режимов"""
+    def get_batch_performance(self) -> Dict[str, Any]:
+        """Получить статистику batch обработки"""
         stats = self.performance_stats.copy()
-        
-        # Вычисляем средние времена
-        if stats["per_cell_calls"] > 0:
-            avg_cells_per_call = stats["cells_processed"] / (stats["per_cell_calls"] + stats["batch_calls"])
-            stats["avg_per_cell_time_ms"] = stats["per_cell_time_ms"] / stats["per_cell_calls"] / avg_cells_per_call
-        
-        if stats["batch_calls"] > 0:
-            avg_cells_per_call = stats["cells_processed"] / (stats["per_cell_calls"] + stats["batch_calls"])
-            stats["avg_batch_time_ms"] = stats["batch_time_ms"] / stats["batch_calls"] / avg_cells_per_call
-            
-            # Вычисляем ускорение
-            if stats.get("avg_per_cell_time_ms", 0) > 0:
-                stats["batch_speedup"] = stats["avg_per_cell_time_ms"] / stats["avg_batch_time_ms"]
         
         # Добавляем статистику от batch процессора
         if self.batch_processor:

@@ -117,6 +117,39 @@ def upgrade_lattice_to_batch(lattice):
     # Заменяем оптимизатор
     lattice.spatial_optimizer = new_optimizer
     
+    # КРИТИЧЕСКИ ВАЖНО: Принудительная инициализация кэша для batch режима
+    logger.info("🔧 Принудительная инициализация кэша для batch режима...")
+    cache_manager = new_optimizer.moe_processor.connection_classifier
+    
+    # Сбрасываем старый кэш
+    cache_manager._all_neighbors_cache = None
+    
+    # Принудительно пересоздаем кэш
+    cache_manager._all_neighbors_cache = cache_manager._compute_all_neighbors()
+    
+    # Валидация кэша
+    expected_cells = lattice.total_cells
+    cached_cells = len(cache_manager._all_neighbors_cache) if cache_manager._all_neighbors_cache else 0
+    
+    logger.info(f"🔍 CACHE VALIDATION:")
+    logger.info(f"   Expected cells: {expected_cells}")
+    logger.info(f"   Cached cells: {cached_cells}")
+    
+    if cached_cells != expected_cells:
+        raise RuntimeError(
+            f"❌ КРИТИЧЕСКАЯ ОШИБКА: Кэш содержит {cached_cells} клеток, "
+            f"ожидается {expected_cells}. Batch режим невозможен."
+        )
+    
+    # Проверяем типы ключей в кэше
+    if cache_manager._all_neighbors_cache:
+        sample_keys = list(cache_manager._all_neighbors_cache.keys())[:5]
+        key_types = [type(k) for k in sample_keys]
+        logger.info(f"   Cache key types: {key_types}")
+        logger.info(f"   Key range: {min(sample_keys)} - {max(sample_keys)}")
+    
+    logger.info("✅ Кэш успешно инициализирован для batch режима")
+    
     # Добавляем методы для управления batch режимом
     def set_batch_enabled(enabled: bool):
         if hasattr(lattice.spatial_optimizer, 'set_batch_enabled'):
