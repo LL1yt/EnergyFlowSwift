@@ -87,15 +87,17 @@ class Lattice3D(nn.Module):
         # Создаем batch adapter для эффективной обработки
         from ..moe.batch import BatchProcessingAdapter
         self.batch_adapter = BatchProcessingAdapter(self.moe_processor)
-
+        
         # Создаем унифицированный оптимизатор с MoE processor
         self.spatial_optimizer = create_unified_spatial_optimizer(
             dimensions=self.config.lattice.dimensions, config=spatial_config
         )
         # Устанавливаем batch adapter в унифицированный оптимизатор
         self.spatial_optimizer.batch_adapter = self.batch_adapter
-        # Сохраняем оригинальный MoE processor для совместимости
-        self.spatial_optimizer.moe_processor = self.moe_processor
+        # не Сохраняем оригинальный MoE processor, так как в тестовом проекте мы не используем обратную совместимость
+        # self.spatial_optimizer.moe_processor = self.moe_processor
+        
+
 
         # В новой архитектуре spatial optimizer больше не нужен MoE processor'у
         # так как он использует только кэш для получения соседей

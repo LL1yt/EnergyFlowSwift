@@ -141,7 +141,7 @@ class ConnectionCacheManager:
         self.distance_cache: Dict[Tuple[int, int], Dict[str, float]] = {}
         self.is_precomputed = False
         self._all_neighbors_cache = None  # Инициализируется при первом вызове _compute_all_neighbors()
-
+        
         # Статистика (включается по настройкам)
         self.enable_performance_monitoring = self.cache_config.get(
             "enable_performance_monitoring", False
