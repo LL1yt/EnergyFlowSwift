@@ -606,6 +606,7 @@ class PerformanceSettings:
     non_blocking: bool = True
     benchmark_mode: bool = False
     profiling_enabled: bool = False
+    enable_batch_processing: bool = True  # RTX 5090 32GB - эффективная batch обработка
 
 
 @dataclass

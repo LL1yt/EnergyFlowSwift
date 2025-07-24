@@ -446,14 +446,31 @@ class SimpleProjectConfig:
 
     @property
     def effective_min_chunk_size(self) -> int:
-        """Эффективный минимальный размер chunk'а для текущей решетки"""
+        """Эффективный минимальный размер chunk'а для RTX 5090 32GB"""
         config_min = (
             self.adaptive_chunker.min_chunk_size if self.adaptive_chunker else 32
         )
-        # Для малых решеток делаем min_chunk_size = 1/8 от максимального измерения
         max_dim = max(self.lattice.dimensions)
-        eighth_lattice = max(max_dim // 8, 2)  # минимум 2 клетки
-        return min(config_min, eighth_lattice)
+        
+        # RTX 5090 32GB: оптимальная batch обработка с большими chunk'ами
+        if hasattr(self, 'performance') and getattr(self.performance, 'enable_batch_processing', False):
+            # Batch режим: минимум 16-32 клеток для RTX 5090 эффективности
+            # Для 5090 оптимально обрабатывать большие батчи (512-1024 клеток параллельно)
+            if max_dim <= 15:
+                # Маленькие решетки: минимум 16 клеток
+                batch_min_chunk = max(max_dim // 3, 16)
+            elif max_dim <= 30:
+                # Средние решетки: минимум 32 клетки
+                batch_min_chunk = max(max_dim // 4, 32)
+            else:
+                # Большие решетки: минимум 64 клетки для максимального использования 5090
+                batch_min_chunk = max(max_dim // 6, 64)
+            
+            return min(config_min, batch_min_chunk)
+        else:
+            logging.warning("⚠️ Legacy per-cell режим не используем)")
+            # per_cell_min = max(max_dim // 8, 8)  # минимум 8 клеток вместо 2
+            # return min(config_min, per_cell_min)
 
     def calculate_adaptive_radius(self) -> float:
         """

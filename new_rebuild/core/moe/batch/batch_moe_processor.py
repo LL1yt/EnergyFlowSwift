@@ -214,7 +214,7 @@ class BatchMoEProcessor(nn.Module):
             self.performance_stats["expert_processing_ms"].append(expert_time_ms)
             self.performance_stats["gating_ms"].append(gating_time_ms)
             
-            logger.info(
+            logger.debug_spatial(
                 f"📊 Batch MoE Performance: batch_size={batch_size}, "
                 f"total={total_time_ms:.1f}ms, neighbors={neighbor_time_ms:.1f}ms, "
                 f"experts={expert_time_ms:.1f}ms, gating={gating_time_ms:.1f}ms"

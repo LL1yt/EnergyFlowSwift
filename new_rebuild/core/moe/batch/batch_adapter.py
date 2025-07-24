@@ -98,12 +98,17 @@ class BatchProcessingAdapter:
         start_time = time.time()
         
         try:
-            # Конвертируем индексы в тензор
-            indices_tensor = torch.tensor(
-                cell_indices,
-                device=full_lattice_states.device,
-                dtype=torch.long
-            )
+            # Конвертируем индексы в тензор (правильный способ)
+            if isinstance(cell_indices, torch.Tensor):
+                indices_tensor = cell_indices.detach().clone().to(
+                    device=full_lattice_states.device, dtype=torch.long
+                )
+            else:
+                indices_tensor = torch.tensor(
+                    cell_indices,
+                    device=full_lattice_states.device,
+                    dtype=torch.long
+                )
             
             # Вызываем batch процессор
             new_states = self.batch_processor.forward(
