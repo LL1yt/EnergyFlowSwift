@@ -199,9 +199,15 @@ class Lattice3D(nn.Module):
         # Dimension validation moved to initialization for performance
 
         # Unified Spatial Optimizer автоматически выберет лучший режим обработки
+        self.logger.debug_verbose(f"🎯 CALLING spatial_optimizer.optimize_lattice_forward")
+        self.logger.debug_verbose(f"   spatial_optimizer type: {type(self.spatial_optimizer)}")
+        self.logger.debug_verbose(f"   states shape: {self.states.shape}")
+        
         optimization_result = self.spatial_optimizer.optimize_lattice_forward(
             self.states
         )
+        
+        self.logger.debug_verbose(f"✅ spatial_optimizer.optimize_lattice_forward completed")
 
         # Извлекаем новые состояния и дополнительную информацию
         new_states = optimization_result.new_states

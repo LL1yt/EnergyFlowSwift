@@ -111,11 +111,21 @@ class BatchProcessingAdapter:
                 )
             
             # Вызываем batch процессор
+            logger.debug_verbose(f"🚀 Calling batch_processor.forward with:")
+            logger.debug_verbose(f"   cell_indices shape: {indices_tensor.shape}")
+            logger.debug_verbose(f"   cell_indices: {indices_tensor.tolist()}")
+            logger.debug_verbose(f"   full_lattice_states shape: {full_lattice_states.shape}")
+            
+            batch_start = time.time()
             new_states = self.batch_processor.forward(
                 cell_indices=indices_tensor,
                 full_lattice_states=full_lattice_states,
                 external_inputs=external_inputs
             )
+            batch_elapsed = (time.time() - batch_start) * 1000
+            logger.debug_verbose(f"✅ batch_processor.forward completed in {batch_elapsed:.1f}ms")
+            logger.debug_verbose(f"   Output shape: {new_states.shape}")
+            logger.debug_verbose(f"   Output dtype: {new_states.dtype}")
             
             # Конвертируем результат в словарь
             result = {}

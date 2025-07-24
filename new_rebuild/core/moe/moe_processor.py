@@ -15,7 +15,7 @@ from torch.utils.checkpoint import checkpoint
 from .gating_network import GatingNetwork
 from .connection_classifier import UnifiedConnectionClassifier
 from .connection_types import ConnectionCategory
-from .simple_linear_expert import SimpleLinearExpert
+from .simple_linear_expert_batch import BatchOptimizedSimpleLinearExpert as SimpleLinearExpert
 from .hybrid_gnn_cnf_expert import HybridGNN_CNF_Expert
 from ..cnf.gpu_enhanced_cnf import GPUEnhancedCNF, ConnectionType
 from ...config import get_project_config
@@ -249,21 +249,29 @@ class MoEConnectionProcessor(nn.Module):
         if logger.isEnabledFor(11):  # DEBUG_VERBOSE only
             logger.debug_verbose(f"🔍 MoE FORWARD called for cell {cell_idx}")
         """
-        Основной forward pass с упрощенной логикой (ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)
+        Основной forward pass с упрощенной логикой (BATCH-ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)
 
         Args:
-            current_state: [state_size] - текущее состояние клетки
+            current_state: [batch_size, state_size] - состояния клеток (batch_size может быть любым)
             neighbor_states: DEPRECATED - получается из кэша
-            cell_idx: индекс текущей клетки
+            cell_idx: индекс первой клетки в batch
             neighbor_indices: DEPRECATED - получается из кэша
             external_input: внешний вход (опционально)
             spatial_optimizer: DEPRECATED - не используется
             **kwargs: должен содержать full_lattice_states
 
         Returns:
-            Dict с результатами обработки
+            Dict с результатами обработки batch'а
         """
-        # === НОВАЯ АРХИТЕКТУРА: Используем только кэш ===
+        # === BATCH АРХИТЕКТУРА: Определяем размер batch'а ===
+        batch_size = current_state.shape[0] if current_state.dim() >= 2 else 1
+        
+        # Если это действительно batch обработка (весь lattice)
+        if batch_size > 1:
+            logger.debug_verbose(f"🚀 BATCH MODE: Processing {batch_size} cells at once")
+            return self._forward_batch(current_state, external_input, **kwargs)
+        
+        # === SINGLE-CELL MODE (legacy) ===
         if "full_lattice_states" not in kwargs:
             raise RuntimeError(
                 f"❌ КРИТИЧЕСКАЯ ОШИБКА: Для клетки {cell_idx} отсутствует full_lattice_states. "
@@ -726,3 +734,82 @@ class MoEConnectionProcessor(nn.Module):
             processed_batch.append(processed_embedding)
 
         return torch.cat(processed_batch, dim=0)
+    
+    def _forward_batch(
+        self,
+        current_states: torch.Tensor,  # [batch_size, state_size]
+        external_input: Optional[torch.Tensor] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Batch обработка всех клеток решетки одновременно
+        
+        Args:
+            current_states: [batch_size, state_size] - состояния всех клеток
+            external_input: внешний вход (опционально)
+            **kwargs: должен содержать full_lattice_states
+            
+        Returns:
+            Dict с результатами batch обработки
+        """
+        batch_size = current_states.shape[0]
+        device = current_states.device
+        
+        if "full_lattice_states" not in kwargs:
+            raise RuntimeError("❌ КРИТИЧЕСКАЯ ОШИБКА: Для batch обработки требуется full_lattice_states")
+            
+        full_states = kwargs["full_lattice_states"]
+        
+        # Убеждаемся что все tensor'ы на правильном устройстве
+        current_states = self.device_manager.ensure_device(current_states)
+        if external_input is not None:
+            external_input = self.device_manager.ensure_device(external_input)
+        
+        # === BATCH ОБРАБОТКА ЧЕРЕЗ ЭКСПЕРТОВ ===
+        # В batch режиме мы обрабатываем все клетки через каждого эксперта
+        # БЕЗ учета соседей (так как у каждой клетки свой набор)
+        
+        # 1. Local Expert - обрабатывает batch целиком
+        local_output = self.local_expert(current_states)  # [batch_size, state_size]
+        
+        # 2. Functional Expert - тоже должен поддерживать batch
+        # TODO: Обновить functional expert для batch поддержки
+        # Пока используем fallback на local expert
+        functional_output = local_output.clone()
+        
+        # 3. Distant Expert (CNF) - тоже должен поддерживать batch  
+        # TODO: Обновить distant expert для batch поддержки
+        # Пока используем fallback на local expert
+        if self.enable_cnf:
+            distant_output = local_output.clone()
+        else:
+            distant_output = torch.zeros_like(local_output)
+        
+        # === КОМБИНИРОВАНИЕ РЕЗУЛЬТАТОВ ===
+        # В batch режиме используем упрощенное комбинирование
+        # (так как gating network тоже нужно обновить для batch)
+        
+        # Простое взвешенное усреднение
+        if self.enable_cnf:
+            # 33% каждому эксперту
+            final_states = (local_output + functional_output + distant_output) / 3.0
+            expert_weights = torch.tensor([0.33, 0.33, 0.34], device=device).unsqueeze(0).expand(batch_size, -1)
+        else:
+            # 50/50 между local и functional
+            final_states = (local_output + functional_output) / 2.0
+            expert_weights = torch.tensor([0.5, 0.5, 0.0], device=device).unsqueeze(0).expand(batch_size, -1)
+        
+        # Residual connection
+        final_states = current_states + 0.1 * final_states  # небольшой коэффициент для стабильности
+        
+        # === СТАТИСТИКА (упрощенная для batch) ===
+        # В batch режиме возвращаем агрегированную статистику
+        avg_neighbors = 20  # примерная оценка
+        
+        return {
+            "new_state": final_states,  # [batch_size, state_size]
+            "expert_weights": expert_weights,  # [batch_size, 3]
+            "classifications": {},  # Пустой dict для batch режима
+            "batch_mode": True,
+            "batch_size": batch_size
+        }

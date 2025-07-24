@@ -243,9 +243,16 @@ class UnifiedSpatialOptimizer:
     def __init__(
         self,
         dimensions: Coordinates3D,
-        config: Optional[OptimizationConfig] = None,
         moe_processor: Optional[nn.Module] = None,
+        config: Optional[OptimizationConfig] = None,
+        **kwargs
     ):
+        # Обрабатываем случай когда config передан как второй параметр (для совместимости)
+        if moe_processor is not None and not hasattr(moe_processor, 'forward'):
+            # Если второй параметр не выглядит как модуль, это config
+            config = moe_processor
+            moe_processor = None
+            
         self.config = config or get_project_config().unified_optimizer
         self.dimensions = dimensions
         self.device_manager = get_device_manager()
@@ -304,25 +311,73 @@ class UnifiedSpatialOptimizer:
         start_time = time.time()
         num_cells = states.shape[0]
 
+        logger.debug_verbose(f"🚀🚀🚀 OPTIMIZE_LATTICE_FORWARD CALLED")
+        logger.debug_verbose(f"   states shape: {states.shape}")
+        logger.debug_verbose(f"   processor_fn provided: {processor_fn is not None}")
+
         # Unified optimizer processing (no debug logging for performance)
 
 
         # Определяем функцию обработки
+        logger.debug_verbose(f"🔍 PROCESSOR SELECTION:")
+        logger.debug_verbose(f"   processor_fn provided: {processor_fn is not None}")
+        logger.debug_verbose(f"   has batch_adapter: {hasattr(self, 'batch_adapter') and self.batch_adapter}")
+        logger.debug_verbose(f"   has moe_processor: {self.moe_processor is not None}")
+        
         if processor_fn is None:
             # Приоритет: batch_adapter > moe_processor > default
             if hasattr(self, 'batch_adapter') and self.batch_adapter:
+                logger.debug_verbose(f"   ✅ Using batch_processor_fn")
                 processor_fn = self._create_batch_processor_fn(full_lattice_states=states)
             elif self.moe_processor:
+                logger.debug_verbose(f"   ✅ Using moe_processor_fn")
                 processor_fn = self._create_moe_processor_fn(full_lattice_states=states)
             else:
+                logger.debug_verbose(f"   ✅ Using default_processor_fn")
                 processor_fn = self._create_default_processor_fn()
 
         mem_before = self.device_manager.get_memory_stats().get("allocated_mb", 0)
 
-        # Обработка всегда через GPU
-        new_states = self.gpu_processor.process_lattice(
-            states, processor_fn, self.chunker
-        )
+        # BYPASS CHUNKING: обрабатываем всю решетку одним batch'ем
+        logger.debug_verbose(f"🚀 BYPASSING CHUNKING - direct batch processing")
+        logger.debug_verbose(f"   states shape: {states.shape}")
+        
+        # Прямой вызов processor_fn для всей решетки
+        try:
+            logger.debug_verbose(f"   Calling processor_fn directly with full lattice")
+            result = processor_fn(
+                current_state=states,  # Вся решетка [3375, 24]
+                neighbor_states=None,  # Получится из кэша
+                cell_idx=0,  # Начальный индекс
+                neighbor_indices=[]  # Получится из кэша
+            )
+            
+            if isinstance(result, dict):
+                # Проверяем, это batch результат или словарь {cell_idx: new_state}
+                if "new_state" in result and "batch_mode" in result:
+                    # Batch результат от MoE processor
+                    new_states = result["new_state"]
+                    logger.debug_verbose(f"   Received batch result with shape: {new_states.shape}")
+                else:
+                    # Словарь {cell_idx: new_state}
+                    new_states = torch.zeros_like(states)
+                    for cell_idx, new_state in result.items():
+                        new_states[cell_idx] = new_state
+            else:
+                new_states = result
+                
+            logger.debug_verbose(f"✅ DIRECT BATCH PROCESSING SUCCESS: {new_states.shape}")
+            
+        except Exception as e:
+            logger.error(f"❌ DIRECT BATCH PROCESSING FAILED: {e}")
+            logger.debug_verbose(f"   Falling back to chunked processing...")
+            
+            # Fallback к старой системе
+            new_states = self.gpu_processor.process_lattice(
+                states, processor_fn, self.chunker
+            )
+        
+        logger.debug_verbose(f"✅ gpu_processor.process_lattice completed")
 
         self.device_manager.synchronize()
         processing_time_ms = (time.time() - start_time) * 1000
@@ -350,9 +405,12 @@ class UnifiedSpatialOptimizer:
                     
                 chunk_size = current_state.shape[0]
                 
+                logger.debug_verbose(f"🔧 batch_processor called: chunk_size={chunk_size}, cell_idx={cell_idx}")
+                
                 if chunk_size == 1:
                     # Одиночная клетка - можем использовать batch adapter
                     cell_indices = torch.tensor([cell_idx], device=current_state.device)
+                    logger.debug_verbose(f"   Single cell processing: {cell_idx}")
                 else:
                     # Chunk клеток - создаем индексы
                     # cell_idx должен быть началом chunk'а
@@ -360,6 +418,7 @@ class UnifiedSpatialOptimizer:
                         cell_idx, cell_idx + chunk_size, 
                         device=current_state.device
                     )
+                    logger.debug_verbose(f"   Chunk processing: {cell_idx} to {cell_idx + chunk_size - 1}")
                 
                 # Используем batch adapter для обработки
                 result = self.batch_adapter.process_cells(

@@ -1102,5 +1102,8 @@ class ConnectionCacheManager:
         """Очистка кэша"""
         self.cache.clear()
         self.distance_cache.clear()
-        self.neighbor_cache.clear()
+        if hasattr(self, 'neighbor_cache'):
+            self.neighbor_cache.clear()
+        if hasattr(self, '_all_neighbors_cache'):
+            self._all_neighbors_cache = None
         logger.info("Кэш очищен")

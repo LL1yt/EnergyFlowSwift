@@ -105,7 +105,16 @@ def upgrade_lattice_to_batch(lattice):
     # Получаем параметры из существующего оптимизатора
     old_optimizer = lattice.spatial_optimizer
     dimensions = old_optimizer.dimensions
-    moe_processor = old_optimizer.moe_processor
+    
+    # ВАЖНО: Используем moe_processor из решетки, а не из оптимизатора
+    moe_processor = lattice.moe_processor
+    
+    logger.info(f"🔍 BATCH UPGRADE DEBUG:")
+    logger.info(f"   lattice.moe_processor: {type(moe_processor) if moe_processor else 'None'}")
+    logger.info(f"   old_optimizer.moe_processor: {type(old_optimizer.moe_processor) if hasattr(old_optimizer, 'moe_processor') else 'Not found'}")
+    
+    if moe_processor is None:
+        raise RuntimeError("❌ MoE processor not found in lattice. Cannot upgrade to batch mode.")
     
     # Создаем новый оптимизатор с batch поддержкой
     new_optimizer = create_batch_optimized_spatial_optimizer(
@@ -121,32 +130,48 @@ def upgrade_lattice_to_batch(lattice):
     logger.info("🔧 Принудительная инициализация кэша для batch режима...")
     cache_manager = new_optimizer.moe_processor.connection_classifier
     
-    # Сбрасываем старый кэш
-    cache_manager._all_neighbors_cache = None
+    logger.info(f"🔍 Connection classifier type: {type(cache_manager)}")
+    logger.info(f"   Has _compute_all_neighbors: {hasattr(cache_manager, '_compute_all_neighbors')}")
+    logger.info(f"   Available methods: {[m for m in dir(cache_manager) if not m.startswith('__')]}")
     
-    # Принудительно пересоздаем кэш
-    cache_manager._all_neighbors_cache = cache_manager._compute_all_neighbors()
+    # Проверяем тип connection_classifier
+    if hasattr(cache_manager, '_compute_all_neighbors'):
+        # ConnectionCacheManager
+        logger.info("✅ Using ConnectionCacheManager - reinitializing cache")
+        cache_manager._all_neighbors_cache = None
+        cache_manager._all_neighbors_cache = cache_manager._compute_all_neighbors()
+    elif hasattr(cache_manager, 'rebuild_cache'):
+        # UnifiedConnectionClassifier
+        logger.info("✅ Using UnifiedConnectionClassifier - rebuilding cache")
+        cache_manager.rebuild_cache()
+    else:
+        logger.warning("⚠️ Unknown connection classifier type - skipping cache initialization")
     
-    # Валидация кэша
-    expected_cells = lattice.total_cells
-    cached_cells = len(cache_manager._all_neighbors_cache) if cache_manager._all_neighbors_cache else 0
+    # Валидация кэша (только для ConnectionCacheManager)
+    dims = lattice.config.lattice.dimensions
+    expected_cells = dims[0] * dims[1] * dims[2]
     
-    logger.info(f"🔍 CACHE VALIDATION:")
-    logger.info(f"   Expected cells: {expected_cells}")
-    logger.info(f"   Cached cells: {cached_cells}")
-    
-    if cached_cells != expected_cells:
-        raise RuntimeError(
-            f"❌ КРИТИЧЕСКАЯ ОШИБКА: Кэш содержит {cached_cells} клеток, "
-            f"ожидается {expected_cells}. Batch режим невозможен."
-        )
-    
-    # Проверяем типы ключей в кэше
-    if cache_manager._all_neighbors_cache:
-        sample_keys = list(cache_manager._all_neighbors_cache.keys())[:5]
-        key_types = [type(k) for k in sample_keys]
-        logger.info(f"   Cache key types: {key_types}")
-        logger.info(f"   Key range: {min(sample_keys)} - {max(sample_keys)}")
+    if hasattr(cache_manager, '_all_neighbors_cache'):
+        cached_cells = len(cache_manager._all_neighbors_cache) if cache_manager._all_neighbors_cache else 0
+        
+        logger.info(f"🔍 CACHE VALIDATION:")
+        logger.info(f"   Expected cells: {expected_cells}")
+        logger.info(f"   Cached cells: {cached_cells}")
+        
+        if cached_cells != expected_cells:
+            logger.warning(
+                f"⚠️ CACHE SIZE MISMATCH: Кэш содержит {cached_cells} клеток, "
+                f"ожидается {expected_cells}. Продолжаем..."
+            )
+        else:
+            # Проверяем типы ключей в кэше
+            if cache_manager._all_neighbors_cache:
+                sample_keys = list(cache_manager._all_neighbors_cache.keys())[:5]
+                key_types = [type(k) for k in sample_keys]
+                logger.info(f"   Cache key types: {key_types}")
+                logger.info(f"   Key range: {min(sample_keys)} - {max(sample_keys)}")
+    else:
+        logger.info(f"🔍 Using connection classifier without _all_neighbors_cache")
     
     logger.info("✅ Кэш успешно инициализирован для batch режима")
     

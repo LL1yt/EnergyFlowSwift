@@ -332,16 +332,26 @@ class AdaptiveGPUChunker:
         optimal_chunk_size = self._calculate_optimal_chunk_size(available_memory_mb)
         x_dim, y_dim, z_dim = self.dimensions
 
-        # Отключаем чанкинг для маленьких решеток (оптимизация GPU утилизации)
+        logger.debug_verbose(f"🧮 CHUNK SIZE CALCULATION:")
+        logger.debug_verbose(f"   Available memory: {available_memory_mb:.1f}MB")
+        logger.debug_verbose(f"   Optimal chunk size: {optimal_chunk_size}")
+        logger.debug_verbose(f"   Lattice dimensions: {self.dimensions}")
+
+        # Отключаем чанкинг для малых решеток (оптимизация GPU утилизации и batch обработки)
         max_dimension = max(x_dim, y_dim, z_dim)
-        if max_dimension <= 8:  # Для решеток ≤8 обходим чанкинг
-            logger.info(
-                f"🚀 Small lattice ({self.dimensions}) - disabling chunking for better GPU utilization"
+        total_cells = x_dim * y_dim * z_dim
+        
+        # Для RTX 5090 32GB: отключаем chunking для решеток до 20×20×20 (8000 клеток)
+        # Это позволит batch обработке работать с полной решеткой сразу
+        if max_dimension <= 20 or total_cells <= 8000:  # Увеличиваем порог для batch эффективности
+            logger.debug_verbose(
+                f"🚀 Small lattice ({self.dimensions}, {total_cells} cells) - disabling chunking for batch processing efficiency"
             )
             # Создаем один chunk для всей решетки
             chunk_info = self._create_adaptive_chunk_info(
                 0, (0, 0, 0), (x_dim, y_dim, z_dim), available_memory_mb
             )
+            logger.debug_verbose(f"   Single chunk created with {len(chunk_info.cell_indices)} cells")
             return [chunk_info]
 
         # Вычисляем количество chunk'ов по каждой оси
@@ -377,9 +387,11 @@ class AdaptiveGPUChunker:
                         available_memory_mb,
                     )
 
-                    logger.debug_init(
+                    logger.debug_verbose(
                         f"📦 CHUNK {chunk_id}: size={len(chunk_info.cell_indices)} cells, "
-                        f"coords=({start_x},{start_y},{start_z})-({end_x},{end_y},{end_z})"
+                        f"coords=({start_x},{start_y},{start_z})-({end_x},{end_y},{end_z}), "
+                        f"first_cell={chunk_info.cell_indices[0] if chunk_info.cell_indices else 'empty'}, "
+                        f"last_cell={chunk_info.cell_indices[-1] if chunk_info.cell_indices else 'empty'}"
                     )
 
                     chunks.append(chunk_info)

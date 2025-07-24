@@ -912,7 +912,7 @@ class ModePresets:
 
         # Adaptive radius settings for small lattice
         lattice_adaptive_radius_ratio: float = (
-            0.4  # Much smaller ratio for debug mode (15% of max dimension)
+            0.3  # Much smaller ratio for debug mode (15% of max dimension)
         )
 
         # Model
@@ -954,7 +954,7 @@ class ModePresets:
         cleanup_threshold: int = 5000  # Редкие cleanups для DEBUG
 
         # Logging
-        logging_level: str = "DEBUG_INIT"
+        logging_level: str = "DEBUG_VERBOSE"  # Подробное логирование
         logging_debug_mode: bool = False  # Отключено для лучшей производительности
         logging_enable_profiling: bool = True
 

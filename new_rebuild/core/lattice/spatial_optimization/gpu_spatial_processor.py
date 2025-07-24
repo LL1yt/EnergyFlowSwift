@@ -103,7 +103,12 @@ class GPUSpatialProcessor:
 
     def __init__(self, dimensions: Coordinates3D, config: dict = None):
         self.dimensions = dimensions
-        self.config = config or get_project_config().get_spatial_optim_config()
+        project_config = get_project_config()
+        if config is None:
+            # Используем правильный метод из конфигурации
+            from ....config.config_components import create_spatial_config_for_lattice
+            config = create_spatial_config_for_lattice(project_config.lattice.dimensions)
+        self.config = config
 
         # Device management
         self.device_manager = get_device_manager()
@@ -296,7 +301,7 @@ class GPUSpatialProcessor:
         chunks_to_load = []
 
         for chunk_id in chunk_ids:
-            chunk_info = self.chunker.adaptive_chunks[chunk_id]
+            chunk_info = self.chunker._chunks[chunk_id]
             if chunk_info.gpu_memory_usage_mb == 0:  # не загружен
                 chunks_to_load.append(chunk_id)
 
@@ -683,11 +688,35 @@ class GPUSpatialProcessor:
         # Используем наш внутренний chunker если не передан внешний
         active_chunker = chunker or self.chunker
         
+        logger.debug_verbose(f"🚀 GPU SPATIAL PROCESSOR.process_lattice:")
+        logger.debug_verbose(f"   states shape: {states.shape}")
+        logger.debug_verbose(f"   chunker provided: {chunker is not None}")
+        logger.debug_verbose(f"   active_chunker type: {type(active_chunker)}")
+        logger.debug_verbose(f"   active_chunker: {active_chunker}")
+        
         # Инициализируем spatial hash всеми координатами клеток
         self._populate_spatial_hash(states)
         
         # Получаем расписание обработки chunk'ов
+        if active_chunker is None:
+            logger.debug_verbose(f"❌ NO CHUNKER AVAILABLE - using direct batch processing")
+            # Fallback: вызываем processor_fn для всей решетки сразу
+            # TODO: Implement direct batch processing without chunking
+            raise RuntimeError("No chunker available and direct processing not implemented")
+        
+        logger.debug_verbose(f"📋 Getting adaptive processing schedule...")
         schedule = active_chunker.get_adaptive_processing_schedule()
+        
+        # ПОДРОБНАЯ ДИАГНОСТИКА SCHEDULE
+        logger.debug_verbose(f"🎯 ADAPTIVE PROCESSING SCHEDULE:")
+        logger.debug_verbose(f"   Total batches: {len(schedule)}")
+        logger.debug_verbose(f"   Total chunks: {sum(len(batch) for batch in schedule)}")
+        
+        for i, batch in enumerate(schedule):
+            logger.debug_verbose(f"   Batch {i}: {len(batch)} chunks {batch}")
+            for chunk_id in batch:
+                chunk_info = active_chunker._chunks[chunk_id]
+                logger.debug_verbose(f"     Chunk {chunk_id}: {len(chunk_info.cell_indices)} cells")
         
         # Обрабатываем chunk'и согласно расписанию
         processed_states = states.clone()
@@ -698,7 +727,14 @@ class GPUSpatialProcessor:
         for batch in schedule:
             batch_futures = []
             
+            logger.debug_verbose(f"🔄 Processing batch of {len(batch)} chunks: {batch}")
+            
             for chunk_id in batch:
+                chunk_info = active_chunker._chunks[chunk_id]
+                logger.debug_verbose(f"🔧 Starting async processing for chunk {chunk_id}")
+                logger.debug_verbose(f"   Chunk cells: {len(chunk_info.cell_indices)}")
+                logger.debug_verbose(f"   Cell range: {min(chunk_info.cell_indices)}-{max(chunk_info.cell_indices)}")
+                
                 # Планируем асинхронную обработку chunk'а
                 future = active_chunker.process_chunk_async(
                     chunk_id,
@@ -709,18 +745,30 @@ class GPUSpatialProcessor:
                     all_states=processed_states
                 )
                 batch_futures.append(future)
+                logger.debug_verbose(f"   Future created for chunk {chunk_id}")
+            
+            logger.debug_verbose(f"⏳ Waiting for {len(batch_futures)} futures with 15s timeout each...")
             
             # Оптимизация: увеличиваем таймаут для крупных chunk'ов
-            for future in batch_futures:
+            for i, future in enumerate(batch_futures):
+                chunk_id = batch[i]
+                logger.debug_verbose(f"⏱️ Waiting for chunk {chunk_id} result (timeout 15s)...")
                 try:
+                    start_wait = time.time()
                     result = future.result(timeout=15.0)  # Увеличиваем до 15 секунд для стабильности
-                    logger.debug(f"✅ Chunk processed successfully: {result}")
+                    wait_time = (time.time() - start_wait) * 1000
+                    logger.debug_verbose(f"✅ Chunk {chunk_id} processed in {wait_time:.1f}ms: {result}")
                 except TimeoutError as e:
-                    logger.warning(f"⚠️ Chunk processing timeout (15s), skipping chunk...")
+                    logger.debug_verbose(f"❌ TIMEOUT DETAILS for chunk {chunk_id}:")
+                    logger.debug_verbose(f"   Future done: {future.done()}")
+                    logger.debug_verbose(f"   Future cancelled: {future.cancelled()}")
+                    logger.debug_verbose(f"   Future running: {future.running()}")
+                    logger.warning(f"⚠️ Chunk {chunk_id} processing timeout (15s), skipping chunk...")
                     # Продолжаем без этого chunk'а
                     continue
                 except Exception as e:
-                    logger.error(f"❌ Ошибка обработки chunk'а: {e}")
+                    logger.debug_verbose(f"❌ EXCEPTION DETAILS for chunk {chunk_id}: {type(e).__name__}: {e}")
+                    logger.error(f"❌ Ошибка обработки chunk'а {chunk_id}: {e}")
                     logger.exception("Detailed chunk processing error traceback:")
                     continue
         
@@ -747,11 +795,16 @@ class GPUSpatialProcessor:
         updates: dict = None
     ) -> str:
         """Обрабатывает один chunk с заданной функцией"""
+        start_time = time.time()
+        logger.debug_verbose(f"🚀 STARTING _process_chunk_with_function for chunk {chunk_info.chunk_id}")
+        logger.debug_verbose(f"   Thread: {threading.current_thread().name}")
+        logger.debug_verbose(f"   Processor fn: {processor_fn.__name__ if hasattr(processor_fn, '__name__') else type(processor_fn)}")
+        
         try:
             # DEBUG: Логируем размерности
-            logger.debug(f"🔧 CHUNK PROCESSING: all_states shape {all_states.shape}")
-            logger.debug(f"🔧 CHUNK INDICES count: {len(chunk_info.cell_indices)}")
-            logger.debug(f"🔧 CHUNK INDICES range: {min(chunk_info.cell_indices)} - {max(chunk_info.cell_indices)}")
+            logger.debug_verbose(f"🔧 CHUNK PROCESSING: all_states shape {all_states.shape}")
+            logger.debug_verbose(f"🔧 CHUNK INDICES count: {len(chunk_info.cell_indices)}")
+            logger.debug_verbose(f"🔧 CHUNK INDICES range: {min(chunk_info.cell_indices)} - {max(chunk_info.cell_indices)}")
             
             # Проверяем что chunk_info.cell_indices не пустой
             if not chunk_info.cell_indices:
@@ -804,8 +857,56 @@ class GPUSpatialProcessor:
                 
                 chunk_states = all_states[indices]
             
-            # Обрабатываем каждую клетку в chunk'е
-            # Create list to collect processed states instead of in-place modification
+            # BATCH ОБРАБОТКА ВСЕГО CHUNK'А СРАЗУ (вместо цикла по клеткам)
+            logger.debug_verbose(f"🚀 BATCH PROCESSING CHUNK: {len(indices)} cells")
+            logger.debug_verbose(f"   Chunk states shape: {chunk_states.shape}")
+            
+            # Обрабатываем весь chunk одним вызовом processor_fn
+            try:
+                # Для batch_processor_fn передаем все состояния chunk'а сразу
+                if all_states.dim() == 3:  # [batch, cells, features]
+                    # chunk_states уже имеет shape [batch, chunk_cells, features]
+                    # Нам нужно передать [chunk_cells, features] для каждого батча
+                    batch_results = []
+                    for batch_idx in range(chunk_states.shape[0]):
+                        batch_chunk = chunk_states[batch_idx]  # [chunk_cells, features]
+                        result = processor_fn(
+                            current_state=batch_chunk,
+                            neighbor_states=None,  # Получится из кэша
+                            cell_idx=indices[0].item(),  # Первый индекс chunk'а
+                            neighbor_indices=[]  # Получится из кэша
+                        )
+                        batch_results.append(result)
+                    
+                    # Собираем результаты
+                    chunk_result = torch.stack(batch_results, dim=0)  # [batch, chunk_cells, features]
+                    
+                else:
+                    # Fallback для других форматов
+                    chunk_result = processor_fn(
+                        current_state=chunk_states,
+                        neighbor_states=None,
+                        cell_idx=indices[0].item(),
+                        neighbor_indices=[]
+                    )
+                
+                logger.debug_verbose(f"✅ CHUNK BATCH PROCESSED: result shape {chunk_result.shape}")
+                
+                # Сохраняем результат для обновления
+                if updates is not None:
+                    updates[tuple(indices.cpu().tolist())] = chunk_result
+                
+                processing_time = (time.time() - start_time) * 1000
+                return f"Chunk {chunk_info.chunk_id} processed in {processing_time:.1f}ms (BATCH MODE)"
+                
+            except Exception as e:
+                logger.error(f"❌ BATCH PROCESSING FAILED: {e}")
+                logger.debug_verbose(f"   Falling back to per-cell processing...")
+                # Fallback к старому методу
+                pass
+            
+            # FALLBACK: Обрабатываем каждую клетку в chunk'е (старый метод)
+            logger.debug_verbose(f"⚠️ Using fallback per-cell processing for chunk {chunk_info.chunk_id}")
             processed_states_list = []
             
             for i, cell_idx in enumerate(indices):
