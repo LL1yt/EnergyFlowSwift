@@ -37,8 +37,10 @@ class EnergyConfig:
     neuron_output_dim: int = 64  # Должен совпадать с входом GRU
     
     # Размерности эмбеддингов
-    input_embedding_dim: int = 768  # Стандартный размер от language models
+    input_embedding_dim_from_teacher: int = 768  # Стандартный размер от language models
     embedding_per_cell: int = 12    # 768 / 64 cells = 12 dim per cell
+    energy_dim: int = 1             # Скалярная энергия для каждого потока
+    output_embedding_dim_to_teacher: int = input_embedding_dim_from_teacher # Размер выходного эмбеддинга
     
     # Обучение
     learning_rate: float = 1e-4
@@ -66,10 +68,10 @@ class EnergyConfig:
         self.output_cells = self.lattice_width * self.lattice_height
         
         # Проверка согласованности размерностей
-        self.embedding_per_cell = self.input_embedding_dim // self.input_cells
-        if self.embedding_per_cell * self.input_cells != self.input_embedding_dim:
+        self.embedding_per_cell = self.input_embedding_dim_from_teacher // self.input_cells
+        if self.embedding_per_cell * self.input_cells != self.input_embedding_dim_from_teacher:
             # Корректируем размер, чтобы было кратно
-            self.embedding_per_cell = max(1, self.input_embedding_dim // self.input_cells)
+            self.embedding_per_cell = max(1, self.input_embedding_dim_from_teacher // self.input_cells)
             print(f"Warning: Adjusting embedding_per_cell to {self.embedding_per_cell}")
         
         # Проверка параметров энергии

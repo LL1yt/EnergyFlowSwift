@@ -120,7 +120,7 @@ class FlowProcessor(nn.Module):
         # Если нет выходов, возвращаем нули
         if output_embeddings.shape[0] == 0:
             logger.warning("No flows reached output, returning zero embeddings")
-            output_embeddings = torch.zeros(batch_size, self.config.input_embedding_dim, 
+            output_embeddings = torch.zeros(batch_size, self.config.input_embedding_dim_from_teacher, 
                                           device=self.device)
         
         # Приводим к размеру батча

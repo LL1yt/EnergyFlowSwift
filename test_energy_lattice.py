@@ -65,7 +65,7 @@ def test_place_initial_energy():
     device = lattice.device
     
     # Эмбеддинги размерности input_embedding_dim (768D)
-    input_embeddings = torch.randn(batch_size, config.input_embedding_dim, device=device)
+    input_embeddings = torch.randn(batch_size, config.input_embedding_dim_from_teacher, device=device)
     
     print(f"📝 Входные эмбеддинги: {input_embeddings.shape}")
     print(f"📝 Ожидаемое количество потоков: {lattice.width * lattice.height * batch_size}")
@@ -214,7 +214,7 @@ def test_collect_output_energy():
     print(f"✅ ID потоков на выходе: {output_flow_ids}")
     
     # Проверяем размерности
-    expected_shape = (1, config.input_embedding_dim)
+    expected_shape = (1, config.input_embedding_dim_from_teacher)
     correct_shape = output_embeddings.shape == expected_shape
     print(f"✅ Правильная размерность выхода: {correct_shape} {output_embeddings.shape} vs {expected_shape}")
     
@@ -421,7 +421,7 @@ def test_energy_flow_lifecycle():
     device = lattice.device
     
     # 1. Размещаем входную энергию
-    input_embedding = torch.randn(1, config.input_embedding_dim, device=device)
+    input_embedding = torch.randn(1, config.input_embedding_dim_from_teacher, device=device)
     initial_flow_ids = lattice.place_initial_energy(input_embedding)
     
     print(f"🌱 Размещено {len(initial_flow_ids)} начальных потоков")

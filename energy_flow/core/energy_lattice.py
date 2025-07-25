@@ -92,12 +92,13 @@ class EnergyLattice(nn.Module):
         logger.info(f"EnergyLattice initialized: {self.width}x{self.height}x{self.depth}")
         logger.info(f"Input/output cells: {self.width * self.height}, max flows: {self.max_active_flows}")
     
-    def place_initial_energy(self, embeddings: torch.Tensor) -> List[int]:
+    def place_initial_energy(self, embeddings: torch.Tensor, mapper=None) -> List[int]:
         """
         Размещает входные эмбеддинги на входной стороне куба (z=0)
         
         Args:
             embeddings: [batch, embedding_dim] - входные эмбеддинги (768D)
+            mapper: EnergyFlowMapper для проекции (опционально)
             
         Returns:
             flow_ids: Список ID созданных потоков
@@ -105,47 +106,47 @@ class EnergyLattice(nn.Module):
         batch_size = embeddings.shape[0]
         
         # Проверяем размерность
-        expected_dim = self.config.input_embedding_dim
+        expected_dim = self.config.input_embedding_dim_from_teacher
         if embeddings.shape[1] != expected_dim:
             raise ValueError(f"Expected embedding dim {expected_dim}, got {embeddings.shape[1]}")
         
         # Очищаем неактивные потоки
         self._cleanup_inactive_flows()
         
-        # Распределяем эмбеддинги по входным клеткам
-        input_cells = self.width * self.height
-        embedding_per_cell = embeddings.shape[1] // input_cells
-        
         flow_ids = []
         
-        # Создаем потоки для каждой входной клетки
-        for y in range(self.height):
-            for x in range(self.width):
-                cell_idx = y * self.width + x
+        if mapper is not None:
+            # Используем маппер для проекции 768D -> surface_dim
+            cell_energies = mapper.map_to_surface(embeddings)
+            
+            for (x, y), energy, batch_idx in cell_energies:
+                if len(self.active_flows) >= self.max_active_flows:
+                    logger.warning(f"Reached max active flows limit: {self.max_active_flows}")
+                    break
                 
-                # Извлекаем часть эмбеддинга для этой клетки
-                start_idx = cell_idx * embedding_per_cell
-                end_idx = start_idx + embedding_per_cell
+                # Создаем поток со скалярной энергией
+                position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
+                flow_id = self._create_flow(position, energy)
+                flow_ids.append(flow_id)
+        else:
+            # Fallback: простое распределение (для обратной совместимости)
+            logger.error("No mapper provided, using simple energy distribution")
+            
+            for batch_idx in range(batch_size):
+                if len(self.active_flows) >= self.max_active_flows:
+                    break
                 
-                for batch_idx in range(batch_size):
-                    if len(self.active_flows) >= self.max_active_flows:
-                        logger.warning(f"Reached max active flows limit: {self.max_active_flows}")
-                        break
-                    
-                    # Создаем энергию для клетки
-                    if end_idx <= embeddings.shape[1]:
-                        cell_energy = embeddings[batch_idx, start_idx:end_idx]
-                    else:
-                        # Padding для последних клеток
-                        cell_energy = torch.zeros(embedding_per_cell, device=self.device)
-                        available = embeddings.shape[1] - start_idx
-                        if available > 0:
-                            cell_energy[:available] = embeddings[batch_idx, start_idx:]
-                    
-                    # Создаем поток
-                    position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
-                    flow_id = self._create_flow(position, cell_energy)
-                    flow_ids.append(flow_id)
+                # Размещаем по спирали для равномерного покрытия
+                flow_count = len(flow_ids)
+                x = flow_count % self.width
+                y = flow_count // self.width
+                
+                # Берем среднее значение эмбеддинга как скалярную энергию
+                energy = embeddings[batch_idx].mean().unsqueeze(0)
+                
+                position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
+                flow_id = self._create_flow(position, energy)
+                flow_ids.append(flow_id)
         
         logger.info(f"Created {len(flow_ids)} initial flows on input surface")
         return flow_ids
@@ -368,7 +369,7 @@ class EnergyLattice(nn.Module):
         output_embeddings = torch.stack(output_embeddings)  # [width*height, embedding_dim]
         
         # Восстанавливаем исходную размерность эмбеддинга
-        output_embeddings = output_embeddings.view(-1)[:self.config.input_embedding_dim]
+        output_embeddings = output_embeddings.view(-1)[:self.config.input_embedding_dim_from_teacher]
         output_embeddings = output_embeddings.unsqueeze(0)  # [1, 768]
         
         # Статистика
@@ -381,16 +382,55 @@ class EnergyLattice(nn.Module):
         
         return output_embeddings, flow_ids
     
-    def collect_output_energy(self) -> Tuple[torch.Tensor, List[int]]:
+    def collect_output_energy(self, mapper=None) -> Tuple[torch.Tensor, List[int]]:
         """
-        Совместимость: собирает энергию из буфера
+        Собирает энергию с выходной поверхности
         
+        Args:
+            mapper: EnergyFlowMapper для восстановления эмбеддингов
+            
         Returns:
             output_embeddings: [batch, embedding_dim] - собранные эмбеддинги
             flow_ids: ID потоков, достигших выхода
         """
-        # Просто используем новый буферизованный метод
-        return self.collect_buffered_energy()
+        if mapper is not None:
+            # Собираем энергию из буфера по клеткам
+            surface_energy = {}
+            flow_ids = []
+            
+            for (x, y), flows in self.output_buffer.items():
+                if flows:
+                    # Усредняем энергию в клетке с весами
+                    energies = []
+                    weights = []
+                    
+                    for flow in flows:
+                        energy_magnitude = torch.norm(flow.energy).item()
+                        age_factor = 1 + flow.age * 0.1
+                        weight = energy_magnitude * age_factor
+                        
+                        energies.append(flow.energy)
+                        weights.append(weight)
+                        flow_ids.append(flow.id)
+                    
+                    # Взвешенное усреднение
+                    weights = torch.tensor(weights, device=self.device)
+                    weights = weights / weights.sum()
+                    
+                    avg_energy = sum(e * w for e, w in zip(energies, weights))
+                    surface_energy[(x, y)] = avg_energy
+            
+            # Определяем размер батча
+            batch_size = 1  # TODO: отслеживать batch_idx в потоках
+            
+            # Восстанавливаем эмбеддинги через маппер
+            output_embeddings = mapper.collect_from_surface(surface_energy, batch_size)
+            
+            logger.info(f"Collected energy from {len(surface_energy)} cells using mapper")
+            return output_embeddings, flow_ids
+        else:
+            # Fallback: старый метод
+            return self.collect_buffered_energy()
     
     def _cleanup_inactive_flows(self):
         """Удаляет неактивные потоки из памяти"""

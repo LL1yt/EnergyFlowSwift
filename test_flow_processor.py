@@ -71,7 +71,7 @@ def test_simple_forward_pass():
     device = processor.device
     
     # Создаем случайные входные эмбеддинги
-    input_embeddings = torch.randn(batch_size, config.input_embedding_dim, device=device)
+    input_embeddings = torch.randn(batch_size, config.input_embedding_dim_from_teacher, device=device)
     print(f"📝 Входные эмбеддинги: {input_embeddings.shape}")
     
     # Прямой проход
@@ -80,10 +80,10 @@ def test_simple_forward_pass():
     
     # Проверяем выходы
     print(f"✅ Выходные эмбеддинги: {output_embeddings.shape}")
-    print(f"✅ Ожидаемая размерность: [{batch_size}, {config.input_embedding_dim}]")
+    print(f"✅ Ожидаемая размерность: [{batch_size}, {config.input_embedding_dim_from_teacher}]")
     
     # Проверяем размерности
-    correct_shape = output_embeddings.shape == (batch_size, config.input_embedding_dim)
+    correct_shape = output_embeddings.shape == (batch_size, config.input_embedding_dim_from_teacher)
     print(f"✅ Правильная размерность выхода: {correct_shape}")
     
     # Проверяем что не все нули
@@ -112,7 +112,7 @@ def test_step_by_step_processing():
     device = processor.device
     
     # Создаем минимальные входные данные
-    input_embeddings = torch.randn(1, config.input_embedding_dim, device=device)
+    input_embeddings = torch.randn(1, config.input_embedding_dim_from_teacher, device=device)
     
     # Размещаем энергию вручную
     processor.lattice.reset()
@@ -211,7 +211,7 @@ def test_performance_stats():
     
     # Выполняем небольшой forward pass для генерации статистики
     device = processor.device
-    input_embeddings = torch.randn(1, config.input_embedding_dim, device=device)
+    input_embeddings = torch.randn(1, config.input_embedding_dim_from_teacher, device=device)
     
     with torch.no_grad():
         output = processor.forward(input_embeddings, max_steps=3)

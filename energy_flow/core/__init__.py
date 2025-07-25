@@ -7,6 +7,7 @@ from .simple_neuron import SimpleNeuron, create_simple_neuron
 from .energy_carrier import EnergyCarrier, EnergyOutput, create_energy_carrier
 from .energy_lattice import EnergyLattice, EnergyFlow, create_energy_lattice
 from .flow_processor import FlowProcessor, create_flow_processor
+from .embedding_mapper import EnergyEmbeddingMapper, EnergyOutputCollector, EnergyFlowMapper
 
 __all__ = [
     # SimpleNeuron
@@ -23,4 +24,8 @@ __all__ = [
     # FlowProcessor
     'FlowProcessor',
     'create_flow_processor',
+    # EmbeddingMapper
+    'EnergyEmbeddingMapper',
+    'EnergyOutputCollector',
+    'EnergyFlowMapper',
 ]
