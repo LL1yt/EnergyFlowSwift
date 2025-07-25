@@ -135,7 +135,8 @@ class EnergyCarrier(nn.Module):
                 neuron_output: torch.Tensor,
                 embedding_part: torch.Tensor,
                 hidden_state: Optional[torch.Tensor] = None,
-                current_position: Optional[torch.Tensor] = None) -> Tuple[EnergyOutput, torch.Tensor]:
+                current_position: Optional[torch.Tensor] = None,
+                flow_age: Optional[torch.Tensor] = None) -> Tuple[EnergyOutput, torch.Tensor]:
         """
         Прямой проход через EnergyCarrier
         
@@ -164,6 +165,20 @@ class EnergyCarrier(nn.Module):
         
         # 2. Вычисляем следующую позицию
         predicted_position = self.position_projection(gru_output)  # [batch, 3]
+
+        # Экспериментальная настройка для предварительного обучения
+        if self.config.use_forward_movement_bias and self.config.initial_z_bias > 0:
+            # Применяем экспериментальный progressive bias для Z координаты
+            if (flow_age is not None):
+                # Динамический bias = initial_bias + (age * multiplier)
+                dynamic_z_bias = self.config.initial_z_bias + (flow_age * self.config.progressive_z_multiplier)
+                predicted_position[:, 2] += dynamic_z_bias
+        
+        # Exploration noise для разнообразия путей
+        if self.config.use_exploration_noise:
+            noise = torch.randn_like(predicted_position) * self.config.exploration_noise
+            predicted_position += noise
+        
         
         # Применяем ограничения движения (только вперед по Z)
         if predicted_position is not None:

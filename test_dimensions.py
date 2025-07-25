@@ -11,6 +11,8 @@ import torch
 import sys
 import os
 
+# Default device будет установлен при импорте energy_config
+
 # Добавляем путь к проекту
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -42,8 +44,7 @@ def test_full_dimensions_pipeline():
     
     # Эмуляция входных данных от DistilBERT
     batch_size = 2
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    teacher_embeddings = torch.randn(batch_size, config.input_embedding_dim_from_teacher).to(device)
+    teacher_embeddings = torch.randn(batch_size, config.input_embedding_dim_from_teacher)  # Автоматически на GPU
     
     print(f"\n🔄 Тестирование преобразований:")
     print(f"   Вход: {teacher_embeddings.shape}")

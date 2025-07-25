@@ -196,10 +196,8 @@ class EnergyOutputCollector(nn.Module):
         Returns:
             embeddings: [batch, 768] - восстановленные эмбеддинги
         """
-        device = next(iter(surface_energy.values())).device if surface_energy else torch.device('cpu')
-        
-        # Создаем пустую поверхность
-        surface = torch.zeros(batch_size, self.height, self.width, device=device)
+        # Создаем пустую поверхность (автоматически на default device - GPU)
+        surface = torch.zeros(batch_size, self.height, self.width)
         
         # Заполняем энергией из потоков
         for (x, y), energy in surface_energy.items():
@@ -208,8 +206,7 @@ class EnergyOutputCollector(nn.Module):
                 if logger.isEnabledFor(DEBUG_ENERGY):
                     logger.log(DEBUG_ENERGY, f"Devices - energy: {energy.device}, position_weights: {self.position_weights.device}, surface: {surface.device}")
                 
-                # Убеждаемся что энергия на правильном устройстве
-                energy = energy.to(device)
+                # energy уже должна быть на правильном устройстве (default CUDA)
                 
                 # Применяем позиционные веса
                 weighted_energy = energy * self.position_weights[y, x]

@@ -10,6 +10,14 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 import torch
 
+# Устанавливаем GPU как default device для всего проекта
+if torch.cuda.is_available():
+    torch.set_default_device('cuda')
+    torch.set_default_dtype(torch.float32)
+    print(f"🚀 Energy Flow: Default device set to CUDA ({torch.cuda.get_device_name()})")
+else:
+    print("⚠️ Energy Flow: CUDA not available, using CPU")
+
 
 @dataclass
 class EnergyConfig:
@@ -54,6 +62,13 @@ class EnergyConfig:
     # Logging
     log_interval: int = 10
     checkpoint_interval: int = 100
+    
+    # Предварительное обучение (experimental features)
+    initial_z_bias: float = 1.0  # Положительный bias для Z координаты (помощь необученной модели)
+    use_forward_movement_bias: bool = True  # Включать ли bias для движения вперед
+    progressive_z_multiplier: float = 2.1  # Множитель для динамического bias'а
+    exploration_noise: float = 0.5  # Случайный шум для разнообразия путей
+    use_exploration_noise: bool = True  # Включать ли exploration noise
     
     def __post_init__(self):
         """Валидация и вычисление производных параметров"""

@@ -74,6 +74,13 @@ class FlowProcessor(nn.Module):
             'gpu_memory_usage': []
         }
         
+        # Статистика убийства потоков
+        self.stats = {
+            'flows_killed_backward': 0,
+            'flows_killed_bounds': 0,
+            'flows_killed_energy': 0
+        }
+        
         logger.info(f"FlowProcessor initialized on {self.device}")
         logger.info(f"Components: Lattice {config.lattice_width}x{config.lattice_height}x{config.lattice_depth}, "
                    f"SimpleNeuron, EnergyCarrier")
@@ -143,8 +150,12 @@ class FlowProcessor(nn.Module):
         
         # Финальная статистика
         final_stats = self.lattice.get_statistics()
+        killed_backward = self.stats['flows_killed_backward']
+        killed_bounds = self.stats['flows_killed_bounds']
+        killed_energy = self.stats['flows_killed_energy']
         logger.info(f"Energy propagation complete: {final_stats['total_completed']} flows reached output, "
-                   f"{final_stats['total_died']} died")
+                   f"{final_stats['total_died']} died "
+                   f"(energy: {killed_energy}, backward: {killed_backward}, bounds: {killed_bounds})")
         
         return output_embeddings
     
@@ -231,12 +242,16 @@ class FlowProcessor(nn.Module):
         # 1. SimpleNeuron обрабатывает позиции и энергии
         neuron_output = self.neuron(positions, energies)  # [batch, neuron_output_dim]
         
+        # Собираем возраста потоков для progressive bias
+        ages = torch.tensor([flow.age for flow in flows], dtype=torch.float32, device=positions.device)
+        
         # 2. EnergyCarrier генерирует следующее состояние
         carrier_output, new_hidden = self.carrier(
             neuron_output, 
             energies,
             hidden_states,
-            positions
+            positions,
+            flow_age=ages
         )
         
         # Транспонируем обратно и делаем непрерывными
@@ -249,12 +264,30 @@ class FlowProcessor(nn.Module):
             
             if not is_alive[0]:
                 self.lattice.deactivate_flow(flow.id, "energy_depleted")
+                self.stats['flows_killed_energy'] += 1
                 continue
             
-            # Обновляем состояние потока
+            # Проверяем валидность движения ПЕРЕД обновлением
+            next_pos = carrier_output.next_position[idx]
+            current_pos = flow.position
+            
+            # 1. Проверка движения вперед по Z
+            if next_pos[2] <= current_pos[2]:
+                self.lattice.deactivate_flow(flow.id, f"backward_z_movement: {next_pos[2]:.1f} <= {current_pos[2]:.1f}")
+                self.stats['flows_killed_backward'] += 1
+                continue
+            
+            # 2. Проверка боковых границ X,Y
+            if (next_pos[0] < 0 or next_pos[0] >= self.config.lattice_width or 
+                next_pos[1] < 0 or next_pos[1] >= self.config.lattice_height):
+                self.lattice.deactivate_flow(flow.id, f"out_of_bounds: pos=({next_pos[0]:.1f},{next_pos[1]:.1f})")
+                self.stats['flows_killed_bounds'] += 1
+                continue
+            
+            # Движение валидно - обновляем состояние потока
             self.lattice.update_flow(
                 flow.id,
-                carrier_output.next_position[idx],
+                next_pos,
                 carrier_output.energy_value[idx],
                 new_hidden[idx]
             )
