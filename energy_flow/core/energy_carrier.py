@@ -25,6 +25,10 @@ class EnergyOutput:
     next_position: torch.Tensor     # Координаты следующей клетки
     spawn_energies: List[torch.Tensor]  # Энергии для новых потоков
     spawn_count: int               # Количество новых потоков
+    
+    # Флаги завершения потоков (для обработки в FlowProcessor)
+    is_terminated: torch.Tensor     # [batch] - маска завершенных потоков
+    termination_reason: List[str]   # Причины завершения для каждого потока
 
 
 class EnergyCarrier(nn.Module):
@@ -82,13 +86,13 @@ class EnergyCarrier(nn.Module):
             nn.Tanh()  # Нормализация в [-1, 1]
         )
         
-        # 2. Следующая позиция - предсказываем абсолютные координаты
+        # 2. Следующая позиция - предсказываем нормализованные координаты
         self.position_projection = nn.Sequential(
             nn.Linear(self.hidden_size, 64),
             nn.GELU(),
             nn.Dropout(self.dropout),
-            nn.Linear(64, 3),  # x, y, z координаты (абсолютные)
-            # Убираем Tanh - позволяем модели предсказывать любые координаты
+            nn.Linear(64, 3),  # x, y, z координаты (нормализованные)
+            self.config.normalization_manager.get_coordinate_activation()  # Tanh для [-1, 1]
         )
         
         # 3. Порождение новых потоков
@@ -163,8 +167,13 @@ class EnergyCarrier(nn.Module):
         # 1. Генерируем текущую энергию
         energy_value = self.energy_projection(gru_output)  # [batch, embedding_dim]
         
-        # 2. Вычисляем следующую позицию
-        predicted_position = self.position_projection(gru_output)  # [batch, 3]
+        # 2. Вычисляем следующую позицию (нормализованную)
+        predicted_position_normalized = self.position_projection(gru_output)  # [batch, 3] в [-1, 1]
+        
+        # Денормализуем для применения bias'ов и шума
+        predicted_position = self.config.normalization_manager.denormalize_coordinates(
+            predicted_position_normalized
+        )
 
         # Экспериментальная настройка для предварительного обучения
         if self.config.use_forward_movement_bias and self.config.initial_z_bias > 0:
@@ -179,12 +188,8 @@ class EnergyCarrier(nn.Module):
             noise = torch.randn_like(predicted_position) * self.config.exploration_noise
             predicted_position += noise
         
-        
-        # Применяем ограничения движения (только вперед по Z)
-        if predicted_position is not None:
-            next_position = self._compute_next_position(predicted_position)
-        else:
-            logger.error("Predicted position is None")
+        # Применяем логику завершения потоков
+        next_position, is_terminated, termination_reasons = self._compute_next_position(predicted_position)
         
         # 3. Определяем порождение новых потоков
         spawn_prob = self.spawn_gate(gru_output).squeeze(-1)  # [batch]
@@ -220,49 +225,81 @@ class EnergyCarrier(nn.Module):
             energy_value=energy_value,
             next_position=next_position,
             spawn_energies=spawn_energies,
-            spawn_count=sum(spawn_counts)
+            spawn_count=sum(spawn_counts),
+            is_terminated=is_terminated,
+            termination_reason=termination_reasons
         )
         
         return output, new_hidden
     
     def _compute_next_position(self, 
-                              predicted_position: torch.Tensor) -> torch.Tensor:
+                              predicted_position: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
         """
-        Вычисляет следующую позицию согласно PLAN.md
+        Вычисляет следующую позицию и определяет завершенные потоки
         
-        Логика движения потоков:
-        1. Поток движется туда, куда указывает next_position (без принуждения)
-        2. Проверка валидности движения происходит на уровне FlowProcessor/EnergyLattice
-        3. Если поток не движется вперед по Z - он будет убит в FlowProcessor
-        4. Если поток выходит за пределы по Z - он завершается и используется для выходного эмбеддинга
+        Новая логика движения потоков (без принудительного ограничения):
+        1. Поток движется туда, куда указывает predicted_position
+        2. Если поток выходит за пределы по X,Y - он завершается (нейросеть должна обучиться не делать этого)
+        3. Если поток выходит за пределы по Z (depth*2-1) - он нормально завершается на выходной поверхности
+        4. FlowProcessor обрабатывает завершенные потоки для сбора энергии
         
         Args:
-            current_position: [batch, 3] - текущие координаты
-            predicted_position: [batch, 3] - предсказанное смещение
+            predicted_position: [batch, 3] - предсказанные координаты (реальные значения)
             
         Returns:
             next_position: [batch, 3] - следующая позиция (целые координаты)
-            
-        TODO: При выходе за пределы решетки по X,Y направлять поток к ближайшей точке выходной стороны
-        TODO: Реализовать умное усреднение для нескольких потоков в одной выходной точке
-        TODO: Добавить более умную логику навигации через обучение после создания trainer
+            is_terminated: [batch] - маска завершенных потоков
+            termination_reasons: List[str] - причины завершения для каждого потока
         """
-        # Масштабируем дельту (EnergyCarrier определяет направление и дистанцию)
-        scaled_delta = predicted_position # * 5.0   Максимальный прыжок ~5 клеток без прыжков пока.
+        # Используем предсказанные координаты напрямую (уже денормализованы)
+        next_position = predicted_position
         
-        # Применяем смещение БЕЗ принуждения движения вперед
-        next_position = scaled_delta
+        # Определяем завершенные потоки вместо принудительного ограничения
+        batch_size = predicted_position.shape[0]
+        is_terminated = torch.zeros(batch_size, dtype=torch.bool, device=predicted_position.device)
+        termination_reasons = []
         
-        # Только ограничиваем координаты размерами решетки (не убиваем поток здесь)
-        # Логика убийства/завершения потоков будет в FlowProcessor
-        next_position[:, 0] = torch.clamp(next_position[:, 0], 0, self.config.lattice_width - 1)
-        next_position[:, 1] = torch.clamp(next_position[:, 1], 0, self.config.lattice_height - 1)
-        # Z координату НЕ ограничиваем - позволяем выходить за пределы для детекции завершения
+        # Проверяем выход за пределы по X и Y координатам
+        out_of_bounds_x = (predicted_position[:, 0] < 0) | (predicted_position[:, 0] >= self.config.lattice_width)
+        out_of_bounds_y = (predicted_position[:, 1] < 0) | (predicted_position[:, 1] >= self.config.lattice_height)
+        out_of_bounds_xy = out_of_bounds_x | out_of_bounds_y
         
-        # Округляем до целых значений для дискретной решетки
-        next_position = torch.round(next_position)
+        # Правильная логика для Z координаты:
+        # Z ∈ [0, depth-1] - активная зона
+        # Z ∈ [depth, depth*2-1] - зона завершения (нормальное завершение)
+        # Z ≥ depth*2 - выход за пределы (ошибка нейросети)
         
-        return next_position
+        depth = self.config.lattice_depth
+        max_valid_z = depth * 2 - 1
+        
+        # Определяем типы завершения по Z координате
+        reached_output_zone = (predicted_position[:, 2] >= depth) & (predicted_position[:, 2] <= max_valid_z)
+        out_of_bounds_z = predicted_position[:, 2] > max_valid_z
+        
+        # Отмечаем завершенные потоки
+        is_terminated = out_of_bounds_xy | reached_output_zone | out_of_bounds_z
+        
+        # Определяем причины завершения для каждого потока
+        for i in range(batch_size):
+            if out_of_bounds_xy[i]:
+                termination_reasons.append("out_of_bounds_xy")
+            elif out_of_bounds_z[i]:
+                termination_reasons.append("out_of_bounds_z")  # Ошибка нейросети
+            elif reached_output_zone[i]:
+                termination_reasons.append("reached_output_surface")  # Нормальное завершение
+            else:
+                termination_reasons.append("active")  # Поток продолжает движение
+        
+        # Для активных потоков округляем координаты до целых значений
+        next_position = torch.round(predicted_position.clone())
+        
+        # Для потоков в зоне завершения [depth, depth*2-1] - сопоставляем с выходной поверхностью
+        # Сохраняем оригинальные X,Y но устанавливаем Z = depth для буферизации
+        output_surface_mask = reached_output_zone
+        if output_surface_mask.any():
+            next_position[output_surface_mask, 2] = depth  # Сопоставляем с выходной поверхностью Z=depth
+        
+        return next_position, is_terminated, termination_reasons
     
     def init_hidden(self, batch_size: int, device: torch.device) -> torch.Tensor:
         """Инициализация скрытого состояния GRU"""
@@ -281,10 +318,10 @@ class EnergyCarrier(nn.Module):
         Returns:
             is_alive: [batch] - маска активных потоков
         """
-        # Преобразуем из [-1, 1] в [0, 1] для проверки порога
-        energy_normalized = (energy + 1.0) / 2.0  # [-1, 1] -> [0, 1]
-        energy_magnitude = torch.abs(energy_normalized.squeeze(-1))  # [batch]
-        return energy_magnitude > self.config.energy_threshold
+        # Используем централизованную проверку энергии
+        return self.config.normalization_manager.check_energy_threshold(
+            energy, self.config.energy_threshold
+        )
 
 
 def create_energy_carrier(config=None) -> EnergyCarrier:

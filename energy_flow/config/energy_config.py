@@ -10,6 +10,11 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 import torch
 
+# Импорт нормализации (delayed для избежания циклических импортов)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..utils.normalization import NormalizationManager
+
 # Устанавливаем GPU как default device для всего проекта
 if torch.cuda.is_available():
     torch.set_default_device('cuda')
@@ -93,6 +98,9 @@ class EnergyConfig:
         assert self.carrier_num_layers > 0, "carrier_num_layers должен быть > 0"
         assert self.neuron_hidden_dim > 0, "neuron_hidden_dim должен быть > 0"
         assert self.neuron_output_dim > 0, "neuron_output_dim должен быть > 0"
+        
+        # Создаем NormalizationManager
+        self._normalization_manager = None  # Lazy initialization
     
     @property
     def total_cells(self) -> int:
@@ -105,6 +113,16 @@ class EnergyConfig:
             k: v for k, v in self.__dict__.items() 
             if not k.startswith('_') and not callable(v)
         }
+    
+    @property
+    def normalization_manager(self) -> 'NormalizationManager':
+        """Получение NormalizationManager (lazy initialization)"""
+        if self._normalization_manager is None:
+            from ..utils.normalization import create_normalization_manager
+            self._normalization_manager = create_normalization_manager(
+                self.lattice_width, self.lattice_height, self.lattice_depth
+            )
+        return self._normalization_manager
 
 
 # Предустановленные конфигурации для разных режимов

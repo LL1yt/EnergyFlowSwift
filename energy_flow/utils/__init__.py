@@ -19,6 +19,12 @@ from .device_manager import (
     set_device_manager
 )
 
+from .normalization import (
+    NormalizationManager,
+    NormalizationRanges,
+    create_normalization_manager
+)
+
 __all__ = [
     # Logging
     'get_logger',
@@ -31,5 +37,9 @@ __all__ = [
     # Device management
     'DeviceManager',
     'get_device_manager',
-    'set_device_manager'
+    'set_device_manager',
+    # Normalization
+    'NormalizationManager',
+    'NormalizationRanges',
+    'create_normalization_manager'
 ]
