@@ -54,6 +54,10 @@ class FlowProcessor(nn.Module):
         self.neuron = create_simple_neuron(config)
         self.carrier = create_energy_carrier(config)
         
+        # Embedding mapper - ОБЯЗАТЕЛЬНО для архитектуры
+        from .embedding_mapper import EnergyFlowMapper
+        self.mapper = EnergyFlowMapper(config)
+        
         # Переносим на устройство
         self.lattice = self.lattice.to(self.device)
         self.neuron = self.neuron.to(self.device)
@@ -83,9 +87,9 @@ class FlowProcessor(nn.Module):
         """
         batch_size = input_embeddings.shape[0]
         
-        # Размещаем входную энергию
+        # Размещаем входную энергию с использованием маппера
         self.lattice.reset()
-        flow_ids = self.lattice.place_initial_energy(input_embeddings)
+        flow_ids = self.lattice.place_initial_energy(input_embeddings, self.mapper)
         
         # Определяем количество шагов
         if max_steps is None:
@@ -167,8 +171,8 @@ class FlowProcessor(nn.Module):
         if active_at_output > 0:
             logger.debug(f"Moved {active_at_output} remaining flows to output buffer")
         
-        # Теперь собираем все из буфера
-        output_embeddings, completed_flows = self.lattice.collect_buffered_energy()
+        # Теперь собираем все из буфера используя маппер
+        output_embeddings, completed_flows = self.lattice.collect_output_energy(self.mapper)
         
         # Очищаем буфер после сбора (FlowProcessor координирует жизненный цикл)
         if completed_flows:

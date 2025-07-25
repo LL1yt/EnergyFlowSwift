@@ -115,38 +115,21 @@ class EnergyLattice(nn.Module):
         
         flow_ids = []
         
-        if mapper is not None:
-            # Используем маппер для проекции 768D -> surface_dim
-            cell_energies = mapper.map_to_surface(embeddings)
+        if mapper is None:
+            raise ValueError("EnergyFlowMapper is required! No fallback logic allowed.")
+        
+        # Используем маппер для проекции 768D -> surface_dim
+        cell_energies = mapper.map_to_surface(embeddings)
+        
+        for (x, y), energy, batch_idx in cell_energies:
+            if len(self.active_flows) >= self.max_active_flows:
+                logger.warning(f"Reached max active flows limit: {self.max_active_flows}")
+                break
             
-            for (x, y), energy, batch_idx in cell_energies:
-                if len(self.active_flows) >= self.max_active_flows:
-                    logger.warning(f"Reached max active flows limit: {self.max_active_flows}")
-                    break
-                
-                # Создаем поток со скалярной энергией
-                position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
-                flow_id = self._create_flow(position, energy)
-                flow_ids.append(flow_id)
-        else:
-            # Fallback: простое распределение (для обратной совместимости)
-            logger.error("No mapper provided, using simple energy distribution")
-            
-            for batch_idx in range(batch_size):
-                if len(self.active_flows) >= self.max_active_flows:
-                    break
-                
-                # Размещаем по спирали для равномерного покрытия
-                flow_count = len(flow_ids)
-                x = flow_count % self.width
-                y = flow_count // self.width
-                
-                # Берем среднее значение эмбеддинга как скалярную энергию
-                energy = embeddings[batch_idx].mean().unsqueeze(0)
-                
-                position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
-                flow_id = self._create_flow(position, energy)
-                flow_ids.append(flow_id)
+            # Создаем поток с энергией из маппера
+            position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
+            flow_id = self._create_flow(position, energy)
+            flow_ids.append(flow_id)
         
         logger.info(f"Created {len(flow_ids)} initial flows on input surface")
         return flow_ids
@@ -393,44 +376,43 @@ class EnergyLattice(nn.Module):
             output_embeddings: [batch, embedding_dim] - собранные эмбеддинги
             flow_ids: ID потоков, достигших выхода
         """
-        if mapper is not None:
-            # Собираем энергию из буфера по клеткам
-            surface_energy = {}
-            flow_ids = []
-            
-            for (x, y), flows in self.output_buffer.items():
-                if flows:
-                    # Усредняем энергию в клетке с весами
-                    energies = []
-                    weights = []
+        if mapper is None:
+            raise ValueError("EnergyFlowMapper is required! No fallback logic allowed.")
+        
+        # Собираем энергию из буфера по клеткам
+        surface_energy = {}
+        flow_ids = []
+        
+        for (x, y), flows in self.output_buffer.items():
+            if flows:
+                # Усредняем энергию в клетке с весами
+                energies = []
+                weights = []
+                
+                for flow in flows:
+                    energy_magnitude = torch.norm(flow.energy).item()
+                    age_factor = 1 + flow.age * 0.1
+                    weight = energy_magnitude * age_factor
                     
-                    for flow in flows:
-                        energy_magnitude = torch.norm(flow.energy).item()
-                        age_factor = 1 + flow.age * 0.1
-                        weight = energy_magnitude * age_factor
-                        
-                        energies.append(flow.energy)
-                        weights.append(weight)
-                        flow_ids.append(flow.id)
-                    
-                    # Взвешенное усреднение
-                    weights = torch.tensor(weights, device=self.device)
-                    weights = weights / weights.sum()
-                    
-                    avg_energy = sum(e * w for e, w in zip(energies, weights))
-                    surface_energy[(x, y)] = avg_energy
-            
-            # Определяем размер батча
-            batch_size = 1  # TODO: отслеживать batch_idx в потоках
-            
-            # Восстанавливаем эмбеддинги через маппер
-            output_embeddings = mapper.collect_from_surface(surface_energy, batch_size)
-            
-            logger.info(f"Collected energy from {len(surface_energy)} cells using mapper")
-            return output_embeddings, flow_ids
-        else:
-            # Fallback: старый метод
-            return self.collect_buffered_energy()
+                    energies.append(flow.energy)
+                    weights.append(weight)
+                    flow_ids.append(flow.id)
+                
+                # Взвешенное усреднение
+                weights = torch.tensor(weights, device=self.device)
+                weights = weights / weights.sum()
+                
+                avg_energy = sum(e * w for e, w in zip(energies, weights))
+                surface_energy[(x, y)] = avg_energy
+        
+        # Определяем размер батча
+        batch_size = 1  # TODO: отслеживать batch_idx в потоках
+        
+        # Восстанавливаем эмбеддинги через маппер
+        output_embeddings = mapper.collect_from_surface(surface_energy, batch_size)
+        
+        logger.info(f"Collected energy from {len(surface_energy)} cells using mapper")
+        return output_embeddings, flow_ids
     
     def _cleanup_inactive_flows(self):
         """Удаляет неактивные потоки из памяти"""
