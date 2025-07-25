@@ -30,6 +30,9 @@ DEBUG_FORWARD = 14    # Forward pass details
 DEBUG_MEMORY = 15     # Memory management and GPU operations
 DEBUG_TRAINING = 16   # Training progress and metrics
 DEBUG_INIT = 17       # Initialization and setup
+DEBUG_ENERGY = 18     # Energy flow operations (energy_flow)
+DEBUG_SPAWN = 19      # Spawn operations
+DEBUG_CONVERGENCE = 20 # Convergence statistics
 DEBUG_VERBOSE = 11    # Most verbose debug level
 
 # Register custom levels with logging module
@@ -40,6 +43,9 @@ for level_name, level_value in [
     ('DEBUG_MEMORY', DEBUG_MEMORY),
     ('DEBUG_TRAINING', DEBUG_TRAINING),
     ('DEBUG_INIT', DEBUG_INIT),
+    ('DEBUG_ENERGY', DEBUG_ENERGY),
+    ('DEBUG_SPAWN', DEBUG_SPAWN),
+    ('DEBUG_CONVERGENCE', DEBUG_CONVERGENCE),
     ('DEBUG_VERBOSE', DEBUG_VERBOSE),
 ]:
     logging.addLevelName(level_value, level_name)
@@ -88,6 +94,24 @@ def debug_verbose(self, message, *args, **kwargs):
         self._log(DEBUG_VERBOSE, message, args, **kwargs)
 
 
+def debug_energy(self, message, *args, **kwargs):
+    """Log energy flow debug messages"""
+    if self.isEnabledFor(DEBUG_ENERGY):
+        self._log(DEBUG_ENERGY, message, args, **kwargs)
+
+
+def debug_spawn(self, message, *args, **kwargs):
+    """Log spawn debug messages"""
+    if self.isEnabledFor(DEBUG_SPAWN):
+        self._log(DEBUG_SPAWN, message, args, **kwargs)
+
+
+def debug_convergence(self, message, *args, **kwargs):
+    """Log convergence debug messages"""
+    if self.isEnabledFor(DEBUG_CONVERGENCE):
+        self._log(DEBUG_CONVERGENCE, message, args, **kwargs)
+
+
 # Monkey-patch Logger class with new methods
 logging.Logger.debug_cache = debug_cache
 logging.Logger.debug_spatial = debug_spatial
@@ -96,6 +120,9 @@ logging.Logger.debug_memory = debug_memory
 logging.Logger.debug_training = debug_training
 logging.Logger.debug_init = debug_init
 logging.Logger.debug_verbose = debug_verbose
+logging.Logger.debug_energy = debug_energy
+logging.Logger.debug_spawn = debug_spawn
+logging.Logger.debug_convergence = debug_convergence
 
 
 class UTF8StreamHandler(logging.StreamHandler):
@@ -282,6 +309,9 @@ class DebugModeFilter(logging.Filter):
             'training': DEBUG_TRAINING,
             'init': DEBUG_INIT,
             'verbose': DEBUG_VERBOSE,
+            'energy': DEBUG_ENERGY,
+            'spawn': DEBUG_SPAWN,
+            'convergence': DEBUG_CONVERGENCE,
         }
 
     def filter(self, record):
@@ -366,6 +396,9 @@ def setup_logging(
             "DEBUG_TRAINING": DEBUG_TRAINING,
             "DEBUG_INIT": DEBUG_INIT,
             "DEBUG_VERBOSE": DEBUG_VERBOSE,
+            "DEBUG_ENERGY": DEBUG_ENERGY,
+            "DEBUG_SPAWN": DEBUG_SPAWN,
+            "DEBUG_CONVERGENCE": DEBUG_CONVERGENCE,
         }
         # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
         level_upper = level.upper()

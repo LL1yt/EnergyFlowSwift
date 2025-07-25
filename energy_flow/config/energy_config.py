@@ -20,11 +20,11 @@ class EnergyConfig:
     lattice_height: int 
     lattice_depth: int
     
-    # Параметры энергии
+    # Параметры энергии (для скалярной энергии в диапазоне [-1, 1])
     max_active_flows: int = 1000
-    energy_threshold: float = 0.1  # Минимальная энергия для продолжения
-    spawn_threshold: float = 0.8   # Порог для создания новых потоков
-    max_spawn_per_step: int = 10   # Максимум новых потоков за шаг
+    energy_threshold: float = 0.05  # Минимальная энергия для продолжения (низкий для стабильности)
+    spawn_threshold: float = 0.6    # Порог для создания новых потоков (умеренный)
+    max_spawn_per_step: int = 3     # Ограниченное количество spawn'ов для стабильности
     
     # Параметры моделей
     # GRU (EnergyCarrier)
@@ -101,10 +101,13 @@ def create_debug_config() -> EnergyConfig:
         lattice_height=20,
         lattice_depth=10,
         max_active_flows=1000,
-        energy_threshold=0.01,  # Очень низкий порог для отладки
+        energy_threshold=0.01,  # Очень низкий для отладки (скалярная энергия)
+        spawn_threshold=0.7,    # Немного выше базового для контроля spawn'ов
+        max_spawn_per_step=2,   # Ограниченный spawn для отладки
         batch_size=8,
         carrier_hidden_size=256,  # Уменьшенный размер для отладки
         carrier_num_layers=2,
+        carrier_dropout=0.05,   # Низкий dropout для отладки
         log_interval=1
     )
 

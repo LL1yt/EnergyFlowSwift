@@ -33,6 +33,7 @@ class EnergyFlow:
     position: torch.Tensor  # [3] - текущая позиция
     energy: torch.Tensor    # [embedding_dim] - энергия/эмбеддинг
     hidden_state: torch.Tensor  # [num_layers, hidden_size] - состояние GRU
+    batch_idx: int = 0  # Индекс в батче
     parent_id: Optional[int] = None
     age: int = 0  # Количество шагов жизни потока
     is_active: bool = True
@@ -72,7 +73,7 @@ class EnergyLattice(nn.Module):
         
         # Параметры потоков
         self.max_active_flows = config.max_active_flows
-        self.embedding_dim = config.embedding_per_cell
+        self.energy_dim = 1  # Скалярная энергия от mapper'а
         
         # Активные потоки
         self.active_flows: Dict[int, EnergyFlow] = {}
@@ -128,13 +129,14 @@ class EnergyLattice(nn.Module):
             
             # Создаем поток с энергией из маппера
             position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
-            flow_id = self._create_flow(position, energy)
+            flow_id = self._create_flow(position, energy, batch_idx=batch_idx)
             flow_ids.append(flow_id)
         
         logger.info(f"Created {len(flow_ids)} initial flows on input surface")
         return flow_ids
     
     def _create_flow(self, position: torch.Tensor, energy: torch.Tensor, 
+                    batch_idx: int = 0,
                     parent_id: Optional[int] = None,
                     hidden_state: Optional[torch.Tensor] = None) -> int:
         """Создает новый энергетический поток"""
@@ -153,6 +155,7 @@ class EnergyLattice(nn.Module):
             position=position,
             energy=energy,
             hidden_state=hidden_state,
+            batch_idx=batch_idx,
             parent_id=parent_id,
             age=0,
             is_active=True
@@ -213,6 +216,7 @@ class EnergyLattice(nn.Module):
             flow_id = self._create_flow(
                 parent.position.clone(),
                 energy,
+                batch_idx=parent.batch_idx,  # Наследуем batch_idx от родителя
                 parent_id=parent_id,
                 hidden_state=parent.hidden_state.clone()
             )
@@ -282,6 +286,13 @@ class EnergyLattice(nn.Module):
         cleared_count = self.get_buffered_flows_count()
         self.output_buffer.clear()
         logger.debug(f"Cleared output buffer ({cleared_count} flows)")
+    
+    def get_all_buffered_flows(self) -> List[EnergyFlow]:
+        """Возвращает все потоки из буфера"""
+        all_flows = []
+        for flows in self.output_buffer.values():
+            all_flows.extend(flows)
+        return all_flows
     
     def collect_buffered_energy(self) -> Tuple[torch.Tensor, List[int]]:
         """
@@ -405,8 +416,10 @@ class EnergyLattice(nn.Module):
                 avg_energy = sum(e * w for e, w in zip(energies, weights))
                 surface_energy[(x, y)] = avg_energy
         
-        # Определяем размер батча
-        batch_size = 1  # TODO: отслеживать batch_idx в потоках
+        # Определяем размер батча из потоков
+        all_flows = list(self.active_flows.values()) + list(self.get_all_buffered_flows())
+        batch_indices = {flow.batch_idx for flow in all_flows} if all_flows else {0}
+        batch_size = max(batch_indices) + 1 if batch_indices else 1
         
         # Восстанавливаем эмбеддинги через маппер
         output_embeddings = mapper.collect_from_surface(surface_energy, batch_size)

@@ -48,13 +48,13 @@ class SimpleNeuron(nn.Module):
         
         # Берем все параметры из конфига
         self.coord_dim = 3  # Всегда 3D координаты
-        self.embedding_dim = config.embedding_per_cell
+        self.energy_dim = 1  # Скалярная энергия от mapper'а
         self.hidden_dim = config.neuron_hidden_dim
         self.output_dim = config.neuron_output_dim
         dropout = config.carrier_dropout  # Используем общий dropout
         
-        # Входной размер: координаты + эмбеддинг
-        input_dim = self.coord_dim + self.embedding_dim
+        # Входной размер: координаты + скалярная энергия
+        input_dim = self.coord_dim + self.energy_dim
         
         # Сеть преобразования
         self.layers = nn.Sequential(
@@ -115,8 +115,8 @@ class SimpleNeuron(nn.Module):
         # Проверка размерностей
         assert position.shape == (batch_size, self.coord_dim), \
             f"Expected position shape ({batch_size}, {self.coord_dim}), got {position.shape}"
-        assert embedding_part.shape == (batch_size, self.embedding_dim), \
-            f"Expected embedding shape ({batch_size}, {self.embedding_dim}), got {embedding_part.shape}"
+        assert embedding_part.shape == (batch_size, self.energy_dim), \
+            f"Expected energy shape ({batch_size}, {self.energy_dim}), got {embedding_part.shape}"
         
         # Нормализуем координаты в [-1, 1]
         if hasattr(self, '_lattice_dims'):

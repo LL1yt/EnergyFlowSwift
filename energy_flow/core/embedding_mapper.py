@@ -42,17 +42,30 @@ class EnergyEmbeddingMapper(nn.Module):
         self.height = self.config.lattice_height
         self.surface_dim = self.width * self.height  # 400 для 20x20
         
-        # Проекция с адаптивной нормализацией
+        # Иерархическая проекция (вдохновлено embedding_transformer)
+        intermediate_dim = max(self.input_dim // 2, self.surface_dim * 2)
+        
         self.projection = nn.Sequential(
-            nn.Linear(self.input_dim, self.surface_dim * 4),
+            # Первый этап: понижение размерности с сохранением информации
+            nn.Linear(self.input_dim, intermediate_dim),
             nn.GELU(),
-            nn.LayerNorm(self.surface_dim * 4),
+            nn.LayerNorm(intermediate_dim),
             nn.Dropout(0.1),
-            nn.Linear(self.surface_dim * 4, self.surface_dim * 2),
+            
+            # Второй этап: подготовка к распределению по поверхности
+            nn.Linear(intermediate_dim, self.surface_dim * 2),
             nn.GELU(),
             nn.LayerNorm(self.surface_dim * 2),
+            nn.Dropout(0.05),
+            
+            # Финальная проекция на поверхность
             nn.Linear(self.surface_dim * 2, self.surface_dim),
-            nn.Tanh()  # Выход в [-1, 1]
+            nn.Tanh()  # Выход в [-1, 1] для стабильной энергии
+        )
+        
+        # Позиционное кодирование для лучшего распределения энергии
+        self.positional_encoding = nn.Parameter(
+            torch.randn(self.height, self.width) * 0.02
         )
         
         # Адаптивная нормализация энергии
@@ -84,6 +97,9 @@ class EnergyEmbeddingMapper(nn.Module):
         
         # Reshape в 2D сетку
         surface_energy = normalized.view(batch_size, self.height, self.width)
+        
+        # Добавляем позиционное кодирование для лучшего распределения
+        surface_energy = surface_energy + self.positional_encoding.unsqueeze(0)
         
         # Логирование статистики
         if logger.isEnabledFor(DEBUG_ENERGY):
@@ -141,16 +157,24 @@ class EnergyOutputCollector(nn.Module):
         self.height = self.config.lattice_height
         self.surface_dim = self.width * self.height
         
-        # Восстановление эмбеддингов
+        # Восстановление эмбеддингов (обратное преобразование к входному маппингу)
+        intermediate_dim = max(self.output_dim // 2, self.surface_dim * 2)
+        
         self.reconstruction = nn.Sequential(
+            # Первый этап: расширение от поверхности
             nn.Linear(self.surface_dim, self.surface_dim * 2),
             nn.GELU(),
             nn.LayerNorm(self.surface_dim * 2),
-            nn.Dropout(0.1),
-            nn.Linear(self.surface_dim * 2, self.output_dim * 2),
+            nn.Dropout(0.05),
+            
+            # Второй этап: промежуточное расширение
+            nn.Linear(self.surface_dim * 2, intermediate_dim),
             nn.GELU(),
-            nn.LayerNorm(self.output_dim * 2),
-            nn.Linear(self.output_dim * 2, self.output_dim)
+            nn.LayerNorm(intermediate_dim),
+            nn.Dropout(0.1),
+            
+            # Финальная проекция к teacher размерности
+            nn.Linear(intermediate_dim, self.output_dim)
         )
         
         # Адаптивное взвешивание
@@ -180,6 +204,13 @@ class EnergyOutputCollector(nn.Module):
         # Заполняем энергией из потоков
         for (x, y), energy in surface_energy.items():
             if 0 <= x < self.width and 0 <= y < self.height:
+                # DEBUG: проверяем устройства
+                if logger.isEnabledFor(DEBUG_ENERGY):
+                    logger.log(DEBUG_ENERGY, f"Devices - energy: {energy.device}, position_weights: {self.position_weights.device}, surface: {surface.device}")
+                
+                # Убеждаемся что энергия на правильном устройстве
+                energy = energy.to(device)
+                
                 # Применяем позиционные веса
                 weighted_energy = energy * self.position_weights[y, x]
                 surface[:, y, x] = weighted_energy.squeeze()

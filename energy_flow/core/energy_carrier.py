@@ -59,9 +59,9 @@ class EnergyCarrier(nn.Module):
         self.dropout = config.carrier_dropout
         
         # Размерности
-        self.neuron_output_dim = config.neuron_output_dim  # Выход SimpleNeuron
-        self.embedding_dim = config.embedding_per_cell     # Часть эмбеддинга
-        self.input_dim = self.neuron_output_dim + self.embedding_dim
+        self.neuron_output_dim = config.neuron_output_dim  # Выход SimpleNeuron (64)
+        self.energy_dim = 1                                # Скалярная энергия от mapper'а
+        self.input_dim = self.neuron_output_dim + self.energy_dim  # 64 + 1 = 65
         
         # GRU слои
         self.gru = nn.GRU(
@@ -73,12 +73,13 @@ class EnergyCarrier(nn.Module):
         )
         
         # Projection heads для структурированного вывода
-        # 1. Энергия/эмбеддинг
+        # 1. Скалярная энергия (выход должен быть скаляром для consistency)
         self.energy_projection = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size // 2),
             nn.GELU(),
             nn.Dropout(self.dropout),
-            nn.Linear(self.hidden_size // 2, self.embedding_dim)
+            nn.Linear(self.hidden_size // 2, self.energy_dim),  # Выход: 1 скаляр
+            nn.Tanh()  # Нормализация в [-1, 1]
         )
         
         # 2. Следующая позиция - предсказываем абсолютные координаты
@@ -98,8 +99,11 @@ class EnergyCarrier(nn.Module):
             nn.Sigmoid()  # Вероятность порождения
         )
         
-        # Проекция для энергии новых потоков
-        self.spawn_energy_projection = nn.Linear(self.hidden_size, self.embedding_dim)
+        # Проекция для энергии новых потоков (также скалярная)
+        self.spawn_energy_projection = nn.Sequential(
+            nn.Linear(self.hidden_size, self.energy_dim),
+            nn.Tanh()  # Нормализация в [-1, 1]
+        )
         
         # Инициализация весов
         self._init_weights()
@@ -190,6 +194,8 @@ class EnergyCarrier(nn.Module):
                 # Делим энергию между потоками
                 for j in range(num_spawns):
                     energy_fraction = spawn_energy / (num_spawns + 1)  # +1 для родителя
+                    # Убеждаемся что энергия на правильном устройстве
+                    energy_fraction = energy_fraction.to(gru_output.device)
                     spawn_energies.append(energy_fraction)
             else:
                 spawn_counts.append(0)
@@ -254,12 +260,16 @@ class EnergyCarrier(nn.Module):
         """
         Проверяет уровень энергии
         
+        Args:
+            energy: [batch, 1] - нормализованная энергия в диапазоне [-1, 1] (Tanh)
+        
         Returns:
             is_alive: [batch] - маска активных потоков
         """
-        # Вычисляем норму энергии
-        energy_norm = torch.norm(energy, dim=-1)
-        return energy_norm > self.config.energy_threshold
+        # Преобразуем из [-1, 1] в [0, 1] для проверки порога
+        energy_normalized = (energy + 1.0) / 2.0  # [-1, 1] -> [0, 1]
+        energy_magnitude = torch.abs(energy_normalized.squeeze(-1))  # [batch]
+        return energy_magnitude > self.config.energy_threshold
 
 
 def create_energy_carrier(config=None) -> EnergyCarrier:

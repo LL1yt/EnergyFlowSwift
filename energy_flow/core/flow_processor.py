@@ -57,11 +57,15 @@ class FlowProcessor(nn.Module):
         # Embedding mapper - ОБЯЗАТЕЛЬНО для архитектуры
         from .embedding_mapper import EnergyFlowMapper
         self.mapper = EnergyFlowMapper(config)
+        # Переносим mapper компоненты на устройство
+        self.mapper.input_mapper = self.mapper.input_mapper.to(self.device)
+        self.mapper.output_collector = self.mapper.output_collector.to(self.device)
         
         # Переносим на устройство
         self.lattice = self.lattice.to(self.device)
         self.neuron = self.neuron.to(self.device)
         self.carrier = self.carrier.to(self.device)
+        # Mapper уже инициализируется на правильном устройстве
         
         # Статистика производительности
         self.perf_stats = {
