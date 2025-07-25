@@ -19,12 +19,18 @@ logger = get_logger(__name__)
 
 
 @dataclass
+class SpawnInfo:
+    """Информация о новых потоках для одного batch элемента"""
+    energies: List[torch.Tensor]    # Энергии новых потоков
+    parent_batch_idx: int          # Индекс родительского потока
+
+
+@dataclass
 class EnergyOutput:
     """Структурированный вывод EnergyCarrier"""
     energy_value: torch.Tensor      # Текущая энергия/эмбеддинг
     next_position: torch.Tensor     # Координаты следующей клетки
-    spawn_energies: List[torch.Tensor]  # Энергии для новых потоков
-    spawn_count: int               # Количество новых потоков
+    spawn_info: List[SpawnInfo]     # Структурированная информация о spawn'ах
     
     # Флаги завершения потоков (для обработки в FlowProcessor)
     is_terminated: torch.Tensor     # [batch] - маска завершенных потоков
@@ -196,8 +202,7 @@ class EnergyCarrier(nn.Module):
         
         # Определяем количество новых потоков на основе вероятности и порогов
         spawn_decisions = spawn_prob > self.config.spawn_threshold
-        spawn_counts = []
-        spawn_energies = []
+        spawn_info = []
         
         for i in range(batch_size):
             if spawn_decisions[i] and spawn_prob[i].item() > self.config.spawn_threshold:
@@ -207,25 +212,27 @@ class EnergyCarrier(nn.Module):
                         (1 - self.config.spawn_threshold) * self.config.max_spawn_per_step) + 1,
                     self.config.max_spawn_per_step
                 )
-                spawn_counts.append(num_spawns)
                 
                 # Генерируем энергии для новых потоков
                 spawn_energy = self.spawn_energy_projection(gru_output[i])
+                energies = []
+                
                 # Делим энергию между потоками
                 for j in range(num_spawns):
                     energy_fraction = spawn_energy / (num_spawns + 1)  # +1 для родителя
-                    # Убеждаемся что энергия на правильном устройстве
-                    energy_fraction = energy_fraction.to(gru_output.device)
-                    spawn_energies.append(energy_fraction)
-            else:
-                spawn_counts.append(0)
+                    energies.append(energy_fraction.to(gru_output.device))
+                
+                # Создаем SpawnInfo для текущего batch элемента
+                spawn_info.append(SpawnInfo(
+                    energies=energies,
+                    parent_batch_idx=i
+                ))
         
         # Создаем структурированный вывод
         output = EnergyOutput(
             energy_value=energy_value,
             next_position=next_position,
-            spawn_energies=spawn_energies,
-            spawn_count=sum(spawn_counts),
+            spawn_info=spawn_info,
             is_terminated=is_terminated,
             termination_reason=termination_reasons
         )

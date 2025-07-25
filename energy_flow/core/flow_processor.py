@@ -293,16 +293,13 @@ class FlowProcessor(nn.Module):
             )
             
             # Обрабатываем порождение новых потоков
-            if idx < len(carrier_output.spawn_energies):
-                # Получаем энергии для этого потока
-                flow_spawn_count = min(
-                    len(carrier_output.spawn_energies) - idx,
-                    self.config.max_spawn_per_step
-                )
-                
-                if flow_spawn_count > 0:
-                    spawn_energies = carrier_output.spawn_energies[idx:idx+flow_spawn_count]
+            # Поиск SpawnInfo для текущего batch элемента
+            for spawn_info in carrier_output.spawn_info:
+                if spawn_info.parent_batch_idx == idx and spawn_info.energies:
+                    # Ограничиваем количество spawn'ов конфигом
+                    spawn_energies = spawn_info.energies[:self.config.max_spawn_per_step]
                     self.lattice.spawn_flows(flow.id, spawn_energies)
+                    break  # Один SpawnInfo на batch элемент
     
     def get_performance_stats(self) -> Dict:
         """Возвращает статистику производительности"""
