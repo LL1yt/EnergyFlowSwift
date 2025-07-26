@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 from ..utils.logging import get_logger
-from ..config import get_energy_config, create_debug_config, set_energy_config
+from ..config import create_debug_config, set_energy_config
 
 logger = get_logger(__name__)
 
