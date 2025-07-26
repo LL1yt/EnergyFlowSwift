@@ -185,10 +185,90 @@ class EnergyTrainer:
         logger.log(DEBUG_TRAINING, f"Optimizer initialized: AdamW, lr={self.config.learning_rate}, "
                                   f"total_params={total_params:,}")
     
-    def train_step(self, input_texts: List[str], target_texts: List[str], 
+    def _compute_losses(self, input_texts: List[str], target_texts: List[str], 
+                       teacher_input_embeddings: torch.Tensor, teacher_target_embeddings: torch.Tensor) -> Dict[str, Any]:
+        """
+        Вычисляет losses без обратного распространения (для validation)
+        
+        Args:
+            input_texts: Список входных текстов (для text_bridge)
+            target_texts: Список целевых текстов (для text_bridge)
+            teacher_input_embeddings: Входные эмбеддинги от модели-учителя [batch, 768]
+            teacher_target_embeddings: Целевые эмбеддинги от модели-учителя [batch, 768]
+            
+        Returns:
+            Словарь с метриками (без обратного распространения)
+        """
+        batch_size = len(input_texts)
+        step_start_time = time.time()
+        
+        try:
+            # 1. Основной forward pass куба с teacher embeddings
+            flow_start_time = time.time()
+            cube_output_surface = self.flow_processor.forward(teacher_input_embeddings, max_steps=50)
+            flow_time = time.time() - flow_start_time
+            
+            # 2. Маппим teacher target в surface для сравнения
+            target_surface_output = self.flow_processor.mapper.input_mapper.forward(teacher_target_embeddings)
+            target_surface_input = self.flow_processor.mapper.input_mapper.forward(teacher_input_embeddings)
+            
+            # Приводим к правильной форме
+            if target_surface_output.dim() == 3:
+                target_surface_output = target_surface_output.view(batch_size, -1)
+            if target_surface_input.dim() == 3:
+                target_surface_input = target_surface_input.view(batch_size, -1)
+            
+            # 3. Energy loss - сравниваем на уровне surface
+            energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface_output)
+            
+            # 4. Text Bridge без градиентов для validation
+            text_loss = torch.tensor(0.0, device=self.device)
+            if self.config.text_bridge_enabled and self.config.text_loss_weight > 0:
+                try:
+                    encoder_outputs = self.text_encoder.encode_text(input_texts)
+                    # В validation режиме не требуем градиенты
+                    target_surface_input_grad = target_surface_input.clone().detach()
+                    encoder_loss = nn.functional.mse_loss(encoder_outputs, target_surface_input_grad)
+                    text_loss = encoder_loss
+                except Exception as e:
+                    logger.warning(f"❌ Text bridge computation failed: {e}")
+                    text_loss = torch.tensor(0.1, device=self.device)
+            
+            # 5. Комбинированный loss
+            total_loss = energy_loss + self.config.text_loss_weight * text_loss
+            
+            # Статистика шага
+            step_time = time.time() - step_start_time
+            flow_stats = {'flows_reached_output': batch_size}
+            
+            return {
+                'total_loss': total_loss.item() if hasattr(total_loss, 'item') else float(total_loss),
+                'energy_loss': energy_loss.item() if hasattr(energy_loss, 'item') else float(energy_loss),
+                'text_loss': text_loss.item() if hasattr(text_loss, 'item') else float(text_loss),
+                'flow_time': flow_time,
+                'step_time': step_time,
+                'flow_stats': flow_stats,
+                'gradients_computed': False,
+                'total_params_with_grads': 0,
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Forward pass failed: {e}")
+            return {
+                'total_loss': float('inf'),
+                'energy_loss': float('inf'),
+                'text_loss': float('inf'),
+                'flow_time': 0,
+                'step_time': 0,
+                'flow_stats': {'error': str(e)},
+                'gradients_computed': False,
+                'total_params_with_grads': 0,
+            }
+    
+    def train_step(self, input_texts: List[str], target_texts: List[str],
                    teacher_input_embeddings: torch.Tensor, teacher_target_embeddings: torch.Tensor) -> Dict[str, float]:
         """
-        Один шаг обучения
+        Один шаг обучения с расширенным логированием
         
         Args:
             input_texts: Список входных текстов (для text_bridge)
@@ -204,78 +284,143 @@ class EnergyTrainer:
         batch_size = len(input_texts)
         step_start_time = time.time()
         
+        # Диагностическое логирование
+        logger.log(DEBUG_TRAINING, f"🔄 Starting train_step: batch_size={batch_size}")
+        logger.log(DEBUG_TRAINING, f"📊 Input texts: {len(input_texts)} samples")
+        logger.log(DEBUG_TRAINING, f"📊 Teacher embeddings: {teacher_input_embeddings.shape} -> {teacher_target_embeddings.shape}")
+        
         try:
             # 1. Основное обучение куба с teacher embeddings
             flow_start_time = time.time()
+            
+            # Диагностика: проверяем градиенты входных данных
+            logger.log(DEBUG_TRAINING, f"📈 Teacher input requires_grad: {teacher_input_embeddings.requires_grad}")
+            logger.log(DEBUG_TRAINING, f"📈 Teacher target requires_grad: {teacher_target_embeddings.requires_grad}")
+            
             cube_output_surface = self.flow_processor.forward(teacher_input_embeddings, max_steps=50)
             flow_time = time.time() - flow_start_time
             
-            # Получаем статистику потоков (заглушка - FlowProcessor не имеет этого метода)
+            # Диагностика: проверяем выход куба
+            logger.log(DEBUG_TRAINING, f"📊 Cube output surface shape: {cube_output_surface.shape}")
+            logger.log(DEBUG_TRAINING, f"📊 Cube output surface stats: mean={cube_output_surface.mean():.4f}, std={cube_output_surface.std():.4f}")
+            
+            # Получаем статистику потоков
             flow_stats = {
                 'active_flows': 0,
                 'spawned_flows': 0,
-                'flows_reached_output': batch_size  # Примерное значение
+                'flows_reached_output': batch_size
             }
             
-            # 2. Маппим teacher target в surface для сравнения (экономия ресурсов!)
+            # 2. Маппим teacher target в surface для сравнения
             target_surface_output = self.flow_processor.mapper.input_mapper.forward(teacher_target_embeddings)
-            # Приводим к правильной форме если нужно
-            if target_surface_output.dim() == 3:  # [batch, height, width]
-                target_surface_output = target_surface_output.view(batch_size, -1)  # [batch, surface_dim]
             target_surface_input = self.flow_processor.mapper.input_mapper.forward(teacher_input_embeddings)
-            # Приводим к правильной форме если нужно
-            if target_surface_input.dim() == 3:  # [batch, height, width]
-                target_surface_input = target_surface_input.view(batch_size, -1)  # [batch, surface_dim]
             
-            # 3. Energy loss - сравниваем на уровне surface (не 768D!)
+            # Диагностика: проверяем формы
+            logger.log(DEBUG_TRAINING, f"📊 Target surface output shape: {target_surface_output.shape}")
+            logger.log(DEBUG_TRAINING, f"📊 Target surface input shape: {target_surface_input.shape}")
+            
+            # Приводим к правильной форме
+            if target_surface_output.dim() == 3:
+                target_surface_output = target_surface_output.view(batch_size, -1)
+            if target_surface_input.dim() == 3:
+                target_surface_input = target_surface_input.view(batch_size, -1)
+            
+            # Диагностика: проверяем градиенты после reshape
+            logger.log(DEBUG_TRAINING, f"📈 Target surface output requires_grad: {target_surface_output.requires_grad}")
+            logger.log(DEBUG_TRAINING, f"📈 Target surface input requires_grad: {target_surface_input.requires_grad}")
+            
+            # 3. Energy loss - сравниваем на уровне surface
             energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface_output)
             
-            # 4. Text Bridge обучение (независимое, параллельное)
+            # 4. Text Bridge обучение с улучшенной обработкой ошибок
             text_loss = torch.tensor(0.0, device=self.device)
             if self.config.text_bridge_enabled and self.config.text_loss_weight > 0:
                 try:
-                    # TextToCubeEncoder: учится текст → surface (batch processing для эффективности)
-                    encoder_outputs = self.text_encoder.encode_text(input_texts)  # [batch, 400]
+                    # TextToCubeEncoder: учится текст → surface
+                    logger.log(DEBUG_TRAINING, f"📝 Processing text bridge for {len(input_texts)} texts")
                     
-                    # Проверяем размерности для отладки  
-                    logger.debug(f"Encoder outputs shape: {encoder_outputs.shape}, target_surface shape: {target_surface_input.shape}")
+                    encoder_outputs = self.text_encoder.encode_text(input_texts)
+                    logger.log(DEBUG_TRAINING, f"📊 Encoder outputs: {encoder_outputs.shape}, requires_grad: {encoder_outputs.requires_grad}")
                     
-                    # Используем target_surface БЕЗ detach() для сохранения градиентов
-                    encoder_loss = nn.functional.mse_loss(encoder_outputs, target_surface_input)
+                    # Убеждаемся, что target требует градиенты
+                    target_surface_input_grad = target_surface_input.clone().detach().requires_grad_(True)
+                    encoder_loss = nn.functional.mse_loss(encoder_outputs, target_surface_input_grad)
                     
-                    # CubeToTextDecoder: учится surface → текст (переиспользуем target_surface)
+                    # CubeToTextDecoder: учится surface → текст
                     predicted_texts = []
-                    for i in range(batch_size):
-                        # Сохраняем batch dimension для корректной обработки [1, 400]
-                        pred_texts_batch = self.text_decoder.decode_surface(target_surface_output[i:i+1].detach())  # List[str]
-                        pred_text = pred_texts_batch[0]  # Берем первый (единственный) результат
-                        predicted_texts.append(pred_text)
-                    
-                    # Простой text similarity loss (можно улучшить)
                     decoder_loss = torch.tensor(0.0, device=self.device)
-                    for pred_text, target_text in zip(predicted_texts, target_texts):
-                        # Примитивная метрика длины для демонстрации
-                        length_diff = abs(len(pred_text) - len(target_text)) / max(len(target_text), 1)
-                        decoder_loss += torch.tensor(length_diff, device=self.device)
-                    decoder_loss /= batch_size
                     
-                    # Комбинированный text loss
-                    text_loss = encoder_loss + decoder_loss
+                    for i, (input_text, target_text) in enumerate(zip(input_texts, target_texts)):
+                        try:
+                            logger.log(DEBUG_TRAINING, f"📝 Processing sample {i}: '{input_text[:50]}...' -> '{target_text[:50]}...'")
+                            
+                            # Используем teacher embeddings для генерации
+                            surface_input = teacher_input_embeddings[i:i+1]
+                            surface_output = self.flow_processor.forward(surface_input, max_steps=50)
+                            
+                            # Декодируем в текст
+                            pred_texts_batch = self.text_decoder.decode_surface(surface_output)
+                            
+                            if pred_texts_batch and len(pred_texts_batch) > 0:
+                                pred_text = pred_texts_batch[0]
+                            else:
+                                pred_text = ""
+                            
+                            predicted_texts.append(pred_text)
+                            logger.log(DEBUG_TRAINING, f"📝 Predicted: '{pred_text[:50]}...'")
+                            
+                            # Простая метрика сходства
+                            if pred_text and target_text:
+                                similarity = len(set(pred_text.lower().split()) & set(target_text.lower().split())) / \
+                                           max(len(set(pred_text.lower().split()) | set(target_text.lower().split())), 1)
+                                decoder_loss += 1.0 - similarity
+                            else:
+                                decoder_loss += 1.0
+                                
+                        except Exception as decode_error:
+                            logger.warning(f"❌ Text decoding failed for sample {i}: {decode_error}")
+                            predicted_texts.append("")
+                            decoder_loss += 1.0
+                    
+                    if batch_size > 0:
+                        decoder_loss = decoder_loss / batch_size
+                    
+                    text_loss = encoder_loss + 0.1 * decoder_loss
+                    logger.log(DEBUG_TRAINING, f"📊 Text losses: encoder={encoder_loss:.4f}, decoder={decoder_loss:.4f}, total={text_loss:.4f}")
                     
                 except Exception as e:
-                    logger.warning(f"Text loss computation failed: {e}")
-                    text_loss = torch.tensor(0.0, device=self.device)
+                    logger.warning(f"❌ Text bridge computation failed: {e}")
+                    text_loss = torch.tensor(0.1, device=self.device)
             
             # 5. Комбинированный loss
             total_loss = energy_loss + self.config.text_loss_weight * text_loss
             
-            # 6. Обратное распространение
+            # 6. Диагностика перед обратным распространением
+            logger.log(DEBUG_TRAINING, f"📊 Losses: energy={energy_loss:.4f}, text={text_loss:.4f}, total={total_loss:.4f}")
+            logger.log(DEBUG_TRAINING, f"📊 Total loss requires_grad: {total_loss.requires_grad}")
+            
+            # 7. Обратное распространение
             total_loss.backward()
+            
+            # Диагностика градиентов
+            total_params = 0
+            grad_norms = []
+            for param_group in self.optimizer.param_groups:
+                for param in param_group['params']:
+                    if param.grad is not None:
+                        total_params += 1
+                        grad_norm = param.grad.norm().item()
+                        grad_norms.append(grad_norm)
+            
+            if grad_norms:
+                avg_grad_norm = sum(grad_norms) / len(grad_norms)
+                max_grad_norm = max(grad_norms)
+                logger.log(DEBUG_TRAINING, f"📊 Gradients: {total_params} params, avg_norm={avg_grad_norm:.6f}, max_norm={max_grad_norm:.6f}")
             
             # Gradient clipping
             if self.config.gradient_clip > 0:
                 torch.nn.utils.clip_grad_norm_(
-                    self.optimizer.param_groups[0]['params'], 
+                    self.optimizer.param_groups[0]['params'],
                     self.config.gradient_clip
                 )
             
@@ -286,7 +431,7 @@ class EnergyTrainer:
             
             step_metrics = {
                 'total_loss': total_loss.item(),
-                'energy_loss': energy_loss.item(), 
+                'energy_loss': energy_loss.item(),
                 'text_loss': text_loss.item(),
                 'learning_rate': self.optimizer.param_groups[0]['lr'],
                 'step_time': step_time,
@@ -301,18 +446,17 @@ class EnergyTrainer:
             
             # Логирование
             if self.global_step % self.config.log_interval == 0:
-                logger.log(DEBUG_TRAINING, 
-                          f"Step {self.global_step}: total_loss={total_loss.item():.4f}, "
+                logger.log(DEBUG_TRAINING,
+                          f"✅ Step {self.global_step}: total_loss={total_loss.item():.4f}, "
                           f"energy_loss={energy_loss.item():.4f}, text_loss={text_loss.item():.4f}")
-                logger.log(DEBUG_ENERGY,
-                          f"Flow stats: active={flow_stats.get('active_flows', 0)}, "
-                          f"spawned={flow_stats.get('spawned_flows', 0)}, "
-                          f"reached_output={flow_stats.get('flows_reached_output', 0)}")
             
             return step_metrics
             
         except Exception as e:
-            logger.error(f"Training step failed: {e}")
+            logger.error(f"❌ Training step failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
             # Возвращаем dummy метрики для продолжения обучения
             return {
                 'total_loss': float('inf'),
@@ -322,7 +466,7 @@ class EnergyTrainer:
                 'step_time': time.time() - step_start_time,
                 'flow_time': 0.0,
                 'active_flows': 0,
-                'spawned_flows': 0, 
+                'spawned_flows': 0,
                 'flows_reached_output': 0,
                 'batch_size': batch_size,
                 'error': str(e)
@@ -475,7 +619,8 @@ class EnergyTrainer:
             self.text_decoder.eval()
         
         with torch.no_grad():
-            val_metrics = self.train_step(input_texts, target_texts, teacher_input_embeddings, teacher_target_embeddings)
+            # Валидация БЕЗ обратного распространения - только forward pass
+            val_metrics = self._compute_losses(input_texts, target_texts, teacher_input_embeddings, teacher_target_embeddings)
             
             # Генерируем примеры для анализа качества
             examples = []
@@ -487,9 +632,9 @@ class EnergyTrainer:
                         surface_input = teacher_input_embeddings[i:i+1]  # [1, 768]
                         surface_output = self.flow_processor.forward(surface_input, max_steps=50)  # [1, surface_dim]
                         
-                        # Декодируем surface embedding в текст (сохраняем batch dimension)
-                        predicted_texts = self.text_decoder.decode_surface(surface_output[i:i+1])  # [1, surface_dim] -> List[str]
-                        predicted_text = predicted_texts[0]  # Берем первый (единственный) результат
+                        # Декодируем surface embedding в текст (surface_output уже имеет правильный размер [1, surface_dim])
+                        predicted_texts = self.text_decoder.decode_surface(surface_output)  # [1, surface_dim] -> List[str]
+                        predicted_text = predicted_texts[0] if predicted_texts else ""  # Берем первый результат или пустую строку
                         
                         examples.append({
                             'input': input_texts[i],

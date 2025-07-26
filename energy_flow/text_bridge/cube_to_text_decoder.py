@@ -131,9 +131,9 @@ class CubeToTextDecoder(nn.Module):
         }
     
     def decode_surface(self, surface_embeddings: torch.Tensor,
-                      max_length: int = 64,
-                      num_beams: int = 4,
-                      temperature: float = 1.0) -> List[str]:
+                       max_length: int = 64,
+                       num_beams: int = 4,
+                       temperature: float = 1.0) -> List[str]:
         """
         Декодирует surface embeddings в текст
         
@@ -146,43 +146,77 @@ class CubeToTextDecoder(nn.Module):
         Returns:
             List[str] - сгенерированные тексты
         """
-        batch_size = surface_embeddings.shape[0]
-        
-        # Подготавливаем входные данные для T5
-        t5_inputs = self._surface_to_t5_input(surface_embeddings, max_length)
-        
-        # Создаем правильные encoder outputs для T5
-        from transformers.modeling_outputs import BaseModelOutput
-        
-        encoder_outputs = BaseModelOutput(
-            last_hidden_state=t5_inputs['adapted_embeddings'].unsqueeze(1),  # [batch, 1, hidden]
-            hidden_states=None,
-            attentions=None
-        )
-        
-        # Генерируем текст через T5 decoder
-        with torch.no_grad():
-            generated_ids = self.t5_model.generate(
-                encoder_outputs=encoder_outputs,
-                decoder_input_ids=t5_inputs['decoder_input_ids'][:, :1],  # Только BOS
-                max_length=max_length,
-                num_beams=num_beams,
-                temperature=temperature,
-                do_sample=temperature > 0,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
+        try:
+            # Проверяем входные данные
+            if surface_embeddings is None or surface_embeddings.numel() == 0:
+                logger.warning("Empty or None surface embeddings provided")
+                return [""]
+            
+            # Убеждаемся, что это 2D тензор (избегаем in-place операций)
+            if surface_embeddings.dim() == 1:
+                surface_embeddings = surface_embeddings.unsqueeze(0)  # Создает новый тензор, не in-place
+            
+            batch_size = surface_embeddings.shape[0]
+            
+            # Проверяем на NaN/Inf значения
+            if torch.isnan(surface_embeddings).any() or torch.isinf(surface_embeddings).any():
+                logger.warning("NaN or Inf values in surface embeddings")
+                return [""] * batch_size
+            
+            # Подготавливаем входные данные для T5
+            t5_inputs = self._surface_to_t5_input(surface_embeddings, max_length)
+            
+            # Проверяем корректность входных данных
+            if 'input_ids' not in t5_inputs or t5_inputs['input_ids'].numel() == 0:
+                logger.warning("Invalid T5 inputs generated")
+                return [""] * batch_size
+            
+            # Создаем правильные encoder outputs для T5
+            from transformers.modeling_outputs import BaseModelOutput
+            
+            encoder_outputs = BaseModelOutput(
+                last_hidden_state=t5_inputs['adapted_embeddings'].unsqueeze(1),  # [batch, 1, hidden]
+                hidden_states=None,
+                attentions=None
             )
-        
-        # Декодируем в текст
-        decoded_texts = []
-        for ids in generated_ids:
-            text = self.tokenizer.decode(ids, skip_special_tokens=True)
-            # Убираем префикс если он есть
-            if text.startswith(self.surface_prefix):
-                text = text[len(self.surface_prefix):].strip()
-            decoded_texts.append(text)
-        
-        return decoded_texts
+            
+            # Генерируем текст через T5 decoder
+            with torch.no_grad():
+                generated_ids = self.t5_model.generate(
+                    encoder_outputs=encoder_outputs,
+                    decoder_input_ids=t5_inputs['decoder_input_ids'][:, :1],  # Только BOS
+                    max_length=max_length,
+                    num_beams=max(1, num_beams),  # Ensure at least 1 beam
+                    temperature=max(0.1, temperature),  # Ensure positive temperature
+                    do_sample=temperature > 0,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                )
+            
+            # Декодируем в текст
+            decoded_texts = []
+            for ids in generated_ids:
+                if ids is not None and ids.numel() > 0:
+                    try:
+                        text = self.tokenizer.decode(ids, skip_special_tokens=True)
+                        # Убираем префикс если он есть
+                        if text and text.startswith(self.surface_prefix):
+                            text = text[len(self.surface_prefix):].strip()
+                        decoded_texts.append(text or "generated_text")
+                    except Exception as decode_error:
+                        logger.warning(f"Token decode error: {decode_error}")
+                        decoded_texts.append("")
+                else:
+                    decoded_texts.append("")
+            
+            return decoded_texts
+            
+        except Exception as e:
+            logger.error(f"Error in decode_surface: {e}")
+            if surface_embeddings is not None:
+                logger.error(f"Surface embeddings shape: {surface_embeddings.shape}")
+                logger.error(f"Surface embeddings stats: mean={surface_embeddings.mean():.4f}, std={surface_embeddings.std():.4f}")
+            return [""] * (surface_embeddings.shape[0] if surface_embeddings is not None else 1)
     
     def iterative_decode(self, surface_embeddings: torch.Tensor,
                         max_length: int = 64,

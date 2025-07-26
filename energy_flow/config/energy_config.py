@@ -65,7 +65,7 @@ class EnergyConfig:
     dtype: torch.dtype = torch.float32
     
     # Text Bridge параметры (двунаправленное преобразование текст↔куб)
-    text_bridge_enabled: bool = False           # Включить text bridge модуль
+    text_bridge_enabled: bool = True           # Включить text bridge модуль
     text_cache_enabled: bool = False           # Включить LRU кэширование
     text_cache_size: int = 10000              # Размер LRU кэша
     text_cache_file: Optional[str] = None     # Файл для персистентного кэша (None = auto)

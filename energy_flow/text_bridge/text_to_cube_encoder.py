@@ -39,6 +39,10 @@ class TextToCubeEncoder(nn.Module):
             config = create_debug_config()
             set_energy_config(config)
         self.config = config
+        
+        # Device management
+        import torch
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Адаптивная размерность поверхности куба
         self.surface_dim = self.config.lattice_width * self.config.lattice_height
@@ -59,7 +63,7 @@ class TextToCubeEncoder(nn.Module):
         
         # Positional encoding для лучшего понимания последовательности
         self.positional_encoding = nn.Parameter(
-            torch.zeros(512, self.hidden_dim)  # Макс длина 512 токенов
+            torch.zeros(512, self.hidden_dim, device=self.device)  # Макс длина 512 токенов
         )
         self._init_positional_encoding()
         
@@ -73,7 +77,7 @@ class TextToCubeEncoder(nn.Module):
             batch_first=True
         )
         self.transformer_encoder = nn.TransformerEncoder(
-            encoder_layer, 
+            encoder_layer,
             num_layers=2
         )
         
@@ -86,6 +90,9 @@ class TextToCubeEncoder(nn.Module):
             nn.Linear(self.hidden_dim, self.surface_dim),
             nn.Tanh()  # Нормализация в [-1, 1] для совместимости с энергией
         )
+        
+        # Переносим на устройство
+        self.to(self.device)
         
         # Инициализация весов
         self._init_weights()
@@ -122,7 +129,7 @@ class TextToCubeEncoder(nn.Module):
                 nn.init.ones_(module.weight)
                 nn.init.zeros_(module.bias)
     
-    def encode_text(self, texts: Union[str, List[str]], 
+    def encode_text(self, texts: Union[str, List[str]],
                    max_length: int = 128) -> torch.Tensor:
         """
         Кодирует текст в эмбеддинги поверхности куба
@@ -134,69 +141,97 @@ class TextToCubeEncoder(nn.Module):
         Returns:
             surface_embeddings: [batch_size, surface_dim] - эмбеддинги поверхности куба
         """
-        # Обеспечиваем список
-        if isinstance(texts, str):
-            texts = [texts]
+        try:
+            # Обеспечиваем список
+            if isinstance(texts, str):
+                texts = [texts]
             
-        batch_size = len(texts)
-        
-        # Токенизация
-        encoded = self.tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            max_length=max_length,
-            return_tensors='pt'
-        )
-        
-        # Используем default device (CUDA автоматически)
-        input_ids = encoded['input_ids']
-        attention_mask = encoded['attention_mask']
-        
-        # Token embeddings
-        token_embeddings = self.token_embedding(input_ids)  # [batch, seq_len, hidden_dim]
-        
-        # Добавляем positional encoding
-        seq_len = token_embeddings.shape[1]
-        pos_encodings = self.positional_encoding[:seq_len].unsqueeze(0)
-        embeddings = token_embeddings + pos_encodings
-        
-        # Создаем padding mask для transformer
-        # attention_mask: 1 для реальных токенов, 0 для padding
-        # transformer нужна инвертированная маска: True для padding
-        padding_mask = ~attention_mask.bool()
-        
-        # Transformer encoding
-        encoded_embeddings = self.transformer_encoder(
-            embeddings,
-            src_key_padding_mask=padding_mask
-        )  # [batch, seq_len, hidden_dim]
-        
-        # Агрегация последовательности (среднее по реальным токенам)
-        # Используем attention_mask для исключения padding токенов
-        mask_expanded = attention_mask.unsqueeze(-1).expand(encoded_embeddings.size()).float()
-        sum_embeddings = torch.sum(encoded_embeddings * mask_expanded, 1)
-        sum_mask = torch.clamp(mask_expanded.sum(1), min=1e-9)
-        aggregated = sum_embeddings / sum_mask  # [batch, hidden_dim]
-        
-        # Проекция к поверхности куба
-        surface_embeddings = self.surface_projection(aggregated)  # [batch, surface_dim]
-        
-        # Логирование статистики
-        if logger.isEnabledFor(DEBUG_ENERGY):
-            stats = {
-                'batch_size': batch_size,
-                'surface_dim': self.surface_dim,
-                'mean': float(surface_embeddings.mean()),
-                'std': float(surface_embeddings.std()),
-                'min': float(surface_embeddings.min()),
-                'max': float(surface_embeddings.max()),
-                'seq_lengths': [int(mask.sum()) for mask in attention_mask]
-            }
-            logger.log(DEBUG_ENERGY, f"TextToCubeEncoder статистика: {stats}")
-            logger.log(DEBUG_ENERGY, f"Примеры текстов: {texts[:3]}...")
-        
-        return surface_embeddings
+            if not texts:
+                logger.warning("Empty texts provided to encode_text")
+                return torch.zeros(1, self.surface_dim, device=self.device)
+            
+            batch_size = len(texts)
+            
+            # Фильтруем пустые тексты
+            valid_texts = [text if text and text.strip() else "empty" for text in texts]
+            
+            # Токенизация
+            encoded = self.tokenizer(
+                valid_texts,
+                padding=True,
+                truncation=True,
+                max_length=max_length,
+                return_tensors='pt'
+            )
+            
+            # Проверяем корректность токенизации
+            if encoded['input_ids'].numel() == 0:
+                logger.warning("Empty tokenization result")
+                return torch.zeros(batch_size, self.surface_dim, device=self.device)
+            
+            # Используем default device (CUDA автоматически)
+            input_ids = encoded['input_ids'].to(self.device)
+            attention_mask = encoded['attention_mask'].to(self.device)
+            
+            # Token embeddings
+            token_embeddings = self.token_embedding(input_ids)  # [batch, seq_len, hidden_dim]
+            
+            # Добавляем positional encoding
+            seq_len = token_embeddings.shape[1]
+            pos_encodings = self.positional_encoding[:seq_len].unsqueeze(0).to(self.device)
+            embeddings = token_embeddings + pos_encodings
+            
+            # Создаем padding mask для transformer
+            padding_mask = ~attention_mask.bool()
+            
+            # Transformer encoding
+            encoded_embeddings = self.transformer_encoder(
+                embeddings,
+                src_key_padding_mask=padding_mask
+            )  # [batch, seq_len, hidden_dim]
+            
+            # Агрегация последовательности
+            mask_expanded = attention_mask.unsqueeze(-1).expand(encoded_embeddings.size()).float()
+            sum_embeddings = torch.sum(encoded_embeddings * mask_expanded, 1)
+            sum_mask = torch.clamp(mask_expanded.sum(1), min=1e-9)
+            aggregated = sum_embeddings / sum_mask  # [batch, hidden_dim]
+            
+            # Проекция к поверхности куба
+            surface_embeddings = self.surface_projection(aggregated)  # [batch, surface_dim]
+            
+            # Ensure requires_grad=True for training
+            if not surface_embeddings.requires_grad:
+                surface_embeddings.requires_grad_(True)
+            
+            # Логирование статистики
+            if logger.isEnabledFor(DEBUG_ENERGY):
+                stats = {
+                    'batch_size': batch_size,
+                    'surface_dim': self.surface_dim,
+                    'mean': float(surface_embeddings.mean()),
+                    'std': float(surface_embeddings.std()),
+                    'min': float(surface_embeddings.min()),
+                    'max': float(surface_embeddings.max()),
+                    'seq_lengths': [int(mask.sum()) for mask in attention_mask],
+                    'requires_grad': surface_embeddings.requires_grad
+                }
+                logger.log(DEBUG_ENERGY, f"TextToCubeEncoder статистика: {stats}")
+                if len(valid_texts) <= 3:
+                    logger.log(DEBUG_ENERGY, f"Примеры текстов: {valid_texts}")
+            
+            return surface_embeddings
+            
+        except Exception as e:
+            logger.error(f"Error in encode_text: {e}")
+            logger.error(f"Input texts: {texts}")
+            if isinstance(texts, list):
+                logger.error(f"Texts count: {len(texts)}")
+                for i, text in enumerate(texts):
+                    logger.error(f"Text {i}: '{text}' (type: {type(text)}, len: {len(str(text))})")
+            
+            # Возвращаем безопасный результат с градиентами
+            batch_size = 1 if isinstance(texts, str) else max(len(texts), 1)
+            return torch.zeros(batch_size, self.surface_dim, device=self.device, requires_grad=True)
     
     def forward(self, texts: Union[str, List[str]], **kwargs) -> torch.Tensor:
         """

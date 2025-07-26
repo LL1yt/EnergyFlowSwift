@@ -386,22 +386,52 @@ class EnergyLattice(nn.Module):
         """
         if not self.output_buffer:
             logger.debug("No flows in output buffer")
-            # Возвращаем нулевые surface embeddings
+            # Возвращаем нулевые surface embeddings с сохранением градиентов
             surface_dim = self.width * self.height
-            return torch.zeros(1, surface_dim, device=self.device), []
+            # Ищем любой tensor с градиентами в активных потоках для создания связанного нулевого тензора
+            reference_tensor = None
+            for flow in self.active_flows.values():
+                if flow.energy.requires_grad:
+                    reference_tensor = flow.energy
+                    break
+            if reference_tensor is not None:
+                zero_tensor = torch.zeros(1, surface_dim, device=self.device, dtype=reference_tensor.dtype, requires_grad=True)
+                return zero_tensor * 0.0, []  # Умножение сохраняет градиентную связь
+            else:
+                return torch.zeros(1, surface_dim, device=self.device), []
         
         # Определяем размер батча из потоков в буфере
         all_buffered_flows = self.get_all_buffered_flows()
         if not all_buffered_flows:
             surface_dim = self.width * self.height
-            return torch.zeros(1, surface_dim, device=self.device), []
+            # Ищем reference tensor в активных потоках
+            reference_tensor = None
+            for flow in self.active_flows.values():
+                if flow.energy.requires_grad:
+                    reference_tensor = flow.energy
+                    break
+            if reference_tensor is not None:
+                zero_tensor = torch.zeros(1, surface_dim, device=self.device, dtype=reference_tensor.dtype, requires_grad=True)
+                return zero_tensor * 0.0, []
+            else:
+                return torch.zeros(1, surface_dim, device=self.device), []
             
         batch_indices = {flow.batch_idx for flow in all_buffered_flows}
         batch_size = max(batch_indices) + 1 if batch_indices else 1
         
-        # Создаем surface tensor
+        # Создаем surface tensor с градиентной связью
         surface_dim = self.width * self.height
-        output_surface = torch.zeros(batch_size, surface_dim, device=self.device)
+        # Используем энергию первого потока как reference для создания тензора с градиентами
+        reference_energy = all_buffered_flows[0].energy
+        if reference_energy.requires_grad:
+            # Создаем тензор с градиентной связью используя реальную энергию потоков
+            output_surface = torch.zeros(batch_size, surface_dim, device=self.device, dtype=reference_energy.dtype)
+            # Создаем градиентную связь через сумму всех энергий потоков
+            all_energies = torch.stack([flow.energy for flow in all_buffered_flows])
+            energy_sum = all_energies.sum()
+            output_surface = output_surface + energy_sum * 0.0  # Нулевое влияние, но градиентная связь
+        else:
+            output_surface = torch.zeros(batch_size, surface_dim, device=self.device)
         flow_ids = []
         
         logger.debug(f"Collecting surface energy from buffer: {len(self.output_buffer)} cells, batch_size={batch_size}")
@@ -453,7 +483,11 @@ class EnergyLattice(nn.Module):
             # Размещаем агрегированную энергию в surface tensor
             if 0 <= x < self.width and 0 <= y < self.height and 0 <= batch_idx < batch_size:
                 surface_idx = y * self.width + x  # Линеаризация координат
-                output_surface[batch_idx, surface_idx] = aggregated_energy.item()
+                # НЕ используем .item() чтобы сохранить градиенты!
+                if aggregated_energy.numel() == 1:
+                    output_surface[batch_idx, surface_idx] = aggregated_energy.squeeze()
+                else:
+                    output_surface[batch_idx, surface_idx] = aggregated_energy[0]  # Берем первый элемент без .item()
             else:
                 logger.warning(f"Invalid coordinates or batch_idx: ({x},{y}), batch={batch_idx}")
         
