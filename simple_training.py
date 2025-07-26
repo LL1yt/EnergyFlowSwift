@@ -96,7 +96,7 @@ def create_simple_dataloader(batch_size: int = 4, max_samples: int = 50) -> Data
         shuffle=True,
         generator=cuda_generator,  # Передаем CUDA generator напрямую!
         num_workers=0,  # Избегаем multiprocessing для простоты
-        pin_memory=torch.cuda.is_available()
+        pin_memory=False  # Отключаем для упрощения отладки
     )
     
     # Логирование для подтверждения исправления
@@ -130,7 +130,7 @@ def create_teacher_embeddings_loader(batch_size: int = 4, max_samples: int = 50)
         shuffle=True,
         generator=torch.Generator(device='cuda') if torch.cuda.is_available() else None,
         num_workers=0,
-        pin_memory=torch.cuda.is_available()
+        pin_memory=False  # Отключаем для упрощения отладки
     )
     
     if torch.cuda.is_available() and hasattr(dataloader, 'generator') and dataloader.generator:

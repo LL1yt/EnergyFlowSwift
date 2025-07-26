@@ -376,6 +376,90 @@ class EnergyLattice(nn.Module):
         
         return output_embeddings, flow_ids
     
+    def collect_buffered_surface_energy(self) -> Tuple[torch.Tensor, List[int]]:
+        """
+        Собирает surface embeddings напрямую из буфера БЕЗ преобразования в 768D
+        
+        Returns:
+            output_surface_embeddings: [batch, surface_dim] - surface embeddings
+            completed_flows: ID завершенных потоков
+        """
+        if not self.output_buffer:
+            logger.debug("No flows in output buffer")
+            # Возвращаем нулевые surface embeddings
+            surface_dim = self.width * self.height
+            return torch.zeros(1, surface_dim, device=self.device), []
+        
+        # Определяем размер батча из потоков в буфере
+        all_buffered_flows = self.get_all_buffered_flows()
+        if not all_buffered_flows:
+            surface_dim = self.width * self.height
+            return torch.zeros(1, surface_dim, device=self.device), []
+            
+        batch_indices = {flow.batch_idx for flow in all_buffered_flows}
+        batch_size = max(batch_indices) + 1 if batch_indices else 1
+        
+        # Создаем surface tensor
+        surface_dim = self.width * self.height
+        output_surface = torch.zeros(batch_size, surface_dim, device=self.device)
+        flow_ids = []
+        
+        logger.debug(f"Collecting surface energy from buffer: {len(self.output_buffer)} cells, batch_size={batch_size}")
+        
+        # Итерируем по всем клеткам буфера
+        for (x, y), flows in self.output_buffer.items():
+            if not flows:
+                continue
+                
+            # Собираем ID всех потоков в этой клетке
+            cell_flow_ids = [flow.id for flow in flows]
+            flow_ids.extend(cell_flow_ids)
+            
+            if len(flows) == 1:
+                # Один поток - просто берем его энергию
+                flow = flows[0]
+                aggregated_energy = flow.energy
+                batch_idx = flow.batch_idx
+                logger.debug(f"Cell ({x},{y}): single_flow(id={flow.id}, batch={batch_idx})")
+            else:
+                # Несколько потоков - взвешенное усреднение
+                energies = []
+                weights = []
+                batch_indices_cell = []
+                
+                for flow in flows:
+                    energy_magnitude = torch.norm(flow.energy).item()
+                    age_factor = 1.0 + flow.age * 0.1
+                    weight = energy_magnitude * age_factor
+                    
+                    energies.append(flow.energy)
+                    weights.append(weight)
+                    batch_indices_cell.append(flow.batch_idx)
+                
+                # Нормализуем веса
+                weights = torch.tensor(weights, device=self.device)
+                weights = weights / weights.sum()
+                
+                # Взвешенное усреднение энергий
+                energies_tensor = torch.stack(energies)  # [num_flows, 1]
+                aggregated_energy = (energies_tensor * weights.unsqueeze(-1)).sum(dim=0)  # [1]
+                
+                # Для множественных потоков берем batch_idx первого потока
+                batch_idx = batch_indices_cell[0]
+                
+                avg_age = sum(flow.age for flow in flows) / len(flows)
+                logger.debug(f"Cell ({x},{y}): weighted_avg({len(flows)}_flows, ids={cell_flow_ids}, avg_age={avg_age:.1f}, batch={batch_idx})")
+            
+            # Размещаем агрегированную энергию в surface tensor
+            if 0 <= x < self.width and 0 <= y < self.height and 0 <= batch_idx < batch_size:
+                surface_idx = y * self.width + x  # Линеаризация координат
+                output_surface[batch_idx, surface_idx] = aggregated_energy.item()
+            else:
+                logger.warning(f"Invalid coordinates or batch_idx: ({x},{y}), batch={batch_idx}")
+        
+        logger.info(f"Collected surface energy from {len(flow_ids)} buffered flows across {len(self.output_buffer)} cells")
+        return output_surface, flow_ids
+    
     def collect_output_energy(self, mapper=None) -> Tuple[torch.Tensor, List[int]]:
         """
         Собирает энергию с выходной поверхности

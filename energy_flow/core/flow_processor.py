@@ -129,24 +129,24 @@ class FlowProcessor(nn.Module):
                 logger.info(f"Step {step}: {stats['current_active']} active flows, "
                           f"{stats['total_completed']} completed, {buffered_count} buffered")
         
-        # Собираем выходную энергию из буфера (гибридный подход)
-        output_embeddings, completed_flows = self._collect_final_output()
+        # Собираем выходную энергию из буфера (БЕЗ преобразования в 768D!)
+        output_surface_embeddings, completed_flows = self._collect_final_surface_output()
         
-        # Если нет выходов, возвращаем нули
-        if output_embeddings.shape[0] == 0:
-            logger.warning("No flows reached output, returning zero embeddings")
-            output_embeddings = torch.zeros(batch_size, self.config.input_embedding_dim_from_teacher, 
-                                          device=self.device)
+        # Если нет выходов, возвращаем нули (surface размерность!)
+        if output_surface_embeddings.shape[0] == 0:
+            logger.warning("No flows reached output, returning zero surface embeddings")
+            surface_dim = self.config.lattice_width * self.config.lattice_height
+            output_surface_embeddings = torch.zeros(batch_size, surface_dim, device=self.device)
         
         # Приводим к размеру батча
-        if output_embeddings.shape[0] < batch_size:
+        if output_surface_embeddings.shape[0] < batch_size:
             # Дополняем нулями
-            padding = torch.zeros(batch_size - output_embeddings.shape[0], 
-                                output_embeddings.shape[1], device=self.device)
-            output_embeddings = torch.cat([output_embeddings, padding], dim=0)
-        elif output_embeddings.shape[0] > batch_size:
+            padding = torch.zeros(batch_size - output_surface_embeddings.shape[0], 
+                                output_surface_embeddings.shape[1], device=self.device)
+            output_surface_embeddings = torch.cat([output_surface_embeddings, padding], dim=0)
+        elif output_surface_embeddings.shape[0] > batch_size:
             # Обрезаем
-            output_embeddings = output_embeddings[:batch_size]
+            output_surface_embeddings = output_surface_embeddings[:batch_size]
         
         # Финальная статистика
         final_stats = self.lattice.get_statistics()
@@ -157,7 +157,7 @@ class FlowProcessor(nn.Module):
                    f"{final_stats['total_died']} died "
                    f"(energy: {killed_energy}, backward: {killed_backward}, bounds: {killed_bounds})")
         
-        return output_embeddings
+        return output_surface_embeddings
     
     def _collect_final_output(self) -> Tuple[torch.Tensor, List[int]]:
         """
@@ -195,6 +195,40 @@ class FlowProcessor(nn.Module):
             logger.info(f"Collected and cleared {len(completed_flows)} flows from output buffer")
         
         return output_embeddings, completed_flows
+    
+    def _collect_final_surface_output(self) -> Tuple[torch.Tensor, List[int]]:
+        """
+        Собирает surface embeddings БЕЗ преобразования в 768D
+        
+        Returns:
+            output_surface_embeddings: [batch, surface_dim] - surface embeddings
+            completed_flows: ID завершенных потоков
+        """
+        active_flows = self.lattice.get_active_flows()
+        buffered_count = self.lattice.get_buffered_flows_count()
+        
+        logger.debug(f"Surface collection: {len(active_flows)} active flows, {buffered_count} buffered flows")
+        
+        # Если есть активные потоки на выходной стороне - добавляем их в буфер
+        active_at_output = 0
+        for flow in active_flows:
+            z_pos = flow.position[2].item()
+            if z_pos >= self.config.lattice_depth - 1:
+                self.lattice._buffer_output_flow(flow.id)
+                active_at_output += 1
+        
+        if active_at_output > 0:
+            logger.debug(f"Moved {active_at_output} remaining flows to output buffer")
+        
+        # Собираем surface embeddings из буфера напрямую
+        output_surface_embeddings, completed_flows = self.lattice.collect_buffered_surface_energy()
+        
+        # Очищаем буфер после сбора (FlowProcessor координирует жизненный цикл)
+        if completed_flows:
+            self.lattice.clear_output_buffer()
+            logger.info(f"Collected and cleared {len(completed_flows)} flows from output buffer")
+        
+        return output_surface_embeddings, completed_flows
     
     def step(self, active_flows: Optional[List] = None):
         """
