@@ -272,7 +272,39 @@ OPTIMIZED_CONFIG = EnergyConfig(
   - Веса общего EnergyCarrier (GRU)
   - Веса общего SimpleNeuron
 - Оптимизация через Adam
-- для примера можно посмотреть new_rebuild\core\training\embedding_trainer.py.
+
+у нас основная линия тренеровки: мы берем пары вопрос(входные данные(текст и эмбединг))-ответ(выходные данные(текст и эмбединг)) от модели учителя. пары вопрос-ответ эмбедингов мы используем для обучения куба - для этого нам нужен маппинг эмбедингов модели-учителя(например 768D) на входную поверхность куба(например 20х20=400D) и обратно с выходной поверхности. для cube_to_text_decoder и text_to_cube_encoder - мы паралельно пытаемся обучать их независимо пока(полноценно они будут работать только после обучения, тогда и будем думать о такой интеграции). берем текст из пары вопрос-ответ и для text_to_cube_encoder это вопрос и преобразованный нашим маппером эмбединг под поверхность куба - эти значения используем для обучения. для cube_to_text_decoder мы берем выходной(ответ) эмбединг от модели-учителя, пропускаем его через наш маппинг(тут необычное действие) и получаем эмбединг ответ в формате выходной поверхности куба(его мы кстати можем использовать для обучения куба, сравнивая с реальным выходом куба - тут возможно нужно пересмотреть пиплайн, что бы два раза не преобразовывать выходные эмбединги) и эту пару используем для обучения cube_to_text_decoder
+Исправленная архитектура:
+
+     Основное обучение куба (эффективно):
+
+     # 1. Генерируем random teacher embeddings для теста
+     teacher_input_768D = torch.randn(batch_size, 768, device=device)
+     teacher_target_768D = torch.randn(batch_size, 768, device=device)
+
+     # 2. FlowProcessor работает с 768D как и задумано
+     cube_output_surface_400D = flow_processor.forward(teacher_input_768D)  # 768D → surface 400D (внутри есть mapper)
+
+     # 3. Маппим target в surface для сравнения
+     target_surface_400D = flow_processor.mapper.input_mapper.forward(teacher_target_768D)  # 768D → surface 400D
+
+     # 4. Energy loss - сравниваем на уровне surface (экономия!)
+     energy_loss = mse_loss(cube_output_surface_400D, target_surface_400D)
+
+     Text Bridge обучение (независимо):
+
+     if text_bridge_enabled:
+         # TextToCubeEncoder: учится текст → surface
+         encoder_output = text_encoder.encode_text(input_texts)  # → 400D
+         encoder_target = target_surface_400D.detach()  # Используем уже вычисленный!
+         encoder_loss = mse_loss(encoder_output, encoder_target)
+
+         # CubeToTextDecoder: учится surface → текст
+         decoder_input = target_surface_400D.detach()  # Переиспользуем!
+         decoder_output = text_decoder.decode_surface(decoder_input)
+         decoder_loss = text_loss(decoder_output, target_texts)
+
+         text_loss = encoder_loss + decoder_loss
 
 ## ✅ Модуль text_bridge - Связь с естественным языком
 

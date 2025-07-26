@@ -170,7 +170,7 @@ def create_debug_config() -> EnergyConfig:
         
         # Text Bridge включен для debug
         text_bridge_enabled=True,
-        text_cache_enabled=True,
+        text_cache_enabled=False,  # Отключен для обучения
         text_cache_size=1000,          # Меньший кэш для debug
         text_loss_weight=0.2,          # Повышенный вес для обучения text bridge
         iterative_correction_steps=2,  # Меньше шагов для быстроты

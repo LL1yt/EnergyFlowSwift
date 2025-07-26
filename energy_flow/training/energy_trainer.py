@@ -99,9 +99,9 @@ class EnergyTrainer:
         self.flow_processor = FlowProcessor(self.config).to(self.device)
         
         # Извлекаем компоненты для прямого доступа
-        self.energy_lattice = self.flow_processor.energy_lattice
-        self.simple_neuron = self.flow_processor.simple_neuron
-        self.energy_carrier = self.flow_processor.energy_carrier
+        self.energy_lattice = self.flow_processor.lattice
+        self.simple_neuron = self.flow_processor.neuron
+        self.energy_carrier = self.flow_processor.carrier
         
         logger.log(DEBUG_TRAINING, f"Core components initialized: "
                                   f"FlowProcessor, EnergyLattice({self.config.lattice_width}x{self.config.lattice_height}x{self.config.lattice_depth})")
@@ -128,21 +128,25 @@ class EnergyTrainer:
             self.text_cache = None
         
         # Text encoder (text → surface embeddings)
-        base_encoder = create_text_to_cube_encoder(self.config.surface_dimension).to(self.device)
+        base_encoder = create_text_to_cube_encoder(self.config).to(self.device)
         if self.text_cache:
             self.text_encoder = CachedTextToCubeEncoder(base_encoder, self.text_cache)
         else:
             self.text_encoder = base_encoder
             
         # Text decoder (surface embeddings → text)
-        base_decoder = create_cube_to_text_decoder(self.config.surface_dimension).to(self.device)
+        base_decoder = create_cube_to_text_decoder(self.config).to(self.device)
         if self.text_cache:
             self.text_decoder = CachedCubeToTextDecoder(base_decoder, self.text_cache)
         else:
             self.text_decoder = base_decoder
         
-        logger.log(DEBUG_TRAINING, f"Text bridge initialized: encoder({base_encoder.count_parameters()} params), "
-                                  f"decoder({base_decoder.count_parameters()} params)")
+        # Подсчет параметров для логирования
+        encoder_params = sum(p.numel() for p in base_encoder.parameters() if p.requires_grad)
+        decoder_params = sum(p.numel() for p in base_decoder.parameters() if p.requires_grad)
+        
+        logger.log(DEBUG_TRAINING, f"Text bridge initialized: encoder({encoder_params:,} params), "
+                                  f"decoder({decoder_params:,} params)")
     
     def _init_optimizer(self):
         """Инициализация оптимизатора и планировщика"""
@@ -151,14 +155,15 @@ class EnergyTrainer:
         
         if self.config.text_bridge_enabled:
             # Добавляем параметры text_bridge компонентов
-            if hasattr(self.text_encoder, 'model'):  # Cached version
-                params.extend(self.text_encoder.model.parameters())
-            else:  # Direct model
+            # Для cached версий используем базовые модели
+            if hasattr(self.text_encoder, 'encoder'):  # CachedTextToCubeEncoder
+                params.extend(self.text_encoder.encoder.parameters())
+            elif hasattr(self.text_encoder, 'parameters'):  # Direct TextToCubeEncoder
                 params.extend(self.text_encoder.parameters())
                 
-            if hasattr(self.text_decoder, 'model'):  # Cached version  
-                params.extend(self.text_decoder.model.parameters())
-            else:  # Direct model
+            if hasattr(self.text_decoder, 'decoder'):  # CachedCubeToTextDecoder
+                params.extend(self.text_decoder.decoder.parameters())
+            elif hasattr(self.text_decoder, 'parameters'):  # Direct CubeToTextDecoder
                 params.extend(self.text_decoder.parameters())
         
         # Оптимизатор
@@ -173,21 +178,23 @@ class EnergyTrainer:
             self.optimizer,
             mode='min',
             factor=0.5,
-            patience=10,
-            verbose=True
+            patience=10
         )
         
         total_params = sum(p.numel() for p in params if p.requires_grad)
         logger.log(DEBUG_TRAINING, f"Optimizer initialized: AdamW, lr={self.config.learning_rate}, "
                                   f"total_params={total_params:,}")
     
-    def train_step(self, input_texts: List[str], target_texts: List[str]) -> Dict[str, float]:
+    def train_step(self, input_texts: List[str], target_texts: List[str], 
+                   teacher_input_embeddings: torch.Tensor, teacher_target_embeddings: torch.Tensor) -> Dict[str, float]:
         """
         Один шаг обучения
         
         Args:
-            input_texts: Список входных текстов
-            target_texts: Список целевых текстов
+            input_texts: Список входных текстов (для text_bridge)
+            target_texts: Список целевых текстов (для text_bridge)
+            teacher_input_embeddings: Входные эмбеддинги от модели-учителя [batch, 768]
+            teacher_target_embeddings: Целевые эмбеддинги от модели-учителя [batch, 768]
             
         Returns:
             Словарь с метриками шага
@@ -198,49 +205,54 @@ class EnergyTrainer:
         step_start_time = time.time()
         
         try:
-            # 1. Энкодирование входных текстов в surface embeddings
-            if self.config.text_bridge_enabled:
-                with torch.no_grad():  # Encoder не обучается в основном цикле
-                    surface_inputs = []
-                    for text in input_texts:
-                        surface_emb = self.text_encoder.encode_text(text)
-                        surface_inputs.append(surface_emb)
-                    surface_inputs = torch.stack(surface_inputs, dim=0)  # [batch_size, surface_dim]
-            else:
-                # Fallback: случайные surface embeddings для тестирования
-                surface_inputs = torch.randn(batch_size, self.config.surface_dimension, 
-                                           device=self.device, dtype=self.config.dtype)
-            
-            # 2. Прохождение через energy flow архитектуру
+            # 1. Основное обучение куба с teacher embeddings
             flow_start_time = time.time()
-            surface_outputs = self.flow_processor.forward(surface_inputs, max_steps=50)
+            cube_output_surface = self.flow_processor.forward(teacher_input_embeddings, max_steps=50)
             flow_time = time.time() - flow_start_time
             
             # Получаем статистику потоков
             flow_stats = self.flow_processor.get_flow_statistics()
             
-            # 3. Вычисление energy loss (MSE между входом и выходом)
-            energy_loss = nn.functional.mse_loss(surface_outputs, surface_inputs)
+            # 2. Маппим teacher target в surface для сравнения (экономия ресурсов!)
+            with torch.no_grad():
+                target_surface = self.flow_processor.mapper.input_mapper.forward(teacher_target_embeddings)
+                # Приводим к правильной форме если нужно
+                if target_surface.dim() == 3:  # [batch, height, width]
+                    target_surface = target_surface.view(batch_size, -1)  # [batch, surface_dim]
             
-            # 4. Text loss (если text_bridge включен)
+            # 3. Energy loss - сравниваем на уровне surface (не 768D!)
+            energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface)
+            
+            # 4. Text Bridge обучение (независимое, параллельное)
             text_loss = torch.tensor(0.0, device=self.device)
             if self.config.text_bridge_enabled and self.config.text_loss_weight > 0:
                 try:
-                    # Декодируем выходные surface embeddings в текст
+                    # TextToCubeEncoder: учится текст → surface (переиспользуем target_surface)
+                    encoder_outputs = []
+                    for text in input_texts:
+                        encoder_output = self.text_encoder.encode_text(text)  # → surface 400D
+                        encoder_outputs.append(encoder_output)
+                    encoder_outputs = torch.stack(encoder_outputs, dim=0)
+                    
+                    # Используем уже вычисленный target_surface для encoder обучения
+                    encoder_loss = nn.functional.mse_loss(encoder_outputs, target_surface.detach())
+                    
+                    # CubeToTextDecoder: учится surface → текст (переиспользуем target_surface)
                     predicted_texts = []
                     for i in range(batch_size):
-                        pred_text = self.text_decoder.decode_surface(surface_outputs[i])
+                        pred_text = self.text_decoder.decode_surface(target_surface[i].detach())
                         predicted_texts.append(pred_text)
                     
-                    # Энкодируем целевые тексты для сравнения
-                    target_surface_embeddings = []
-                    for text in target_texts:
-                        target_emb = self.text_encoder.encode_text(text)
-                        target_surface_embeddings.append(target_emb)
-                    target_surface_embeddings = torch.stack(target_surface_embeddings, dim=0)
+                    # Простой text similarity loss (можно улучшить)
+                    decoder_loss = torch.tensor(0.0, device=self.device)
+                    for pred_text, target_text in zip(predicted_texts, target_texts):
+                        # Примитивная метрика длины для демонстрации
+                        length_diff = abs(len(pred_text) - len(target_text)) / max(len(target_text), 1)
+                        decoder_loss += torch.tensor(length_diff, device=self.device)
+                    decoder_loss /= batch_size
                     
-                    # Text loss как MSE между surface embeddings
-                    text_loss = nn.functional.mse_loss(surface_outputs, target_surface_embeddings)
+                    # Комбинированный text loss
+                    text_loss = encoder_loss + decoder_loss
                     
                 except Exception as e:
                     logger.warning(f"Text loss computation failed: {e}")
@@ -308,12 +320,13 @@ class EnergyTrainer:
                 'error': str(e)
             }
     
-    def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
+    def train_epoch(self, dataloader: DataLoader, teacher_embeddings_loader) -> Dict[str, float]:
         """
         Обучение на одной эпохе
         
         Args:
             dataloader: DataLoader с парами (input_texts, target_texts)
+            teacher_embeddings_loader: Итератор с teacher embeddings парами
             
         Returns:
             Усредненные метрики по эпохе
@@ -337,16 +350,23 @@ class EnergyTrainer:
         total_batches = 0
         epoch_start_time = time.time()
         
-        for batch_idx, batch_data in enumerate(dataloader):
-            # Распаковка данных (формат зависит от DataLoader)
+        for batch_idx, (batch_data, teacher_data) in enumerate(zip(dataloader, teacher_embeddings_loader)):
+            # Распаковка данных текстов
             if isinstance(batch_data, (list, tuple)) and len(batch_data) >= 2:
                 input_texts, target_texts = batch_data[0], batch_data[1]
             else:
                 logger.warning(f"Unexpected batch format: {type(batch_data)}")
                 continue
             
+            # Распаковка teacher embeddings
+            if isinstance(teacher_data, (list, tuple)) and len(teacher_data) >= 2:
+                teacher_input_emb, teacher_target_emb = teacher_data[0], teacher_data[1]
+            else:
+                logger.warning(f"Unexpected teacher embeddings format: {type(teacher_data)}")
+                continue
+            
             # Один шаг обучения
-            step_metrics = self.train_step(input_texts, target_texts)
+            step_metrics = self.train_step(input_texts, target_texts, teacher_input_emb, teacher_target_emb)
             
             # Аккумулируем метрики
             for key in epoch_metrics:
@@ -385,12 +405,13 @@ class EnergyTrainer:
         self.epoch += 1
         return epoch_metrics
     
-    def train(self, dataloader: DataLoader, num_epochs: int = 10) -> Dict[str, List]:
+    def train(self, dataloader: DataLoader, teacher_embeddings_loader, num_epochs: int = 10) -> Dict[str, List]:
         """
         Полный цикл обучения
         
         Args:
-            dataloader: DataLoader с обучающими данными
+            dataloader: DataLoader с текстовыми данными
+            teacher_embeddings_loader: DataLoader с teacher embeddings
             num_epochs: Количество эпох
             
         Returns:
@@ -401,7 +422,7 @@ class EnergyTrainer:
         training_start_time = time.time()
         
         for epoch in range(num_epochs):
-            epoch_metrics = self.train_epoch(dataloader)
+            epoch_metrics = self.train_epoch(dataloader, teacher_embeddings_loader)
             
             # Сохранение метрик
             for key in epoch_metrics:
@@ -425,13 +446,16 @@ class EnergyTrainer:
         
         return self.training_history
     
-    def validate(self, input_texts: List[str], target_texts: List[str]) -> Dict[str, Any]:
+    def validate(self, input_texts: List[str], target_texts: List[str], 
+                 teacher_input_embeddings: torch.Tensor, teacher_target_embeddings: torch.Tensor) -> Dict[str, Any]:
         """
         Валидация модели
         
         Args:
             input_texts: Входные тексты для валидации
             target_texts: Целевые тексты
+            teacher_input_embeddings: Teacher input embeddings [batch, 768]
+            teacher_target_embeddings: Teacher target embeddings [batch, 768]
             
         Returns:
             Метрики валидации и примеры предсказаний
@@ -443,7 +467,7 @@ class EnergyTrainer:
             self.text_decoder.eval()
         
         with torch.no_grad():
-            val_metrics = self.train_step(input_texts, target_texts)
+            val_metrics = self.train_step(input_texts, target_texts, teacher_input_embeddings, teacher_target_embeddings)
             
             # Генерируем примеры для анализа качества
             examples = []
@@ -539,10 +563,18 @@ class EnergyTrainer:
         info['flow_processor_parameters'] = flow_params
         
         if self.config.text_bridge_enabled:
-            if hasattr(self.text_encoder, 'count_parameters'):
-                info['text_encoder_parameters'] = self.text_encoder.count_parameters()
-            if hasattr(self.text_decoder, 'count_parameters'):
-                info['text_decoder_parameters'] = self.text_decoder.count_parameters()
+            # Подсчет параметров text_bridge компонентов
+            if hasattr(self.text_encoder, 'model'):  # Cached version
+                encoder_params = sum(p.numel() for p in self.text_encoder.model.parameters() if p.requires_grad)
+            else:  # Direct model
+                encoder_params = sum(p.numel() for p in self.text_encoder.parameters() if p.requires_grad)
+            info['text_encoder_parameters'] = encoder_params
+            
+            if hasattr(self.text_decoder, 'model'):  # Cached version
+                decoder_params = sum(p.numel() for p in self.text_decoder.model.parameters() if p.requires_grad)
+            else:  # Direct model
+                decoder_params = sum(p.numel() for p in self.text_decoder.parameters() if p.requires_grad)
+            info['text_decoder_parameters'] = decoder_params
         
         return info
 

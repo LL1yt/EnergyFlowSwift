@@ -87,13 +87,56 @@ def create_simple_dataloader(batch_size: int = 4, max_samples: int = 50) -> Data
     """Создание DataLoader с простыми данными"""
     dataset = SimpleTextDataset(max_samples=max_samples)
     
-    return DataLoader(
+    # Создаем CUDA generator заранее для правильной работы shuffle
+    cuda_generator = torch.Generator(device='cuda') if torch.cuda.is_available() else None
+    
+    dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=True,
+        generator=cuda_generator,  # Передаем CUDA generator напрямую!
         num_workers=0,  # Избегаем multiprocessing для простоты
         pin_memory=torch.cuda.is_available()
     )
+    
+    # Логирование для подтверждения исправления
+    if torch.cuda.is_available() and hasattr(dataloader, 'generator') and dataloader.generator:
+        print(f"✅ DataLoader generator device: {dataloader.generator.device}")
+    
+    return dataloader
+
+
+def create_teacher_embeddings_loader(batch_size: int = 4, max_samples: int = 50):
+    """Создает итератор с парами teacher embeddings для обучения куба"""
+    
+    class TeacherEmbeddingsDataset(Dataset):
+        def __init__(self, max_samples: int):
+            self.max_samples = max_samples
+        
+        def __len__(self):
+            return self.max_samples
+        
+        def __getitem__(self, idx):
+            # Генерируем пары teacher embeddings (768D)
+            input_embedding = torch.randn(768, dtype=torch.float32)
+            target_embedding = torch.randn(768, dtype=torch.float32)
+            return input_embedding, target_embedding
+    
+    dataset = TeacherEmbeddingsDataset(max_samples)
+    
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=torch.Generator(device='cuda') if torch.cuda.is_available() else None,
+        num_workers=0,
+        pin_memory=torch.cuda.is_available()
+    )
+    
+    if torch.cuda.is_available() and hasattr(dataloader, 'generator') and dataloader.generator:
+        print(f"✅ Teacher embeddings DataLoader generator device: {dataloader.generator.device}")
+    
+    return dataloader
 
 
 def run_simple_training():
@@ -123,8 +166,19 @@ def run_simple_training():
         max_samples=10  # Еще меньше для валидации
     )
     
+    # Teacher embeddings для основного обучения куба
+    train_teacher_loader = create_teacher_embeddings_loader(
+        batch_size=config.batch_size,
+        max_samples=40
+    )
+    val_teacher_loader = create_teacher_embeddings_loader(
+        batch_size=config.batch_size,
+        max_samples=10
+    )
+    
     print(f"  - Training batches: {len(train_dataloader)}")
     print(f"  - Validation batches: {len(val_dataloader)}")
+    print(f"  - Teacher embeddings batches: {len(train_teacher_loader)}")
     print()
     
     # 3. Инициализация тренера
@@ -149,7 +203,8 @@ def run_simple_training():
     try:
         # Берем первый batch для валидации
         val_batch = next(iter(val_dataloader))
-        val_metrics = trainer.validate(val_batch[0], val_batch[1])
+        val_teacher_batch = next(iter(val_teacher_loader))
+        val_metrics = trainer.validate(val_batch[0], val_batch[1], val_teacher_batch[0], val_teacher_batch[1])
         
         print(f"  - Initial loss: {val_metrics.get('total_loss', 0):.4f}")
         if val_metrics.get('examples'):
@@ -167,7 +222,7 @@ def run_simple_training():
     print("🎯 Starting training...")
     try:
         num_epochs = 3  # Небольшое количество эпох для demo
-        training_history = trainer.train(train_dataloader, num_epochs=num_epochs)
+        training_history = trainer.train(train_dataloader, train_teacher_loader, num_epochs=num_epochs)
         
         print(f"✅ Training completed!")
         print(f"  - Epochs: {num_epochs}")
@@ -184,7 +239,7 @@ def run_simple_training():
     # 6. Финальная валидация
     print("🔍 Final validation...")
     try:
-        final_val_metrics = trainer.validate(val_batch[0], val_batch[1])
+        final_val_metrics = trainer.validate(val_batch[0], val_batch[1], val_teacher_batch[0], val_teacher_batch[1])
         
         print(f"  - Final loss: {final_val_metrics.get('total_loss', 0):.4f}")
         print(f"  - Energy loss: {final_val_metrics.get('energy_loss', 0):.4f}")
