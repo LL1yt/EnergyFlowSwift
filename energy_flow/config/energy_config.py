@@ -64,6 +64,17 @@ class EnergyConfig:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     dtype: torch.dtype = torch.float32
     
+    # Text Bridge параметры (двунаправленное преобразование текст↔куб)
+    text_bridge_enabled: bool = False           # Включить text bridge модуль
+    text_cache_enabled: bool = False           # Включить LRU кэширование
+    text_cache_size: int = 10000              # Размер LRU кэша
+    text_cache_file: Optional[str] = None     # Файл для персистентного кэша (None = auto)
+    text_loss_weight: float = 0.1             # Вес text loss в общем loss (0.0-1.0)
+    iterative_correction_steps: int = 3       # Шаги итеративной коррекции для decoder
+    text_generation_max_length: int = 64      # Максимальная длина генерируемого текста
+    text_generation_num_beams: int = 4        # Количество beams для beam search
+    text_generation_temperature: float = 1.0  # Температура для генерации текста
+    
     # Logging
     log_interval: int = 10
     checkpoint_interval: int = 100
@@ -99,6 +110,15 @@ class EnergyConfig:
         assert self.neuron_hidden_dim > 0, "neuron_hidden_dim должен быть > 0"
         assert self.neuron_output_dim > 0, "neuron_output_dim должен быть > 0"
         
+        # Проверка Text Bridge параметров
+        if self.text_bridge_enabled:
+            assert 0.0 <= self.text_loss_weight <= 1.0, "text_loss_weight должен быть в [0.0, 1.0]"
+            assert self.text_cache_size > 0, "text_cache_size должен быть > 0"
+            assert self.iterative_correction_steps > 0, "iterative_correction_steps должен быть > 0"
+            assert self.text_generation_max_length > 0, "text_generation_max_length должен быть > 0"
+            assert self.text_generation_num_beams > 0, "text_generation_num_beams должен быть > 0"
+            assert self.text_generation_temperature > 0, "text_generation_temperature должен быть > 0"
+        
         # Создаем NormalizationManager
         self._normalization_manager = None  # Lazy initialization
     
@@ -106,6 +126,11 @@ class EnergyConfig:
     def total_cells(self) -> int:
         """Общее количество клеток в решетке"""
         return self.lattice_width * self.lattice_height * self.lattice_depth
+    
+    @property 
+    def surface_dimension(self) -> int:
+        """Размерность поверхности куба (для text_bridge)"""
+        return self.lattice_width * self.lattice_height
     
     def to_dict(self) -> Dict[str, Any]:
         """Преобразование в словарь для сохранения"""
@@ -128,7 +153,7 @@ class EnergyConfig:
 # Предустановленные конфигурации для разных режимов
 
 def create_debug_config() -> EnergyConfig:
-    """Минимальная конфигурация для отладки"""
+    """Минимальная конфигурация для отладки с включенным text_bridge"""
     return EnergyConfig(
         lattice_width=20,
         lattice_height=20,
@@ -141,7 +166,17 @@ def create_debug_config() -> EnergyConfig:
         carrier_hidden_size=256,  # Уменьшенный размер для отладки
         carrier_num_layers=2,
         carrier_dropout=0.05,   # Низкий dropout для отладки
-        log_interval=1
+        log_interval=1,
+        
+        # Text Bridge включен для debug
+        text_bridge_enabled=True,
+        text_cache_enabled=True,
+        text_cache_size=1000,          # Меньший кэш для debug
+        text_loss_weight=0.2,          # Повышенный вес для обучения text bridge
+        iterative_correction_steps=2,  # Меньше шагов для быстроты
+        text_generation_max_length=32, # Короткие тексты для debug
+        text_generation_num_beams=2,   # Меньше beams для скорости
+        text_generation_temperature=0.8
     )
 
 
@@ -154,7 +189,17 @@ def create_experiment_config() -> EnergyConfig:
         max_active_flows=500,
         batch_size=16,
         carrier_hidden_size=512,
-        carrier_num_layers=2
+        carrier_num_layers=2,
+        
+        # Text Bridge настройки для экспериментов
+        text_bridge_enabled=True,
+        text_cache_enabled=True,
+        text_cache_size=5000,
+        text_loss_weight=0.15,
+        iterative_correction_steps=3,
+        text_generation_max_length=48,
+        text_generation_num_beams=3,
+        text_generation_temperature=0.9
     )
 
 
@@ -167,7 +212,17 @@ def create_optimized_config() -> EnergyConfig:
         max_active_flows=1000,
         batch_size=32,
         carrier_hidden_size=1024,
-        carrier_num_layers=3
+        carrier_num_layers=3,
+        
+        # Text Bridge для производительной конфигурации
+        text_bridge_enabled=True,
+        text_cache_enabled=True,
+        text_cache_size=10000,         # Максимальный кэш
+        text_loss_weight=0.1,          # Базовый вес
+        iterative_correction_steps=3,  # Полные шаги коррекции
+        text_generation_max_length=64, # Полная длина текста
+        text_generation_num_beams=4,   # Максимальное качество
+        text_generation_temperature=1.0
     )
 
 

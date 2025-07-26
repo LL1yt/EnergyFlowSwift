@@ -55,3 +55,4 @@ experiments/
 # Miscellaneous
 *.pth
 *.pkl
+*.pt

@@ -29,7 +29,7 @@ def test_text_cache():
     print(f"📏 Surface dim: {config.lattice_width * config.lattice_height}")
     
     # Создаем кэш
-    cache_file = "test_cache.pkl"
+    cache_file = "test_cache.pt"
     cache = create_text_cache(max_size=100, cache_file=cache_file, config=config)
     
     print(f"\n1️⃣ Инициализация кэша:")
@@ -51,12 +51,17 @@ def test_text_cache():
     
     # Создаем тестовые surface embeddings
     surface_embeddings = []
+    print(f"   📱 Device info - Current device: {torch.cuda.current_device() if torch.cuda.is_available() else 'CPU'}")
+    print(f"   📱 CUDA available: {torch.cuda.is_available()}")
+    
     for text in test_texts:
         # Генерируем детерминированные embeddings на базе текста
         torch.manual_seed(hash(text) % 2**32)
         embedding = torch.randn(cache.surface_dim) * 0.5
         embedding = torch.clamp(embedding, -1, 1)
         surface_embeddings.append(embedding)
+        
+        print(f"   📱 Original embedding device: {embedding.device}")
         
         # Кэшируем
         cache.put_text_to_surface(text, embedding)
@@ -68,8 +73,21 @@ def test_text_cache():
         cached_embedding = cache.get_surface_from_text(text)
         if cached_embedding is not None:
             original = surface_embeddings[i]
-            match = torch.allclose(cached_embedding, original, atol=1e-6)
-            print(f"   '{text}': {'✅ MATCH' if match else '❌ MISMATCH'}")
+            print(f"   📱 Original device: {original.device}, Cached device: {cached_embedding.device}")
+            try:
+                match = torch.allclose(cached_embedding, original, atol=1e-6)
+                print(f"   '{text}': {'✅ MATCH' if match else '❌ MISMATCH'}")
+            except RuntimeError as e:
+                print(f"   ❌ Device error for '{text}': {e}")
+                # Try moving to same device for comparison
+                if original.device != cached_embedding.device:
+                    print(f"   📱 Attempting device alignment...")
+                    if original.device.type == 'cuda':
+                        cached_embedding = cached_embedding.to(original.device)
+                    else:
+                        cached_embedding = cached_embedding.cpu()
+                    match = torch.allclose(cached_embedding, original, atol=1e-6)
+                    print(f"   📱 After alignment - '{text}': {'✅ MATCH' if match else '❌ MISMATCH'}")
         else:
             print(f"   '{text}': ❌ NOT FOUND")
     

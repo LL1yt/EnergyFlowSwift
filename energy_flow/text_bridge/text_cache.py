@@ -62,7 +62,7 @@ class TextCache:
         
         # Персистентное хранение
         if cache_file is None:
-            cache_file = f"text_cache_{self.surface_dim}d.pkl"
+            cache_file = f"text_cache_{self.surface_dim}d.pt"  # Изменено на .pt для torch.save
         self.cache_file = Path(cache_file)
         
         # Статистика
@@ -126,8 +126,10 @@ class TextCache:
             if text_hash in self._text_to_surface_cache:
                 self._text_to_surface_cache.move_to_end(text_hash)
             else:
-                # Добавляем новую запись
-                self._text_to_surface_cache[text_hash] = surface_embedding.clone().detach()
+                # Добавляем новую запись, обеспечивая правильное устройство
+                cloned_embedding = surface_embedding.clone().detach()
+                # Сохраняем на том же устройстве что и оригинал
+                self._text_to_surface_cache[text_hash] = cloned_embedding
                 
                 # Проверяем размер кэша
                 if len(self._text_to_surface_cache) > self.max_size:
@@ -208,7 +210,8 @@ class TextCache:
             
             # Дублируем в прямой кэш
             text_hash = self._hash_text(text)
-            self._text_to_surface_cache[text_hash] = surface_embedding.clone().detach()
+            cloned_embedding = surface_embedding.clone().detach()
+            self._text_to_surface_cache[text_hash] = cloned_embedding
             
             # Логирование
             if logger.isEnabledFor(DEBUG_ENERGY):
@@ -252,11 +255,9 @@ class TextCache:
             
         try:
             with self._lock:
-                # Конвертируем tensors в numpy для сериализации
+                # Используем torch.save для точного сохранения тензоров
                 cache_data = {
-                    'text_to_surface': {
-                        k: v.cpu().numpy() for k, v in self._text_to_surface_cache.items()
-                    },
+                    'text_to_surface': dict(self._text_to_surface_cache),  # Сохраняем как есть
                     'surface_to_text': dict(self._surface_to_text_cache),
                     'stats': self.stats.copy(),
                     'surface_dim': self.surface_dim,
@@ -267,8 +268,8 @@ class TextCache:
                     }
                 }
                 
-                with open(self.cache_file, 'wb') as f:
-                    pickle.dump(cache_data, f)
+                # Используем torch.save вместо pickle для точности
+                torch.save(cache_data, self.cache_file)
                 
                 logger.info(f"Кэш сохранен в {self.cache_file} ({len(self._text_to_surface_cache)} записей)")
                 
@@ -282,8 +283,8 @@ class TextCache:
             
         try:
             with self._lock:
-                with open(self.cache_file, 'rb') as f:
-                    cache_data = pickle.load(f)
+                # Используем torch.load для точного восстановления тензоров
+                cache_data = torch.load(self.cache_file, map_location='cpu')
                 
                 # Проверяем совместимость размерностей
                 if cache_data.get('surface_dim') != self.surface_dim:
@@ -294,9 +295,13 @@ class TextCache:
                     )
                     return
                 
-                # Восстанавливаем numpy arrays обратно в tensors
+                # Восстанавливаем тензоры на правильном устройстве  
+                default_device = torch.get_default_device()
                 for k, v in cache_data.get('text_to_surface', {}).items():
-                    self._text_to_surface_cache[k] = torch.from_numpy(v)
+                    # Тензоры уже загружены torch.load, просто перемещаем на нужное устройство
+                    if default_device.type == 'cuda':
+                        v = v.to(default_device)
+                    self._text_to_surface_cache[k] = v
                 
                 self._surface_to_text_cache.update(cache_data.get('surface_to_text', {}))
                 
@@ -306,7 +311,8 @@ class TextCache:
                 
                 logger.info(
                     f"Кэш загружен из {self.cache_file} "
-                    f"({len(self._text_to_surface_cache)} записей)"
+                    f"({len(self._text_to_surface_cache)} записей), "
+                    f"device={default_device}"
                 )
                 
         except Exception as e:
