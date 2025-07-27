@@ -220,7 +220,7 @@ class DatasetManager:
                 provider_data = provider.get_mixed_data(self.config.max_samples_per_source)
                 
                 if provider_data['count'] > 0:
-                    # Добавляем к общим данным
+                    # Добавляем к общим данным (эмбеддинги уже должны быть на CUDA по умолчанию)
                     all_text_pairs.extend(provider_data['text_pairs'])
                     all_input_embeddings.append(provider_data['input_embeddings'])
                     all_target_embeddings.append(provider_data['target_embeddings'])
@@ -229,7 +229,7 @@ class DatasetManager:
                     provider_metadata = [{'source': provider_name} for _ in range(provider_data['count'])]
                     all_metadata.extend(provider_metadata)
                     
-                    logger.info(f"✅ {provider_name}: {provider_data['count']} samples loaded")
+                    logger.info(f"✅ {provider_name}: {provider_data['count']} samples loaded on {provider_data['input_embeddings'].device}")
                 else:
                     logger.warning(f"⚠️ {provider_name}: no data available")
                     
@@ -247,7 +247,7 @@ class DatasetManager:
         
         # Перемешиваем если включено
         if self.config.shuffle_data:
-            indices = torch.randperm(len(all_text_pairs))
+            indices = torch.randperm(len(all_text_pairs), device=combined_input_embeddings.device)
             all_text_pairs = [all_text_pairs[i] for i in indices]
             combined_input_embeddings = combined_input_embeddings[indices]
             combined_target_embeddings = combined_target_embeddings[indices]
@@ -296,13 +296,19 @@ class DatasetManager:
         effective_batch_size = batch_size or self.config.batch_size
         effective_shuffle = shuffle if shuffle is not None else self.config.shuffle_data
         
+        # Создаем generator на правильном устройстве если используем shuffle
+        generator = None
+        if effective_shuffle:
+            generator = torch.Generator(device=self.config.device or 'cuda')
+        
         dataloader = DataLoader(
             dataset,
             batch_size=effective_batch_size,
             shuffle=effective_shuffle,
             num_workers=num_workers,
             pin_memory=torch.cuda.is_available(),
-            drop_last=True  # Для стабильности обучения
+            drop_last=True,  # Для стабильности обучения
+            generator=generator
         )
         
         logger.info(f"📦 DataLoader created: batch_size={effective_batch_size}, "

@@ -114,7 +114,7 @@ class PrecomputedProvider(BaseDataProvider):
     def _extract_file_metadata(self, file_path: Path, source_type: str) -> Optional[Dict[str, Any]]:
         """Извлечение метаданных из файла без полной загрузки"""
         try:
-            # Загружаем только для анализа структуры
+            # Загружаем только для анализа структуры (на CPU для быстроты)
             data = torch.load(file_path, map_location='cpu')
             
             metadata = {
@@ -173,7 +173,8 @@ class PrecomputedProvider(BaseDataProvider):
         try:
             logger.info(f"📥 Loading precomputed file: {Path(file_path).name}")
             
-            data = torch.load(file_path, map_location=self.device)
+            # Загружаем на default device (будет CUDA если настроен)
+            data = torch.load(file_path)
             metadata = self._file_metadata.get(file_path, {})
             format_type = metadata.get('format', 'unknown')
             
@@ -317,6 +318,9 @@ class PrecomputedProvider(BaseDataProvider):
         all_input_embeddings = []
         all_target_embeddings = []
         
+        # Определяем ожидаемую размерность (берем из teacher model по умолчанию)
+        expected_dim = getattr(self.config, 'input_embedding_dim_from_teacher', 768)
+        
         # Загружаема эмбеддинги из всех файлов
         for file_path, metadata in self._file_metadata.items():
             data = self._load_file_data(file_path)
@@ -324,12 +328,25 @@ class PrecomputedProvider(BaseDataProvider):
                 input_emb = data['input_embeddings']
                 target_emb = data['target_embeddings']
                 
+                # Проверяем размерность эмбеддингов
+                if input_emb.shape[1] != expected_dim:
+                    logger.warning(f"⚠️ Skipping {Path(file_path).name}: wrong embedding dimension "
+                                 f"{input_emb.shape[1]}, expected {expected_dim}")
+                    continue
+                
+                if target_emb.shape[1] != expected_dim:
+                    logger.warning(f"⚠️ Skipping {Path(file_path).name}: wrong target embedding dimension "
+                                 f"{target_emb.shape[1]}, expected {expected_dim}")
+                    continue
+                
                 # Нормализация если включена
                 input_emb = self.normalize_embeddings(input_emb)
                 target_emb = self.normalize_embeddings(target_emb)
                 
                 all_input_embeddings.append(input_emb)
                 all_target_embeddings.append(target_emb)
+                
+                logger.info(f"✅ Loaded {Path(file_path).name}: {input_emb.shape[0]} samples, dim={input_emb.shape[1]}")
         
         if not all_input_embeddings:
             logger.warning("❌ No valid embeddings found in precomputed files")
@@ -352,7 +369,7 @@ class PrecomputedProvider(BaseDataProvider):
         
         # Перемешиваем если включено
         if self.config.shuffle_data and len(input_embeddings) > 1:
-            indices = torch.randperm(len(input_embeddings))
+            indices = torch.randperm(len(input_embeddings), device=input_embeddings.device)  # Используем тот же device
             input_embeddings = input_embeddings[indices]
             target_embeddings = target_embeddings[indices]
         

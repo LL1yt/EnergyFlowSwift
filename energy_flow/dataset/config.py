@@ -18,6 +18,14 @@ from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Устанавливаем GPU как default device для dataset модуля (аналогично energy_config.py)
+if torch.cuda.is_available():
+    torch.set_default_device('cuda')
+    torch.set_default_dtype(torch.float32)
+    logger.info(f"🚀 Dataset Module: Default device set to CUDA ({torch.cuda.get_device_name()})")
+else:
+    logger.info("⚠️ Dataset Module: CUDA not available, using CPU")
+
 
 @dataclass
 class DatasetConfig:
