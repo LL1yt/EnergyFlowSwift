@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-Пример интеграции dataset модуля с EnergyTrainer
-===============================================
+Обучение с готовым датасетом
+===========================
 
-Демонстрирует полный цикл обучения:
-- Подготовка данных через DatasetManager
-- Создание EnergyTrainer с новой архитектурой
-- Запуск обучения с валидацией
+Демонстрирует использование предварительно сгенерированного датасета
+для обучения EnergyTrainer без сложной интеграции.
 """
 
 import sys
@@ -14,87 +12,116 @@ from pathlib import Path
 import torch
 
 # Добавляем корень проекта в path
-project_root = Path(__file__).parent.parent.parent
+project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 from energy_flow.config import create_debug_config, set_energy_config
-from energy_flow.dataset import (
-    create_dataset_config_from_energy,
-    create_dataset_manager
-)
 from energy_flow.training import EnergyTrainer
 from energy_flow.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Путь к готовому датасету
+DATASET_PATH = "data/energy_flow/active/debug_precomputed_30pairs_20250729_110314.pt"
+
+
+def load_dataset(dataset_path: str):
+    """Загрузка готового датасета"""
+    print(f"📁 Loading dataset from {dataset_path}")
+    
+    if not Path(dataset_path).exists():
+        raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
+    
+    # Загружаем датасет
+    dataset = torch.load(dataset_path, map_location='cuda', weights_only=False)
+    
+    print(f"✅ Dataset loaded:")
+    print(f"   Total samples: {len(dataset['text_pairs'])}")
+    print(f"   Embedding dimension: {dataset['input_embeddings'].shape[1]}")
+    print(f"   Generated: {dataset['generation_info']['generation_timestamp']}")
+    print(f"   Sources: {', '.join(dataset['generation_info']['sources'])}")
+    
+    return dataset
+
 
 def create_training_setup():
-    """Создание полной настройки для обучения"""
+    """Создание настройки для обучения"""
     print("🔧 Setting up training environment...")
     
-    # 1. Energy конфигурация (debug режим для быстроты)
+    # Energy конфигурация (debug режим)
     energy_config = create_debug_config()
     set_energy_config(energy_config)
     
-    # 2. Dataset конфигурация с интеграцией
-    dataset_config = create_dataset_config_from_energy(
-        energy_config,
-        dataset_sources=["precomputed"],  # Только готовые эмбеддинги для скорости
-        max_samples_per_source=100,  # Небольшой датасет для демо
-        batch_size=4  # Маленький batch для debug
-    )
-    
-    # 3. DatasetManager
-    dataset_manager = create_dataset_manager(dataset_config, energy_config)
-    
-    # 4. EnergyTrainer
+    # EnergyTrainer
     trainer = EnergyTrainer(energy_config)
     
-    return energy_config, dataset_manager, trainer
+    return energy_config, trainer
 
 
-def run_training_demo(num_epochs: int = 2):
-    """Демонстрация обучения с новым dataset модулем"""
+def create_dataloader_from_dataset(dataset, batch_size: int = 4, shuffle: bool = True):
+    """Создание DataLoader из готового датасета"""
+    from torch.utils.data import DataLoader
+    
+    # Создаем wrapper для доступа к текстовым парам
+    class DatasetWrapper:
+        def __init__(self, dataset):
+            self.dataset = dataset
+            self.length = len(dataset['text_pairs'])
+        
+        def __len__(self):
+            return self.length
+        
+        def __getitem__(self, idx):
+            input_text, target_text = self.dataset['text_pairs'][idx]
+            return {
+                'input_embedding': self.dataset['input_embeddings'][idx],
+                'target_embedding': self.dataset['target_embeddings'][idx],
+                'input_text': input_text,
+                'target_text': target_text
+            }
+    
+    wrapped_dataset = DatasetWrapper(dataset)
+    dataloader = DataLoader(
+        wrapped_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        generator=torch.Generator(device=torch.get_default_device()) if shuffle else None,
+        collate_fn=lambda batch: {
+            'input_embedding': torch.stack([item['input_embedding'] for item in batch]),
+            'target_embedding': torch.stack([item['target_embedding'] for item in batch]),
+            'input_text': [item['input_text'] for item in batch],
+            'target_text': [item['target_text'] for item in batch]
+        }
+    )
+    
+    return dataloader
+
+
+def run_training_demo(dataset_path: str = DATASET_PATH, num_epochs: int = 2):
+    """Демонстрация обучения с готовым датасетом"""
     print(f"🚀 Starting training demo ({num_epochs} epochs)")
     print("=" * 60)
     
     try:
-        # Настройка
-        energy_config, dataset_manager, trainer = create_training_setup()
+        # Загрузка датасета
+        print("\n1️⃣ Loading dataset...")
+        dataset = load_dataset(dataset_path)
         
-        # Валидация готовности
-        print("\n1️⃣ Validating setup...")
-        validation = dataset_manager.validate_setup()
+        # Настройка тренера
+        print("\n2️⃣ Setting up trainer...")
+        energy_config, trainer = create_training_setup()
         
-        if not validation['overall_status']:
-            print("❌ Setup validation failed:")
-            for error in validation['errors']:
-                print(f"   - {error}")
-            return False
-        
-        print("✅ Setup validation passed")
-        
-        # Подготовка DataLoader
-        print("\n2️⃣ Preparing data...")
-        dataloader = dataset_manager.create_dataloader(
+        # Создание DataLoader
+        print("\n3️⃣ Creating DataLoader...")
+        dataloader = create_dataloader_from_dataset(
+            dataset, 
             batch_size=energy_config.batch_size,
             shuffle=True
         )
-        
-        if not dataloader:
-            print("❌ Failed to create DataLoader")
-            return False
-        
         print(f"✅ DataLoader ready: {len(dataloader)} batches")
         
-        # Статистика датасета
-        stats = dataset_manager.get_statistics()
-        print(f"   Dataset: {stats.get('total_samples', 'N/A')} samples")
-        print(f"   Sources: {', '.join(stats.get('providers_used', []))}")
-        print(f"   Embedding dim: {stats.get('embedding_dimension', 'N/A')}")
-        
         # Тренировка
-        print(f"\n3️⃣ Starting training ({num_epochs} epochs)...")
+        print(f"\n4️⃣ Starting training ({num_epochs} epochs)...")
         
         for epoch in range(num_epochs):
             print(f"\nEpoch {epoch + 1}/{num_epochs}")
@@ -109,7 +136,7 @@ def run_training_demo(num_epochs: int = 2):
             
             # Проходим по батчам
             for batch_idx, batch in enumerate(dataloader):
-                # Извлекаем данные из нового формата
+                # Извлекаем данные
                 input_texts = batch['input_text']
                 target_texts = batch['target_text']
                 input_embeddings = batch['input_embedding']
@@ -150,7 +177,7 @@ def run_training_demo(num_epochs: int = 2):
             print(f"    Batches processed: {epoch_metrics['batches_processed']}")
         
         # Валидация после обучения
-        print(f"\n4️⃣ Running post-training validation...")
+        print(f"\n5️⃣ Running post-training validation...")
         
         # Берем несколько примеров для валидации
         val_batch = next(iter(dataloader))
@@ -189,55 +216,73 @@ def run_training_demo(num_epochs: int = 2):
         return False
 
 
-def test_dataset_integration_only():
-    """Тест только интеграции датасета без полного обучения"""
-    print("\n🧪 Testing Dataset Integration Only")
+def test_dataset_loading_only(dataset_path: str = DATASET_PATH):
+    """Тест только загрузки датасета без обучения"""
+    print("\n🧪 Testing Dataset Loading Only")
     print("-" * 40)
     
     try:
-        energy_config, dataset_manager, trainer = create_training_setup()
+        # Загрузка датасета
+        dataset = load_dataset(dataset_path)
         
-        # Проверяем что все инициализировано
-        print("✅ Components initialized")
+        # Создание DataLoader
+        dataloader = create_dataloader_from_dataset(dataset, batch_size=2)
         
         # Получаем один батч
-        dataloader = dataset_manager.create_dataloader(batch_size=2)
-        if dataloader:
-            batch = next(iter(dataloader))
-            
-            print(f"✅ Sample batch loaded:")
-            print(f"   Texts: {len(batch['input_text'])} pairs")
-            print(f"   Embeddings: {batch['input_embedding'].shape}")
-            print(f"   Sample input: '{batch['input_text'][0][:50]}...'")
-            
-            # Тест генерации эмбеддингов через dataset manager
-            test_texts = ["Hello world", "Machine learning is interesting"]
-            embeddings = dataset_manager.get_teacher_embeddings(test_texts)
-            print(f"✅ Teacher embeddings generated: {embeddings.shape}")
-            
+        batch = next(iter(dataloader))
+        
+        print(f"✅ Sample batch loaded:")
+        print(f"   Batch size: {len(batch['input_text'])}")
+        print(f"   Input embeddings shape: {batch['input_embedding'].shape}")
+        print(f"   Target embeddings shape: {batch['target_embedding'].shape}")
+        print(f"   Sample input text: '{batch['input_text'][0][:50]}...'")
+        print(f"   Sample target text: '{batch['target_text'][0][:50]}...'")
+        
         return True
         
     except Exception as e:
-        print(f"❌ Integration test failed: {e}")
+        print(f"❌ Dataset loading test failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
 if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Training with pre-generated dataset")
+    parser.add_argument("--dataset", type=str, default=DATASET_PATH,
+                       help="Path to dataset file")
+    parser.add_argument("--epochs", type=int, default=1,
+                       help="Number of training epochs")
+    parser.add_argument("--test-only", action="store_true",
+                       help="Only test dataset loading without training")
+    
+    args = parser.parse_args()
+    
     try:
-        # Основное демо обучения
-        success = run_training_demo(num_epochs=1)
+        if args.test_only:
+            # Только тест загрузки
+            success = test_dataset_loading_only(args.dataset)
+        else:
+            # Полное обучение
+            success = run_training_demo(args.dataset, args.epochs)
+            
+            if success:
+                # Дополнительный тест загрузки
+                test_dataset_loading_only(args.dataset)
+                
+                print(f"\n✨ Training completed successfully!")
+                print(f"   Dataset: {args.dataset}")
+                print(f"   Epochs: {args.epochs}")
         
         if success:
-            # Дополнительный тест интеграции
-            test_dataset_integration_only()
-            
-            print(f"\n✨ All demos completed successfully!")
-            print(f"   The new dataset module is ready for production use.")
+            print(f"\n🎯 Ready for production use!")
         else:
-            print(f"\n⚠️  Demo had issues, but components are available for debugging.")
+            print(f"\n⚠️  Issues found, check logs for debugging.")
         
     except KeyboardInterrupt:
-        print("\n🛑 Demo interrupted by user")
+        print("\n🛑 Interrupted by user")
     except Exception as e:
         print(f"\n💥 Unexpected error: {e}")
         import traceback

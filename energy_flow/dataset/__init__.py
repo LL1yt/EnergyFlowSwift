@@ -17,12 +17,12 @@ Dataset модуль для energy_flow архитектуры
 
 from .config import DatasetConfig, create_dataset_config_from_energy
 from .manager import DatasetManager, create_dataset_manager
-from .generator import (
-    GeneratorConfig, DatasetGenerator,
+from .generator import DatasetGenerator, create_dataset_generator
+from .config import (
+    GeneratorConfig,
     create_debug_generator_config,
     create_experiment_generator_config,
-    create_production_generator_config,
-    create_dataset_generator
+    create_production_generator_config
 )
 from .providers import (
     BaseDataProvider, 

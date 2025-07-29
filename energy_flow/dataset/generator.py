@@ -16,7 +16,11 @@ import time
 from datetime import datetime
 import json
 
-from .config import DatasetConfig, create_dataset_config_from_energy
+from .config import (
+    DatasetConfig, create_dataset_config_from_energy,
+    GeneratorConfig, create_debug_generator_config,
+    create_experiment_generator_config, create_production_generator_config
+)
 from .manager import DatasetManager, create_dataset_manager
 from ..config import EnergyConfig
 from ..utils.logging import get_logger
@@ -24,103 +28,7 @@ from ..utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-@dataclass
-class GeneratorConfig:
-    """Конфигурация для генератора датасетов"""
-    
-    # Основные параметры
-    mode: str = "experiment"  # debug, experiment, production, custom
-    target_pairs: int = 5000
-    sources: List[str] = field(default_factory=lambda: ["precomputed", "snli"])
-    
-    # Параметры SNLI
-    snli_fraction: float = 0.2
-    snli_min_text_length: int = 10
-    
-    # Обработка данных
-    normalize_embeddings: bool = True
-    shuffle_data: bool = True
-    validate_data: bool = True
-    
-    # Пути и именование
-    output_dir: str = "data/energy_flow/active"
-    archive_dir: str = "data/energy_flow/archive"
-    name_template: str = "{mode}_{sources}_{count}pairs_{timestamp}"
-    
-    # Дополнительные опции
-    save_text_pairs: bool = True  # Сохранять ли текстовые пары для анализа
-    save_metadata: bool = True
-    max_file_size_mb: int = 1024  # Максимальный размер файла
-    
-    def __post_init__(self):
-        """Валидация параметров"""
-        assert self.mode in ["debug", "experiment", "production", "custom"], \
-            f"Invalid mode: {self.mode}"
-        assert self.target_pairs > 0, "target_pairs must be > 0"
-        assert 0 < self.snli_fraction <= 1.0, "snli_fraction must be in (0, 1]"
-        
-        # Создаем директории
-        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.archive_dir).mkdir(parents=True, exist_ok=True)
-    
-    def get_sources_string(self) -> str:
-        """Получить короткое название источников для имени файла"""
-        if set(self.sources) == {"precomputed", "snli"}:
-            return "mixed"
-        elif self.sources == ["snli"]:
-            return "snli"
-        elif self.sources == ["precomputed"]:
-            return "precomputed"
-        else:
-            return "custom"
-    
-    def generate_filename(self, actual_count: int) -> str:
-        """Генерация имени файла"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        sources_str = self.get_sources_string()
-        
-        filename = self.name_template.format(
-            mode=self.mode,
-            sources=sources_str,
-            count=actual_count,
-            timestamp=timestamp
-        )
-        
-        return f"{filename}.pt"
-
-
-# Предустановленные конфигурации для разных режимов
-def create_debug_generator_config() -> GeneratorConfig:
-    """Конфигурация для отладки"""
-    return GeneratorConfig(
-        mode="debug",
-        target_pairs=500,
-        sources=["precomputed"],  # Только готовые данные для скорости
-        snli_fraction=0.05,
-        max_file_size_mb=64
-    )
-
-
-def create_experiment_generator_config() -> GeneratorConfig:
-    """Конфигурация для экспериментов"""
-    return GeneratorConfig(
-        mode="experiment", 
-        target_pairs=5000,
-        sources=["precomputed", "snli"],
-        snli_fraction=0.2,
-        max_file_size_mb=256
-    )
-
-
-def create_production_generator_config() -> GeneratorConfig:
-    """Конфигурация для продакшн обучения"""
-    return GeneratorConfig(
-        mode="production",
-        target_pairs=50000,
-        sources=["precomputed", "snli"],
-        snli_fraction=0.3,
-        max_file_size_mb=1024
-    )
+# GeneratorConfig и функции создания перемещены в config.py
 
 
 class DatasetGenerator:
