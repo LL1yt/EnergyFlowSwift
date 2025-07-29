@@ -28,6 +28,7 @@ import json
 
 from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_CONVERGENCE
 from ..utils.device_manager import get_device_manager
+from ..utils.checkpoint_utils import generate_checkpoint_path, create_checkpoint_summary
 from ..config import EnergyConfig, get_energy_config, create_debug_config, set_energy_config
 from ..core import FlowProcessor, EnergyLattice, SimpleNeuron, EnergyCarrier
 from ..text_bridge import (
@@ -35,6 +36,7 @@ from ..text_bridge import (
     create_text_to_cube_encoder, create_cube_to_text_decoder, create_text_cache,
     CachedTextToCubeEncoder, CachedCubeToTextDecoder
 )
+from .checkpoint_loader import SimpleCheckpointLoader
 
 logger = get_logger(__name__)
 
@@ -88,6 +90,10 @@ class EnergyTrainer:
         self.global_step = 0
         self.epoch = 0
         self.best_loss = float('inf')
+        
+        # Checkpoint управление
+        self.checkpoint_loader = SimpleCheckpointLoader()
+        self.checkpoint_base_dir = Path("checkpoints/energy_flow")
         
         logger.log(DEBUG_TRAINING, "✅ EnergyTrainer successfully initialized")
     
@@ -581,14 +587,22 @@ class EnergyTrainer:
                 if key in self.training_history:
                     self.training_history[key].append(epoch_metrics[key])
             
-            # Чекпоинтинг лучшей модели
+            # Умное чекпоинтинг лучшей модели
             if epoch_metrics['total_loss'] < self.best_loss:
                 self.best_loss = epoch_metrics['total_loss']
-                self.save_checkpoint(f"best_model_epoch_{epoch}.pt")
+                self.save_smart_checkpoint(
+                    current_loss=epoch_metrics['total_loss'],
+                    is_best=True,
+                    custom_suffix=f"step_{self.global_step}"
+                )
             
-            # Периодические чекпоинты
+            # Периодические умные чекпоинты
             if epoch % self.config.checkpoint_interval == 0:
-                self.save_checkpoint(f"checkpoint_epoch_{epoch}.pt")
+                self.save_smart_checkpoint(
+                    current_loss=epoch_metrics['total_loss'],
+                    is_best=False,
+                    custom_suffix=f"periodic_step_{self.global_step}"
+                )
         
         training_time = time.time() - training_start_time
         
@@ -654,7 +668,7 @@ class EnergyTrainer:
         return val_metrics
     
     def save_checkpoint(self, filepath: Union[str, Path]) -> None:
-        """Сохранение чекпоинта модели"""
+        """Сохранение чекпоинта модели (legacy метод)"""
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
         
@@ -676,6 +690,177 @@ class EnergyTrainer:
         
         torch.save(checkpoint, filepath)
         logger.info(f"💾 Checkpoint saved: {filepath}")
+    
+    def save_smart_checkpoint(
+        self, 
+        current_loss: float, 
+        is_best: bool = False, 
+        custom_suffix: Optional[str] = None,
+        save_to_active: bool = True
+    ) -> Path:
+        """
+        Сохранение чекпоинта с умным именованием
+        
+        Args:
+            current_loss: Текущий loss для включения в имя
+            is_best: Является ли чекпоинт лучшим
+            custom_suffix: Дополнительный суффикс для имени
+            save_to_active: Сохранять ли в active директорию
+            
+        Returns:
+            Путь к сохраненному чекпоинту
+        """
+        # Определяем директорию для сохранения
+        if save_to_active:
+            base_dir = self.checkpoint_base_dir / "active"
+        else:
+            base_dir = self.checkpoint_base_dir
+        
+        # Генерируем путь с умным именованием
+        checkpoint_path = generate_checkpoint_path(
+            config=self.config,
+            epoch=self.epoch,
+            loss=current_loss,
+            base_dir=base_dir,
+            is_best=is_best,
+            custom_suffix=custom_suffix
+        )
+        
+        # Создаем папку, если не существует
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Создаем данные чекпоинта
+        checkpoint = {
+            'epoch': self.epoch,
+            'global_step': self.global_step,
+            'config': self.config.to_dict(),
+            'model_state_dict': self.flow_processor.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
+            'best_loss': self.best_loss,
+            'training_history': self.training_history,
+            
+            # Дополнительная информация для умного управления
+            'current_loss': current_loss,
+            'is_best_checkpoint': is_best,
+            'save_timestamp': datetime.now().isoformat(),
+            'custom_suffix': custom_suffix
+        }
+        
+        # Добавляем text_bridge состояния
+        if self.config.text_bridge_enabled:
+            if hasattr(self.text_encoder, 'state_dict'):
+                checkpoint['text_encoder_state_dict'] = self.text_encoder.state_dict()
+            elif hasattr(self.text_encoder, 'encoder') and hasattr(self.text_encoder.encoder, 'state_dict'):
+                checkpoint['text_encoder_state_dict'] = self.text_encoder.encoder.state_dict()
+                
+            if hasattr(self.text_decoder, 'state_dict'):
+                checkpoint['text_decoder_state_dict'] = self.text_decoder.state_dict()
+            elif hasattr(self.text_decoder, 'decoder') and hasattr(self.text_decoder.decoder, 'state_dict'):
+                checkpoint['text_decoder_state_dict'] = self.text_decoder.decoder.state_dict()
+        
+        # Сохраняем чекпоинт
+        torch.save(checkpoint, checkpoint_path)
+        
+        # Создаем summary для логирования
+        summary = create_checkpoint_summary(checkpoint_path)
+        
+        # Логирование
+        prefix = "🏆 BEST" if is_best else "💾"
+        logger.info(f"{prefix} Smart checkpoint saved:")
+        logger.info(f"   📁 Path: {checkpoint_path}")
+        logger.info(f"   📊 Epoch: {self.epoch}, Loss: {current_loss:.4f}")
+        logger.info(f"   📏 Size: {summary.get('size_mb', 0):.1f} MB")
+        if custom_suffix:
+            logger.info(f"   🏷️  Suffix: {custom_suffix}")
+        
+        return checkpoint_path
+    
+    def load_smart_checkpoint(
+        self, 
+        checkpoint_path: Optional[Union[str, Path]] = None,
+        load_latest: bool = False,
+        load_best: bool = False
+    ) -> bool:
+        """
+        Загрузка чекпоинта с умным поиском
+        
+        Args:
+            checkpoint_path: Конкретный путь к чекпоинту
+            load_latest: Загрузить последний чекпоинт из active
+            load_best: Загрузить лучший чекпоинт из active
+            
+        Returns:
+            True если загрузка прошла успешно
+        """
+        checkpoint_data = None
+        loaded_path = None
+        
+        if checkpoint_path:
+            # Загружаем конкретный чекпоинт
+            checkpoint_data = self.checkpoint_loader.load_checkpoint(checkpoint_path)
+            loaded_path = Path(checkpoint_path)
+        elif load_best:
+            # Загружаем лучший чекпоинт
+            checkpoint_data = self.checkpoint_loader.load_best_checkpoint()
+            if checkpoint_data:
+                best_path = self.checkpoint_loader.find_best_checkpoint(self.checkpoint_loader.active_dir)
+                loaded_path = best_path
+        elif load_latest:
+            # Загружаем последний чекпоинт
+            checkpoint_data = self.checkpoint_loader.load_latest_checkpoint()
+            if checkpoint_data:
+                latest_path = self.checkpoint_loader.find_latest_checkpoint(self.checkpoint_loader.active_dir)
+                loaded_path = latest_path
+        
+        if checkpoint_data is None:
+            logger.warning("No checkpoint loaded")
+            return False
+        
+        try:
+            # Восстанавливаем состояние
+            self.epoch = checkpoint_data.get('epoch', 0)
+            self.global_step = checkpoint_data.get('global_step', 0)
+            self.best_loss = checkpoint_data.get('best_loss', float('inf'))
+            self.training_history = checkpoint_data.get('training_history', {
+                "total_losses": [], "energy_losses": [], "text_losses": [],
+                "learning_rates": [], "flow_statistics": [], "performance_metrics": []
+            })
+            
+            # Загружаем веса моделей
+            if 'model_state_dict' in checkpoint_data:
+                self.flow_processor.load_state_dict(checkpoint_data['model_state_dict'])
+            
+            if 'optimizer_state_dict' in checkpoint_data:
+                self.optimizer.load_state_dict(checkpoint_data['optimizer_state_dict'])
+                
+            if 'scheduler_state_dict' in checkpoint_data:
+                self.scheduler.load_state_dict(checkpoint_data['scheduler_state_dict'])
+            
+            # Загружаем text_bridge состояния
+            if self.config.text_bridge_enabled:
+                if 'text_encoder_state_dict' in checkpoint_data:
+                    if hasattr(self.text_encoder, 'load_state_dict'):
+                        self.text_encoder.load_state_dict(checkpoint_data['text_encoder_state_dict'])
+                    elif hasattr(self.text_encoder, 'encoder'):
+                        self.text_encoder.encoder.load_state_dict(checkpoint_data['text_encoder_state_dict'])
+                
+                if 'text_decoder_state_dict' in checkpoint_data:
+                    if hasattr(self.text_decoder, 'load_state_dict'):
+                        self.text_decoder.load_state_dict(checkpoint_data['text_decoder_state_dict'])
+                    elif hasattr(self.text_decoder, 'decoder'):
+                        self.text_decoder.decoder.load_state_dict(checkpoint_data['text_decoder_state_dict'])
+            
+            logger.info(f"✅ Smart checkpoint loaded successfully:")
+            logger.info(f"   📁 From: {loaded_path.name if loaded_path else 'Unknown'}")
+            logger.info(f"   📊 Epoch: {self.epoch}, Step: {self.global_step}")
+            logger.info(f"   🎯 Best loss: {self.best_loss:.4f}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load checkpoint state: {e}")
+            return False
     
     def load_checkpoint(self, filepath: Union[str, Path]) -> None:
         """Загрузка чекпоинта модели"""
