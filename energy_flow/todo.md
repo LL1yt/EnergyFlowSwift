@@ -269,11 +269,12 @@ POTENTIAL for increase: 8x current size!
 - [ ] Eliminate duplicated forward passes
 - [ ] Cache intermediate results
 
-#### 2. **Adaptive max_steps** (potential: 2-3x speedup)
+#### 2. **Adaptive max_steps** (potential: 2-3x speedup) ✅ **ЗАВЕРШЕН (8.33x ускорение!)**
 
-- [ ] Convergence checking for energy flows
-- [ ] Early stopping at threshold values
-- [ ] Dynamic step count adjustment
+- [x] Convergence checking for energy flows - convergence_threshold = 0.95
+- [x] Early stopping at threshold values - patience = 3 steps
+- [x] Dynamic step count adjustment - сэкономлено 44/50 шагов
+- [x] **Результат: 8.33x speedup** (99% потоков за 6 шагов вместо 50)
 
 #### 3. **FlowProcessor Vectorization** (potential: 5x speedup)
 

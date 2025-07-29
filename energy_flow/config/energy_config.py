@@ -170,10 +170,10 @@ def create_debug_config() -> EnergyConfig:
         lattice_width=20,
         lattice_height=20,
         lattice_depth=10,
-        max_active_flows=10000,
+        max_active_flows=50000,
         energy_threshold=0.01,  # Очень низкий для отладки (скалярная энергия)
         spawn_threshold=0.7,    # Немного выше базового для контроля spawn'ов
-        max_spawn_per_step=2,   # Ограниченный spawn для отладки
+        max_spawn_per_step=1,   # Ограниченный spawn для отладки
         batch_size=8,
         carrier_hidden_size=256,  # Уменьшенный размер для отладки
         carrier_num_layers=2,
@@ -198,11 +198,12 @@ def create_experiment_config() -> EnergyConfig:
         lattice_width=50,
         lattice_height=50,
         lattice_depth=20,
-        max_active_flows=25000,
         batch_size=16,
+        max_active_flows=80000,
         carrier_hidden_size=512,
-        carrier_num_layers=2,
-        max_spawn_per_step=1,   # Ограниченный spawn для отладки
+        carrier_num_layers=3,
+        max_spawn_per_step=1,   # Ограниченный spawn для отладки,
+        carrier_dropout=0.00005,   # пока что это важные значения для обучения. когда мы преобразуем их в реальные энергии, тогда можно будет активно использовать dropout
         
         # Text Bridge настройки для экспериментов
         text_bridge_enabled=True,
@@ -222,7 +223,7 @@ def create_optimized_config() -> EnergyConfig:
         lattice_width=100,
         lattice_height=100,
         lattice_depth=50,
-        max_active_flows=100000,
+        max_active_flows=200000,
         batch_size=32,
         carrier_hidden_size=1024,
         carrier_num_layers=3,
