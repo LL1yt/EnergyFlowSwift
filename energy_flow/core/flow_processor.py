@@ -81,9 +81,20 @@ class FlowProcessor(nn.Module):
             'flows_killed_energy': 0
         }
         
+        # Статистика конвергенции
+        self.convergence_stats = {
+            'completed_count_history': [],
+            'no_improvement_steps': 0,
+            'best_completed_count': 0
+        }
+        
         logger.info(f"FlowProcessor initialized on {self.device}")
         logger.info(f"Components: Lattice {config.lattice_width}x{config.lattice_height}x{config.lattice_depth}, "
                    f"SimpleNeuron, EnergyCarrier")
+        
+        if config.convergence_enabled:
+            logger.info(f"Adaptive convergence enabled: threshold={config.convergence_threshold:.2f}, "
+                       f"min_steps={config.convergence_min_steps}, patience={config.convergence_patience}")
     
     def forward(self, input_embeddings: torch.Tensor, max_steps: Optional[int] = None) -> torch.Tensor:
         """
@@ -108,14 +119,29 @@ class FlowProcessor(nn.Module):
         
         logger.info(f"Starting energy propagation: {len(flow_ids)} initial flows, max {max_steps} steps")
         
-        # Основной цикл распространения
+        # Сбрасываем статистику конвергенции
+        initial_flows_count = len(flow_ids)
+        self.convergence_stats = {
+            'completed_count_history': [],
+            'no_improvement_steps': 0,
+            'best_completed_count': 0
+        }
+        
+        # Основной цикл распространения с adaptive convergence
+        actual_steps = 0
         for step in range(max_steps):
+            actual_steps = step + 1
             active_flows = self.lattice.get_active_flows()
             buffered_count = self.lattice.get_buffered_flows_count()
             
             # Проверяем условие завершения: нет активных потоков И нет потоков в буфере
             if not active_flows and buffered_count == 0:
                 logger.info(f"No active flows and empty buffer at step {step}, stopping")
+                break
+            
+            # Проверяем конвергенцию (adaptive max_steps)
+            if self._check_convergence(step, initial_flows_count):
+                logger.log(20, f"Early convergence at step {step}/{max_steps}")
                 break
             
             # Если есть активные потоки - обрабатываем их
@@ -126,8 +152,9 @@ class FlowProcessor(nn.Module):
             if step % self.config.log_interval == 0:
                 stats = self.lattice.get_statistics()
                 buffered_count = self.lattice.get_buffered_flows_count()
+                completion_rate = stats['total_completed'] / initial_flows_count if initial_flows_count > 0 else 0
                 logger.info(f"Step {step}: {stats['current_active']} active flows, "
-                          f"{stats['total_completed']} completed, {buffered_count} buffered")
+                          f"{stats['total_completed']} completed ({completion_rate:.2f}), {buffered_count} buffered")
         
         # Собираем выходную энергию из буфера (БЕЗ преобразования в 768D!)
         output_surface_embeddings, completed_flows = self._collect_final_surface_output()
@@ -153,7 +180,15 @@ class FlowProcessor(nn.Module):
         killed_backward = self.stats['flows_killed_backward']
         killed_bounds = self.stats['flows_killed_bounds']
         killed_energy = self.stats['flows_killed_energy']
-        logger.info(f"Energy propagation complete: {final_stats['total_completed']} flows reached output, "
+        
+        # Статистика adaptive max_steps
+        steps_saved = max_steps - actual_steps
+        if self.config.convergence_enabled and steps_saved > 0:
+            speedup = max_steps / actual_steps if actual_steps > 0 else 1.0
+            logger.log(20, f"Adaptive convergence saved {steps_saved} steps ({speedup:.2f}x speedup)")
+        
+        logger.info(f"Energy propagation complete ({actual_steps}/{max_steps} steps): "
+                   f"{final_stats['total_completed']} flows reached output, "
                    f"{final_stats['total_died']} died "
                    f"(energy: {killed_energy}, backward: {killed_backward}, bounds: {killed_bounds})")
         
@@ -335,6 +370,56 @@ class FlowProcessor(nn.Module):
                     self.lattice.spawn_flows(flow.id, spawn_energies)
                     break  # Один SpawnInfo на batch элемент
     
+    def _check_convergence(self, step: int, initial_flows_count: int) -> bool:
+        """
+        Проверяет условия конвергенции для adaptive max_steps
+        
+        Args:
+            step: Текущий шаг
+            initial_flows_count: Количество начальных потоков
+            
+        Returns:
+            True если следует остановить обучение
+        """
+        if not self.config.convergence_enabled:
+            return False
+        
+        # Минимальное количество шагов
+        if step < self.config.convergence_min_steps:
+            return False
+        
+        # Получаем текущую статистику
+        stats = self.lattice.get_statistics()
+        completed_count = stats['total_completed']
+        
+        # Добавляем в историю
+        self.convergence_stats['completed_count_history'].append(completed_count)
+        
+        # Проверяем порог конвергенции
+        completion_rate = completed_count / initial_flows_count if initial_flows_count > 0 else 0
+        
+        logger.log(20, f"Convergence check step {step}: {completed_count}/{initial_flows_count} "
+                      f"flows completed ({completion_rate:.2f})")
+        
+        # Условие 1: Достигнут порог конвергенции
+        if completion_rate >= self.config.convergence_threshold:
+            logger.log(20, f"Convergence threshold reached: {completion_rate:.2f} >= {self.config.convergence_threshold:.2f}")
+            return True
+        
+        # Условие 2: Patience - нет улучшения в течение N шагов
+        if completed_count > self.convergence_stats['best_completed_count']:
+            self.convergence_stats['best_completed_count'] = completed_count
+            self.convergence_stats['no_improvement_steps'] = 0
+        else:
+            self.convergence_stats['no_improvement_steps'] += 1
+        
+        if self.convergence_stats['no_improvement_steps'] >= self.config.convergence_patience:
+            logger.log(20, f"Convergence patience exceeded: {self.convergence_stats['no_improvement_steps']} "
+                          f">= {self.config.convergence_patience}")
+            return True
+        
+        return False
+    
     def get_performance_stats(self) -> Dict:
         """Возвращает статистику производительности"""
         if not self.perf_stats['step_times']:
@@ -342,7 +427,7 @@ class FlowProcessor(nn.Module):
         
         import numpy as np
         
-        return {
+        stats = {
             'avg_step_time': np.mean(self.perf_stats['step_times']),
             'max_step_time': np.max(self.perf_stats['step_times']),
             'avg_flows_per_step': np.mean(self.perf_stats['flows_per_step']),
@@ -350,6 +435,16 @@ class FlowProcessor(nn.Module):
             'avg_gpu_memory_gb': np.mean(self.perf_stats['gpu_memory_usage']) if self.perf_stats['gpu_memory_usage'] else 0,
             'lattice_stats': self.lattice.get_statistics()
         }
+        
+        # Добавляем статистику конвергенции
+        if self.config.convergence_enabled and self.convergence_stats['completed_count_history']:
+            stats['convergence_stats'] = {
+                'best_completion_count': self.convergence_stats['best_completed_count'],
+                'final_completion_count': self.convergence_stats['completed_count_history'][-1] if self.convergence_stats['completed_count_history'] else 0,
+                'completion_trend': len(self.convergence_stats['completed_count_history'])
+            }
+        
+        return stats
     
     def visualize_flow_state(self) -> Dict:
         """Возвращает данные для визуализации текущего состояния потоков"""

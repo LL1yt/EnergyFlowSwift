@@ -75,6 +75,12 @@ class EnergyConfig:
     text_generation_num_beams: int = 4        # Количество beams для beam search
     text_generation_temperature: float = 1.0  # Температура для генерации текста
     
+    # Adaptive max_steps (convergence detection)
+    convergence_enabled: bool = True         # Включить адаптивное завершение
+    convergence_threshold: float = 0.95      # Порог конвергенции (доля достигнутых выходов)
+    convergence_min_steps: int = 5           # Минимальное количество шагов
+    convergence_patience: int = 3            # Количество шагов без улучшения для останова
+    
     # Logging
     log_interval: int = 10
     checkpoint_interval: int = 100
@@ -118,6 +124,12 @@ class EnergyConfig:
             assert self.text_generation_max_length > 0, "text_generation_max_length должен быть > 0"
             assert self.text_generation_num_beams > 0, "text_generation_num_beams должен быть > 0"
             assert self.text_generation_temperature > 0, "text_generation_temperature должен быть > 0"
+        
+        # Проверка convergence параметров
+        if self.convergence_enabled:
+            assert 0.0 < self.convergence_threshold <= 1.0, "convergence_threshold должен быть в (0.0, 1.0]"
+            assert self.convergence_min_steps > 0, "convergence_min_steps должен быть > 0"
+            assert self.convergence_patience > 0, "convergence_patience должен быть > 0"
         
         # Создаем NormalizationManager
         self._normalization_manager = None  # Lazy initialization
