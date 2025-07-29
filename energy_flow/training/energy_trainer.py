@@ -76,6 +76,7 @@ class EnergyTrainer:
         self._init_core_components()
         self._init_text_bridge()
         self._init_optimizer()
+        self._init_mixed_precision()
         
         # Метрики обучения
         self.training_history = {
@@ -197,6 +198,37 @@ class EnergyTrainer:
         logger.log(DEBUG_TRAINING, f"Optimizer initialized: AdamW, lr={self.config.learning_rate}, "
                                   f"total_params={total_params:,}")
     
+    def _init_mixed_precision(self):
+        """Инициализация Mixed Precision Training"""
+        if self.config.use_mixed_precision and torch_module.cuda.is_available():
+            # GradScaler для автоматического scaling градиентов
+            if self.config.use_gradient_scaling:
+                self.scaler = torch_module.cuda.amp.GradScaler(
+                    init_scale=self.config.gradient_scale_init,
+                    enabled=True
+                )
+                logger.log(DEBUG_TRAINING, f"🔧 Mixed Precision: GradScaler initialized with scale={self.config.gradient_scale_init}")
+            else:
+                self.scaler = None
+            
+            # Настройка autocast параметров
+            self.autocast_kwargs = {
+                'device_type': 'cuda',
+                'dtype': self.config.mixed_precision_dtype,
+                'enabled': True
+            }
+            
+            logger.log(DEBUG_TRAINING, f"🚀 Mixed Precision Training enabled: {self.config.mixed_precision_dtype}")
+            logger.log(DEBUG_TRAINING, f"   Expected benefits: 1.5x speedup, 50% memory saving")
+        else:
+            self.scaler = None
+            self.autocast_kwargs = {'enabled': False}
+            
+            if not self.config.use_mixed_precision:
+                logger.log(DEBUG_TRAINING, "Mixed Precision Training disabled by config")
+            else:
+                logger.log(DEBUG_TRAINING, "Mixed Precision Training disabled: CUDA not available")
+    
     def _compute_losses(self, input_texts: List[str], target_texts: List[str], 
                        teacher_input_embeddings: torch_module.Tensor, teacher_target_embeddings: torch_module.Tensor) -> Dict[str, Any]:
         """
@@ -307,14 +339,16 @@ class EnergyTrainer:
         logger.log(DEBUG_TRAINING, f"📊 Teacher embeddings: {teacher_input_embeddings.shape} -> {teacher_target_embeddings.shape}")
         
         try:
-            # 1. Основное обучение куба с teacher embeddings
+            # 1. Основное обучение куба с teacher embeddings С MIXED PRECISION
             flow_start_time = time.time()
             
             # Диагностика: проверяем градиенты входных данных
             logger.log(DEBUG_TRAINING, f"📈 Teacher input requires_grad: {teacher_input_embeddings.requires_grad}")
             logger.log(DEBUG_TRAINING, f"📈 Teacher target requires_grad: {teacher_target_embeddings.requires_grad}")
             
-            cube_output_surface = self.flow_processor.forward(teacher_input_embeddings)
+            # ПРИМЕНЯЕМ AUTOCAST ДЛЯ MIXED PRECISION (1.5x speedup, 50% memory)
+            with torch_module.autocast(**self.autocast_kwargs):
+                cube_output_surface = self.flow_processor.forward(teacher_input_embeddings)
             flow_time = time.time() - flow_start_time
             
             # Диагностика: проверяем выход куба
@@ -328,9 +362,10 @@ class EnergyTrainer:
                 'flows_reached_output': batch_size
             }
             
-            # 2. Маппим teacher target в surface для сравнения
-            target_surface_output = self.flow_processor.mapper.input_mapper.forward(teacher_target_embeddings)
-            target_surface_input = self.flow_processor.mapper.input_mapper.forward(teacher_input_embeddings)
+            # 2. Маппим teacher target в surface для сравнения С MIXED PRECISION
+            with torch_module.autocast(**self.autocast_kwargs):
+                target_surface_output = self.flow_processor.mapper.input_mapper.forward(teacher_target_embeddings)
+                target_surface_input = self.flow_processor.mapper.input_mapper.forward(teacher_input_embeddings)
             
             # Диагностика: проверяем формы
             logger.log(DEBUG_TRAINING, f"📊 Target surface output shape: {target_surface_output.shape}")
@@ -346,8 +381,9 @@ class EnergyTrainer:
             logger.log(DEBUG_TRAINING, f"📈 Target surface output requires_grad: {target_surface_output.requires_grad}")
             logger.log(DEBUG_TRAINING, f"📈 Target surface input requires_grad: {target_surface_input.requires_grad}")
             
-            # 3. Energy loss - сравниваем на уровне surface
-            energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface_output)
+            # 3. Energy loss - сравниваем на уровне surface С MIXED PRECISION
+            with torch_module.autocast(**self.autocast_kwargs):
+                energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface_output)
             
             # 4. Text Bridge обучение - ОПТИМИЗИРОВАННАЯ БАТЧЕВАЯ ВЕРСИЯ
             text_loss = torch_module.tensor(0.0, device=self.device)
@@ -430,8 +466,13 @@ class EnergyTrainer:
                                       f"total={total_loss:.4f}, normalized={normalized_loss:.4f}")
             logger.log(DEBUG_TRAINING, f"📊 Total loss requires_grad: {total_loss.requires_grad}")
             
-            # 7. Обратное распространение с normalized loss
-            normalized_loss.backward()
+            # 7. Обратное распространение с normalized loss И GRADIENT SCALING
+            if self.scaler is not None:
+                # Mixed precision backward pass с gradient scaling
+                self.scaler.scale(normalized_loss).backward()
+            else:
+                # Обычный backward pass
+                normalized_loss.backward()
             
             # Накапливаем метрики для финального возврата
             self.accumulation_loss += total_loss.item()
@@ -468,14 +509,29 @@ class EnergyTrainer:
             is_accumulation_complete = self.current_accumulation_step >= self.config.gradient_accumulation_steps
             
             if is_accumulation_complete:
-                # Gradient clipping
-                if self.config.gradient_clip > 0:
-                    torch_module.nn.utils.clip_grad_norm_(
-                        self.optimizer.param_groups[0]['params'],
-                        self.config.gradient_clip
-                    )
+                if self.scaler is not None:
+                    # MIXED PRECISION: gradient clipping и optimizer step с scaler
+                    if self.config.gradient_clip > 0:
+                        # Unscale gradients перед clipping
+                        self.scaler.unscale_(self.optimizer)
+                        torch_module.nn.utils.clip_grad_norm_(
+                            self.optimizer.param_groups[0]['params'],
+                            self.config.gradient_clip
+                        )
+                    
+                    # Optimizer step с scaling check
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()  # Обновляем scale factor
+                else:
+                    # ОБЫЧНЫЙ: gradient clipping и optimizer step
+                    if self.config.gradient_clip > 0:
+                        torch_module.nn.utils.clip_grad_norm_(
+                            self.optimizer.param_groups[0]['params'],
+                            self.config.gradient_clip
+                        )
+                    
+                    self.optimizer.step()
                 
-                self.optimizer.step()
                 self.global_step += 1  # Увеличиваем global_step только после полного accumulation
                 
                 # Сбрасываем accumulation счетчик

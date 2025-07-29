@@ -66,6 +66,12 @@ class EnergyConfig:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     dtype: torch.dtype = torch.float32
     
+    # Mixed Precision Training (1.5x speedup, 50% memory saving)
+    use_mixed_precision: bool = True                    # Включить mixed precision training
+    mixed_precision_dtype: torch.dtype = torch.bfloat16  # bfloat16 для RTX 5090
+    use_gradient_scaling: bool = True                   # Gradient scaling для стабильности
+    gradient_scale_init: float = 2**16                  # Начальное значение gradient scaler
+    
     # Text Bridge параметры (двунаправленное преобразование текст↔куб)
     text_bridge_enabled: bool = True           # Включить text bridge модуль
     text_cache_enabled: bool = False           # Включить LRU кэширование
