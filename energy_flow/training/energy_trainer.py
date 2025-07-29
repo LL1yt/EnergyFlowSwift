@@ -15,7 +15,8 @@ output_surface_embedding → CubeToTextDecoder → predicted_text
 Loss = energy_loss + text_loss_weight × text_loss
 """
 
-import torch
+# import torch
+import torch as torch_module  # Алиас для избежания scoping конфликтов
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -192,7 +193,7 @@ class EnergyTrainer:
                                   f"total_params={total_params:,}")
     
     def _compute_losses(self, input_texts: List[str], target_texts: List[str], 
-                       teacher_input_embeddings: torch.Tensor, teacher_target_embeddings: torch.Tensor) -> Dict[str, Any]:
+                       teacher_input_embeddings: torch_module.Tensor, teacher_target_embeddings: torch_module.Tensor) -> Dict[str, Any]:
         """
         Вычисляет losses без обратного распространения (для validation)
         
@@ -228,7 +229,7 @@ class EnergyTrainer:
             energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface_output)
             
             # 4. Text Bridge без градиентов для validation
-            text_loss = torch.tensor(0.0, device=self.device)
+            text_loss = torch_module.tensor(0.0, device=self.device)
             if self.config.text_bridge_enabled and self.config.text_loss_weight > 0:
                 try:
                     encoder_outputs = self.text_encoder.encode_text(input_texts)
@@ -238,7 +239,7 @@ class EnergyTrainer:
                     text_loss = encoder_loss
                 except Exception as e:
                     logger.warning(f"❌ Text bridge computation failed: {e}")
-                    text_loss = torch.tensor(0.1, device=self.device)
+                    text_loss = torch_module.tensor(0.1, device=self.device)
             
             # 5. Комбинированный loss
             total_loss = energy_loss + self.config.text_loss_weight * text_loss
@@ -272,7 +273,7 @@ class EnergyTrainer:
             }
     
     def train_step(self, input_texts: List[str], target_texts: List[str],
-                   teacher_input_embeddings: torch.Tensor, teacher_target_embeddings: torch.Tensor) -> Dict[str, float]:
+                   teacher_input_embeddings: torch_module.Tensor, teacher_target_embeddings: torch_module.Tensor) -> Dict[str, float]:
         """
         Один шаг обучения с расширенным логированием
         
@@ -339,7 +340,7 @@ class EnergyTrainer:
             energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface_output)
             
             # 4. Text Bridge обучение - ОПТИМИЗИРОВАННАЯ БАТЧЕВАЯ ВЕРСИЯ
-            text_loss = torch.tensor(0.0, device=self.device)
+            text_loss = torch_module.tensor(0.0, device=self.device)
             if self.config.text_bridge_enabled and self.config.text_loss_weight > 0:
                 text_bridge_start_time = time.time()
                 try:
@@ -357,7 +358,7 @@ class EnergyTrainer:
                     
                     # ОПТИМИЗАЦИЯ 2: Используем УЖЕ ВЫЧИСЛЕННЫЙ cube_output_surface!
                     # Вместо повторных forward passes для каждого образца
-                    decoder_loss = torch.tensor(0.0, device=self.device)
+                    decoder_loss = torch_module.tensor(0.0, device=self.device)
                     
                     try:
                         # Батчевое декодирование surface → text
@@ -378,21 +379,21 @@ class EnergyTrainer:
                                     similarities.append(0.0)
                             
                             # Vectorized similarity loss
-                            similarities_tensor = torch.tensor(similarities, device=self.device)
+                            similarities_tensor = torch_module.tensor(similarities, device=self.device)
                             decoder_loss = (1.0 - similarities_tensor).mean()
                             
                             if logger.isEnabledFor(DEBUG_TRAINING):
                                 avg_similarity = similarities_tensor.mean().item()
                                 logger.log(DEBUG_TRAINING, f"📝 Avg text similarity: {avg_similarity:.3f}")
                         else:
-                            decoder_loss = torch.tensor(1.0, device=self.device)
+                            decoder_loss = torch_module.tensor(1.0, device=self.device)
                             if logger.isEnabledFor(DEBUG_TRAINING):
                                 logger.log(DEBUG_TRAINING, f"⚠️ Text decoding mismatch: {len(predicted_texts)} vs {len(target_texts)}")
                     
                     except Exception as decode_error:
                         if logger.isEnabledFor(DEBUG_TRAINING):
                             logger.log(DEBUG_TRAINING, f"❌ Batch text decoding failed: {decode_error}")
-                        decoder_loss = torch.tensor(1.0, device=self.device)
+                        decoder_loss = torch_module.tensor(1.0, device=self.device)
                     
                     # Combined text loss
                     text_loss = encoder_loss + 0.1 * decoder_loss
@@ -690,7 +691,7 @@ class EnergyTrainer:
         return self.training_history
     
     def validate(self, input_texts: List[str], target_texts: List[str], 
-                 teacher_input_embeddings: torch.Tensor, teacher_target_embeddings: torch.Tensor) -> Dict[str, Any]:
+                 teacher_input_embeddings: torch_module.Tensor, teacher_target_embeddings: torch_module.Tensor) -> Dict[str, Any]:
         """
         Валидация модели
         
@@ -708,8 +709,8 @@ class EnergyTrainer:
             if hasattr(self.text_encoder, 'eval'):
                 self.text_encoder.eval()
             self.text_decoder.eval()
-        
-        with torch.no_grad():
+
+        with torch_module.no_grad():
             # Валидация БЕЗ обратного распространения - только forward pass
             val_metrics = self._compute_losses(input_texts, target_texts, teacher_input_embeddings, teacher_target_embeddings)
             
@@ -764,8 +765,8 @@ class EnergyTrainer:
             if hasattr(self.text_encoder, 'state_dict'):
                 checkpoint['text_encoder_state_dict'] = self.text_encoder.state_dict()
             checkpoint['text_decoder_state_dict'] = self.text_decoder.state_dict()
-        
-        torch.save(checkpoint, filepath)
+
+        torch_module.save(checkpoint, filepath)
         logger.info(f"💾 Checkpoint saved: {filepath}")
     
     def save_smart_checkpoint(
@@ -837,8 +838,8 @@ class EnergyTrainer:
                 checkpoint['text_decoder_state_dict'] = self.text_decoder.decoder.state_dict()
         
         # Сохраняем чекпоинт
-        torch.save(checkpoint, checkpoint_path)
-        
+        torch_module.save(checkpoint, checkpoint_path)
+
         # Создаем summary для логирования
         summary = create_checkpoint_summary(checkpoint_path)
         
@@ -944,9 +945,9 @@ class EnergyTrainer:
         filepath = Path(filepath)
         if not filepath.exists():
             raise FileNotFoundError(f"Checkpoint not found: {filepath}")
-        
-        checkpoint = torch.load(filepath, map_location=self.device)
-        
+
+        checkpoint = torch_module.load(filepath, map_location=self.device)
+
         # Восстановление состояния
         self.epoch = checkpoint['epoch']
         self.global_step = checkpoint['global_step']

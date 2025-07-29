@@ -170,7 +170,7 @@ def create_debug_config() -> EnergyConfig:
         lattice_width=20,
         lattice_height=20,
         lattice_depth=10,
-        max_active_flows=1000,
+        max_active_flows=10000,
         energy_threshold=0.01,  # Очень низкий для отладки (скалярная энергия)
         spawn_threshold=0.7,    # Немного выше базового для контроля spawn'ов
         max_spawn_per_step=2,   # Ограниченный spawn для отладки
@@ -198,7 +198,7 @@ def create_experiment_config() -> EnergyConfig:
         lattice_width=50,
         lattice_height=50,
         lattice_depth=20,
-        max_active_flows=5000,
+        max_active_flows=25000,
         batch_size=16,
         carrier_hidden_size=512,
         carrier_num_layers=2,
@@ -221,7 +221,7 @@ def create_optimized_config() -> EnergyConfig:
         lattice_width=100,
         lattice_height=100,
         lattice_depth=50,
-        max_active_flows=10000,
+        max_active_flows=100000,
         batch_size=32,
         carrier_hidden_size=1024,
         carrier_num_layers=3,
