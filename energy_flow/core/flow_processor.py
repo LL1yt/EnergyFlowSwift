@@ -297,13 +297,14 @@ class FlowProcessor(nn.Module):
             self.perf_stats['gpu_memory_usage'].append(memory_info['gpu_allocated_gb'])
     
     def _process_flow_batch(self, flows):
-        """Обрабатывает батч потоков параллельно"""
+        """Обрабатывает батч потоков с векторизованными операциями"""
         batch_size = len(flows)
         
-        # Собираем данные потоков
+        # Собираем данные потоков и ID
         positions = torch.stack([f.position for f in flows])  # [batch, 3]
         energies = torch.stack([f.energy for f in flows])     # [batch, embedding_dim]
         hidden_states = torch.stack([f.hidden_state for f in flows])  # [batch, layers, hidden]
+        flow_ids = torch.tensor([f.id for f in flows], dtype=torch.long, device=positions.device)
         
         # Транспонируем hidden states для GRU и делаем непрерывными
         hidden_states = hidden_states.transpose(0, 1).contiguous()  # [layers, batch, hidden]
@@ -326,49 +327,90 @@ class FlowProcessor(nn.Module):
         # Транспонируем обратно и делаем непрерывными
         new_hidden = new_hidden.transpose(0, 1).contiguous()  # [batch, layers, hidden]
         
-        # 3. Обрабатываем результаты для каждого потока
-        for idx, flow in enumerate(flows):
-            # Проверяем уровень энергии
-            is_alive = self.carrier.check_energy_level(carrier_output.energy_value[idx:idx+1])
+        # 3. ВЕКТОРИЗОВАННАЯ обработка результатов
+        self._process_results_vectorized(flows, flow_ids, positions, carrier_output, new_hidden)
+    
+    def _process_results_vectorized(self, flows, flow_ids, current_positions, carrier_output, new_hidden):
+        """Векторизованная обработка результатов carrier_output"""
+        batch_size = len(flows)
+        device = current_positions.device
+        
+        # Векторизованные проверки выживания потоков
+        energy_alive_mask = self.carrier.check_energy_level(carrier_output.energy_value)  # [batch]
+        
+        # Проверка движения вперед по Z
+        z_forward_mask = carrier_output.next_position[:, 2] > current_positions[:, 2]  # [batch]
+        
+        # Проверка границ X,Y
+        next_pos = carrier_output.next_position
+        bounds_mask = (
+            (next_pos[:, 0] >= 0) & (next_pos[:, 0] < self.config.lattice_width) &
+            (next_pos[:, 1] >= 0) & (next_pos[:, 1] < self.config.lattice_height)
+        )  # [batch]
+        
+        # Комбинированная маска выживших потоков
+        alive_mask = energy_alive_mask & z_forward_mask & bounds_mask  # [batch]
+        
+        # Подсчет статистики (векторизованно)
+        energy_dead_count = (~energy_alive_mask).sum().item()
+        backward_dead_count = (energy_alive_mask & ~z_forward_mask).sum().item()
+        bounds_dead_count = (energy_alive_mask & z_forward_mask & ~bounds_mask).sum().item()
+        
+        self.stats['flows_killed_energy'] += energy_dead_count
+        self.stats['flows_killed_backward'] += backward_dead_count
+        self.stats['flows_killed_bounds'] += bounds_dead_count
+        
+        # Векторизованная деактивация умерших потоков
+        dead_indices = torch.where(~alive_mask)[0]
+        for idx in dead_indices:
+            flow_id = flow_ids[idx].item()
+            if not energy_alive_mask[idx]:
+                reason = "energy_depleted"
+            elif not z_forward_mask[idx]:
+                z_curr = current_positions[idx, 2].item()
+                z_next = next_pos[idx, 2].item()
+                reason = f"backward_z_movement: {z_next:.1f} <= {z_curr:.1f}"
+            else:
+                x, y = next_pos[idx, 0].item(), next_pos[idx, 1].item()
+                reason = f"out_of_bounds: pos=({x:.1f},{y:.1f})"
             
-            if not is_alive[0]:
-                self.lattice.deactivate_flow(flow.id, "energy_depleted")
-                self.stats['flows_killed_energy'] += 1
-                continue
-            
-            # Проверяем валидность движения ПЕРЕД обновлением
-            next_pos = carrier_output.next_position[idx]
-            current_pos = flow.position
-            
-            # 1. Проверка движения вперед по Z
-            if next_pos[2] <= current_pos[2]:
-                self.lattice.deactivate_flow(flow.id, f"backward_z_movement: {next_pos[2]:.1f} <= {current_pos[2]:.1f}")
-                self.stats['flows_killed_backward'] += 1
-                continue
-            
-            # 2. Проверка боковых границ X,Y
-            if (next_pos[0] < 0 or next_pos[0] >= self.config.lattice_width or 
-                next_pos[1] < 0 or next_pos[1] >= self.config.lattice_height):
-                self.lattice.deactivate_flow(flow.id, f"out_of_bounds: pos=({next_pos[0]:.1f},{next_pos[1]:.1f})")
-                self.stats['flows_killed_bounds'] += 1
-                continue
-            
-            # Движение валидно - обновляем состояние потока
+            self.lattice.deactivate_flow(flow_id, reason)
+        
+        # Векторизованное обновление выживших потоков
+        alive_indices = torch.where(alive_mask)[0]
+        for idx in alive_indices:
+            flow_id = flow_ids[idx].item()
             self.lattice.update_flow(
-                flow.id,
-                next_pos,
+                flow_id,
+                carrier_output.next_position[idx],
                 carrier_output.energy_value[idx],
                 new_hidden[idx]
             )
-            
-            # Обрабатываем порождение новых потоков
-            # Поиск SpawnInfo для текущего batch элемента
-            for spawn_info in carrier_output.spawn_info:
-                if spawn_info.parent_batch_idx == idx and spawn_info.energies:
+        
+        # Обработка spawn потоков (оптимизированная)
+        self._process_spawns_optimized(flows, carrier_output, alive_mask)
+    
+    def _process_spawns_optimized(self, flows, carrier_output, alive_mask):
+        """Оптимизированная обработка spawn потоков"""
+        if not carrier_output.spawn_info:
+            return
+        
+        # Создаем индекс spawn_info по parent_batch_idx для O(1) поиска
+        spawn_by_idx = {}
+        for spawn_info in carrier_output.spawn_info:
+            spawn_by_idx[spawn_info.parent_batch_idx] = spawn_info
+        
+        # Обрабатываем spawn'ы только для живых потоков
+        alive_indices = torch.where(alive_mask)[0]
+        for idx in alive_indices:
+            idx_val = idx.item()
+            if idx_val in spawn_by_idx:
+                spawn_info = spawn_by_idx[idx_val]
+                if spawn_info.energies:
                     # Ограничиваем количество spawn'ов конфигом
                     spawn_energies = spawn_info.energies[:self.config.max_spawn_per_step]
-                    self.lattice.spawn_flows(flow.id, spawn_energies)
-                    break  # Один SpawnInfo на batch элемент
+                    flow_id = flows[idx_val].id
+                    self.lattice.spawn_flows(flow_id, spawn_energies)
     
     def _check_convergence(self, step: int, initial_flows_count: int) -> bool:
         """
