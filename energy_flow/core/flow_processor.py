@@ -268,6 +268,7 @@ class FlowProcessor(nn.Module):
     def step(self, active_flows: Optional[List] = None):
         """
         Один шаг распространения энергии для всех активных потоков
+        ПОЛНАЯ ПАРАЛЛЕЛИЗАЦИЯ: все потоки обрабатываются одновременно вместо sequential batches
         
         Args:
             active_flows: Список активных потоков (если None - получаем из lattice)
@@ -280,17 +281,28 @@ class FlowProcessor(nn.Module):
         if not active_flows:
             return
         
-        # Батчевая обработка для эффективности
-        batch_size = min(len(active_flows), self.config.batch_size)
+        # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: убираем Sequential Processing Bottleneck!
+        # Вместо цикла с маленькими batch'ами - обрабатываем ВСЕ потоки сразу
+        # Это позволяет GPU cores работать параллельно с 1000+ потоками одновременно
         
-        for i in range(0, len(active_flows), batch_size):
-            batch_flows = active_flows[i:i + batch_size]
-            self._process_flow_batch(batch_flows)
+        flows_count = len(active_flows)
+        max_flows_per_step = self.config.max_active_flows  # RTX 5090 может обработать все сразу
+        
+        if flows_count <= max_flows_per_step:
+            # Оптимальный случай: обрабатываем ВСЕ потоки одним большим batch'ем
+            self._process_flow_batch(active_flows)
+        else:
+            # Fallback: если слишком много потоков (>200K), делим на крупные chunk'и
+            optimal_chunk_size = max_flows_per_step // 2  # 100K потоков за раз
+            
+            for i in range(0, flows_count, optimal_chunk_size):
+                chunk_flows = active_flows[i:i + optimal_chunk_size]
+                self._process_flow_batch(chunk_flows)
         
         # Статистика
         step_time = time.time() - start_time
         self.perf_stats['step_times'].append(step_time)
-        self.perf_stats['flows_per_step'].append(len(active_flows))
+        self.perf_stats['flows_per_step'].append(flows_count)
         
         if self.device.type == 'cuda':
             memory_info = self.device_manager.get_memory_info()
