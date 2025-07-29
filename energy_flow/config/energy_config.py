@@ -81,7 +81,7 @@ class EnergyConfig:
     
     # Предварительное обучение (experimental features)
     initial_z_bias: float = 1.0  # Положительный bias для Z координаты (помощь необученной модели)
-    use_forward_movement_bias: bool = True  # Включать ли bias для движения вперед
+    use_forward_movement_bias: bool = False  # Включать ли bias для движения вперед
     progressive_z_multiplier: float = 2.1  # Множитель для динамического bias'а
     exploration_noise: float = 0.5  # Случайный шум для разнообразия путей
     use_exploration_noise: bool = True  # Включать ли exploration noise

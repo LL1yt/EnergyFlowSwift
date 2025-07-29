@@ -26,7 +26,7 @@ import time
 from datetime import datetime
 import json
 
-from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_CONVERGENCE
+from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_CONVERGENCE, DEBUG_PERFORMANCE, DEBUG_PROFILING
 from ..utils.device_manager import get_device_manager
 from ..utils.checkpoint_utils import generate_checkpoint_path, create_checkpoint_summary
 from ..config import EnergyConfig, get_energy_config, create_debug_config, set_energy_config
@@ -338,61 +338,71 @@ class EnergyTrainer:
             # 3. Energy loss - сравниваем на уровне surface
             energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface_output)
             
-            # 4. Text Bridge обучение с улучшенной обработкой ошибок
+            # 4. Text Bridge обучение - ОПТИМИЗИРОВАННАЯ БАТЧЕВАЯ ВЕРСИЯ
             text_loss = torch.tensor(0.0, device=self.device)
             if self.config.text_bridge_enabled and self.config.text_loss_weight > 0:
+                text_bridge_start_time = time.time()
                 try:
-                    # TextToCubeEncoder: учится текст → surface
-                    logger.log(DEBUG_TRAINING, f"📝 Processing text bridge for {len(input_texts)} texts")
+                    # ОПТИМИЗАЦИЯ 1: Батчевое кодирование текста → surface
+                    if logger.isEnabledFor(DEBUG_TRAINING):
+                        logger.log(DEBUG_TRAINING, f"📝 Processing text bridge (batch={len(input_texts)})")
                     
                     encoder_outputs = self.text_encoder.encode_text(input_texts)
-                    logger.log(DEBUG_TRAINING, f"📊 Encoder outputs: {encoder_outputs.shape}, requires_grad: {encoder_outputs.requires_grad}")
+                    if logger.isEnabledFor(DEBUG_TRAINING):
+                        logger.log(DEBUG_TRAINING, f"📊 Encoder outputs: {encoder_outputs.shape}")
                     
-                    # Убеждаемся, что target требует градиенты
+                    # Encoder loss: text → surface mapping
                     target_surface_input_grad = target_surface_input.clone().detach().requires_grad_(True)
                     encoder_loss = nn.functional.mse_loss(encoder_outputs, target_surface_input_grad)
                     
-                    # CubeToTextDecoder: учится surface → текст
-                    predicted_texts = []
+                    # ОПТИМИЗАЦИЯ 2: Используем УЖЕ ВЫЧИСЛЕННЫЙ cube_output_surface!
+                    # Вместо повторных forward passes для каждого образца
                     decoder_loss = torch.tensor(0.0, device=self.device)
                     
-                    for i, (input_text, target_text) in enumerate(zip(input_texts, target_texts)):
-                        try:
-                            logger.log(DEBUG_TRAINING, f"📝 Processing sample {i}: '{input_text[:50]}...' -> '{target_text[:50]}...'")
+                    try:
+                        # Батчевое декодирование surface → text
+                        predicted_texts = self.text_decoder.decode_surface(cube_output_surface)
+                        
+                        # Батчевое вычисление text similarity loss
+                        if predicted_texts and len(predicted_texts) == len(target_texts):
+                            similarities = []
+                            for pred_text, target_text in zip(predicted_texts, target_texts):
+                                if pred_text and target_text:
+                                    pred_words = set(pred_text.lower().split())
+                                    target_words = set(target_text.lower().split())
+                                    intersection = len(pred_words & target_words)
+                                    union = len(pred_words | target_words)
+                                    similarity = intersection / max(union, 1)
+                                    similarities.append(similarity)
+                                else:
+                                    similarities.append(0.0)
                             
-                            # Используем teacher embeddings для генерации
-                            surface_input = teacher_input_embeddings[i:i+1]
-                            surface_output = self.flow_processor.forward(surface_input, max_steps=50)
+                            # Vectorized similarity loss
+                            similarities_tensor = torch.tensor(similarities, device=self.device)
+                            decoder_loss = (1.0 - similarities_tensor).mean()
                             
-                            # Декодируем в текст
-                            pred_texts_batch = self.text_decoder.decode_surface(surface_output)
-                            
-                            if pred_texts_batch and len(pred_texts_batch) > 0:
-                                pred_text = pred_texts_batch[0]
-                            else:
-                                pred_text = ""
-                            
-                            predicted_texts.append(pred_text)
-                            logger.log(DEBUG_TRAINING, f"📝 Predicted: '{pred_text[:50]}...'")
-                            
-                            # Простая метрика сходства
-                            if pred_text and target_text:
-                                similarity = len(set(pred_text.lower().split()) & set(target_text.lower().split())) / \
-                                           max(len(set(pred_text.lower().split()) | set(target_text.lower().split())), 1)
-                                decoder_loss += 1.0 - similarity
-                            else:
-                                decoder_loss += 1.0
-                                
-                        except Exception as decode_error:
-                            logger.warning(f"❌ Text decoding failed for sample {i}: {decode_error}")
-                            predicted_texts.append("")
-                            decoder_loss += 1.0
+                            if logger.isEnabledFor(DEBUG_TRAINING):
+                                avg_similarity = similarities_tensor.mean().item()
+                                logger.log(DEBUG_TRAINING, f"📝 Avg text similarity: {avg_similarity:.3f}")
+                        else:
+                            decoder_loss = torch.tensor(1.0, device=self.device)
+                            if logger.isEnabledFor(DEBUG_TRAINING):
+                                logger.log(DEBUG_TRAINING, f"⚠️ Text decoding mismatch: {len(predicted_texts)} vs {len(target_texts)}")
                     
-                    if batch_size > 0:
-                        decoder_loss = decoder_loss / batch_size
+                    except Exception as decode_error:
+                        if logger.isEnabledFor(DEBUG_TRAINING):
+                            logger.log(DEBUG_TRAINING, f"❌ Batch text decoding failed: {decode_error}")
+                        decoder_loss = torch.tensor(1.0, device=self.device)
                     
+                    # Combined text loss
                     text_loss = encoder_loss + 0.1 * decoder_loss
-                    logger.log(DEBUG_TRAINING, f"📊 Text losses: encoder={encoder_loss:.4f}, decoder={decoder_loss:.4f}, total={text_loss:.4f}")
+                    
+                    # Performance logging
+                    text_bridge_time = time.time() - text_bridge_start_time
+                    if logger.isEnabledFor(DEBUG_TRAINING):
+                        logger.log(DEBUG_TRAINING, 
+                                 f"📊 Text bridge: encoder={encoder_loss:.4f}, decoder={decoder_loss:.4f}, "
+                                 f"total={text_loss:.4f}, time={text_bridge_time*1000:.1f}ms")
                     
                 except Exception as e:
                     logger.warning(f"❌ Text bridge computation failed: {e}")
@@ -447,6 +457,73 @@ class EnergyTrainer:
                 'flows_reached_output': flow_stats.get('flows_reached_output', 0),
                 'batch_size': batch_size
             }
+            
+            # УСЛОВНЫЕ МЕТРИКИ ПРОИЗВОДИТЕЛЬНОСТИ (только при нужном уровне логирования)
+            if logger.isEnabledFor(DEBUG_PERFORMANCE):
+                try:
+                    import torch
+                    
+                    # Throughput metrics
+                    throughput_samples_per_sec = batch_size / step_time if step_time > 0 else 0
+                    
+                    # GPU utilization (если доступно)
+                    gpu_utilization = 0
+                    memory_used_gb = 0
+                    memory_utilization_percent = 0
+                    
+                    if torch.cuda.is_available():
+                        memory_used_gb = torch.cuda.memory_allocated() / 1e9
+                        memory_reserved_gb = torch.cuda.memory_reserved() / 1e9
+                        
+                        # GPU utilization требует nvidia-ml-py3, может быть недоступно
+                        try:
+                            gpu_utilization = torch.cuda.utilization() if hasattr(torch.cuda, 'utilization') else 0
+                        except:
+                            gpu_utilization = 0
+                        
+                        # Memory utilization как процент от выделенной памяти
+                        if memory_reserved_gb > 0:
+                            memory_utilization_percent = (memory_used_gb / memory_reserved_gb) * 100
+                    
+                    # Добавляем performance метрики
+                    step_metrics.update({
+                        'throughput_samples_per_sec': throughput_samples_per_sec,
+                        'gpu_utilization_percent': gpu_utilization,
+                        'memory_used_gb': memory_used_gb,
+                        'memory_utilization_percent': memory_utilization_percent,
+                    })
+                    
+                    # Text bridge timing (если был активен)
+                    if 'text_bridge_time' in locals():
+                        step_metrics['text_bridge_time_ms'] = text_bridge_time * 1000
+                        step_metrics['energy_computation_time_ms'] = flow_time * 1000
+                    
+                    logger.log(DEBUG_PERFORMANCE, 
+                             f"⚡ Performance: {throughput_samples_per_sec:.1f} samples/s, "
+                             f"GPU: {gpu_utilization:.0f}%, Memory: {memory_used_gb:.1f}GB ({memory_utilization_percent:.0f}%)")
+                
+                except Exception as perf_error:
+                    # Не прерываем обучение из-за ошибок в метриках
+                    if logger.isEnabledFor(DEBUG_TRAINING):
+                        logger.log(DEBUG_TRAINING, f"Performance metrics error: {perf_error}")
+            
+            # ДЕТАЛЬНОЕ ПРОФИЛИРОВАНИЕ (только при DEBUG_PROFILING)
+            if logger.isEnabledFor(DEBUG_PROFILING):
+                try:
+                    # Детальные тайминги компонентов
+                    energy_percentage = (flow_time / step_time * 100) if step_time > 0 else 0
+                    text_bridge_percentage = 0
+                    
+                    if 'text_bridge_time' in locals():
+                        text_bridge_percentage = (text_bridge_time / step_time * 100) if step_time > 0 else 0
+                    
+                    logger.log(DEBUG_PROFILING,
+                             f"🔬 Profiling: Energy {energy_percentage:.1f}%, "
+                             f"TextBridge {text_bridge_percentage:.1f}%, "
+                             f"Other {100 - energy_percentage - text_bridge_percentage:.1f}%")
+                
+                except Exception as prof_error:
+                    pass  # Игнорируем ошибки профилирования
             
             self.global_step += 1
             

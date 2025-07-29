@@ -33,6 +33,8 @@ DEBUG_INIT = 17       # Initialization and setup
 DEBUG_ENERGY = 18     # Energy flow operations (energy_flow)
 DEBUG_SPAWN = 19      # Spawn operations
 DEBUG_CONVERGENCE = 20 # Convergence statistics
+DEBUG_PERFORMANCE = 21 # Throughput, GPU utilization, memory usage
+DEBUG_PROFILING = 22   # Detailed component execution times
 DEBUG_VERBOSE = 11    # Most verbose debug level
 
 # Register custom levels with logging module
@@ -46,6 +48,8 @@ for level_name, level_value in [
     ('DEBUG_ENERGY', DEBUG_ENERGY),
     ('DEBUG_SPAWN', DEBUG_SPAWN),
     ('DEBUG_CONVERGENCE', DEBUG_CONVERGENCE),
+    ('DEBUG_PERFORMANCE', DEBUG_PERFORMANCE),
+    ('DEBUG_PROFILING', DEBUG_PROFILING),
     ('DEBUG_VERBOSE', DEBUG_VERBOSE),
 ]:
     logging.addLevelName(level_value, level_name)
