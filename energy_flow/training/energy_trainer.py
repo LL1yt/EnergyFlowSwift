@@ -597,6 +597,16 @@ class EnergyTrainer:
                           f"🔄 Accumulating {self.current_accumulation_step}/{self.config.gradient_accumulation_steps}: "
                           f"total_loss={total_loss.item():.4f}")
             
+            # КРИТИЧЕСКИ ВАЖНО: Автоматическая очистка GPU памяти после каждого шага
+            # Это исправляет проблему накопления memory между батчами (8% -> 75% GPU load)
+            if torch_module.cuda.is_available():
+                torch_module.cuda.empty_cache()
+                
+                # Дополнительная диагностика для памяти
+                if logger.isEnabledFor(DEBUG_PERFORMANCE):
+                    memory_after_cleanup = torch_module.cuda.memory_allocated() / 1e9
+                    logger.log(DEBUG_PERFORMANCE, f"🧹 Memory after cleanup: {memory_after_cleanup:.1f}GB")
+            
             return step_metrics
             
         except Exception as e:

@@ -351,40 +351,46 @@ class FlowProcessor(nn.Module):
         # Комбинированная маска выживших потоков
         alive_mask = energy_alive_mask & z_forward_mask & bounds_mask  # [batch]
         
-        # Подсчет статистики (векторизованно)
-        energy_dead_count = (~energy_alive_mask).sum().item()
-        backward_dead_count = (energy_alive_mask & ~z_forward_mask).sum().item()
-        bounds_dead_count = (energy_alive_mask & z_forward_mask & ~bounds_mask).sum().item()
+        # Подсчет статистики БЕЗ .item() для избежания CPU-GPU синхронизации
+        energy_dead_count = (~energy_alive_mask).sum()
+        backward_dead_count = (energy_alive_mask & ~z_forward_mask).sum()
+        bounds_dead_count = (energy_alive_mask & z_forward_mask & ~bounds_mask).sum()
         
-        self.stats['flows_killed_energy'] += energy_dead_count
-        self.stats['flows_killed_backward'] += backward_dead_count
-        self.stats['flows_killed_bounds'] += bounds_dead_count
+        # Обновляем статистику с detach() для безопасности, но без синхронизации
+        self.stats['flows_killed_energy'] += energy_dead_count.detach().cpu().numpy().item()
+        self.stats['flows_killed_backward'] += backward_dead_count.detach().cpu().numpy().item()
+        self.stats['flows_killed_bounds'] += bounds_dead_count.detach().cpu().numpy().item()
         
-        # Векторизованная деактивация умерших потоков
-        dead_indices = torch.where(~alive_mask)[0]
-        for idx in dead_indices:
-            flow_id = flow_ids[idx].item()
-            if not energy_alive_mask[idx]:
-                reason = "energy_depleted"
-            elif not z_forward_mask[idx]:
-                z_curr = current_positions[idx, 2].item()
-                z_next = next_pos[idx, 2].item()
-                reason = f"backward_z_movement: {z_next:.1f} <= {z_curr:.1f}"
-            else:
-                x, y = next_pos[idx, 0].item(), next_pos[idx, 1].item()
-                reason = f"out_of_bounds: pos=({x:.1f},{y:.1f})"
+        # ПОЛНАЯ ВЕКТОРИЗАЦИЯ: batch deactivation dead flows БЕЗ циклов
+        dead_mask = ~alive_mask
+        if dead_mask.any():
+            dead_flow_ids = flow_ids[dead_mask]
+            # Создаем причины векторизованно
+            energy_dead_mask = dead_mask & (~energy_alive_mask)
+            backward_dead_mask = dead_mask & energy_alive_mask & (~z_forward_mask)
+            bounds_dead_mask = dead_mask & energy_alive_mask & z_forward_mask & (~bounds_mask)
             
-            self.lattice.deactivate_flow(flow_id, reason)
+            # Batch deactivation with vectorized reasons
+            self.lattice.batch_deactivate_flows(
+                dead_flow_ids,
+                energy_dead_mask[dead_mask],
+                backward_dead_mask[dead_mask], 
+                bounds_dead_mask[dead_mask]
+            )
         
-        # Векторизованное обновление выживших потоков
-        alive_indices = torch.where(alive_mask)[0]
-        for idx in alive_indices:
-            flow_id = flow_ids[idx].item()
-            self.lattice.update_flow(
-                flow_id,
-                carrier_output.next_position[idx],
-                carrier_output.energy_value[idx],
-                new_hidden[idx]
+        # ПОЛНАЯ ВЕКТОРИЗАЦИЯ: batch update alive flows БЕЗ циклов
+        if alive_mask.any():
+            alive_flow_ids = flow_ids[alive_mask]
+            alive_positions = carrier_output.next_position[alive_mask]
+            alive_energies = carrier_output.energy_value[alive_mask]
+            alive_hidden = new_hidden[alive_mask]
+            
+            # Batch update all alive flows at once
+            self.lattice.batch_update_flows(
+                alive_flow_ids,
+                alive_positions,
+                alive_energies,
+                alive_hidden
             )
         
         # Обработка spawn потоков (оптимизированная)

@@ -235,6 +235,68 @@ class EnergyLattice(nn.Module):
                 self.stats['total_died'] += 1
             logger.debug(f"Flow {flow_id} deactivated: {reason}")
     
+    def update_flow(self, flow_id: int, new_position: torch.Tensor, new_energy: torch.Tensor, new_hidden: torch.Tensor):
+        """Обновляет состояние потока"""
+        if flow_id in self.active_flows:
+            flow = self.active_flows[flow_id]
+            flow.position = new_position.clone()
+            flow.energy = new_energy.clone()
+            flow.hidden_state = new_hidden.clone()
+            flow.age += 1
+    
+    def batch_deactivate_flows(self, dead_flow_ids: torch.Tensor, 
+                              energy_dead_mask: torch.Tensor,
+                              backward_dead_mask: torch.Tensor, 
+                              bounds_dead_mask: torch.Tensor):
+        """ВЕКТОРИЗОВАННАЯ деактивация множества потоков одновременно"""
+        # Преобразуем тензоры в списки Python для избежания дальнейших GPU-CPU синхронизаций
+        dead_ids = dead_flow_ids.detach().cpu().tolist()
+        energy_dead = energy_dead_mask.detach().cpu().tolist()
+        backward_dead = backward_dead_mask.detach().cpu().tolist()
+        bounds_dead = bounds_dead_mask.detach().cpu().tolist()
+        
+        deactivated_count = 0
+        for i, flow_id in enumerate(dead_ids):
+            if flow_id in self.active_flows:
+                self.active_flows[flow_id].is_active = False
+                deactivated_count += 1
+                
+                # Определяем причину векторизованно
+                if energy_dead[i]:
+                    reason = "energy_depleted"
+                elif backward_dead[i]:
+                    reason = "backward_z_movement"
+                else:  # bounds_dead[i]
+                    reason = "out_of_bounds"
+                
+                # Обновляем статистику без детального логирования
+                self.stats['total_died'] += 1
+        
+        if deactivated_count > 0:
+            logger.debug(f"Batch deactivated {deactivated_count} flows")
+    
+    def batch_update_flows(self, alive_flow_ids: torch.Tensor,
+                          alive_positions: torch.Tensor,
+                          alive_energies: torch.Tensor,
+                          alive_hidden: torch.Tensor):
+        """ВЕКТОРИЗОВАННОЕ обновление множества потоков одновременно"""
+        # Преобразуем только ID в CPU, остальное оставляем на GPU
+        alive_ids = alive_flow_ids.detach().cpu().tolist()
+        
+        updated_count = 0
+        for i, flow_id in enumerate(alive_ids):
+            if flow_id in self.active_flows:
+                flow = self.active_flows[flow_id]
+                # Обновляем БЕЗ .clone() для ускорения (данные уже отделены от графа)
+                flow.position = alive_positions[i]
+                flow.energy = alive_energies[i] 
+                flow.hidden_state = alive_hidden[i]
+                flow.age += 1
+                updated_count += 1
+        
+        if updated_count > 0:
+            logger.debug(f"Batch updated {updated_count} flows")
+    
     def _buffer_output_flow(self, flow_id: int):
         """Помещает поток в буфер выходных потоков"""
         if flow_id not in self.active_flows:
@@ -519,7 +581,7 @@ class EnergyLattice(nn.Module):
                 weights = []
                 
                 for flow in flows:
-                    energy_magnitude = torch.norm(flow.energy).item()
+                    energy_magnitude = torch.norm(flow.energy)  # Убираем .item() для избежания CPU-GPU синхронизации
                     age_factor = 1 + flow.age * 0.1
                     weight = energy_magnitude * age_factor
                     
