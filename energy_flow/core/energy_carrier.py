@@ -124,7 +124,7 @@ class EnergyCarrier(nn.Module):
         logger.debug(f"GRU: input={self.input_dim}, hidden={self.hidden_size}, layers={self.num_layers}")
     
     def _init_weights(self):
-        """Инициализация весов"""
+        """Инициализация весов с smart initialization для движения вперед"""
         # GRU уже имеет хорошую инициализацию по умолчанию
         
         # Инициализируем projection heads
@@ -140,13 +140,32 @@ class EnergyCarrier(nn.Module):
                 nn.init.xavier_normal_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
+        
+        # SMART INITIALIZATION: положительный bias для Z-координаты
+        # Помогает модели научиться движению вперед без жесткого кодирования
+        with torch.no_grad():
+            # position_projection[-2] это последний Linear слой перед активацией
+            # Индекс 2 соответствует Z-координате в выходе [x, y, z]
+            if hasattr(self.position_projection, '__getitem__') and len(self.position_projection) >= 2:
+                final_linear = None
+                # Находим последний Linear слой
+                for i in range(len(self.position_projection) - 1, -1, -1):
+                    if isinstance(self.position_projection[i], nn.Linear):
+                        final_linear = self.position_projection[i]
+                        break
+                
+                if final_linear is not None and final_linear.bias is not None:
+                    # Устанавливаем положительный bias для Z-координаты (индекс 2)
+                    final_linear.bias[2] = 1.5  # Положительный bias для движения вперед
+                    logger.debug(f"Smart initialization: Z-coordinate bias set to {final_linear.bias[2]:.2f}")
     
     def forward(self, 
                 neuron_output: torch.Tensor,
                 embedding_part: torch.Tensor,
                 hidden_state: Optional[torch.Tensor] = None,
                 current_position: Optional[torch.Tensor] = None,
-                flow_age: Optional[torch.Tensor] = None) -> Tuple[EnergyOutput, torch.Tensor]:
+                flow_age: Optional[torch.Tensor] = None,
+                global_training_step: Optional[int] = None) -> Tuple[EnergyOutput, torch.Tensor]:
         """
         Прямой проход через EnergyCarrier
         
@@ -155,6 +174,8 @@ class EnergyCarrier(nn.Module):
             embedding_part: [batch, embedding_dim] - часть входного эмбеддинга
             hidden_state: [num_layers, batch, hidden_size] - скрытое состояние GRU
             current_position: [batch, 3] - текущая позиция (для расчета следующей)
+            flow_age: [batch] - возраст потоков для progressive bias
+            global_training_step: Глобальный шаг обучения для curriculum learning
             
         Returns:
             output: EnergyOutput - структурированный вывод
@@ -181,11 +202,34 @@ class EnergyCarrier(nn.Module):
             predicted_position_normalized
         )
 
-        # Экспериментальная настройка для предварительного обучения
+        # CURRICULUM LEARNING: прогрессивное уменьшение bias'а для движения вперед
         if self.config.use_forward_movement_bias and self.config.initial_z_bias > 0:
-            # Применяем экспериментальный progressive bias для Z координаты
-            if (flow_age is not None):
-                # Динамический bias = initial_bias + (age * multiplier)
+            if global_training_step is not None:
+                # Прогрессивное уменьшение bias'а на основе глобального шага обучения
+                bias_decay_factor = max(0.0, 1.0 - (global_training_step / self.config.bias_decay_steps))
+                current_bias = self.config.initial_z_bias * bias_decay_factor
+                
+                # Дополнительный progressive bias на основе возраста потока
+                if flow_age is not None:
+                    age_bonus = flow_age * self.config.progressive_z_multiplier * bias_decay_factor
+                    total_bias = current_bias + age_bonus  # Может быть тензором [batch]
+                else:
+                    total_bias = current_bias  # Скаляр
+                
+                # Применяем bias только если он все еще значимый
+                # Обрабатываем случай, когда total_bias может быть тензором
+                if isinstance(total_bias, torch.Tensor):
+                    # Векторизованное применение bias'а для каждого потока отдельно
+                    valid_bias_mask = total_bias > 0.01
+                    if valid_bias_mask.any():
+                        predicted_position[valid_bias_mask, 2] += total_bias[valid_bias_mask]
+                else:
+                    # total_bias - скаляр
+                    if total_bias > 0.01:
+                        predicted_position[:, 2] += total_bias
+            
+            elif flow_age is not None:
+                # Fallback: используем только возраст потока без curriculum learning
                 dynamic_z_bias = self.config.initial_z_bias + (flow_age * self.config.progressive_z_multiplier)
                 predicted_position[:, 2] += dynamic_z_bias
         

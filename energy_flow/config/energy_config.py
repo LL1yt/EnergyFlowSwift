@@ -93,12 +93,21 @@ class EnergyConfig:
     log_interval: int = 10
     checkpoint_interval: int = 100
     
-    # Предварительное обучение (experimental features)
-    initial_z_bias: float = 1.0  # Положительный bias для Z координаты (помощь необученной модели)
-    use_forward_movement_bias: bool = False  # Включать ли bias для движения вперед
-    progressive_z_multiplier: float = 2.1  # Множитель для динамического bias'а
-    exploration_noise: float = 0.5  # Случайный шум для разнообразия путей
-    use_exploration_noise: bool = True  # Включать ли exploration noise
+    # Curriculum Learning для обучения движению вперед
+    initial_z_bias: float = 2.0  # Начальный положительный bias для Z-координаты
+    use_forward_movement_bias: bool = True  # Включить curriculum learning для движения вперед
+    bias_decay_steps: int = 5000  # Количество шагов для полного убывания bias'а
+    bias_decay_rate: float = 0.95  # Скорость убывания bias'а (не используется в линейном decay)
+    progressive_z_multiplier: float = 0.1  # Множитель для доп. bias'а на основе возраста потока
+    
+    # Forward Movement Reward в loss функции
+    use_forward_movement_reward: bool = True  # Поощрять движение вперед через loss
+    forward_reward_weight: float = 0.1  # Начальный вес forward movement reward
+    forward_reward_decay_steps: int = 3000  # Шаги для уменьшения веса reward'а
+    
+    # Эксплорация и шум
+    exploration_noise: float = 0.3  # Уменьшенный шум для стабильности
+    use_exploration_noise: bool = True  # Включать exploration noise
     
     def __post_init__(self):
         """Валидация и вычисление производных параметров"""
@@ -206,7 +215,18 @@ def create_debug_config() -> EnergyConfig:
         convergence_enabled=True,
         convergence_threshold=0.8,
         convergence_min_steps=3,
-        convergence_patience=2
+        convergence_patience=2,
+        
+        # Curriculum learning для debug
+        initial_z_bias=2.5,  # Повышенный bias для быстрого обучения
+        use_forward_movement_bias=True,
+        bias_decay_steps=1000,  # Быстрое убывание для debug
+        progressive_z_multiplier=0.2,
+        
+        # Forward movement reward для debug
+        use_forward_movement_reward=True,
+        forward_reward_weight=0.15,  # Повышенный вес для обучения
+        forward_reward_decay_steps=800
     )
 
 
@@ -240,7 +260,18 @@ def create_experiment_config() -> EnergyConfig:
         convergence_enabled=True,
         convergence_threshold=0.95,     # Высокий порог для качества
         convergence_min_steps=10,       # Минимум 10 шагов для глубокой обработки
-        convergence_patience=5          # Больше терпения для depth=60
+        convergence_patience=5,          # Больше терпения для depth=60
+        
+        # Curriculum learning для экспериментов
+        initial_z_bias=1.8,
+        use_forward_movement_bias=True,
+        bias_decay_steps=3000,  # Умеренное убывание
+        progressive_z_multiplier=0.1,
+        
+        # Forward movement reward
+        use_forward_movement_reward=True,
+        forward_reward_weight=0.08,  # Умеренный вес для experiment
+        forward_reward_decay_steps=2000
     )
 
 
@@ -263,7 +294,18 @@ def create_optimized_config() -> EnergyConfig:
         iterative_correction_steps=3,  # Полные шаги коррекции
         text_generation_max_length=64, # Полная длина текста
         text_generation_num_beams=4,   # Максимальное качество
-        text_generation_temperature=1.0
+        text_generation_temperature=1.0,
+        
+        # Curriculum learning для production
+        initial_z_bias=1.2,  # Низкий bias для стабильности
+        use_forward_movement_bias=True,
+        bias_decay_steps=8000,  # Медленное убывание
+        progressive_z_multiplier=0.05,
+        
+        # Forward movement reward
+        use_forward_movement_reward=True,
+        forward_reward_weight=0.05,  # Низкий вес для production
+        forward_reward_decay_steps=5000
     )
 
 

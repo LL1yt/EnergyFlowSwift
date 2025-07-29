@@ -89,7 +89,7 @@ class EnergyTrainer:
         }
         
         # Счетчики и статистика
-        self.global_step = 0
+        self.global_step = 0  # Глобальный счетчик шагов через все эпохи (для curriculum learning)
         self.epoch = 0
         self.best_loss = float('inf')
         
@@ -315,7 +315,8 @@ class EnergyTrainer:
             }
     
     def train_step(self, input_texts: List[str], target_texts: List[str],
-                   teacher_input_embeddings: torch_module.Tensor, teacher_target_embeddings: torch_module.Tensor) -> Dict[str, float]:
+                   teacher_input_embeddings: torch_module.Tensor, teacher_target_embeddings: torch_module.Tensor,
+                   global_training_step: Optional[int] = None) -> Dict[str, float]:
         """
         Один шаг обучения с расширенным логированием
         
@@ -353,7 +354,11 @@ class EnergyTrainer:
             
             # ПРИМЕНЯЕМ AUTOCAST ДЛЯ MIXED PRECISION (1.5x speedup, 50% memory)
             with torch_module.autocast(**self.autocast_kwargs):
-                cube_output_surface = self.flow_processor.forward(teacher_input_embeddings)
+                # Передаем глобальный шаг для curriculum learning в FlowProcessor
+                cube_output_surface = self.flow_processor.forward(
+                    teacher_input_embeddings, 
+                    global_training_step=global_training_step or self.global_step
+                )
             flow_time = time.time() - flow_start_time
             
             # Диагностика: проверяем выход куба
@@ -460,18 +465,49 @@ class EnergyTrainer:
                     logger.warning(f"❌ Text bridge computation failed: {e}")
                     text_loss = torch_module.tensor(0.1, device=self.device)
             
-            # 5. Комбинированный loss
-            total_loss = energy_loss + self.config.text_loss_weight * text_loss
+            # 5. Forward Movement Reward (поощряем движение вперед)
+            forward_reward = torch_module.tensor(0.0, device=self.device)
+            if self.config.use_forward_movement_reward and global_training_step is not None:
+                # Вычисляем forward movement reward на основе Z-координат потоков
+                try:
+                    # Получаем статистику потоков, которые достигли выхода
+                    flow_stats = self.flow_processor.get_performance_stats()
+                    flows_reached_output = flow_stats.get('lattice_stats', {}).get('total_completed', 0)
+                    total_initial_flows = batch_size  # Предполагаем 1 поток на образец
+                    
+                    if total_initial_flows > 0:
+                        completion_rate = flows_reached_output / total_initial_flows
+                        # Forward reward пропорционален доле потоков, достигших выхода
+                        forward_reward = torch_module.tensor(completion_rate, device=self.device)
+                    
+                    # Прогрессивное уменьшение веса reward'а (как curriculum learning)
+                    reward_weight_decay = max(0.0, 1.0 - (global_training_step / self.config.forward_reward_decay_steps))
+                    current_reward_weight = self.config.forward_reward_weight * reward_weight_decay
+                    
+                    forward_reward = forward_reward * current_reward_weight
+                    
+                    # Логирование forward reward
+                    if logger.isEnabledFor(DEBUG_TRAINING) and forward_reward > 0:
+                        logger.log(DEBUG_TRAINING, 
+                                  f"🏆 Forward reward: completion_rate={completion_rate:.3f}, "
+                                  f"weight={current_reward_weight:.3f}, reward={forward_reward:.4f}")
+                
+                except Exception as reward_error:
+                    logger.debug(f"Forward reward computation failed: {reward_error}")
+                    forward_reward = torch_module.tensor(0.0, device=self.device)
             
-            # 6. Gradient accumulation: нормализуем loss 
+            # 6. Комбинированный loss (ВОЗНАГРАЖДЕНИЕ для движения вперед!)
+            total_loss = energy_loss + self.config.text_loss_weight * text_loss - forward_reward
+            
+            # 7. Gradient accumulation: нормализуем loss 
             normalized_loss = total_loss / self.config.gradient_accumulation_steps
             
             # Диагностика перед обратным распространением
             logger.log(DEBUG_TRAINING, f"📊 Losses: energy={energy_loss:.4f}, text={text_loss:.4f}, "
-                                      f"total={total_loss:.4f}, normalized={normalized_loss:.4f}")
+                                      f"forward_reward={forward_reward:.4f}, total={total_loss:.4f}, normalized={normalized_loss:.4f}")
             logger.log(DEBUG_TRAINING, f"📊 Total loss requires_grad: {total_loss.requires_grad}")
             
-            # 7. Обратное распространение с normalized loss И GRADIENT SCALING
+            # 8. Обратное распространение с normalized loss И GRADIENT SCALING
             if self.scaler is not None:
                 # Mixed precision backward pass с gradient scaling
                 self.scaler.scale(normalized_loss).backward()
@@ -484,12 +520,14 @@ class EnergyTrainer:
             if not self.accumulation_metrics:
                 self.accumulation_metrics = {
                     'energy_loss': energy_loss.item(),
-                    'text_loss': text_loss.item(),
+                    'text_loss': text_loss.item(), 
+                    'forward_reward': forward_reward.item(),
                     'batch_size': batch_size
                 }
             else:
                 self.accumulation_metrics['energy_loss'] += energy_loss.item()
                 self.accumulation_metrics['text_loss'] += text_loss.item()
+                self.accumulation_metrics['forward_reward'] += forward_reward.item()
                 self.accumulation_metrics['batch_size'] += batch_size
             
             # Диагностика градиентов
@@ -552,6 +590,7 @@ class EnergyTrainer:
                     'total_loss': self.accumulation_loss / self.config.gradient_accumulation_steps,
                     'energy_loss': self.accumulation_metrics['energy_loss'] / self.config.gradient_accumulation_steps,
                     'text_loss': self.accumulation_metrics['text_loss'] / self.config.gradient_accumulation_steps,
+                    'forward_reward': self.accumulation_metrics['forward_reward'] / self.config.gradient_accumulation_steps,
                     'learning_rate': self.optimizer.param_groups[0]['lr'],
                     'step_time': step_time,
                     'flow_time': flow_time,
@@ -568,6 +607,7 @@ class EnergyTrainer:
                     'total_loss': total_loss.item(),
                     'energy_loss': energy_loss.item(),
                     'text_loss': text_loss.item(),
+                    'forward_reward': forward_reward.item(),
                     'learning_rate': self.optimizer.param_groups[0]['lr'],
                     'step_time': step_time,
                     'flow_time': flow_time,
@@ -650,13 +690,14 @@ class EnergyTrainer:
                 avg_loss = self.accumulation_loss / self.config.gradient_accumulation_steps
                 avg_energy = self.accumulation_metrics['energy_loss'] / self.config.gradient_accumulation_steps
                 avg_text = self.accumulation_metrics['text_loss'] / self.config.gradient_accumulation_steps
+                avg_forward_reward = self.accumulation_metrics['forward_reward'] / self.config.gradient_accumulation_steps
                 logger.log(DEBUG_TRAINING,
                           f"✅ Step {self.global_step} (accumulated): total_loss={avg_loss:.4f}, "
-                          f"energy_loss={avg_energy:.4f}, text_loss={avg_text:.4f}")
+                          f"energy_loss={avg_energy:.4f}, text_loss={avg_text:.4f}, forward_reward={avg_forward_reward:.4f}")
             elif not is_accumulation_complete and logger.isEnabledFor(DEBUG_TRAINING):
                 logger.log(DEBUG_TRAINING,
                           f"🔄 Accumulating {self.current_accumulation_step}/{self.config.gradient_accumulation_steps}: "
-                          f"total_loss={total_loss.item():.4f}")
+                          f"total_loss={total_loss.item():.4f}, forward_reward={forward_reward.item():.4f}")
             
             # SMART MEMORY MANAGEMENT: Conditional cleanup вместо агрессивного empty_cache()
             # Устраняет 15-20% performance penalty от forced memory reallocation
@@ -750,8 +791,9 @@ class EnergyTrainer:
                 logger.warning(f"Unexpected teacher embeddings format: {type(teacher_data)}")
                 continue
             
-            # Один шаг обучения
-            step_metrics = self.train_step(input_texts, target_texts, teacher_input_emb, teacher_target_emb)
+            # Один шаг обучения - передаем глобальный шаг для curriculum learning  
+            step_metrics = self.train_step(input_texts, target_texts, teacher_input_emb, teacher_target_emb, 
+                                         global_training_step=self.global_step)
             
             # Аккумулируем метрики
             for key in epoch_metrics:

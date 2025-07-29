@@ -96,13 +96,15 @@ class FlowProcessor(nn.Module):
             logger.info(f"Adaptive convergence enabled: threshold={config.convergence_threshold:.2f}, "
                        f"min_steps={config.convergence_min_steps}, patience={config.convergence_patience}")
     
-    def forward(self, input_embeddings: torch.Tensor, max_steps: Optional[int] = None) -> torch.Tensor:
+    def forward(self, input_embeddings: torch.Tensor, max_steps: Optional[int] = None, 
+                global_training_step: Optional[int] = None) -> torch.Tensor:
         """
         Полный проход энергии через решетку
         
         Args:
             input_embeddings: [batch, 768] - входные эмбеддинги
             max_steps: Максимальное количество шагов (если None - depth решетки)
+            global_training_step: Глобальный шаг обучения для curriculum learning
             
         Returns:
             output_embeddings: [batch, 768] - выходные эмбеддинги
@@ -146,7 +148,7 @@ class FlowProcessor(nn.Module):
             
             # Если есть активные потоки - обрабатываем их
             if active_flows:
-                self.step(active_flows)
+                self.step(active_flows, global_training_step=global_training_step)
             
             # Логирование прогресса
             if step % self.config.log_interval == 0:
@@ -265,7 +267,7 @@ class FlowProcessor(nn.Module):
         
         return output_surface_embeddings, completed_flows
     
-    def step(self, active_flows: Optional[List] = None):
+    def step(self, active_flows: Optional[List] = None, global_training_step: Optional[int] = None):
         """
         Один шаг распространения энергии для всех активных потоков
         ПОЛНАЯ ПАРАЛЛЕЛИЗАЦИЯ: все потоки обрабатываются одновременно вместо sequential batches
@@ -290,14 +292,14 @@ class FlowProcessor(nn.Module):
         
         if flows_count <= max_flows_per_step:
             # Оптимальный случай: обрабатываем ВСЕ потоки одним большим batch'ем
-            self._process_flow_batch(active_flows)
+            self._process_flow_batch(active_flows, global_training_step=global_training_step)
         else:
             # Fallback: если слишком много потоков (>200K), делим на крупные chunk'и
             optimal_chunk_size = max_flows_per_step // 2  # 100K потоков за раз
             
             for i in range(0, flows_count, optimal_chunk_size):
                 chunk_flows = active_flows[i:i + optimal_chunk_size]
-                self._process_flow_batch(chunk_flows)
+                self._process_flow_batch(chunk_flows, global_training_step=global_training_step)
         
         # Статистика
         step_time = time.time() - start_time
@@ -308,7 +310,7 @@ class FlowProcessor(nn.Module):
             memory_info = self.device_manager.get_memory_info()
             self.perf_stats['gpu_memory_usage'].append(memory_info['gpu_allocated_gb'])
     
-    def _process_flow_batch(self, flows):
+    def _process_flow_batch(self, flows, global_training_step: Optional[int] = None):
         """Обрабатывает батч потоков с векторизованными операциями"""
         batch_size = len(flows)
         
@@ -327,13 +329,14 @@ class FlowProcessor(nn.Module):
         # Собираем возраста потоков для progressive bias
         ages = torch.tensor([flow.age for flow in flows], dtype=torch.float32, device=positions.device)
         
-        # 2. EnergyCarrier генерирует следующее состояние
+        # 2. EnergyCarrier генерирует следующее состояние с curriculum learning
         carrier_output, new_hidden = self.carrier(
             neuron_output, 
             energies,
             hidden_states,
             positions,
-            flow_age=ages
+            flow_age=ages,
+            global_training_step=global_training_step  # Передаем глобальный шаг
         )
         
         # Транспонируем обратно и делаем непрерывными
