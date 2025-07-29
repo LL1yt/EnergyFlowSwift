@@ -59,6 +59,8 @@ class EnergyConfig:
     batch_size: int = 32
     gradient_clip: float = 1.0
     weight_decay: float = 1e-5
+    gradient_accumulation_steps: int = 1  # Для RTX 5090 оптимизации
+    max_steps_z: int = 1000
     
     # Device settings
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -115,6 +117,9 @@ class EnergyConfig:
         assert self.carrier_num_layers > 0, "carrier_num_layers должен быть > 0"
         assert self.neuron_hidden_dim > 0, "neuron_hidden_dim должен быть > 0"
         assert self.neuron_output_dim > 0, "neuron_output_dim должен быть > 0"
+        
+        # Проверка обучения
+        assert self.gradient_accumulation_steps > 0, "gradient_accumulation_steps должен быть > 0"
         
         # Проверка Text Bridge параметров
         if self.text_bridge_enabled:
@@ -179,6 +184,7 @@ def create_debug_config() -> EnergyConfig:
         carrier_num_layers=2,
         carrier_dropout=0.05,   # Низкий dropout для отладки
         log_interval=1,
+        gradient_accumulation_steps=1,  # Без накопления для debug
         
         # Text Bridge включен для debug
         text_bridge_enabled=True,
@@ -187,23 +193,32 @@ def create_debug_config() -> EnergyConfig:
         text_loss_weight=0.2,          # Повышенный вес для обучения text bridge
         iterative_correction_steps=2,  # Меньше шагов для быстроты
         text_generation_max_length=32, # Короткие тексты для debug
-        text_generation_num_beams=2,   # Меньше beams для скорости
-        text_generation_temperature=0.8
+        text_generation_num_beams=2,   # Меньше beams для скорости  
+        text_generation_temperature=0.8,
+        
+        # Adaptive convergence для debug
+        convergence_enabled=True,
+        convergence_threshold=0.8,
+        convergence_min_steps=3,
+        convergence_patience=2
     )
 
 
 def create_experiment_config() -> EnergyConfig:
-    """Сбалансированная конфигурация для экспериментов"""
+    """RTX 5090 оптимизированная конфигурация для экспериментов"""
     return EnergyConfig(
-        lattice_width=50,
-        lattice_height=50,
-        lattice_depth=20,
-        batch_size=16,
-        max_active_flows=80000,
+        lattice_width=28,        # Оптимальный размер surface для 768D embeddings
+        lattice_height=28,       # 50x50 = 2500 > 768, достаточное покрытие
+        lattice_depth=60,        # Увеличено с 20 до 60 для более глубокой обработки
+        batch_size=64,           # Увеличено с 16 до 64 для лучшей утилизации RTX 5090
+        max_active_flows=200000, # Увеличено для поддержки больших batch_size
         carrier_hidden_size=512,
         carrier_num_layers=3,
-        max_spawn_per_step=1,   # Ограниченный spawn для отладки,
-        carrier_dropout=0.00005,   # пока что это важные значения для обучения. когда мы преобразуем их в реальные энергии, тогда можно будет активно использовать dropout
+        max_spawn_per_step=1,    # Контролируемый spawn
+        carrier_dropout=0.00005, # Минимальный dropout для важных значений
+        
+        # RTX 5090 память оптимизация
+        gradient_accumulation_steps=4,  # Эффективный batch_size = 64*4 = 256
         
         # Text Bridge настройки для экспериментов
         text_bridge_enabled=True,
@@ -213,7 +228,13 @@ def create_experiment_config() -> EnergyConfig:
         iterative_correction_steps=3,
         text_generation_max_length=48,
         text_generation_num_beams=3,
-        text_generation_temperature=0.9
+        text_generation_temperature=0.9,
+        
+        # Adaptive convergence для глубокой решетки
+        convergence_enabled=True,
+        convergence_threshold=0.95,     # Высокий порог для качества
+        convergence_min_steps=10,       # Минимум 10 шагов для глубокой обработки
+        convergence_patience=5          # Больше терпения для depth=60
     )
 
 

@@ -92,6 +92,11 @@ class EnergyTrainer:
         self.epoch = 0
         self.best_loss = float('inf')
         
+        # Gradient accumulation состояние
+        self.current_accumulation_step = 0
+        self.accumulation_loss = 0.0
+        self.accumulation_metrics = {}
+        
         # Checkpoint управление
         self.checkpoint_loader = SimpleCheckpointLoader()
         self.checkpoint_base_dir = Path("checkpoints/energy_flow")
@@ -212,7 +217,7 @@ class EnergyTrainer:
         try:
             # 1. Основной forward pass куба с teacher embeddings
             flow_start_time = time.time()
-            cube_output_surface = self.flow_processor.forward(teacher_input_embeddings, max_steps=50)
+            cube_output_surface = self.flow_processor.forward(teacher_input_embeddings)
             flow_time = time.time() - flow_start_time
             
             # 2. Маппим teacher target в surface для сравнения
@@ -286,13 +291,18 @@ class EnergyTrainer:
         Returns:
             Словарь с метриками шага
         """
-        self.optimizer.zero_grad()
+        # Gradient accumulation: очищаем градиенты только в начале accumulation
+        if self.current_accumulation_step == 0:
+            self.optimizer.zero_grad()
+            self.accumulation_loss = 0.0
+            self.accumulation_metrics = {}
         
         batch_size = len(input_texts)
         step_start_time = time.time()
         
         # Диагностическое логирование
-        logger.log(DEBUG_TRAINING, f"🔄 Starting train_step: batch_size={batch_size}")
+        logger.log(DEBUG_TRAINING, f"🔄 Starting train_step: batch_size={batch_size}, "
+                                  f"accumulation_step={self.current_accumulation_step+1}/{self.config.gradient_accumulation_steps}")
         logger.log(DEBUG_TRAINING, f"📊 Input texts: {len(input_texts)} samples")
         logger.log(DEBUG_TRAINING, f"📊 Teacher embeddings: {teacher_input_embeddings.shape} -> {teacher_target_embeddings.shape}")
         
@@ -304,7 +314,7 @@ class EnergyTrainer:
             logger.log(DEBUG_TRAINING, f"📈 Teacher input requires_grad: {teacher_input_embeddings.requires_grad}")
             logger.log(DEBUG_TRAINING, f"📈 Teacher target requires_grad: {teacher_target_embeddings.requires_grad}")
             
-            cube_output_surface = self.flow_processor.forward(teacher_input_embeddings, max_steps=50)
+            cube_output_surface = self.flow_processor.forward(teacher_input_embeddings)
             flow_time = time.time() - flow_start_time
             
             # Диагностика: проверяем выход куба
@@ -412,12 +422,29 @@ class EnergyTrainer:
             # 5. Комбинированный loss
             total_loss = energy_loss + self.config.text_loss_weight * text_loss
             
-            # 6. Диагностика перед обратным распространением
-            logger.log(DEBUG_TRAINING, f"📊 Losses: energy={energy_loss:.4f}, text={text_loss:.4f}, total={total_loss:.4f}")
+            # 6. Gradient accumulation: нормализуем loss 
+            normalized_loss = total_loss / self.config.gradient_accumulation_steps
+            
+            # Диагностика перед обратным распространением
+            logger.log(DEBUG_TRAINING, f"📊 Losses: energy={energy_loss:.4f}, text={text_loss:.4f}, "
+                                      f"total={total_loss:.4f}, normalized={normalized_loss:.4f}")
             logger.log(DEBUG_TRAINING, f"📊 Total loss requires_grad: {total_loss.requires_grad}")
             
-            # 7. Обратное распространение
-            total_loss.backward()
+            # 7. Обратное распространение с normalized loss
+            normalized_loss.backward()
+            
+            # Накапливаем метрики для финального возврата
+            self.accumulation_loss += total_loss.item()
+            if not self.accumulation_metrics:
+                self.accumulation_metrics = {
+                    'energy_loss': energy_loss.item(),
+                    'text_loss': text_loss.item(),
+                    'batch_size': batch_size
+                }
+            else:
+                self.accumulation_metrics['energy_loss'] += energy_loss.item()
+                self.accumulation_metrics['text_loss'] += text_loss.item()
+                self.accumulation_metrics['batch_size'] += batch_size
             
             # Диагностика градиентов
             total_params = 0
@@ -434,30 +461,63 @@ class EnergyTrainer:
                 max_grad_norm = max(grad_norms)
                 logger.log(DEBUG_TRAINING, f"📊 Gradients: {total_params} params, avg_norm={avg_grad_norm:.6f}, max_norm={max_grad_norm:.6f}")
             
-            # Gradient clipping
-            if self.config.gradient_clip > 0:
-                torch_module.nn.utils.clip_grad_norm_(
-                    self.optimizer.param_groups[0]['params'],
-                    self.config.gradient_clip
-                )
+            # Увеличиваем счетчик accumulation
+            self.current_accumulation_step += 1
             
-            self.optimizer.step()
+            # Gradient clipping и optimizer step только на финальном accumulation шаге
+            is_accumulation_complete = self.current_accumulation_step >= self.config.gradient_accumulation_steps
+            
+            if is_accumulation_complete:
+                # Gradient clipping
+                if self.config.gradient_clip > 0:
+                    torch_module.nn.utils.clip_grad_norm_(
+                        self.optimizer.param_groups[0]['params'],
+                        self.config.gradient_clip
+                    )
+                
+                self.optimizer.step()
+                self.global_step += 1  # Увеличиваем global_step только после полного accumulation
+                
+                # Сбрасываем accumulation счетчик
+                self.current_accumulation_step = 0
             
             # Статистика шага
             step_time = time.time() - step_start_time
             
-            step_metrics = {
-                'total_loss': total_loss.item(),
-                'energy_loss': energy_loss.item(),
-                'text_loss': text_loss.item(),
-                'learning_rate': self.optimizer.param_groups[0]['lr'],
-                'step_time': step_time,
-                'flow_time': flow_time,
-                'active_flows': flow_stats.get('active_flows', 0),
-                'spawned_flows': flow_stats.get('spawned_flows', 0),
-                'flows_reached_output': flow_stats.get('flows_reached_output', 0),
-                'batch_size': batch_size
-            }
+            # Возвращаем метрики в зависимости от состояния accumulation
+            if is_accumulation_complete:
+                # Финальные accumulated метрики
+                step_metrics = {
+                    'total_loss': self.accumulation_loss / self.config.gradient_accumulation_steps,
+                    'energy_loss': self.accumulation_metrics['energy_loss'] / self.config.gradient_accumulation_steps,
+                    'text_loss': self.accumulation_metrics['text_loss'] / self.config.gradient_accumulation_steps,
+                    'learning_rate': self.optimizer.param_groups[0]['lr'],
+                    'step_time': step_time,
+                    'flow_time': flow_time,
+                    'active_flows': flow_stats.get('active_flows', 0),
+                    'spawned_flows': flow_stats.get('spawned_flows', 0),
+                    'flows_reached_output': flow_stats.get('flows_reached_output', 0),
+                    'batch_size': self.accumulation_metrics['batch_size'],
+                    'effective_batch_size': self.accumulation_metrics['batch_size'],  # Реальный accumulated размер
+                    'accumulation_complete': True
+                }
+            else:
+                # Промежуточные метрики (accumulating)
+                step_metrics = {
+                    'total_loss': total_loss.item(),
+                    'energy_loss': energy_loss.item(),
+                    'text_loss': text_loss.item(),
+                    'learning_rate': self.optimizer.param_groups[0]['lr'],
+                    'step_time': step_time,
+                    'flow_time': flow_time,
+                    'active_flows': flow_stats.get('active_flows', 0),
+                    'spawned_flows': flow_stats.get('spawned_flows', 0),
+                    'flows_reached_output': flow_stats.get('flows_reached_output', 0),
+                    'batch_size': batch_size,
+                    'effective_batch_size': batch_size,
+                    'accumulation_complete': False,
+                    'accumulation_step': self.current_accumulation_step
+                }
             
             # УСЛОВНЫЕ МЕТРИКИ ПРОИЗВОДИТЕЛЬНОСТИ (только при нужном уровне логирования)
             if logger.isEnabledFor(DEBUG_PERFORMANCE):
@@ -524,13 +584,18 @@ class EnergyTrainer:
                 except Exception as prof_error:
                     pass  # Игнорируем ошибки профилирования
             
-            self.global_step += 1
-            
-            # Логирование
-            if self.global_step % self.config.log_interval == 0:
+            # Логирование только при завершении accumulation или для промежуточных шагов в debug режиме
+            if is_accumulation_complete and self.global_step % self.config.log_interval == 0:
+                avg_loss = self.accumulation_loss / self.config.gradient_accumulation_steps
+                avg_energy = self.accumulation_metrics['energy_loss'] / self.config.gradient_accumulation_steps
+                avg_text = self.accumulation_metrics['text_loss'] / self.config.gradient_accumulation_steps
                 logger.log(DEBUG_TRAINING,
-                          f"✅ Step {self.global_step}: total_loss={total_loss.item():.4f}, "
-                          f"energy_loss={energy_loss.item():.4f}, text_loss={text_loss.item():.4f}")
+                          f"✅ Step {self.global_step} (accumulated): total_loss={avg_loss:.4f}, "
+                          f"energy_loss={avg_energy:.4f}, text_loss={avg_text:.4f}")
+            elif not is_accumulation_complete and logger.isEnabledFor(DEBUG_TRAINING):
+                logger.log(DEBUG_TRAINING,
+                          f"🔄 Accumulating {self.current_accumulation_step}/{self.config.gradient_accumulation_steps}: "
+                          f"total_loss={total_loss.item():.4f}")
             
             return step_metrics
             
@@ -720,8 +785,8 @@ class EnergyTrainer:
                     try:
                         # Используем teacher embeddings для демонстрации (правильная архитектура)
                         surface_input = teacher_input_embeddings[i:i+1]  # [1, 768]
-                        surface_output = self.flow_processor.forward(surface_input, max_steps=50)  # [1, surface_dim]
-                        
+                        surface_output = self.flow_processor.forward(surface_input)  # [1, surface_dim]
+
                         # Декодируем surface embedding в текст (surface_output уже имеет правильный размер [1, surface_dim])
                         predicted_texts = self.text_decoder.decode_surface(surface_output)  # [1, surface_dim] -> List[str]
                         predicted_text = predicted_texts[0] if predicted_texts else ""  # Берем первый результат или пустую строку
