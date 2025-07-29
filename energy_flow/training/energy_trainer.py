@@ -407,7 +407,7 @@ class EnergyTrainer:
                     
                 except Exception as e:
                     logger.warning(f"❌ Text bridge computation failed: {e}")
-                    text_loss = torch.tensor(0.1, device=self.device)
+                    text_loss = torch_module.tensor(0.1, device=self.device)
             
             # 5. Комбинированный loss
             total_loss = energy_loss + self.config.text_loss_weight * text_loss
@@ -436,7 +436,7 @@ class EnergyTrainer:
             
             # Gradient clipping
             if self.config.gradient_clip > 0:
-                torch.nn.utils.clip_grad_norm_(
+                torch_module.nn.utils.clip_grad_norm_(
                     self.optimizer.param_groups[0]['params'],
                     self.config.gradient_clip
                 )
@@ -462,8 +462,6 @@ class EnergyTrainer:
             # УСЛОВНЫЕ МЕТРИКИ ПРОИЗВОДИТЕЛЬНОСТИ (только при нужном уровне логирования)
             if logger.isEnabledFor(DEBUG_PERFORMANCE):
                 try:
-                    import torch
-                    
                     # Throughput metrics
                     throughput_samples_per_sec = batch_size / step_time if step_time > 0 else 0
                     
@@ -472,13 +470,13 @@ class EnergyTrainer:
                     memory_used_gb = 0
                     memory_utilization_percent = 0
                     
-                    if torch.cuda.is_available():
-                        memory_used_gb = torch.cuda.memory_allocated() / 1e9
-                        memory_reserved_gb = torch.cuda.memory_reserved() / 1e9
+                    if torch_module.cuda.is_available():
+                        memory_used_gb = torch_module.cuda.memory_allocated() / 1e9
+                        memory_reserved_gb = torch_module.cuda.memory_reserved() / 1e9
                         
                         # GPU utilization требует nvidia-ml-py3, может быть недоступно
                         try:
-                            gpu_utilization = torch.cuda.utilization() if hasattr(torch.cuda, 'utilization') else 0
+                            gpu_utilization = torch_module.cuda.utilization() if hasattr(torch_module.cuda, 'utilization') else 0
                         except:
                             gpu_utilization = 0
                         

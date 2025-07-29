@@ -202,10 +202,11 @@ def create_experiment_config() -> EnergyConfig:
         batch_size=16,
         carrier_hidden_size=512,
         carrier_num_layers=2,
+        max_spawn_per_step=1,   # Ограниченный spawn для отладки
         
         # Text Bridge настройки для экспериментов
         text_bridge_enabled=True,
-        text_cache_enabled=True,
+        text_cache_enabled=False,
         text_cache_size=5000,
         text_loss_weight=0.15,
         iterative_correction_steps=3,

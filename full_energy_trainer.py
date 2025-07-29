@@ -27,13 +27,13 @@ sys.path.insert(0, str(project_root))
 from energy_flow.config import create_experiment_config, set_energy_config
 from energy_flow.training import EnergyTrainer
 from energy_flow.training.checkpoint_loader import create_checkpoint_loader
-from energy_flow.utils.logging import get_logger, DEBUG_TRAINING, setup_logging
+from energy_flow.utils.logging import DEBUG_ENERGY, get_logger, DEBUG_TRAINING, setup_logging
 from energy_flow.utils.checkpoint_utils import list_checkpoints
 
 logger = get_logger(__name__)
 
 # Настройка логирования с convergence категорией
-setup_logging(debug_categories=['convergence'])
+setup_logging(level="debug_energy")
 
 # Путь к experiment датасету
 EXPERIMENT_DATASET_PATH = "data/energy_flow/active/experiment_mixed_5021pairs_20250729_121801.pt"
