@@ -131,6 +131,10 @@ class EnergyLattice(nn.Module):
             position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
             flow_id = self._create_flow(position, energy, batch_idx=batch_idx)
             flow_ids.append(flow_id)
+            
+            # ДИАГНОСТИКА: логируем первые 5 созданных потоков
+            if len(flow_ids) <= 5:
+                logger.debug_init(f"🆕 Created flow {flow_id}: position=({x}, {y}, 0), energy_norm={torch.norm(energy):.3f}")
         
         logger.info(f"Created {len(flow_ids)} initial flows on input surface")
         return flow_ids

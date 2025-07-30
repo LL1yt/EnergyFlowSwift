@@ -285,7 +285,7 @@ def create_normalization_manager(lattice_width: int, lattice_height: int, lattic
     ranges = NormalizationRanges(
         x_range=(0.0, float(lattice_width - 1)),
         y_range=(0.0, float(lattice_height - 1)),
-        z_range=(0.0, float(lattice_depth * 2 - 1))  # Позволяем выход за пределы
+        z_range=(0.0, float(lattice_depth * 2 - 1))  # ВОССТАНОВЛЕНО: трехзонная логика [0, depth*2-1]
     )
     
     return NormalizationManager(ranges)

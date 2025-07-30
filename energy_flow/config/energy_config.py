@@ -95,19 +95,22 @@ class EnergyConfig:
     
     # Curriculum Learning для обучения движению вперед
     initial_z_bias: float = 2.0  # Начальный положительный bias для Z-координаты
-    use_forward_movement_bias: bool = True  # Включить curriculum learning для движения вперед
+    use_forward_movement_bias: bool = False  # Включить curriculum learning для движения вперед
     bias_decay_steps: int = 5000  # Количество шагов для полного убывания bias'а
     bias_decay_rate: float = 0.95  # Скорость убывания bias'а (не используется в линейном decay)
     progressive_z_multiplier: float = 0.1  # Множитель для доп. bias'а на основе возраста потока
     
     # Forward Movement Reward в loss функции
-    use_forward_movement_reward: bool = True  # Поощрять движение вперед через loss
+    use_forward_movement_reward: bool = False  # Поощрять движение вперед через loss
     forward_reward_weight: float = 0.1  # Начальный вес forward movement reward
     forward_reward_decay_steps: int = 3000  # Шаги для уменьшения веса reward'а
     
     # Эксплорация и шум
     exploration_noise: float = 0.3  # Уменьшенный шум для стабильности
     use_exploration_noise: bool = True  # Включать exploration noise
+
+    # SMART INITIALIZATION: для смещения Z-координаты при инициализации весов
+    smart_init_bias: float = 0.0  # ОТКЛЮЧЕНО для диагностики
     
     def __post_init__(self):
         """Валидация и вычисление производных параметров"""
@@ -262,16 +265,18 @@ def create_experiment_config() -> EnergyConfig:
         convergence_min_steps=10,       # Минимум 10 шагов для глубокой обработки
         convergence_patience=5,          # Больше терпения для depth=60
         
-        # Curriculum learning для экспериментов
-        initial_z_bias=1.8,
+        # Curriculum learning для экспериментов (СКОРРЕКТИРОВАННЫЕ ПАРАМЕТРЫ ПОСЛЕ ИСПРАВЛЕНИЯ МАСШТАБА)
+        initial_z_bias=3,  # Уменьшено с 5.0 до 3 после исправления z_range
         use_forward_movement_bias=True,
-        bias_decay_steps=3000,  # Умеренное убывание
-        progressive_z_multiplier=0.1,
+        bias_decay_steps=8000,  # Медленное убывание для стабильности
+        bias_decay_rate=0.95,  # Не используется, но нужен для совместимости
+        progressive_z_multiplier=0.1,  # Уменьшено с 0.2 до 0.1
         
         # Forward movement reward
         use_forward_movement_reward=True,
-        forward_reward_weight=0.08,  # Умеренный вес для experiment
-        forward_reward_decay_steps=2000
+        forward_reward_weight=0.12,  # Повышенный вес для experiment
+        forward_reward_decay_steps=5000,
+        smart_init_bias=-1.0  # ОТКЛЮЧЕНО для диагностики
     )
 
 

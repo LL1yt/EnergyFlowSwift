@@ -121,6 +121,14 @@ class FlowProcessor(nn.Module):
         
         logger.info(f"Starting energy propagation: {len(flow_ids)} initial flows, max {max_steps} steps")
         
+        # ДИАГНОСТИКА: проверяем начальные позиции потоков
+        initial_flows = self.lattice.get_active_flows()
+        if initial_flows:
+            initial_z_positions = torch.stack([flow.position[2] for flow in initial_flows[:10]])  # Первые 10
+            logger.debug_energy(f"🏁 INITIAL positions (first 10): Z-coords = {initial_z_positions.tolist()}")
+            if torch.any(initial_z_positions != 0):
+                logger.error(f"🚫 ERROR: Initial flows do NOT start at Z=0! Found Z = {initial_z_positions.unique().tolist()}")
+        
         # Сбрасываем статистику конвергенции
         initial_flows_count = len(flow_ids)
         self.convergence_stats = {
@@ -150,13 +158,35 @@ class FlowProcessor(nn.Module):
             if active_flows:
                 self.step(active_flows, global_training_step=global_training_step)
             
-            # Логирование прогресса
+            # Логирование прогресса с детальной статистикой в первые шаги
             if step % self.config.log_interval == 0:
                 stats = self.lattice.get_statistics()
                 buffered_count = self.lattice.get_buffered_flows_count()
                 completion_rate = stats['total_completed'] / initial_flows_count if initial_flows_count > 0 else 0
                 logger.info(f"Step {step}: {stats['current_active']} active flows, "
                           f"{stats['total_completed']} completed ({completion_rate:.2f}), {buffered_count} buffered")
+                
+                # ДЕТАЛЬНАЯ СТАТИСТИКА для первых 5 шагов
+                if step <= 5 and active_flows:
+                    # Собираем Z-координаты всех активных потоков
+                    z_positions = torch.stack([flow.position[2] for flow in active_flows])
+                    logger.info(f"📊 Step {step} Z-distribution: "
+                              f"min={z_positions.min():.2f}, max={z_positions.max():.2f}, "
+                              f"mean={z_positions.mean():.2f}, std={z_positions.std():.2f}")
+                    
+                    # КРИТИЧЕСКАЯ ПРОВЕРКА: Z-координаты в ожидаемом диапазоне
+                    max_valid_z = self.config.lattice_depth - 1  # 59 для depth=60
+                    out_of_bounds_flows = (z_positions > max_valid_z * 2).sum().item()  # Более чем в 2 раза больше
+                    if out_of_bounds_flows > 0:
+                        logger.error(f"🚫 CRITICAL BOUNDS ERROR: {out_of_bounds_flows}/{len(active_flows)} flows "
+                                   f"have Z > {max_valid_z * 2} (expected max ≈ {max_valid_z})")
+                        logger.error(f"🔍 Z-range in normalization: {self.config.normalization_manager.ranges.z_range}")
+                    
+                    # Показываем распределение по Z-слоям
+                    z_int = z_positions.int()
+                    unique_z, counts = torch.unique(z_int, return_counts=True)
+                    z_distribution = {int(z.item()): int(count.item()) for z, count in zip(unique_z, counts)}
+                    logger.info(f"📊 Step {step} Z-layers distribution: {z_distribution}")
         
         # Собираем выходную энергию из буфера (БЕЗ преобразования в 768D!)
         output_surface_embeddings, completed_flows = self._collect_final_surface_output()
@@ -193,6 +223,15 @@ class FlowProcessor(nn.Module):
                    f"{final_stats['total_completed']} flows reached output, "
                    f"{final_stats['total_died']} died "
                    f"(energy: {killed_energy}, backward: {killed_backward}, bounds: {killed_bounds})")
+        
+        # ДОПОЛНИТЕЛЬНАЯ ДИАГНОСТИКА при проблемах
+        if killed_backward > initial_flows_count * 0.8:  # Более 80% потоков умерли из-за backward движения
+            logger.error(f"🚫 CRITICAL: {killed_backward}/{initial_flows_count} flows died from backward movement!")
+            logger.error("🔍 Possible causes: bias not applied, wrong normalization, or curriculum disabled")
+            if global_training_step is not None:
+                logger.error(f"🔍 Current global_training_step: {global_training_step}")
+            else:
+                logger.error("🔍 global_training_step is None - curriculum learning disabled!")
         
         return output_surface_embeddings
     

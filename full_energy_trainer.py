@@ -33,7 +33,7 @@ from energy_flow.utils.checkpoint_utils import list_checkpoints
 logger = get_logger(__name__)
 
 # Настройка логирования с convergence категорией
-setup_logging(level="debug_energy")
+setup_logging(debug_mode=True, level="DEBUG_FORWARD")
 
 # Путь к experiment датасету
 EXPERIMENT_DATASET_PATH = "data/energy_flow/active/experiment_mixed_5021pairs_20250729_121801.pt"
