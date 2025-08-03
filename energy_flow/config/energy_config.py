@@ -46,6 +46,9 @@ class EnergyConfig:
     neuron_hidden_dim: int = 32
     neuron_output_dim: int = 64  # Должен совпадать с входом GRU
     
+    # Фильтрация потоков с маленькими смещениями (переосмысленный carrier_dropout)
+    min_displacement_threshold: float = 0.5  # Минимальная длина смещения для сохранения потока
+    enable_displacement_filtering: bool = True  # Включить фильтрацию "топчущихся" потоков
     
     # Размерности эмбеддингов
     input_embedding_dim_from_teacher: int = 768  # Стандартный размер от language models

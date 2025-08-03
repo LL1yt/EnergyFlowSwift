@@ -66,7 +66,8 @@ class EnergyCarrier(nn.Module):
         # Параметры из конфига
         self.hidden_size = config.carrier_hidden_size
         self.num_layers = config.carrier_num_layers
-        self.dropout = config.carrier_dropout
+        # УДАЛЕНО: dropout слои больше не используются в архитектуре относительных координат
+        # Фильтрация потоков теперь основана на длине смещения, а не на dropout
         
         # Размерности
         self.neuron_output_dim = config.neuron_output_dim  # Выход SimpleNeuron (64)
@@ -78,7 +79,7 @@ class EnergyCarrier(nn.Module):
             input_size=self.input_dim,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
-            dropout=self.dropout if self.num_layers > 1 else 0,
+            dropout=0.0,  # Dropout отключен в новой архитектуре
             batch_first=True
         )
         
@@ -87,7 +88,7 @@ class EnergyCarrier(nn.Module):
         self.energy_projection = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size // 2),
             nn.GELU(),
-            nn.Dropout(self.dropout),
+            # Dropout слой удален
             nn.Linear(self.hidden_size // 2, self.energy_dim),  # Выход: 1 скаляр
             nn.Tanh()  # Нормализация в [-1, 1]
         )
@@ -96,7 +97,7 @@ class EnergyCarrier(nn.Module):
         self.displacement_projection = nn.Sequential(
             nn.Linear(self.hidden_size, 64),
             nn.GELU(),
-            nn.Dropout(self.dropout),
+            # Dropout слой удален
             nn.Linear(64, 3)  # Δx, Δy, Δz смещения (до активации)
         )
         self.displacement_activation = self.config.normalization_manager.get_displacement_activation()  # Tanh для [-1, 1]
@@ -112,17 +113,14 @@ class EnergyCarrier(nn.Module):
         total_params = sum(p.numel() for p in self.parameters())
         logger.info(f"EnergyCarrier initialized with {total_params:,} parameters")
         logger.debug(f"GRU: input={self.input_dim}, hidden={self.hidden_size}, layers={self.num_layers}")
-        logger.info(f"🎓 Curriculum settings: initial_z_bias={self.config.initial_z_bias}, "
-                   f"use_forward_bias={self.config.use_forward_movement_bias}, "
-                   f"decay_steps={getattr(self.config, 'bias_decay_steps', 'N/A')}")
+        
     
     def _init_weights(self):
         """Инициализация весов с smart initialization для движения вперед"""
         # GRU уже имеет хорошую инициализацию по умолчанию
         
-        # Инициализируем projection heads
-        for module in [self.energy_projection, self.displacement_projection, 
-                      self.spawn_gate, self.spawn_energy_projection]:
+        # Инициализируем projection heads (spawn компоненты удалены)
+        for module in [self.energy_projection, self.displacement_projection]:
             if isinstance(module, nn.Sequential):
                 for layer in module:
                     if isinstance(layer, nn.Linear):

@@ -425,6 +425,24 @@ class FlowProcessor(nn.Module):
         # Маска активных потоков
         active_mask = ~is_terminated
         
+        # Дополнительная фильтрация по длине смещения (переосмысленный carrier_dropout)
+        if self.config.enable_displacement_filtering:
+            # Вычисляем смещения из текущих и следующих позиций
+            displacements = carrier_output.next_position - current_positions  # [batch, 3]
+            displacement_lengths = torch.norm(displacements, dim=1)  # [batch]
+            
+            # Маска потоков с маленькими смещениями ("топчущиеся")
+            small_displacement_mask = displacement_lengths < self.config.min_displacement_threshold
+            
+            # Логируем статистику фильтрации
+            if small_displacement_mask.any():
+                filtered_count = small_displacement_mask.sum().item()
+                logger.debug_relative(f"🔍 Filtered {filtered_count}/{batch_size} flows with small displacements "
+                                     f"(< {self.config.min_displacement_threshold:.2f})")
+            
+            # Исключаем потоки с маленькими смещениями из активных
+            active_mask = active_mask & ~small_displacement_mask
+        
         # 2. Буферизуем потоки, достигшие выходных плоскостей
         if output_reached_mask.any():
             output_flow_ids = flow_ids[output_reached_mask]

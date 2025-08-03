@@ -51,7 +51,8 @@ class SimpleNeuron(nn.Module):
         self.energy_dim = 1  # Скалярная энергия от mapper'а
         self.hidden_dim = config.neuron_hidden_dim
         self.output_dim = config.neuron_output_dim
-        dropout = config.carrier_dropout  # Используем общий dropout
+        # УДАЛЕНО: dropout больше не используется, фильтрация потоков теперь 
+        # основана на длине смещения в FlowProcessor
         
         # Входной размер: координаты + скалярная энергия
         input_dim = self.coord_dim + self.energy_dim
@@ -62,13 +63,13 @@ class SimpleNeuron(nn.Module):
             nn.Linear(input_dim, self.hidden_dim),
             nn.LayerNorm(self.hidden_dim),
             nn.GELU(),
-            nn.Dropout(dropout),
+            # Dropout слой удален
             
             # Второй слой для нелинейности
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.LayerNorm(self.hidden_dim),
             nn.GELU(),
-            nn.Dropout(dropout),
+            # Dropout слой удален
             
             # Выходной слой
             nn.Linear(self.hidden_dim, self.output_dim)
