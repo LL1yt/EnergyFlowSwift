@@ -79,8 +79,9 @@ class EnergyLattice(nn.Module):
         self.active_flows: Dict[int, EnergyFlow] = {}
         self.next_flow_id = 0
         
-        # Буфер для выходных потоков (буферизованный сбор)
-        self.output_buffer: Dict[Tuple[int, int], List[EnergyFlow]] = {}  # (x,y) -> [flows]
+        # Двойной выходной буфер для трехплоскостной архитектуры
+        self.output_buffer_z0: Dict[Tuple[int, int], List[EnergyFlow]] = {}  # Z=0 плоскость: (x,y) -> [flows]
+        self.output_buffer_zdepth: Dict[Tuple[int, int], List[EnergyFlow]] = {}  # Z=depth плоскость: (x,y) -> [flows]
         
         # Статистика
         self.stats = {
@@ -95,11 +96,15 @@ class EnergyLattice(nn.Module):
     
     def place_initial_energy(self, embeddings: torch.Tensor, mapper=None) -> List[int]:
         """
-        Размещает входные эмбеддинги на входной стороне куба (z=0)
+        Размещает входные эмбеддинги на входной плоскости в центре куба (Z = depth/2)
+        
+        НОВАЯ ТРЕХПЛОСКОСТНАЯ АРХИТЕКТУРА:
+        - Входная плоскость: Z = depth/2 (центр куба)
+        - Выходные плоскости: Z = 0 и Z = depth (края куба)
         
         Args:
             embeddings: [batch, embedding_dim] - входные эмбеддинги (768D)
-            mapper: EnergyFlowMapper для проекции (опционально)
+            mapper: EnergyFlowMapper для проекции (обязательно)
             
         Returns:
             flow_ids: Список ID созданных потоков
@@ -122,21 +127,25 @@ class EnergyLattice(nn.Module):
         # Используем маппер для проекции 768D -> surface_dim
         cell_energies = mapper.map_to_surface(embeddings)
         
+        # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: стартовая Z-координата в центре куба
+        start_z = self.depth // 2  # Z = depth/2 (центр куба)
+        
         for (x, y), energy, batch_idx in cell_energies:
             if len(self.active_flows) >= self.max_active_flows:
                 logger.warning(f"Reached max active flows limit: {self.max_active_flows}")
                 break
             
-            # Создаем поток с энергией из маппера
-            position = torch.tensor([x, y, 0], dtype=torch.float32, device=self.device)
+            # Создаем поток с позицией в центре куба
+            position = torch.tensor([x, y, start_z], dtype=torch.float32, device=self.device)
             flow_id = self._create_flow(position, energy, batch_idx=batch_idx)
             flow_ids.append(flow_id)
             
             # ДИАГНОСТИКА: логируем первые 5 созданных потоков
             if len(flow_ids) <= 5:
-                logger.debug_init(f"🆕 Created flow {flow_id}: position=({x}, {y}, 0), energy_norm={torch.norm(energy):.3f}")
+                logger.debug_init(f"🆫 Created flow {flow_id}: position=({x}, {y}, {start_z}), energy_norm={torch.norm(energy):.3f}")
         
-        logger.info(f"Created {len(flow_ids)} initial flows on input surface")
+        logger.info(f"🏗️ Created {len(flow_ids)} initial flows on center input plane (Z={start_z})")
+        logger.info(f"🎯 Triplaner architecture: input Z={start_z}, outputs Z=0 and Z={self.depth}")
         return flow_ids
     
     def _create_flow(self, position: torch.Tensor, energy: torch.Tensor, 
@@ -179,7 +188,7 @@ class EnergyLattice(nn.Module):
                    new_position: torch.Tensor,
                    new_energy: torch.Tensor,
                    new_hidden: torch.Tensor):
-        """Обновляет состояние потока"""
+        """Обновляет состояние потока для трехплоскостной архитектуры"""
         if flow_id not in self.active_flows:
             return
         
@@ -189,10 +198,16 @@ class EnergyLattice(nn.Module):
         flow.hidden_state = new_hidden
         flow.age += 1
         
-        # Буферизуем потоки при достижении выхода
-        if new_position[2] >= self.depth - 1:
-            self._buffer_output_flow(flow_id)
-            logger.debug(f"Flow {flow_id} reached output side at age {flow.age} (buffered for collection)")
+        # Буферизуем потоки при достижении любой из выходных плоскостей
+        z_pos = new_position[2].item()
+        if z_pos <= 0:
+            # Достигнута левая выходная плоскость (Z=0)
+            self._buffer_flow_to_z0_plane(flow_id)
+            logger.debug(f"Flow {flow_id} reached Z=0 output plane at age {flow.age} (buffered)")
+        elif z_pos >= self.depth:
+            # Достигнута правая выходная плоскость (Z=depth)
+            self._buffer_flow_to_zdepth_plane(flow_id)
+            logger.debug(f"Flow {flow_id} reached Z={self.depth} output plane at age {flow.age} (buffered)")
     
     def spawn_flows(self, parent_id: int, spawn_energies: List[torch.Tensor]) -> List[int]:
         """
@@ -301,64 +316,140 @@ class EnergyLattice(nn.Module):
         if updated_count > 0:
             logger.debug(f"Batch updated {updated_count} flows")
     
-    def _buffer_output_flow(self, flow_id: int):
-        """Помещает поток в буфер выходных потоков"""
+    def _buffer_flow_to_z0_plane(self, flow_id: int):
+        """Помещает поток в буфер левой выходной плоскости (Z=0)"""
         if flow_id not in self.active_flows:
             return
         
         flow = self.active_flows[flow_id]
         
-        # Корректируем позицию если поток вышел за пределы
-        if flow.position[2] > self.depth - 1:
-            corrected_flow = EnergyFlow(
-                id=flow.id,
-                position=torch.tensor([
-                    flow.position[0], 
-                    flow.position[1], 
-                    self.depth - 1  # Устанавливаем на выходную сторону
-                ], device=self.device),
-                energy=flow.energy,
-                hidden_state=flow.hidden_state,
-                parent_id=flow.parent_id,
-                age=flow.age,
-                is_active=flow.is_active
-            )
-            buffered_flow = corrected_flow
-        else:
-            buffered_flow = flow
+        # Корректируем позицию для Z=0 плоскости
+        corrected_flow = EnergyFlow(
+            id=flow.id,
+            position=torch.tensor([
+                flow.position[0], 
+                flow.position[1], 
+                0.0  # Проецируем на Z=0 плоскость
+            ], device=self.device),
+            energy=flow.energy,
+            hidden_state=flow.hidden_state,
+            batch_idx=flow.batch_idx,
+            parent_id=flow.parent_id,
+            age=flow.age,
+            is_active=flow.is_active
+        )
         
-        # Определяем клетку на выходной стороне
-        x = int(torch.clamp(buffered_flow.position[0], 0, self.width - 1).item())
-        y = int(torch.clamp(buffered_flow.position[1], 0, self.height - 1).item())
+        # Определяем клетку на выходной плоскости
+        x = int(torch.clamp(corrected_flow.position[0], 0, self.width - 1).item())
+        y = int(torch.clamp(corrected_flow.position[1], 0, self.height - 1).item())
         key = (x, y)
         
-        # Добавляем в буфер
-        if key not in self.output_buffer:
-            self.output_buffer[key] = []
-        self.output_buffer[key].append(buffered_flow)
+        # Добавляем в буфер Z=0 плоскости
+        if key not in self.output_buffer_z0:
+            self.output_buffer_z0[key] = []
+        self.output_buffer_z0[key].append(corrected_flow)
         
         # Деактивируем поток после буферизации
         flow.is_active = False
         self.stats['total_completed'] += 1
         
-        logger.debug(f"Flow {flow_id} buffered to output cell ({x}, {y})")
+        logger.debug(f"Flow {flow_id} buffered to Z=0 plane cell ({x}, {y})")
+    
+    def _buffer_flow_to_zdepth_plane(self, flow_id: int):
+        """Помещает поток в буфер правой выходной плоскости (Z=depth)"""
+        if flow_id not in self.active_flows:
+            return
+        
+        flow = self.active_flows[flow_id]
+        
+        # Корректируем позицию для Z=depth плоскости
+        corrected_flow = EnergyFlow(
+            id=flow.id,
+            position=torch.tensor([
+                flow.position[0], 
+                flow.position[1], 
+                float(self.depth)  # Проецируем на Z=depth плоскость
+            ], device=self.device),
+            energy=flow.energy,
+            hidden_state=flow.hidden_state,
+            batch_idx=flow.batch_idx,
+            parent_id=flow.parent_id,
+            age=flow.age,
+            is_active=flow.is_active
+        )
+        
+        # Определяем клетку на выходной плоскости
+        x = int(torch.clamp(corrected_flow.position[0], 0, self.width - 1).item())
+        y = int(torch.clamp(corrected_flow.position[1], 0, self.height - 1).item())
+        key = (x, y)
+        
+        # Добавляем в буфер Z=depth плоскости
+        if key not in self.output_buffer_zdepth:
+            self.output_buffer_zdepth[key] = []
+        self.output_buffer_zdepth[key].append(corrected_flow)
+        
+        # Деактивируем поток после буферизации
+        flow.is_active = False
+        self.stats['total_completed'] += 1
+        
+        logger.debug(f"Flow {flow_id} buffered to Z={self.depth} plane cell ({x}, {y})")
     
     def get_buffered_flows_count(self) -> int:
-        """Возвращает количество потоков в выходном буфере"""
-        return sum(len(flows) for flows in self.output_buffer.values())
+        """Возвращает количество потоков в обоих выходных буферах"""
+        count_z0 = sum(len(flows) for flows in self.output_buffer_z0.values())
+        count_zdepth = sum(len(flows) for flows in self.output_buffer_zdepth.values())
+        return count_z0 + count_zdepth
     
     def clear_output_buffer(self):
-        """Очищает буфер выходных потоков"""
+        """Очищает оба выходных буфера"""
         cleared_count = self.get_buffered_flows_count()
-        self.output_buffer.clear()
-        logger.debug(f"Cleared output buffer ({cleared_count} flows)")
+        self.output_buffer_z0.clear()
+        self.output_buffer_zdepth.clear()
+        logger.debug(f"Cleared dual output buffers ({cleared_count} flows)")
     
     def get_all_buffered_flows(self) -> List[EnergyFlow]:
-        """Возвращает все потоки из буфера"""
+        """Возвращает все потоки из обоих выходных буферов"""
         all_flows = []
-        for flows in self.output_buffer.values():
+        # Собираем потоки из обеих выходных плоскостей
+        for flows in self.output_buffer_z0.values():
+            all_flows.extend(flows)
+        for flows in self.output_buffer_zdepth.values():
             all_flows.extend(flows)
         return all_flows
+    
+    def calculate_flow_importance(self, flow: EnergyFlow) -> float:
+        """
+        Вычисляет важность потока для трехплоскостной архитектуры
+        
+        Система важности:
+        1. Близость к выходной плоскости (главный фактор)
+        2. Длина пути (количество шагов)
+        
+        Args:
+            flow: EnergyFlow для оценки важности
+            
+        Returns:
+            importance: float - важность потока для взвешенного усреднения
+        """
+        z = flow.position[2].item()
+        
+        # Расстояние до ближайшей выходной плоскости
+        distance_to_z0 = abs(z - 0)
+        distance_to_zdepth = abs(z - self.depth)
+        min_distance = min(distance_to_z0, distance_to_zdepth)
+        
+        # Безопасное деление - избегаем деления на ноль
+        safe_distance = max(min_distance, self.config.safe_distance_minimum)
+        proximity_importance = 1.0 / safe_distance
+        
+        # Важность длины пути
+        path_importance = flow.age * self.config.path_length_weight
+        
+        # Комбинированная важность
+        total_importance = (self.config.proximity_weight * proximity_importance + 
+                          self.config.path_length_weight * path_importance)
+        
+        return total_importance
     
     def collect_buffered_energy(self) -> Tuple[torch.Tensor, List[int]]:
         """
@@ -634,7 +725,8 @@ class EnergyLattice(nn.Module):
     def reset(self):
         """Сбрасывает состояние решетки"""
         self.active_flows.clear()
-        self.output_buffer.clear()  # Очищаем буфер
+        self.output_buffer_z0.clear()    # Очищаем буфер Z=0 плоскости
+        self.output_buffer_zdepth.clear() # Очищаем буфер Z=depth плоскости
         self.next_flow_id = 0
         self.stats = {
             'total_created': 0,
@@ -642,7 +734,7 @@ class EnergyLattice(nn.Module):
             'total_died': 0,
             'max_concurrent': 0
         }
-        logger.info("EnergyLattice reset")
+        logger.info("EnergyLattice reset (triplaner architecture)")
 
 
 def create_energy_lattice(config=None) -> EnergyLattice:

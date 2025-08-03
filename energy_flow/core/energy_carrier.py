@@ -92,15 +92,14 @@ class EnergyCarrier(nn.Module):
             nn.Tanh()  # Нормализация в [-1, 1]
         )
         
-        # 2. Следующая позиция - предсказываем нормализованные координаты
-        # Разделяем на части для диагностики
-        self.position_projection_base = nn.Sequential(
+        # 2. Смещения - предсказываем относительные смещения (Δx, Δy, Δz)
+        self.displacement_projection = nn.Sequential(
             nn.Linear(self.hidden_size, 64),
             nn.GELU(),
             nn.Dropout(self.dropout),
-            nn.Linear(64, 3)  # x, y, z координаты (до активации)
+            nn.Linear(64, 3)  # Δx, Δy, Δz смещения (до активации)
         )
-        self.position_activation = self.config.normalization_manager.get_coordinate_activation()  # Tanh для [-1, 1]
+        self.displacement_activation = self.config.normalization_manager.get_displacement_activation()  # Tanh для [-1, 1]
         
         # 3. Порождение новых потоков
         self.spawn_gate = nn.Sequential(
@@ -132,7 +131,7 @@ class EnergyCarrier(nn.Module):
         # GRU уже имеет хорошую инициализацию по умолчанию
         
         # Инициализируем projection heads
-        for module in [self.energy_projection, self.position_projection_base, 
+        for module in [self.energy_projection, self.displacement_projection, 
                       self.spawn_gate, self.spawn_energy_projection]:
             if isinstance(module, nn.Sequential):
                 for layer in module:
@@ -145,27 +144,10 @@ class EnergyCarrier(nn.Module):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
         
-        # SMART INITIALIZATION: положительный bias для Z-координаты
-        # Помогает модели научиться движению вперед без жесткого кодирования
-        with torch.no_grad():
-            # position_projection_base[-1] это последний Linear слой перед активацией
-            # Индекс 2 соответствует Z-координате в выходе [x, y, z]
-            if hasattr(self.position_projection_base, '__getitem__') and len(self.position_projection_base) >= 2:
-                final_linear = None
-                # Находим последний Linear слой
-                for i in range(len(self.position_projection_base) - 1, -1, -1):
-                    if isinstance(self.position_projection_base[i], nn.Linear):
-                        final_linear = self.position_projection_base[i]
-                        break
-                
-                if final_linear is not None and final_linear.bias is not None:
-                    # SMART INITIALIZATION: используем из config (теперь 0.0 для диагностики)
-                    smart_init_bias = self.config.smart_init_bias
-                    final_linear.bias[2] = smart_init_bias
-                    logger.debug_init(f"🎩 SMART INITIALIZATION: Z-coordinate bias set to {smart_init_bias:.2f} (DISABLED for diagnostics)")
-                    logger.debug_init(f"Full position_projection bias: {final_linear.bias.data}")
-                else:
-                    logger.warning("⚠️ Smart initialization FAILED: could not find final linear layer with bias!")
+        # Для новой архитектуры относительных координат:
+        # - Нет smart initialization (смещения центрированы на 0)
+        # - Нет bias для движения вперед (модель учится сама)
+        logger.debug_init("🏗️ Relative coordinates architecture: no smart initialization, model learns naturally")
     
     def forward(self, 
                 neuron_output: torch.Tensor,
@@ -210,123 +192,59 @@ class EnergyCarrier(nn.Module):
         # 1. Генерируем текущую энергию
         energy_value = self.energy_projection(gru_output)  # [batch, embedding_dim]
         
-        # 2. Вычисляем следующую позицию (нормализованную)
-        # ДИАГНОСТИКА: логируем GRU выход перед position_projection
+        # 2. Вычисляем смещения (относительные координаты)
+        # ДИАГНОСТИКА: логируем GRU выход перед displacement_projection
         if global_training_step is not None and global_training_step == 0:  # Только первый шаг
             logger.debug_forward(f"🧠 GRU output stats: min={gru_output.min():.3f}, max={gru_output.max():.3f}, "
                        f"mean={gru_output.mean():.3f}, std={gru_output.std():.3f}")
         
-        # Получаем сырой выход (до активации)
-        predicted_position_raw = self.position_projection_base(gru_output)  # [batch, 3] без ограничений
+        # Получаем сырой выход смещений (до активации)
+        displacement_raw = self.displacement_projection(gru_output)  # [batch, 3] без ограничений
         
         # ДИАГНОСТИКА: логируем сырой выход модели (ДО Tanh)
         if global_training_step is not None and global_training_step == 0:  # Только первый шаг
-            raw_z = predicted_position_raw[:, 2]
-            logger.debug_forward(f"🔥 RAW model output (before Tanh): Z min={raw_z.min():.3f}, "
-                       f"max={raw_z.max():.3f}, mean={raw_z.mean():.3f}, std={raw_z.std():.3f}")
+            raw_delta_z = displacement_raw[:, 2]
+            logger.debug_forward(f"🔥 RAW displacement output (before Tanh): ΔZ min={raw_delta_z.min():.3f}, "
+                       f"max={raw_delta_z.max():.3f}, mean={raw_delta_z.mean():.3f}, std={raw_delta_z.std():.3f}")
         
-        # Применяем активацию (Tanh)
-        predicted_position_normalized = self.position_activation(predicted_position_raw)  # [batch, 3] в [-1, 1]
+        # Применяем активацию (Tanh) для нормализованных смещений
+        displacement_normalized = self.displacement_activation(displacement_raw)  # [batch, 3] в [-1, 1]
         
-        # ДИАГНОСТИКА: логируем нормализованные координаты (ПОСЛЕ Tanh)
-        norm_z = predicted_position_normalized[:, 2]
-        logger.debug_energy(f"📊 Normalized Z (after Tanh): min={norm_z.min():.3f}, "
-                       f"max={norm_z.max():.3f}, mean={norm_z.mean():.3f}")
-        # Показываем Z-диапазон для нормализации
-        z_range = self.config.normalization_manager.ranges.z_range
-        logger.debug_energy(f"🔧 Z normalization range: {z_range} (depth={self.config.lattice_depth}, zones=[0,{self.config.lattice_depth-1}]|[{self.config.lattice_depth},{self.config.lattice_depth*2-1}]|{self.config.lattice_depth*2}+)")
+        # ДИАГНОСТИКА: логируем нормализованные смещения (ПОСЛЕ Tanh)
+        norm_delta_z = displacement_normalized[:, 2]
+        logger.debug_energy(f"📊 Normalized displacement (after Tanh): ΔZ min={norm_delta_z.min():.3f}, "
+                       f"max={norm_delta_z.max():.3f}, mean={norm_delta_z.mean():.3f}")
         
-        # Денормализуем для применения bias'ов и шума
-        predicted_position = self.config.normalization_manager.denormalize_coordinates(
-            predicted_position_normalized
+        # Показываем диапазон смещений для нормализации
+        disp_range = self.config.normalization_manager.ranges.displacement_range
+        logger.debug_energy(f"🔧 Displacement range: {disp_range} (depth={self.config.lattice_depth})")
+        
+        # Денормализуем смещения в реальные значения
+        displacement_real = self.config.normalization_manager.denormalize_displacement(
+            displacement_normalized
         )
         
-        # ДИАГНОСТИКА: логируем денормализованные координаты
-        denorm_z = predicted_position[:, 2]
-        logger.debug_energy(f"📊 Denormalized Z (before bias): min={denorm_z.min():.3f}, "
-                       f"max={denorm_z.max():.3f}, mean={denorm_z.mean():.3f}")
-        # Проверяем корректность денормализации
-        expected_max_z = self.config.lattice_depth * 2 - 1  # Исправлено для трехзонной логики
-        if denorm_z.max() > expected_max_z * 1.2:  # Допускаем небольшое превышение
-            logger.error(f"🚫 DENORMALIZATION ERROR: Z > expected max ({expected_max_z})! "
-                       f"Check normalization range: {self.config.normalization_manager.ranges.z_range}")
-
-        # CURRICULUM LEARNING: прогрессивное уменьшение bias'а для движения вперед
-        if self.config.use_forward_movement_bias and self.config.initial_z_bias > 0:
-            if global_training_step is not None:
-                # Прогрессивное уменьшение bias'а на основе глобального шага обучения
-                bias_decay_factor = max(0.0, 1.0 - (global_training_step / self.config.bias_decay_steps))
-                current_bias = self.config.initial_z_bias * bias_decay_factor
-                
-                # ДИАГНОСТИКА: логируем curriculum learning параметры
-                logger.debug_energy(f"📓 Curriculum step {global_training_step}: "
-                           f"decay_factor={bias_decay_factor:.4f}, current_bias={current_bias:.4f}")
-                
-                # Дополнительный progressive bias на основе возраста потока
-                if flow_age is not None:
-                    age_bonus = flow_age * self.config.progressive_z_multiplier * bias_decay_factor
-                    total_bias = current_bias + age_bonus  # Может быть тензором [batch]
-                else:
-                    total_bias = current_bias  # Скаляр
-                
-                # Применяем bias только если он все еще значимый
-                # Обрабатываем случай, когда total_bias может быть тензором
-                
-                # ДИАГНОСТИКА: логируем Z-координаты ДО применения bias'а
-                if logger.isEnabledFor(10):  # DEBUG level
-                    z_before = predicted_position[:, 2]
-                    logger.debug(f"📊 Z-coords BEFORE bias: min={z_before.min():.3f}, "
-                               f"max={z_before.max():.3f}, mean={z_before.mean():.3f}")
-                
-                if isinstance(total_bias, torch.Tensor):
-                    # Векторизованное применение bias'а для каждого потока отдельно
-                    valid_bias_mask = total_bias > 0.01
-                    flows_with_bias = valid_bias_mask.sum().item()
-                    if valid_bias_mask.any():
-                        predicted_position[valid_bias_mask, 2] += total_bias[valid_bias_mask]
-                        logger.debug(f"✅ Applied tensor bias to {flows_with_bias}/{batch_size} flows")
-                else:
-                    # total_bias - скаляр
-                    if total_bias > 0.01:
-                        predicted_position[:, 2] += total_bias
-                        logger.debug(f"✅ Applied scalar bias {total_bias:.4f} to all {batch_size} flows")
-                
-                # ДИАГНОСТИКА: логируем Z-координаты ПОСЛЕ применения bias'а
-                if logger.isEnabledFor(10):  # DEBUG level
-                    z_after = predicted_position[:, 2]
-                    logger.debug(f"📊 Z-coords AFTER bias: min={z_after.min():.3f}, "
-                               f"max={z_after.max():.3f}, mean={z_after.mean():.3f}")
-            
-            elif flow_age is not None:
-                # Fallback: используем только возраст потока без curriculum learning
-                dynamic_z_bias = self.config.initial_z_bias + (flow_age * self.config.progressive_z_multiplier)
-                predicted_position[:, 2] += dynamic_z_bias
-                logger.debug(f"⚠️ Fallback: applied age-based bias without global_training_step")
+        # ДИАГНОСТИКА: логируем реальные смещения
+        real_delta_z = displacement_real[:, 2]
+        logger.debug_energy(f"📊 Real displacement: ΔZ min={real_delta_z.min():.3f}, "
+                       f"max={real_delta_z.max():.3f}, mean={real_delta_z.mean():.3f}")
         
+        # Применяем смещения к текущей позиции
+        if current_position is not None:
+            next_position = current_position + displacement_real
         else:
-            # ДИАГНОСТИКА: логируем, когда bias НЕ применяется
-            if logger.isEnabledFor(10):  # DEBUG level
-                reason = "disabled" if not self.config.use_forward_movement_bias else "zero_initial_bias"
-                logger.debug(f"❌ NO BIAS applied: reason={reason}")
+            # Если текущая позиция не передана, используем смещения как абсолютные координаты
+            logger.warning("⚠️ Current position is None, using displacement as absolute position")
+            next_position = displacement_real
         
-        # Exploration noise для разнообразия путей
+        # Exploration noise для разнообразия путей (применяем к смещениям)
         if self.config.use_exploration_noise:
-            noise = torch.randn_like(predicted_position) * self.config.exploration_noise
-            predicted_position += noise
-            logger.debug(f"🎲 Added exploration noise: std={self.config.exploration_noise}")
+            noise = torch.randn_like(displacement_real) * self.config.exploration_noise
+            next_position += noise
+            logger.debug(f"🎲 Added exploration noise to displacement: std={self.config.exploration_noise}")
         
-        # ПРОВЕРКА ГРАНИЦ: убеждаемся что Z-координаты в разумных пределах
-        if logger.isEnabledFor(10):  # DEBUG level
-            z_coords = predicted_position[:, 2]
-            max_expected_z = self.config.lattice_depth + 10  # Допускаем небольшой выход за пределы
-            if torch.any(z_coords > max_expected_z):
-                out_of_bounds_count = (z_coords > max_expected_z).sum().item()
-                logger.error(f"🚫 Z-COORDINATE BOUNDS ERROR: {out_of_bounds_count}/{predicted_position.shape[0]} "
-                           f"flows have Z > {max_expected_z} (max={z_coords.max():.2f})")
-                logger.error(f"🔍 This indicates coordinate system malfunction!")
-        
-        # Применяем логику завершения потоков
-        next_position, is_terminated, termination_reasons = self._compute_next_position(predicted_position)
+        # Применяем логику завершения потоков для новой трехплоскостной архитектуры
+        next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position)
         
         # ДИАГНОСТИКА: логируем результаты
         if logger.isEnabledFor(10):  # DEBUG level
@@ -381,74 +299,73 @@ class EnergyCarrier(nn.Module):
         
         return output, new_hidden
     
-    def _compute_next_position(self, 
-                              predicted_position: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
+    def _compute_next_position_relative(self, 
+                                   next_position: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
         """
-        Вычисляет следующую позицию и определяет завершенные потоки
+        Вычисляет следующую позицию для трехплоскостной архитектуры относительных координат
         
-        Новая логика движения потоков (без принудительного ограничения):
-        1. Поток движется туда, куда указывает predicted_position
-        2. Если поток выходит за пределы по X,Y - он завершается (нейросеть должна обучиться не делать этого)
-        3. Если поток выходит за пределы по Z (depth*2-1) - он нормально завершается на выходной поверхности
-        4. FlowProcessor обрабатывает завершенные потоки для сбора энергии
+        Новая логика трехплоскостной архитектуры:
+        1. Входная плоскость: Z = depth/2 (центр куба)
+        2. Выходные плоскости: Z = 0 и Z = depth (края куба)
+        3. X/Y границы: отражение обрабатывается в FlowProcessor
+        4. Потоки завершаются при достижении Z ≤ 0 или Z ≥ depth
         
         Args:
-            predicted_position: [batch, 3] - предсказанные координаты (реальные значения)
+            next_position: [batch, 3] - позиция после применения смещения
             
         Returns:
             next_position: [batch, 3] - следующая позиция (целые координаты)
-            is_terminated: [batch] - маска завершенных потоков
+            is_terminated: [batch] - маска завершенных потоков  
             termination_reasons: List[str] - причины завершения для каждого потока
         """
-        # Используем предсказанные координаты напрямую (уже денормализованы)
-        next_position = predicted_position
-        
-        # Определяем завершенные потоки вместо принудительного ограничения
-        batch_size = predicted_position.shape[0]
-        is_terminated = torch.zeros(batch_size, dtype=torch.bool, device=predicted_position.device)
+        batch_size = next_position.shape[0]
+        is_terminated = torch.zeros(batch_size, dtype=torch.bool, device=next_position.device)
         termination_reasons = []
         
-        # Проверяем выход за пределы по X и Y координатам
-        out_of_bounds_x = (predicted_position[:, 0] < 0) | (predicted_position[:, 0] >= self.config.lattice_width)
-        out_of_bounds_y = (predicted_position[:, 1] < 0) | (predicted_position[:, 1] >= self.config.lattice_height)
+        depth = self.config.lattice_depth
+        
+        # Проверяем завершение по Z координате в трехплоскостной архитектуре
+        # Z ≤ 0: достижение левой выходной плоскости
+        # Z ≥ depth: достижение правой выходной плоскости
+        reached_z0_plane = next_position[:, 2] <= 0
+        reached_zdepth_plane = next_position[:, 2] >= depth
+        reached_output_plane = reached_z0_plane | reached_zdepth_plane
+        
+        # Проверяем выход за пределы по X и Y (обрабатывается отражением в FlowProcessor)
+        out_of_bounds_x = (next_position[:, 0] < 0) | (next_position[:, 0] >= self.config.lattice_width)
+        out_of_bounds_y = (next_position[:, 1] < 0) | (next_position[:, 1] >= self.config.lattice_height)
         out_of_bounds_xy = out_of_bounds_x | out_of_bounds_y
         
-        # Правильная логика для Z координаты:
-        # Z ∈ [0, depth-1] - активная зона
-        # Z ∈ [depth, depth*2-1] - зона завершения (нормальное завершение)
-        # Z ≥ depth*2 - выход за пределы (ошибка нейросети)
-        
-        depth = self.config.lattice_depth
-        max_valid_z = depth * 2 - 1
-        
-        # Определяем типы завершения по Z координате
-        reached_output_zone = (predicted_position[:, 2] >= depth) & (predicted_position[:, 2] <= max_valid_z)
-        out_of_bounds_z = predicted_position[:, 2] > max_valid_z
-        
-        # Отмечаем завершенные потоки
-        is_terminated = out_of_bounds_xy | reached_output_zone | out_of_bounds_z
+        # В новой архитектуре X/Y границы НЕ завершают поток (отражение)
+        # Завершение только при достижении выходных плоскостей по Z
+        is_terminated = reached_output_plane
         
         # Определяем причины завершения для каждого потока
         for i in range(batch_size):
-            if out_of_bounds_xy[i]:
-                termination_reasons.append("out_of_bounds_xy")
-            elif out_of_bounds_z[i]:
-                termination_reasons.append("out_of_bounds_z")  # Ошибка нейросети
-            elif reached_output_zone[i]:
-                termination_reasons.append("reached_output_surface")  # Нормальное завершение
+            if reached_z0_plane[i]:
+                termination_reasons.append("reached_z0_plane")  # Левая выходная плоскость
+            elif reached_zdepth_plane[i]:
+                termination_reasons.append("reached_zdepth_plane")  # Правая выходная плоскость
+            elif out_of_bounds_xy[i]:
+                termination_reasons.append("xy_reflection_needed")  # Требуется отражение (но поток активен)
             else:
                 termination_reasons.append("active")  # Поток продолжает движение
         
-        # Для активных потоков округляем координаты до целых значений
-        next_position = torch.round(predicted_position.clone())
+        # Для завершенных потоков проецируем на соответствующую выходную плоскость
+        final_position = next_position.clone()
         
-        # Для потоков в зоне завершения [depth, depth*2-1] - сопоставляем с выходной поверхностью
-        # Сохраняем оригинальные X,Y но устанавливаем Z = depth для буферизации
-        output_surface_mask = reached_output_zone
-        if output_surface_mask.any():
-            next_position[output_surface_mask, 2] = depth  # Сопоставляем с выходной поверхностью Z=depth
+        # Проецирование на Z=0 плоскость
+        if reached_z0_plane.any():
+            final_position[reached_z0_plane, 2] = 0
         
-        return next_position, is_terminated, termination_reasons
+        # Проецирование на Z=depth плоскость
+        if reached_zdepth_plane.any():
+            final_position[reached_zdepth_plane, 2] = depth
+        
+        # Округляем координаты для дискретной решетки
+        final_position = torch.round(final_position)
+        
+        return final_position, is_terminated, termination_reasons
     
     def init_hidden(self, batch_size: int, device: torch.device) -> torch.Tensor:
         """Инициализация скрытого состояния GRU"""

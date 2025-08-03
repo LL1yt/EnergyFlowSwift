@@ -109,7 +109,24 @@ class EnergyConfig:
     exploration_noise: float = 0.3  # Уменьшенный шум для стабильности
     use_exploration_noise: bool = True  # Включать exploration noise
 
-    # SMART INITIALIZATION: для смещения Z-координаты при инициализации весов
+    # Новая архитектура относительных координат
+    relative_coordinates: bool = False  # Включить относительные координаты вместо абсолютных
+    center_start_enabled: bool = False  # Стартовые позиции в центре куба (Z = depth/2)
+    dual_output_planes: bool = False   # Две выходные плоскости (Z=0 и Z=depth)
+    
+    # Система spawn на основе длины смещения
+    spawn_movement_threshold_ratio: float = 0.1  # depth/10 для threshold
+    movement_based_spawn: bool = False  # Spawn на основе длины движения
+    
+    # Отражение границ X/Y
+    boundary_reflection_enabled: bool = False  # Отражение от границ вместо завершения
+    
+    # Система важности выходных эмбеддингов
+    proximity_weight: float = 0.7      # Вес близости к выходу
+    path_length_weight: float = 0.3    # Вес длины пути
+    safe_distance_minimum: float = 0.5 # Минимальное расстояние для безопасного деления
+    
+    # SMART INITIALIZATION: для смещения Z-координаты при инициализации весов (DEPRECATED в новой архитектуре)
     smart_init_bias: float = 0.0  # ОТКЛЮЧЕНО для диагностики
     
     def __post_init__(self):
@@ -182,6 +199,7 @@ class EnergyConfig:
             self._normalization_manager = create_normalization_manager(
                 self.lattice_width, self.lattice_height, self.lattice_depth
             )
+            # Все нормализации теперь используют новую архитектуру относительных координат
         return self._normalization_manager
 
 

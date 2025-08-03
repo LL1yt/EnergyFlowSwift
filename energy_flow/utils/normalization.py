@@ -26,12 +26,13 @@ logger = get_logger(__name__)
 
 @dataclass
 class NormalizationRanges:
-    """Диапазоны для нормализации всех величин"""
+    """Диапазоны для нормализации всех величин (новая архитектура относительных координат)"""
     
     # Координаты (зависят от размеров решетки)
     x_range: Tuple[float, float]  # (0, width-1)
     y_range: Tuple[float, float]  # (0, height-1) 
-    z_range: Tuple[float, float]  # (0, depth*2-1) для выхода за пределы
+    z_range: Tuple[float, float]  # (0, depth) для трехплоскостной архитектуры
+    displacement_range: Tuple[float, float]  # (-depth/2, depth/2) для смещений
     
     # Энергия (преобразование между диапазонами)
     energy_raw_range: Tuple[float, float] = (0.0, 1.0)      # Исходная энергия [0,1]
@@ -96,7 +97,7 @@ class NormalizationManager:
             coords[:, 1], self.ranges.y_range[0], self.ranges.y_range[1]
         )
         
-        # Z координата: [0, depth*2-1] → [-1, 1]
+        # Z координата: [0, depth] → [-1, 1]
         normalized[:, 2] = self._normalize_to_range(
             coords[:, 2], self.ranges.z_range[0], self.ranges.z_range[1]
         )
@@ -132,7 +133,7 @@ class NormalizationManager:
             normalized[:, 1], self.ranges.y_range[0], self.ranges.y_range[1]
         )
         
-        # Z координата: [-1, 1] → [0, depth*2-1]
+        # Z координата: [-1, 1] → [0, depth]
         coords[:, 2] = self._denormalize_from_range(
             normalized[:, 2], self.ranges.z_range[0], self.ranges.z_range[1]
         )
@@ -182,6 +183,74 @@ class NormalizationManager:
         energy = (normalized_energy + 1.0) / 2.0
         
         return energy
+    
+    # ========== СМЕЩЕНИЯ (НОВАЯ АРХИТЕКТУРА) ==========
+    
+    def normalize_displacement(self, displacement: torch.Tensor) -> torch.Tensor:
+        """
+        Нормализует смещения из [-depth/2, depth/2] в [-1, 1]
+        
+        Args:
+            displacement: [batch, 3] - реальные смещения (Δx, Δy, Δz)
+            
+        Returns:
+            normalized: [batch, 3] - нормализованные смещения [-1, 1]
+        """
+        # Проверяем наличие displacement_range
+        if not hasattr(self.ranges, 'displacement_range') or self.ranges.displacement_range is None:
+            raise ValueError("displacement_range not found in ranges. Relative coordinates architecture is required.")
+        
+        batch_size = displacement.shape[0]
+        assert displacement.shape == (batch_size, 3), f"Ожидался тензор [batch, 3], получен: {displacement.shape}"
+        
+        normalized = torch.zeros_like(displacement)
+        
+        # Все координаты используют одинаковый диапазон смещений
+        disp_min, disp_max = self.ranges.displacement_range
+        
+        for i in range(3):  # x, y, z
+            normalized[:, i] = self._normalize_to_range(
+                displacement[:, i], disp_min, disp_max
+            )
+        
+        return normalized
+    
+    def denormalize_displacement(self, normalized_displacement: torch.Tensor) -> torch.Tensor:
+        """
+        Денормализует смещения из [-1, 1] в [-depth/2, depth/2]
+        
+        Args:
+            normalized_displacement: [batch, 3] - нормализованные смещения [-1, 1]
+            
+        Returns:
+            displacement: [batch, 3] - реальные смещения
+        """
+        # Проверяем наличие displacement_range
+        if not hasattr(self.ranges, 'displacement_range') or self.ranges.displacement_range is None:
+            raise ValueError("displacement_range not found in ranges. Relative coordinates architecture is required.")
+        
+        batch_size = normalized_displacement.shape[0]
+        assert normalized_displacement.shape == (batch_size, 3), f"Ожидался тензор [batch, 3], получен: {normalized_displacement.shape}"
+        
+        # Проверяем, что значения в ожидаемом диапазоне
+        assert torch.all(normalized_displacement >= -1.0) and torch.all(normalized_displacement <= 1.0), \
+            f"Нормализованные смещения должны быть в [-1,1], получен диапазон: [{normalized_displacement.min():.3f}, {normalized_displacement.max():.3f}]"
+        
+        displacement = torch.zeros_like(normalized_displacement)
+        
+        # Все координаты используют одинаковый диапазон смещений
+        disp_min, disp_max = self.ranges.displacement_range
+        
+        for i in range(3):  # x, y, z
+            displacement[:, i] = self._denormalize_from_range(
+                normalized_displacement[:, i], disp_min, disp_max
+            )
+        
+        return displacement
+    
+    def get_displacement_activation(self) -> nn.Module:
+        """Возвращает правильную активацию для смещений"""
+        return nn.Tanh()  # Смещения всегда в [-1, 1]
     
     # ========== FLOW AGE ==========
     
@@ -272,7 +341,7 @@ class NormalizationManager:
 
 def create_normalization_manager(lattice_width: int, lattice_height: int, lattice_depth: int) -> NormalizationManager:
     """
-    Фабричная функция для создания NormalizationManager
+    Фабричная функция для создания NormalizationManager (новая архитектура относительных координат)
     
     Args:
         lattice_width: Ширина решетки
@@ -280,12 +349,16 @@ def create_normalization_manager(lattice_width: int, lattice_height: int, lattic
         lattice_depth: Глубина решетки
         
     Returns:
-        NormalizationManager с правильными диапазонами
+        NormalizationManager с диапазонами для относительных координат
     """
     ranges = NormalizationRanges(
         x_range=(0.0, float(lattice_width - 1)),
         y_range=(0.0, float(lattice_height - 1)),
-        z_range=(0.0, float(lattice_depth * 2 - 1))  # ВОССТАНОВЛЕНО: трехзонная логика [0, depth*2-1]
+        z_range=(0.0, float(lattice_depth)),  # Трехплоскостная архитектура: [0, depth]
+        displacement_range=(-float(lattice_depth / 2), float(lattice_depth / 2))  # Смещения: [-depth/2, depth/2]
     )
+    
+    logger.info(f"Created normalization manager: z_range={ranges.z_range}, "
+               f"displacement_range={ranges.displacement_range}")
     
     return NormalizationManager(ranges)
