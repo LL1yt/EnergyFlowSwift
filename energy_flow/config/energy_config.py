@@ -33,18 +33,19 @@ class EnergyConfig:
     lattice_height: int 
     lattice_depth: int
     
-    # Параметры энергии (для скалярной энергии в диапазоне [-1, 1])
+    # Параметры потоков
+    max_active_flows: int = 100000  # Максимальное количество активных потоков для GPU
     max_spawn_per_step: int = 3     # Ограниченное количество spawn'ов для стабильности
     
     # Параметры моделей
     # GRU (EnergyCarrier)
     carrier_hidden_size: int = 1024
     carrier_num_layers: int = 3
-    carrier_dropout: float = 0.1
     
     # SimpleNeuron
     neuron_hidden_dim: int = 32
     neuron_output_dim: int = 64  # Должен совпадать с входом GRU
+    
     
     # Размерности эмбеддингов
     input_embedding_dim_from_teacher: int = 768  # Стандартный размер от language models
@@ -90,20 +91,8 @@ class EnergyConfig:
     log_interval: int = 10
     checkpoint_interval: int = 100
     
-    # Curriculum Learning для обучения движению вперед
-    initial_z_bias: float = 2.0  # Начальный положительный bias для Z-координаты
-    use_forward_movement_bias: bool = False  # Включить curriculum learning для движения вперед
-    bias_decay_steps: int = 5000  # Количество шагов для полного убывания bias'а
-    bias_decay_rate: float = 0.95  # Скорость убывания bias'а (не используется в линейном decay)
-    progressive_z_multiplier: float = 0.1  # Множитель для доп. bias'а на основе возраста потока
-    
-    # Forward Movement Reward в loss функции
-    use_forward_movement_reward: bool = False  # Поощрять движение вперед через loss
-    forward_reward_weight: float = 0.1  # Начальный вес forward movement reward
-    forward_reward_decay_steps: int = 3000  # Шаги для уменьшения веса reward'а
-    
-    # Эксплорация и шум
-    exploration_noise: float = 0.3  # Уменьшенный шум для стабильности
+    # Эксплорация и шум (для относительных координат)
+    exploration_noise: float = 0.1  # Небольшой шум для разнообразия движений
     use_exploration_noise: bool = True  # Включать exploration noise
 
     # Новая архитектура относительных координат
@@ -118,13 +107,10 @@ class EnergyConfig:
     # Отражение границ X/Y
     boundary_reflection_enabled: bool = False  # Отражение от границ вместо завершения
     
-    # Система важности выходных эмбеддингов
+    # Система важности выходных эмбеддингов (для dual output planes)
     proximity_weight: float = 0.7      # Вес близости к выходу
     path_length_weight: float = 0.3    # Вес длины пути
     safe_distance_minimum: float = 0.5 # Минимальное расстояние для безопасного деления
-    
-    # SMART INITIALIZATION: для смещения Z-координаты при инициализации весов (DEPRECATED в новой архитектуре)
-    smart_init_bias: float = 0.0  # ОТКЛЮЧЕНО для диагностики
     
     def __post_init__(self):
         """Валидация и вычисление производных параметров"""
@@ -139,9 +125,8 @@ class EnergyConfig:
         
         # Размерности эмбеддингов определяются в embedding_mapper автоматически
         
-        # Проверка параметров энергии
-        assert 0 < self.energy_threshold < 1, "energy_threshold должен быть в (0, 1)"
-        assert 0 < self.spawn_threshold <= 1, "spawn_threshold должен быть в (0, 1]"
+        # Проверка параметров потоков
+        assert self.max_active_flows > 0, "max_active_flows должен быть > 0"
         assert self.max_spawn_per_step > 0, "max_spawn_per_step должен быть > 0"
         
         # Проверка моделей
@@ -209,13 +194,10 @@ def create_debug_config() -> EnergyConfig:
         lattice_height=20,
         lattice_depth=10,
         max_active_flows=50000,
-        energy_threshold=0.01,  # Очень низкий для отладки (скалярная энергия)
-        spawn_threshold=0.7,    # Немного выше базового для контроля spawn'ов
         max_spawn_per_step=1,   # Ограниченный spawn для отладки
         batch_size=8,
         carrier_hidden_size=256,  # Уменьшенный размер для отладки
         carrier_num_layers=2,
-        carrier_dropout=0.05,   # Низкий dropout для отладки
         log_interval=1,
         gradient_accumulation_steps=1,  # Без накопления для debug
         
@@ -235,16 +217,6 @@ def create_debug_config() -> EnergyConfig:
         convergence_min_steps=3,
         convergence_patience=2,
         
-        # Curriculum learning для debug
-        initial_z_bias=2.5,  # Повышенный bias для быстрого обучения
-        use_forward_movement_bias=True,
-        bias_decay_steps=1000,  # Быстрое убывание для debug
-        progressive_z_multiplier=0.2,
-        
-        # Forward movement reward для debug
-        use_forward_movement_reward=True,
-        forward_reward_weight=0.15,  # Повышенный вес для обучения
-        forward_reward_decay_steps=800,
         
         # НОВАЯ АРХИТЕКТУРА: Относительные координаты (включено для debug)
         relative_coordinates=True,      # Включить относительные координаты
@@ -252,7 +224,8 @@ def create_debug_config() -> EnergyConfig:
         dual_output_planes=True,        # Две выходные плоскости
         movement_based_spawn=True,      # Spawn на основе длины движения
         boundary_reflection_enabled=True, # Отражение границ
-        spawn_movement_threshold_ratio=0.15  # 15% от depth для debug
+        spawn_movement_threshold_ratio=0.15,  # 15% от depth для debug
+        exploration_noise=0.05  # Маленький шум для debug
     )
 
 
@@ -267,7 +240,6 @@ def create_experiment_config() -> EnergyConfig:
         carrier_hidden_size=512,
         carrier_num_layers=3,
         max_spawn_per_step=1,    # Контролируемый spawn
-        carrier_dropout=0.00005, # Минимальный dropout для важных значений
         
         # RTX 5090 память оптимизация
         gradient_accumulation_steps=4,  # Эффективный batch_size = 64*4 = 256
@@ -282,24 +254,6 @@ def create_experiment_config() -> EnergyConfig:
         text_generation_num_beams=3,
         text_generation_temperature=0.9,
         
-        # Adaptive convergence для глубокой решетки
-        convergence_enabled=True,
-        convergence_threshold=0.95,     # Высокий порог для качества
-        convergence_min_steps=10,       # Минимум 10 шагов для глубокой обработки
-        convergence_patience=5,          # Больше терпения для depth=60
-        
-        # Curriculum learning для экспериментов (СКОРРЕКТИРОВАННЫЕ ПАРАМЕТРЫ ПОСЛЕ ИСПРАВЛЕНИЯ МАСШТАБА)
-        initial_z_bias=3,  # Уменьшено с 5.0 до 3 после исправления z_range
-        use_forward_movement_bias=True,
-        bias_decay_steps=8000,  # Медленное убывание для стабильности
-        bias_decay_rate=0.95,  # Не используется, но нужен для совместимости
-        progressive_z_multiplier=0.1,  # Уменьшено с 0.2 до 0.1
-        
-        # Forward movement reward
-        use_forward_movement_reward=True,
-        forward_reward_weight=0.12,  # Повышенный вес для experiment
-        forward_reward_decay_steps=5000,
-        smart_init_bias=-1.0,  # ОТКЛЮЧЕНО для диагностики
         
         # НОВАЯ АРХИТЕКТУРА: Относительные координаты (включено для experiment)
         relative_coordinates=True,      # Включить относительные координаты
@@ -321,6 +275,7 @@ def create_optimized_config() -> EnergyConfig:
         batch_size=32,
         carrier_hidden_size=1024,
         carrier_num_layers=3,
+        max_spawn_per_step=3,    # Больше spawn для production
         
         # Text Bridge для производительной конфигурации
         text_bridge_enabled=True,

@@ -101,19 +101,9 @@ class EnergyCarrier(nn.Module):
         )
         self.displacement_activation = self.config.normalization_manager.get_displacement_activation()  # Tanh для [-1, 1]
         
-        # 3. Порождение новых потоков
-        self.spawn_gate = nn.Sequential(
-            nn.Linear(self.hidden_size, 64),
-            nn.GELU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()  # Вероятность порождения
-        )
-        
-        # Проекция для энергии новых потоков (также скалярная)
-        self.spawn_energy_projection = nn.Sequential(
-            nn.Linear(self.hidden_size, self.energy_dim),
-            nn.Tanh()  # Нормализация в [-1, 1]
-        )
+        # 3. УДАЛЕНО: spawn_gate и spawn_energy_projection
+        # В архитектуре относительных координат spawn контролируется 
+        # только на основе длины смещения в FlowProcessor
         
         # Инициализация весов
         self._init_weights()
@@ -257,36 +247,9 @@ class EnergyCarrier(nn.Module):
                     reason_counts[reason] = reason_counts.get(reason, 0) + 1
                 logger.debug(f"📈 Termination reasons: {reason_counts}")
         
-        # 3. Определяем порождение новых потоков
-        spawn_prob = self.spawn_gate(gru_output).squeeze(-1)  # [batch]
-        
-        # Определяем количество новых потоков на основе вероятности и порогов
-        spawn_decisions = spawn_prob > self.config.spawn_threshold
-        spawn_info = []
-        
-        for i in range(batch_size):
-            if spawn_decisions[i] and spawn_prob[i].item() > self.config.spawn_threshold:
-                # Количество потоков зависит от силы вероятности
-                num_spawns = min(
-                    int((spawn_prob[i].item() - self.config.spawn_threshold) / 
-                        (1 - self.config.spawn_threshold) * self.config.max_spawn_per_step) + 1,
-                    self.config.max_spawn_per_step
-                )
-                
-                # Генерируем энергии для новых потоков
-                spawn_energy = self.spawn_energy_projection(gru_output[i])
-                energies = []
-                
-                # Делим энергию между потоками
-                for j in range(num_spawns):
-                    energy_fraction = spawn_energy / (num_spawns + 1)  # +1 для родителя
-                    energies.append(energy_fraction.to(gru_output.device))
-                
-                # Создаем SpawnInfo для текущего batch элемента
-                spawn_info.append(SpawnInfo(
-                    energies=energies,
-                    parent_batch_idx=i
-                ))
+        # 3. Spawn потоков теперь контролируется только movement_based_spawn в FlowProcessor
+        # Устаревшая логика spawn на основе эмбеддингов удалена
+        spawn_info = []  # Пустой список, spawn контролируется в FlowProcessor
         
         # Создаем структурированный вывод
         output = EnergyOutput(
@@ -374,20 +337,8 @@ class EnergyCarrier(nn.Module):
             device=device, dtype=torch.float32
         )
     
-    def check_energy_level(self, energy: torch.Tensor) -> torch.Tensor:
-        """
-        Проверяет уровень энергии
-        
-        Args:
-            energy: [batch, 1] - нормализованная энергия в диапазоне [-1, 1] (Tanh)
-        
-        Returns:
-            is_alive: [batch] - маска активных потоков
-        """
-        # Используем централизованную проверку энергии
-        return self.config.normalization_manager.check_energy_threshold(
-            energy, self.config.energy_threshold
-        )
+    # УДАЛЕН: check_energy_level() - в архитектуре относительных координат 
+    # потоки не умирают от "недостатка энергии". Эмбеддинги - это данные, а не энергия.
 
 
 def create_energy_carrier(config=None) -> EnergyCarrier:

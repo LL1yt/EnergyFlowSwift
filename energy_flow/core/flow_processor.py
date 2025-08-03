@@ -389,8 +389,8 @@ class FlowProcessor(nn.Module):
         batch_size = len(flows)
         device = current_positions.device
         
-        # Проверяем энергетический уровень
-        energy_alive_mask = self.carrier.check_energy_level(carrier_output.energy_value)  # [batch]
+        # УДАЛЕНО: energy_alive_mask - в новой архитектуре потоки не умирают от недостатка энергии
+        # Все потоки считаются живыми, завершение только по termination_reasons
         
         # Обрабатываем termination_reasons из EnergyCarrier
         termination_reasons = carrier_output.termination_reason
@@ -402,37 +402,28 @@ class FlowProcessor(nn.Module):
         reflection_needed_count = sum(1 for reason in termination_reasons if reason == "xy_reflection_needed")
         active_count = sum(1 for reason in termination_reasons if reason == "active")
         
-        # Обновляем статистику завершения потоков
-        energy_dead_count = (~energy_alive_mask).sum()
-        self.stats['flows_killed_energy'] += energy_dead_count.detach().cpu().numpy().item()
+        # УДАЛЕНО: energy_dead_count - потоки больше не умирают от энергии
+        # Статистика теперь основана только на termination_reasons
         
         logger.debug_energy(f"🎯 Termination breakdown: z0={reached_z0_count}, zdepth={reached_zdepth_count}, "
-                           f"reflection={reflection_needed_count}, active={active_count}, energy_dead={energy_dead_count}")
+                           f"reflection={reflection_needed_count}, active={active_count}")
         
-        # Маска потоков, которые нужно деактивировать (мертвые по энергии)
-        dead_mask = ~energy_alive_mask
+        # В новой архитектуре логика намного проще - только 3 типа потоков:
+        # 1. Достигшие выходных плоскостей (буферизуем)
+        # 2. Требующие отражения (применяем отражение) 
+        # 3. Активные (обновляем позицию)
         
-        # Маска потоков, достигших выходных плоскостей (буферизуем их)
-        output_reached_mask = is_terminated & energy_alive_mask
+        # Маска потоков, достигших выходных плоскостей
+        output_reached_mask = is_terminated
         
-        # Маска потоков, требующих отражения (применяем отражение, если включено)
+        # Маска потоков, требующих отражения
         reflection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
         for i, reason in enumerate(termination_reasons):
             if reason == "xy_reflection_needed":
                 reflection_mask[i] = True
         
-        # Маска активных потоков (обновляем позицию)
-        active_mask = energy_alive_mask & ~is_terminated
-        
-        # 1. Деактивируем мертвые по энергии потоки
-        if dead_mask.any():
-            dead_flow_ids = flow_ids[dead_mask]
-            self.lattice.batch_deactivate_flows(
-                dead_flow_ids,
-                torch.ones(dead_flow_ids.shape[0], dtype=torch.bool, device=device),  # energy_dead
-                torch.zeros(dead_flow_ids.shape[0], dtype=torch.bool, device=device), # backward_dead
-                torch.zeros(dead_flow_ids.shape[0], dtype=torch.bool, device=device)  # bounds_dead
-            )
+        # Маска активных потоков
+        active_mask = ~is_terminated
         
         # 2. Буферизуем потоки, достигшие выходных плоскостей
         if output_reached_mask.any():
@@ -481,7 +472,7 @@ class FlowProcessor(nn.Module):
         final_active_mask = active_mask
         if reflection_mask.any() and not self.config.boundary_reflection_enabled:
             # Если отражение отключено, потоки с xy_reflection_needed остаются активными
-            final_active_mask = active_mask | (reflection_mask & energy_alive_mask)
+            final_active_mask = active_mask | reflection_mask
         
         if final_active_mask.any():
             active_flow_ids = flow_ids[final_active_mask]
