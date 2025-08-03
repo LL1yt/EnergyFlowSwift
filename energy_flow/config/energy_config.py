@@ -34,9 +34,6 @@ class EnergyConfig:
     lattice_depth: int
     
     # Параметры энергии (для скалярной энергии в диапазоне [-1, 1])
-    max_active_flows: int = 1000
-    energy_threshold: float = 0.05  # Минимальная энергия для продолжения (низкий для стабильности)
-    spawn_threshold: float = 0.6    # Порог для создания новых потоков (умеренный)
     max_spawn_per_step: int = 3     # Ограниченное количество spawn'ов для стабильности
     
     # Параметры моделей
@@ -247,7 +244,15 @@ def create_debug_config() -> EnergyConfig:
         # Forward movement reward для debug
         use_forward_movement_reward=True,
         forward_reward_weight=0.15,  # Повышенный вес для обучения
-        forward_reward_decay_steps=800
+        forward_reward_decay_steps=800,
+        
+        # НОВАЯ АРХИТЕКТУРА: Относительные координаты (включено для debug)
+        relative_coordinates=True,      # Включить относительные координаты
+        center_start_enabled=True,      # Старт из центра куба
+        dual_output_planes=True,        # Две выходные плоскости
+        movement_based_spawn=True,      # Spawn на основе длины движения
+        boundary_reflection_enabled=True, # Отражение границ
+        spawn_movement_threshold_ratio=0.15  # 15% от depth для debug
     )
 
 
@@ -294,7 +299,15 @@ def create_experiment_config() -> EnergyConfig:
         use_forward_movement_reward=True,
         forward_reward_weight=0.12,  # Повышенный вес для experiment
         forward_reward_decay_steps=5000,
-        smart_init_bias=-1.0  # ОТКЛЮЧЕНО для диагностики
+        smart_init_bias=-1.0,  # ОТКЛЮЧЕНО для диагностики
+        
+        # НОВАЯ АРХИТЕКТУРА: Относительные координаты (включено для experiment)
+        relative_coordinates=True,      # Включить относительные координаты
+        center_start_enabled=True,      # Старт из центра куба
+        dual_output_planes=True,        # Две выходные плоскости
+        movement_based_spawn=True,      # Spawn на основе длины движения
+        boundary_reflection_enabled=True, # Отражение границ для экспериментов
+        spawn_movement_threshold_ratio=0.1  # 10% от depth для experiment
     )
 
 
@@ -319,16 +332,14 @@ def create_optimized_config() -> EnergyConfig:
         text_generation_num_beams=4,   # Максимальное качество
         text_generation_temperature=1.0,
         
-        # Curriculum learning для production
-        initial_z_bias=1.2,  # Низкий bias для стабильности
-        use_forward_movement_bias=True,
-        bias_decay_steps=8000,  # Медленное убывание
-        progressive_z_multiplier=0.05,
         
-        # Forward movement reward
-        use_forward_movement_reward=True,
-        forward_reward_weight=0.05,  # Низкий вес для production
-        forward_reward_decay_steps=5000
+        # НОВАЯ АРХИТЕКТУРА: Относительные координаты (опционально для optimized)
+        relative_coordinates=True,     # Отключено для production стабильности
+        center_start_enabled=True,     # Отключено для production
+        dual_output_planes=True,       # Отключено для production
+        movement_based_spawn=True,     # Отключено для production
+        boundary_reflection_enabled=True, # Отключено для production
+        spawn_movement_threshold_ratio=0.1
     )
 
 

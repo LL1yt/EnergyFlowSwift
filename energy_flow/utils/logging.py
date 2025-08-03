@@ -37,6 +37,12 @@ DEBUG_PERFORMANCE = 21 # Throughput, GPU utilization, memory usage
 DEBUG_PROFILING = 22   # Detailed component execution times
 DEBUG_VERBOSE = 11    # Most verbose debug level
 
+# New debug levels for relative coordinates architecture
+DEBUG_RELATIVE = 23      # Relative coordinates and displacements
+DEBUG_SPAWN_MOVEMENT = 24 # Spawn based on movement length
+DEBUG_REFLECTION = 25     # Boundary reflection
+DEBUG_IMPORTANCE = 26     # Flow importance system
+
 # Register custom levels with logging module
 for level_name, level_value in [
     ('DEBUG_CACHE', DEBUG_CACHE),
@@ -51,6 +57,10 @@ for level_name, level_value in [
     ('DEBUG_PERFORMANCE', DEBUG_PERFORMANCE),
     ('DEBUG_PROFILING', DEBUG_PROFILING),
     ('DEBUG_VERBOSE', DEBUG_VERBOSE),
+    ('DEBUG_RELATIVE', DEBUG_RELATIVE),
+    ('DEBUG_SPAWN_MOVEMENT', DEBUG_SPAWN_MOVEMENT),
+    ('DEBUG_REFLECTION', DEBUG_REFLECTION),
+    ('DEBUG_IMPORTANCE', DEBUG_IMPORTANCE),
 ]:
     logging.addLevelName(level_value, level_name)
 
@@ -116,6 +126,30 @@ def debug_convergence(self, message, *args, **kwargs):
         self._log(DEBUG_CONVERGENCE, message, args, **kwargs)
 
 
+def debug_relative(self, message, *args, **kwargs):
+    """Log relative coordinates debug messages"""
+    if self.isEnabledFor(DEBUG_RELATIVE):
+        self._log(DEBUG_RELATIVE, message, args, **kwargs)
+
+
+def debug_spawn_movement(self, message, *args, **kwargs):
+    """Log movement-based spawn debug messages"""
+    if self.isEnabledFor(DEBUG_SPAWN_MOVEMENT):
+        self._log(DEBUG_SPAWN_MOVEMENT, message, args, **kwargs)
+
+
+def debug_reflection(self, message, *args, **kwargs):
+    """Log boundary reflection debug messages"""
+    if self.isEnabledFor(DEBUG_REFLECTION):
+        self._log(DEBUG_REFLECTION, message, args, **kwargs)
+
+
+def debug_importance(self, message, *args, **kwargs):
+    """Log flow importance debug messages"""
+    if self.isEnabledFor(DEBUG_IMPORTANCE):
+        self._log(DEBUG_IMPORTANCE, message, args, **kwargs)
+
+
 # Monkey-patch Logger class with new methods
 logging.Logger.debug_cache = debug_cache
 logging.Logger.debug_spatial = debug_spatial
@@ -127,6 +161,10 @@ logging.Logger.debug_verbose = debug_verbose
 logging.Logger.debug_energy = debug_energy
 logging.Logger.debug_spawn = debug_spawn
 logging.Logger.debug_convergence = debug_convergence
+logging.Logger.debug_relative = debug_relative
+logging.Logger.debug_spawn_movement = debug_spawn_movement
+logging.Logger.debug_reflection = debug_reflection
+logging.Logger.debug_importance = debug_importance
 
 
 class UTF8StreamHandler(logging.StreamHandler):
@@ -316,6 +354,10 @@ class DebugModeFilter(logging.Filter):
             'energy': DEBUG_ENERGY,
             'spawn': DEBUG_SPAWN,
             'convergence': DEBUG_CONVERGENCE,
+            'relative': DEBUG_RELATIVE,
+            'spawn_movement': DEBUG_SPAWN_MOVEMENT,
+            'reflection': DEBUG_REFLECTION,
+            'importance': DEBUG_IMPORTANCE,
         }
 
     def filter(self, record):
@@ -403,6 +445,10 @@ def setup_logging(
             "DEBUG_ENERGY": DEBUG_ENERGY,
             "DEBUG_SPAWN": DEBUG_SPAWN,
             "DEBUG_CONVERGENCE": DEBUG_CONVERGENCE,
+            "DEBUG_RELATIVE": DEBUG_RELATIVE,
+            "DEBUG_SPAWN_MOVEMENT": DEBUG_SPAWN_MOVEMENT,
+            "DEBUG_REFLECTION": DEBUG_REFLECTION,
+            "DEBUG_IMPORTANCE": DEBUG_IMPORTANCE,
         }
         # СТРОГАЯ ПРОВЕРКА - БЕЗ FALLBACK
         level_upper = level.upper()

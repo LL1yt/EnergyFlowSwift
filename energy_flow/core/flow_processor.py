@@ -385,70 +385,221 @@ class FlowProcessor(nn.Module):
         self._process_results_vectorized(flows, flow_ids, positions, carrier_output, new_hidden)
     
     def _process_results_vectorized(self, flows, flow_ids, current_positions, carrier_output, new_hidden):
-        """Векторизованная обработка результатов carrier_output"""
+        """Векторизованная обработка результатов carrier_output с поддержкой относительных координат"""
         batch_size = len(flows)
         device = current_positions.device
         
-        # Векторизованные проверки выживания потоков
+        # Проверяем энергетический уровень
         energy_alive_mask = self.carrier.check_energy_level(carrier_output.energy_value)  # [batch]
         
-        # Проверка движения вперед по Z
-        z_forward_mask = carrier_output.next_position[:, 2] > current_positions[:, 2]  # [batch]
+        # Обрабатываем termination_reasons из EnergyCarrier
+        termination_reasons = carrier_output.termination_reason
+        is_terminated = carrier_output.is_terminated  # [batch]
         
-        # Проверка границ X,Y
-        next_pos = carrier_output.next_position
-        bounds_mask = (
-            (next_pos[:, 0] >= 0) & (next_pos[:, 0] < self.config.lattice_width) &
-            (next_pos[:, 1] >= 0) & (next_pos[:, 1] < self.config.lattice_height)
-        )  # [batch]
+        # Разбираем причины завершения для статистики
+        reached_z0_count = sum(1 for reason in termination_reasons if reason == "reached_z0_plane")
+        reached_zdepth_count = sum(1 for reason in termination_reasons if reason == "reached_zdepth_plane")
+        reflection_needed_count = sum(1 for reason in termination_reasons if reason == "xy_reflection_needed")
+        active_count = sum(1 for reason in termination_reasons if reason == "active")
         
-        # Комбинированная маска выживших потоков
-        alive_mask = energy_alive_mask & z_forward_mask & bounds_mask  # [batch]
-        
-        # Подсчет статистики БЕЗ .item() для избежания CPU-GPU синхронизации
+        # Обновляем статистику завершения потоков
         energy_dead_count = (~energy_alive_mask).sum()
-        backward_dead_count = (energy_alive_mask & ~z_forward_mask).sum()
-        bounds_dead_count = (energy_alive_mask & z_forward_mask & ~bounds_mask).sum()
-        
-        # Обновляем статистику с detach() для безопасности, но без синхронизации
         self.stats['flows_killed_energy'] += energy_dead_count.detach().cpu().numpy().item()
-        self.stats['flows_killed_backward'] += backward_dead_count.detach().cpu().numpy().item()
-        self.stats['flows_killed_bounds'] += bounds_dead_count.detach().cpu().numpy().item()
         
-        # ПОЛНАЯ ВЕКТОРИЗАЦИЯ: batch deactivation dead flows БЕЗ циклов
-        dead_mask = ~alive_mask
+        logger.debug_energy(f"🎯 Termination breakdown: z0={reached_z0_count}, zdepth={reached_zdepth_count}, "
+                           f"reflection={reflection_needed_count}, active={active_count}, energy_dead={energy_dead_count}")
+        
+        # Маска потоков, которые нужно деактивировать (мертвые по энергии)
+        dead_mask = ~energy_alive_mask
+        
+        # Маска потоков, достигших выходных плоскостей (буферизуем их)
+        output_reached_mask = is_terminated & energy_alive_mask
+        
+        # Маска потоков, требующих отражения (применяем отражение, если включено)
+        reflection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        for i, reason in enumerate(termination_reasons):
+            if reason == "xy_reflection_needed":
+                reflection_mask[i] = True
+        
+        # Маска активных потоков (обновляем позицию)
+        active_mask = energy_alive_mask & ~is_terminated
+        
+        # 1. Деактивируем мертвые по энергии потоки
         if dead_mask.any():
             dead_flow_ids = flow_ids[dead_mask]
-            # Создаем причины векторизованно
-            energy_dead_mask = dead_mask & (~energy_alive_mask)
-            backward_dead_mask = dead_mask & energy_alive_mask & (~z_forward_mask)
-            bounds_dead_mask = dead_mask & energy_alive_mask & z_forward_mask & (~bounds_mask)
-            
-            # Batch deactivation with vectorized reasons
             self.lattice.batch_deactivate_flows(
                 dead_flow_ids,
-                energy_dead_mask[dead_mask],
-                backward_dead_mask[dead_mask], 
-                bounds_dead_mask[dead_mask]
+                torch.ones(dead_flow_ids.shape[0], dtype=torch.bool, device=device),  # energy_dead
+                torch.zeros(dead_flow_ids.shape[0], dtype=torch.bool, device=device), # backward_dead
+                torch.zeros(dead_flow_ids.shape[0], dtype=torch.bool, device=device)  # bounds_dead
             )
         
-        # ПОЛНАЯ ВЕКТОРИЗАЦИЯ: batch update alive flows БЕЗ циклов
-        if alive_mask.any():
-            alive_flow_ids = flow_ids[alive_mask]
-            alive_positions = carrier_output.next_position[alive_mask]
-            alive_energies = carrier_output.energy_value[alive_mask]
-            alive_hidden = new_hidden[alive_mask]
+        # 2. Буферизуем потоки, достигшие выходных плоскостей
+        if output_reached_mask.any():
+            output_flow_ids = flow_ids[output_reached_mask]
+            output_positions = carrier_output.next_position[output_reached_mask]
+            output_energies = carrier_output.energy_value[output_reached_mask]
+            output_hidden = new_hidden[output_reached_mask]
             
-            # Batch update all alive flows at once
+            # Обновляем позиции и буферизуем
+            for i, flow_id in enumerate(output_flow_ids):
+                flow_id_item = flow_id.item()
+                new_position = output_positions[i]
+                new_energy = output_energies[i]
+                new_hidden_state = output_hidden[i]
+                
+                # Определяем, какую плоскость достиг поток
+                z_pos = new_position[2].item()
+                if z_pos <= 0:
+                    self.lattice._buffer_flow_to_z0_plane(flow_id_item)
+                elif z_pos >= self.config.lattice_depth:
+                    self.lattice._buffer_flow_to_zdepth_plane(flow_id_item)
+                
+                # Обновляем поток перед буферизацией
+                if flow_id_item in self.lattice.active_flows:
+                    self.lattice.active_flows[flow_id_item].position = new_position
+                    self.lattice.active_flows[flow_id_item].energy = new_energy
+                    self.lattice.active_flows[flow_id_item].hidden_state = new_hidden_state
+                    self.lattice.active_flows[flow_id_item].age += 1
+        
+        # 3. Применяем отражение границ (если включено)
+        if reflection_mask.any() and self.config.boundary_reflection_enabled:
+            reflection_flow_ids = flow_ids[reflection_mask]
+            reflection_positions = self.reflect_boundaries(carrier_output.next_position[reflection_mask])
+            reflection_energies = carrier_output.energy_value[reflection_mask]
+            reflection_hidden = new_hidden[reflection_mask]
+            
+            # Обновляем потоки с отраженными позициями
             self.lattice.batch_update_flows(
-                alive_flow_ids,
-                alive_positions,
-                alive_energies,
-                alive_hidden
+                reflection_flow_ids,
+                reflection_positions,
+                reflection_energies,
+                reflection_hidden
             )
         
-        # Обработка spawn потоков (оптимизированная)
-        self._process_spawns_optimized(flows, carrier_output, alive_mask)
+        # 4. Обновляем активные потоки
+        final_active_mask = active_mask
+        if reflection_mask.any() and not self.config.boundary_reflection_enabled:
+            # Если отражение отключено, потоки с xy_reflection_needed остаются активными
+            final_active_mask = active_mask | (reflection_mask & energy_alive_mask)
+        
+        if final_active_mask.any():
+            active_flow_ids = flow_ids[final_active_mask]
+            active_positions = carrier_output.next_position[final_active_mask]
+            active_energies = carrier_output.energy_value[final_active_mask]
+            active_hidden = new_hidden[final_active_mask]
+            
+            # Batch update all active flows
+            self.lattice.batch_update_flows(
+                active_flow_ids,
+                active_positions,
+                active_energies,
+                active_hidden
+            )
+        
+        # 5. Обработка spawn потоков (оптимизированная)
+        # Проверяем spawn на основе длины смещения, если включено
+        if self.config.movement_based_spawn:
+            movement_spawn_info = self._check_movement_spawn(current_positions, carrier_output.next_position, flow_ids)
+            if movement_spawn_info:
+                carrier_output.spawn_info.extend(movement_spawn_info)
+                logger.debug_spawn_movement(f"🎆 Added {len(movement_spawn_info)} movement-based spawns")
+        
+        self._process_spawns_optimized(flows, carrier_output, final_active_mask)
+    
+    def reflect_boundaries(self, position: torch.Tensor) -> torch.Tensor:
+        """
+        Отражение границ для X/Y координат
+        
+        Args:
+            position: [batch, 3] - позиции для отражения
+            
+        Returns:
+            reflected_position: [batch, 3] - позиции с отраженными X/Y
+        """
+        reflected_pos = position.clone()
+        x, y, z = reflected_pos[:, 0], reflected_pos[:, 1], reflected_pos[:, 2]
+        
+        # Отражение X координаты
+        x = torch.where(x < 0, -x, x)
+        x = torch.where(x >= self.config.lattice_width,
+                       2*(self.config.lattice_width-1) - x, x)
+        
+        # Отражение Y координаты
+        y = torch.where(y < 0, -y, y)
+        y = torch.where(y >= self.config.lattice_height,
+                       2*(self.config.lattice_height-1) - y, y)
+        
+        # Z остается без изменений
+        
+        reflected_pos[:, 0] = x
+        reflected_pos[:, 1] = y
+        
+        logger.debug_reflection(f"🔄 Reflected {position.shape[0]} positions: "
+                               f"X [{x.min().item():.1f}, {x.max().item():.1f}], "
+                               f"Y [{y.min().item():.1f}, {y.max().item():.1f}]")
+        
+        return reflected_pos
+    
+    def _check_movement_spawn(self, current_positions: torch.Tensor, 
+                             next_positions: torch.Tensor, 
+                             flow_ids: torch.Tensor) -> List:
+        """
+        Проверяет spawn на основе длины смещения
+        
+        Args:
+            current_positions: [batch, 3] - текущие позиции
+            next_positions: [batch, 3] - следующие позиции
+            flow_ids: [batch] - ID потоков
+            
+        Returns:
+            spawn_info: Список SpawnInfo для новых потоков
+        """
+        # Вычисляем смещения
+        displacement = next_positions - current_positions  # [batch, 3]
+        displacement_lengths = torch.norm(displacement, dim=1)  # [batch]
+        
+        # Порог для spawn
+        threshold = self.config.lattice_depth * self.config.spawn_movement_threshold_ratio
+        
+        # Маска для spawn
+        spawn_mask = displacement_lengths > threshold
+        
+        if not spawn_mask.any():
+            return []
+        
+        spawn_info_list = []
+        
+        # Обрабатываем каждый поток, который должен создать spawn
+        spawn_indices = torch.where(spawn_mask)[0]
+        for idx in spawn_indices:
+            idx_val = idx.item()
+            delta_length = displacement_lengths[idx].item()
+            flow_id = flow_ids[idx].item()
+            
+            # Количество дополнительных потоков
+            num_spawns = int((delta_length - threshold) // threshold)
+            num_spawns = min(num_spawns, self.config.max_spawn_per_step)  # Ограничиваем
+            
+            if num_spawns > 0:
+                # Получаем энергию родительского потока
+                if flow_id in self.lattice.active_flows:
+                    parent_energy = self.lattice.active_flows[flow_id].energy
+                    spawn_energies = [parent_energy.clone() for _ in range(num_spawns)]
+                    
+                    # Создаем SpawnInfo структуру (должна быть импортирована)
+                    from .energy_carrier import SpawnInfo
+                    spawn_info = SpawnInfo(
+                        energies=spawn_energies,
+                        parent_batch_idx=idx_val  # Индекс в батче
+                    )
+                    spawn_info_list.append(spawn_info)
+                    
+                    logger.debug_spawn_movement(f"🎆 Movement spawn: flow {flow_id} "
+                                               f"displacement={delta_length:.2f} > {threshold:.2f}, "
+                                               f"spawning {num_spawns} flows")
+        
+        return spawn_info_list
     
     def _process_spawns_optimized(self, flows, carrier_output, alive_mask):
         """Оптимизированная обработка spawn потоков"""
@@ -461,7 +612,7 @@ class FlowProcessor(nn.Module):
             spawn_by_idx[spawn_info.parent_batch_idx] = spawn_info
         
         # Обрабатываем spawn'ы только для живых потоков
-        alive_indices = torch.where(alive_mask)[0]
+        alive_indices = torch.where(alive_mask)[0] if alive_mask.any() else torch.tensor([], dtype=torch.long)
         for idx in alive_indices:
             idx_val = idx.item()
             if idx_val in spawn_by_idx:
@@ -471,6 +622,8 @@ class FlowProcessor(nn.Module):
                     spawn_energies = spawn_info.energies[:self.config.max_spawn_per_step]
                     flow_id = flows[idx_val].id
                     self.lattice.spawn_flows(flow_id, spawn_energies)
+                    
+                    logger.debug_spawn(f"🎆 Spawned {len(spawn_energies)} flows from parent {flow_id}")
     
     def _check_convergence(self, step: int, initial_flows_count: int) -> bool:
         """
