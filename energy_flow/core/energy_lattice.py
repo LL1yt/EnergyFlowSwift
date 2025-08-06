@@ -30,13 +30,16 @@ class Position3D(NamedTuple):
 class EnergyFlow:
     """Представление одного энергетического потока"""
     id: int
-    position: torch.Tensor  # [3] - текущая позиция
+    position: torch.Tensor  # [3] - текущая позиция (НОРМАЛИЗОВАННАЯ в [-1,1])
     energy: torch.Tensor    # [embedding_dim] - энергия/эмбеддинг
     hidden_state: torch.Tensor  # [num_layers, hidden_size] - состояние GRU
     batch_idx: int = 0  # Индекс в батче
     parent_id: Optional[int] = None
-    age: int = 0  # Количество шагов жизни потока
+    age: int = 0  # Количество шагов жизни потока (использется для проекционной системы)
     is_active: bool = True
+    steps_taken: int = 0  # Дополнительный счетчик для двухуровневой проекции
+    distance_to_surface: float = 0.0  # Расстояние до ближайшей выходной поверхности
+    projected_surface: str = "unknown"  # "z0" или "zdepth" - куда проецируется
 
 
 class EnergyLattice(nn.Module):
@@ -79,9 +82,9 @@ class EnergyLattice(nn.Module):
         self.active_flows: Dict[int, EnergyFlow] = {}
         self.next_flow_id = 0
         
-        # Двойной выходной буфер для трехплоскостной архитектуры
-        self.output_buffer_z0: Dict[Tuple[int, int], List[EnergyFlow]] = {}  # Z=0 плоскость: (x,y) -> [flows]
-        self.output_buffer_zdepth: Dict[Tuple[int, int], List[EnergyFlow]] = {}  # Z=depth плоскость: (x,y) -> [flows]
+        # Двойной выходной буфер для трехплоскостной архитектуры (нормализованные координаты)
+        self.output_buffer_z0: Dict[Tuple[float, float], List[EnergyFlow]] = {}  # Z=0 плоскость: (norm_x, norm_y) -> [flows]  
+        self.output_buffer_zdepth: Dict[Tuple[float, float], List[EnergyFlow]] = {}  # Z=depth плоскость: (norm_x, norm_y) -> [flows]
         
         # Статистика
         self.stats = {
@@ -91,8 +94,167 @@ class EnergyLattice(nn.Module):
             'max_concurrent': 0
         }
         
+        
+        # Предвычисляем нормализованную сетку координат для эффективного округления
+        self._precompute_normalized_lattice_grid()
+        
+        # Предвычисляем mapping: нормализованные координаты -> surface_idx
+        self._precompute_normalized_to_surface_mapping()
+        
         logger.info(f"EnergyLattice initialized: {self.width}x{self.height}x{self.depth}")
         logger.info(f"Input/output cells: {self.width * self.height}, max flows: {self.max_active_flows}")
+    
+    def _precompute_normalized_lattice_grid(self):
+        """Предвычисляет нормализованные координаты всех позиций решетки."""
+        # Создаем сетку всех возможных дискретных координат
+        x_coords = torch.arange(self.width, dtype=torch.float32)
+        y_coords = torch.arange(self.height, dtype=torch.float32)  
+        z_coords = torch.arange(self.depth + 1, dtype=torch.float32)  # +1 для включения depth
+        
+        # Создаем meshgrid для всех координат
+        X, Y, Z = torch.meshgrid(x_coords, y_coords, z_coords, indexing='ij')
+        
+        # Формируем тензор координат [W, H, D+1, 3]
+        lattice_coords = torch.stack([X, Y, Z], dim=-1)
+        
+        # Нормализуем все координаты в [-1, 1]
+        normalized_coords = self.config.normalization_manager.normalize_coordinates(
+            lattice_coords.view(-1, 3)
+        ).view(self.width, self.height, self.depth + 1, 3)
+        
+        # Сохраняем предвычисленную сетку
+        self.normalized_lattice_grid = normalized_coords
+        
+        logger.debug(f"Precomputed normalized lattice grid: {normalized_coords.shape}")
+        logger.debug(f"Normalized coordinate ranges: X[{normalized_coords[..., 0].min():.3f}, {normalized_coords[..., 0].max():.3f}], "
+                    f"Y[{normalized_coords[..., 1].min():.3f}, {normalized_coords[..., 1].max():.3f}], "
+                    f"Z[{normalized_coords[..., 2].min():.3f}, {normalized_coords[..., 2].max():.3f}]")
+    
+    def _precompute_normalized_to_surface_mapping(self):
+        """Предвычисляет mapping: (norm_x, norm_y) -> surface_idx для избежания денормализации."""
+        self.normalized_to_surface_idx = {}
+        
+        # Для каждой дискретной позиции на поверхности
+        for y in range(self.height):
+            for x in range(self.width):
+                # Получаем нормализованные координаты этой позиции
+                raw_coords = torch.tensor([x, y, 0], dtype=torch.float32)  # Z не важно для surface
+                norm_coords = self.config.normalization_manager.normalize_coordinates(
+                    raw_coords.unsqueeze(0)
+                )[0]
+                
+                # Создаем ключ (с округлением для консистентности)
+                norm_key = (round(norm_coords[0].item(), 6), round(norm_coords[1].item(), 6))
+                
+                # Вычисляем surface_idx (линеаризация)
+                surface_idx = y * self.width + x
+                
+                # Сохраняем mapping
+                self.normalized_to_surface_idx[norm_key] = surface_idx
+        
+        logger.debug(f"Precomputed normalized->surface mapping for {len(self.normalized_to_surface_idx)} positions")
+    
+    def round_to_nearest_lattice_position(self, normalized_positions: torch.Tensor) -> torch.Tensor:
+        """
+        Округляет нормализованные позиции до ближайших координат решетки.
+        
+        Args:
+            normalized_positions: [batch, 3] нормализованные позиции в [-1, 1]
+            
+        Returns:
+            [batch, 3] нормализованные координаты ближайших позиций решетки
+        """
+        batch_size = normalized_positions.shape[0]
+        device = normalized_positions.device
+        
+        # Переносим предвычисленную сетку на нужное устройство если необходимо
+        if self.normalized_lattice_grid.device != device:
+            self.normalized_lattice_grid = self.normalized_lattice_grid.to(device)
+        
+        # Для каждой позиции найдем ближайшую точку сетки
+        rounded_positions = torch.zeros_like(normalized_positions)
+        
+        for i in range(batch_size):
+            pos = normalized_positions[i]  # [3]
+            
+            # Вычисляем расстояние до всех точек сетки
+            # normalized_lattice_grid: [W, H, D+1, 3] -> [W*H*(D+1), 3]
+            grid_flat = self.normalized_lattice_grid.view(-1, 3)
+            distances = torch.norm(grid_flat - pos.unsqueeze(0), dim=1)
+            
+            # Находим ближайшую точку
+            nearest_idx = torch.argmin(distances)
+            rounded_positions[i] = grid_flat[nearest_idx]
+        
+        return rounded_positions
+    
+    def get_normalized_buffer_key(self, normalized_position: torch.Tensor) -> Tuple[float, float]:
+        """
+        Получает ключ для буферизации из нормализованной позиции.
+        
+        Округляет позицию до ближайшей точки предвычисленной решетки,
+        затем использует нормализованные X, Y координаты как ключ.
+        
+        Args:
+            normalized_position: [3] нормализованная позиция в [-1, 1]
+            
+        Returns:
+            (norm_x, norm_y): ключ для буферизации
+        """
+        # Округляем до ближайшей точки решетки
+        rounded_pos = self.round_to_nearest_lattice_position(normalized_position.unsqueeze(0))[0]
+        
+        # Используем нормализованные X, Y как ключ (округляем для консистентности float хеширования)
+        norm_x = round(rounded_pos[0].item(), 6)  # 6 знаков после запятой для точности
+        norm_y = round(rounded_pos[1].item(), 6)
+        
+        return (norm_x, norm_y)
+    
+    def calculate_distance_to_nearest_surface(self, normalized_position: torch.Tensor) -> Tuple[float, str]:
+        """
+        Вычисляет расстояние до ближайшей выходной поверхности.
+        
+        Args:
+            normalized_position: [3] нормализованная позиция в [-1, 1]
+            
+        Returns:
+            (distance, surface_name): расстояние и название поверхности ("z0" или "zdepth")
+        """
+        norm_z = normalized_position[2].item()
+        
+        # Получаем нормализованные значения выходных поверхностей
+        norm_z0 = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([0.0]), self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0].item()
+        
+        norm_zdepth = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([float(self.depth)]), self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0].item()
+        
+        # Вычисляем расстояния до обеих поверхностей
+        distance_to_z0 = abs(norm_z - norm_z0)
+        distance_to_zdepth = abs(norm_z - norm_zdepth)
+        
+        # Возвращаем ближайшую поверхность
+        if distance_to_z0 <= distance_to_zdepth:
+            return distance_to_z0, "z0"
+        else:
+            return distance_to_zdepth, "zdepth"
+    
+    @property
+    def output_buffer(self) -> Dict[Tuple[float, float], List[EnergyFlow]]:
+        """Объединенный выходной буфер для совместимости с существующим кодом."""
+        combined_buffer = {}
+        # Объединяем оба буфера
+        combined_buffer.update(self.output_buffer_z0)
+        for key, flows in self.output_buffer_zdepth.items():
+            if key in combined_buffer:
+                combined_buffer[key].extend(flows)
+            else:
+                combined_buffer[key] = flows.copy()
+        return combined_buffer
     
     def place_initial_energy(self, embeddings: torch.Tensor, mapper=None) -> List[int]:
         """
@@ -136,8 +298,12 @@ class EnergyLattice(nn.Module):
                 break
             
             # Создаем поток с позицией в центре куба
-            position = torch.tensor([x, y, start_z], dtype=torch.float32, device=self.device)
-            flow_id = self._create_flow(position, energy, batch_idx=batch_idx)
+            raw_position = torch.tensor([x, y, start_z], dtype=torch.float32, device=self.device)
+            # Нормализуем позицию сразу при создании
+            normalized_position = self.config.normalization_manager.normalize_coordinates(
+                raw_position.unsqueeze(0)
+            )[0]  # [3]
+            flow_id = self._create_flow(normalized_position, energy, batch_idx=batch_idx)
             flow_ids.append(flow_id)
             
             # ДИАГНОСТИКА: логируем первые 5 созданных потоков
@@ -163,15 +329,21 @@ class EnergyLattice(nn.Module):
             hidden_size = self.config.carrier_hidden_size
             hidden_state = torch.zeros(num_layers, hidden_size, device=self.device)
         
+        # Вычисляем расстояние до ближайшей поверхности
+        distance_to_surface, projected_surface = self.calculate_distance_to_nearest_surface(position)
+        
         flow = EnergyFlow(
             id=flow_id,
-            position=position,
+            position=position,  # Позиция уже нормализованная
             energy=energy,
             hidden_state=hidden_state,
             batch_idx=batch_idx,
             parent_id=parent_id,
             age=0,
-            is_active=True
+            is_active=True,
+            steps_taken=0,  # Инициализируем счетчик шагов
+            distance_to_surface=distance_to_surface,
+            projected_surface=projected_surface
         )
         
         self.active_flows[flow_id] = flow
@@ -324,25 +496,38 @@ class EnergyLattice(nn.Module):
         flow = self.active_flows[flow_id]
         
         # Корректируем позицию для Z=0 плоскости
+        # Проецируем на Z=0 плоскость в нормализованных координатах
+        normalized_z0_value = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([0.0]), self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0]
+        
+        # Сохраняем оригинальные значения ДО проекции для весовой системы
+        original_distance = flow.distance_to_surface  # Оригинальное расстояние до поверхности
+        original_steps = flow.steps_taken + 1          # Оригинальные шаги + текущий шаг
+        
+        projected_position = torch.tensor([
+            flow.position[0],  # X, Y уже нормализованные
+            flow.position[1], 
+            normalized_z0_value  # Проецируем на нормализованную Z=0 плоскость
+        ], device=self.device)
+        
         corrected_flow = EnergyFlow(
             id=flow.id,
-            position=torch.tensor([
-                flow.position[0], 
-                flow.position[1], 
-                0.0  # Проецируем на Z=0 плоскость
-            ], device=self.device),
+            position=projected_position,  # Спроецированная позиция
             energy=flow.energy,
             hidden_state=flow.hidden_state,
             batch_idx=flow.batch_idx,
             parent_id=flow.parent_id,
             age=flow.age,
-            is_active=flow.is_active
+            is_active=flow.is_active,
+            steps_taken=original_steps,              # ОРИГИНАЛЬНЫЕ шаги
+            distance_to_surface=original_distance,   # ОРИГИНАЛЬНОЕ расстояние
+            projected_surface="z0"                   # Указываем куда спроецирован
         )
         
-        # Определяем клетку на выходной плоскости
-        x = int(torch.clamp(corrected_flow.position[0], 0, self.width - 1).item())
-        y = int(torch.clamp(corrected_flow.position[1], 0, self.height - 1).item())
-        key = (x, y)
+        # Определяем ключ для буфера на основе нормализованных координат
+        key = self.get_normalized_buffer_key(corrected_flow.position)
         
         # Добавляем в буфер Z=0 плоскости
         if key not in self.output_buffer_z0:
@@ -353,7 +538,7 @@ class EnergyLattice(nn.Module):
         flow.is_active = False
         self.stats['total_completed'] += 1
         
-        logger.debug(f"Flow {flow_id} buffered to Z=0 plane cell ({x}, {y})")
+        logger.debug(f"Flow {flow_id} buffered to Z=0 plane cell {key}")
     
     def _buffer_flow_to_zdepth_plane(self, flow_id: int):
         """Помещает поток в буфер правой выходной плоскости (Z=depth)"""
@@ -362,26 +547,38 @@ class EnergyLattice(nn.Module):
         
         flow = self.active_flows[flow_id]
         
-        # Корректируем позицию для Z=depth плоскости
+        # Проецируем на Z=depth плоскость в нормализованных координатах
+        normalized_zdepth_value = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([float(self.depth)]), self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0]
+        
+        # Сохраняем оригинальные значения ДО проекции для весовой системы
+        original_distance = flow.distance_to_surface  # Оригинальное расстояние до поверхности
+        original_steps = flow.steps_taken + 1          # Оригинальные шаги + текущий шаг
+        
+        projected_position = torch.tensor([
+            flow.position[0],  # X, Y уже нормализованные
+            flow.position[1], 
+            normalized_zdepth_value  # Проецируем на нормализованную Z=depth плоскость
+        ], device=self.device)
+        
         corrected_flow = EnergyFlow(
             id=flow.id,
-            position=torch.tensor([
-                flow.position[0], 
-                flow.position[1], 
-                float(self.depth)  # Проецируем на Z=depth плоскость
-            ], device=self.device),
+            position=projected_position,  # Спроецированная позиция
             energy=flow.energy,
             hidden_state=flow.hidden_state,
             batch_idx=flow.batch_idx,
             parent_id=flow.parent_id,
             age=flow.age,
-            is_active=flow.is_active
+            is_active=flow.is_active,
+            steps_taken=original_steps,              # ОРИГИНАЛЬНЫЕ шаги
+            distance_to_surface=original_distance,   # ОРИГИНАЛЬНОЕ расстояние
+            projected_surface="zdepth"               # Указываем куда спроецирован
         )
         
-        # Определяем клетку на выходной плоскости
-        x = int(torch.clamp(corrected_flow.position[0], 0, self.width - 1).item())
-        y = int(torch.clamp(corrected_flow.position[1], 0, self.height - 1).item())
-        key = (x, y)
+        # Определяем ключ для буфера на основе нормализованных координат
+        key = self.get_normalized_buffer_key(corrected_flow.position)
         
         # Добавляем в буфер Z=depth плоскости
         if key not in self.output_buffer_zdepth:
@@ -392,7 +589,7 @@ class EnergyLattice(nn.Module):
         flow.is_active = False
         self.stats['total_completed'] += 1
         
-        logger.debug(f"Flow {flow_id} buffered to Z={self.depth} plane cell ({x}, {y})")
+        logger.debug(f"Flow {flow_id} buffered to Z={self.depth} plane cell {key}")
     
     def get_buffered_flows_count(self) -> int:
         """Возвращает количество потоков в обоих выходных буферах"""
@@ -470,45 +667,54 @@ class EnergyLattice(nn.Module):
         
         logger.debug(f"Collecting from buffer: {len(self.output_buffer)} cells with flows")
         
-        for y in range(self.height):
-            for x in range(self.width):
-                key = (x, y)
-                if key in self.output_buffer:
-                    flows_in_cell = self.output_buffer[key]
+        # Итерируем напрямую по ключам буфера (нормализованные координаты)
+        for key, flows_in_cell in self.output_buffer.items():
+            if flows_in_cell:  # Проверяем что есть потоки в клетке
+                
+                # Собираем ID всех потоков в этой клетке
+                for flow in flows_in_cell:
+                    flow_ids.append(flow.id)
+                
+                # Агрегация энергии в клетке
+                if len(flows_in_cell) == 1:
+                    # Один поток - просто берем его энергию
+                    aggregated = flows_in_cell[0].energy
+                    stats = f"single_flow(id={flows_in_cell[0].id})"
+                elif len(flows_in_cell) > 1:
+                    # Несколько потоков - взвешенное усреднение
+                    energies = torch.stack([flow.energy for flow in flows_in_cell])
                     
-                    # Собираем ID всех потоков в этой клетке
+                    # НОВАЯ весовая система на основе distance_to_surface и steps_taken
+                    weights = []
                     for flow in flows_in_cell:
-                        flow_ids.append(flow.id)
+                        energy_magnitude = torch.norm(flow.energy).item()
+                        
+                        # Фактор близости: чем меньше расстояние, тем больше вес
+                        if flow.distance_to_surface == 0:
+                            proximity_factor = 1.0
+                        else:
+                            proximity_factor = 1.0 / flow.distance_to_surface
+                        
+                        # Фактор количества шагов: чем больше шагов, тем больше вес (больше "заработан")
+                        steps_factor = 1.0 + flow.steps_taken * 0.1
+                        
+                        # Комбинированный вес
+                        weight = energy_magnitude * proximity_factor * steps_factor
+                        weights.append(weight)
                     
-                    if len(flows_in_cell) == 1:
-                        # Один поток - просто берем его энергию
-                        aggregated = flows_in_cell[0].energy
-                        stats = f"single_flow(id={flows_in_cell[0].id})"
-                    else:
-                        # Несколько потоков - взвешенное усреднение
-                        energies = torch.stack([flow.energy for flow in flows_in_cell])
-                        
-                        # Вычисляем веса (энергия * возраст)
-                        weights = []
-                        for flow in flows_in_cell:
-                            energy_magnitude = torch.norm(flow.energy).item()
-                            age_factor = 1.0 + flow.age * 0.1
-                            weight = energy_magnitude * age_factor
-                            weights.append(weight)
-                        
-                        weights = torch.tensor(weights, device=self.device)
-                        weights = weights / weights.sum()  # Нормализуем
-                        
-                        # Взвешенное усреднение
-                        aggregated = (energies * weights.unsqueeze(-1)).sum(dim=0)
-                        
-                        # Статистика
-                        flow_ids_cell = [flow.id for flow in flows_in_cell]
-                        avg_age = sum(flow.age for flow in flows_in_cell) / len(flows_in_cell)
-                        stats = f"weighted_avg({len(flows_in_cell)}_flows, ids={flow_ids_cell}, avg_age={avg_age:.1f})"
-                        
-                        logger.debug(f"Cell ({x},{y}): {stats}")
+                    weights = torch.tensor(weights, device=self.device)
+                    weights = weights / weights.sum()  # Нормализуем
                     
+                    # Взвешенное усреднение
+                    aggregated = (energies * weights.unsqueeze(-1)).sum(dim=0)
+                    
+                    # Статистика
+                    flow_ids_cell = [flow.id for flow in flows_in_cell]
+                    avg_age = sum(flow.age for flow in flows_in_cell) / len(flows_in_cell)
+                    stats = f"weighted_avg({len(flows_in_cell)}_flows, ids={flow_ids_cell}, avg_age={avg_age:.1f})"
+                    
+                    logger.debug(f"Cell {key}: {stats}")
+                
                     aggregation_stats.append(stats)
                 else:
                     # Пустая клетка
@@ -594,8 +800,14 @@ class EnergyLattice(nn.Module):
         logger.debug(f"Collecting surface energy from buffer: {len(self.output_buffer)} cells, batch_size={batch_size}")
         
         # Итерируем по всем клеткам буфера
-        for (x, y), flows in self.output_buffer.items():
+        for (norm_x, norm_y), flows in self.output_buffer.items():
             if not flows:
+                continue
+            
+            # Получаем surface_idx из предвычисленного mapping
+            surface_idx = self.normalized_to_surface_idx.get((norm_x, norm_y))
+            if surface_idx is None:
+                logger.warning(f"No surface mapping for normalized coords ({norm_x:.6f}, {norm_y:.6f})")
                 continue
                 
             # Собираем ID всех потоков в этой клетке
@@ -607,7 +819,7 @@ class EnergyLattice(nn.Module):
                 flow = flows[0]
                 aggregated_energy = flow.energy
                 batch_idx = flow.batch_idx
-                logger.debug(f"Cell ({x},{y}): single_flow(id={flow.id}, batch={batch_idx})")
+                logger.debug(f"Cell ({norm_x:.3f},{norm_y:.3f})->[idx={surface_idx}]: single_flow(id={flow.id}, batch={batch_idx})")
             else:
                 # Несколько потоков - взвешенное усреднение
                 energies = []
@@ -615,9 +827,20 @@ class EnergyLattice(nn.Module):
                 batch_indices_cell = []
                 
                 for flow in flows:
+                    # НОВАЯ весовая система на основе distance_to_surface и steps_taken
                     energy_magnitude = torch.norm(flow.energy).item()
-                    age_factor = 1.0 + flow.age * 0.1
-                    weight = energy_magnitude * age_factor
+
+                    # Фактор близости: чем меньше расстояние, тем больше вес
+                    if flow.distance_to_surface == 0:
+                        proximity_factor = 1.0
+                    else:
+                        proximity_factor = 1.0 / flow.distance_to_surface
+                    
+                    # Фактор количества шагов: чем больше шагов, тем больше вес (больше "заработан")
+                    steps_factor = 1.0 + flow.steps_taken * 0.1
+                    
+                    # Комбинированный вес
+                    weight = energy_magnitude * proximity_factor * steps_factor
                     
                     energies.append(flow.energy)
                     weights.append(weight)
@@ -635,18 +858,17 @@ class EnergyLattice(nn.Module):
                 batch_idx = batch_indices_cell[0]
                 
                 avg_age = sum(flow.age for flow in flows) / len(flows)
-                logger.debug(f"Cell ({x},{y}): weighted_avg({len(flows)}_flows, ids={cell_flow_ids}, avg_age={avg_age:.1f}, batch={batch_idx})")
+                logger.debug(f"Cell ({norm_x:.3f},{norm_y:.3f})->[idx={surface_idx}]: weighted_avg({len(flows)}_flows, ids={cell_flow_ids}, avg_age={avg_age:.1f}, batch={batch_idx})")
             
             # Размещаем агрегированную энергию в surface tensor
-            if 0 <= x < self.width and 0 <= y < self.height and 0 <= batch_idx < batch_size:
-                surface_idx = y * self.width + x  # Линеаризация координат
+            if 0 <= batch_idx < batch_size:
                 # НЕ используем .item() чтобы сохранить градиенты!
                 if aggregated_energy.numel() == 1:
                     output_surface[batch_idx, surface_idx] = aggregated_energy.squeeze()
                 else:
                     output_surface[batch_idx, surface_idx] = aggregated_energy[0]  # Берем первый элемент без .item()
             else:
-                logger.warning(f"Invalid coordinates or batch_idx: ({x},{y}), batch={batch_idx}")
+                logger.warning(f"Invalid batch_idx: {batch_idx} (expected 0 <= batch_idx < {batch_size})")
         
         logger.info(f"Collected surface energy from {len(flow_ids)} buffered flows across {len(self.output_buffer)} cells")
         return output_surface, flow_ids

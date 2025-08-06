@@ -48,7 +48,7 @@ class EnergyConfig:
     
     # Фильтрация потоков с маленькими смещениями (переосмысленный carrier_dropout)
     min_displacement_threshold: float = 0.5  # Минимальная длина смещения для сохранения потока
-    enable_displacement_filtering: bool = True  # Включить фильтрацию "топчущихся" потоков
+    enable_displacement_filtering: bool = False  # Отключить фильтрацию "топчущихся" потоков для полной проекционной архитектуры
     
     # Размерности эмбеддингов
     input_embedding_dim_from_teacher: int = 768  # Стандартный размер от language models
@@ -88,7 +88,7 @@ class EnergyConfig:
     convergence_enabled: bool = True         # Включить адаптивное завершение
     convergence_threshold: float = 0.95      # Порог конвергенции (доля достигнутых выходов)
     convergence_min_steps: int = 5           # Минимальное количество шагов
-    convergence_patience: int = 3            # Количество шагов без улучшения для останова
+    convergence_patience: int = 10           # Увеличенная терпеливость для полной проекционной архитектуры
     
     # Logging
     log_interval: int = 10
@@ -218,7 +218,7 @@ def create_debug_config() -> EnergyConfig:
         convergence_enabled=True,
         convergence_threshold=0.8,
         convergence_min_steps=3,
-        convergence_patience=2,
+        convergence_patience=5,  # Увеличено для debug режима
         
         
         # НОВАЯ АРХИТЕКТУРА: Относительные координаты (включено для debug)
@@ -264,7 +264,11 @@ def create_experiment_config() -> EnergyConfig:
         dual_output_planes=True,        # Две выходные плоскости
         movement_based_spawn=True,      # Spawn на основе длины движения
         boundary_reflection_enabled=True, # Отражение границ для экспериментов
-        spawn_movement_threshold_ratio=0.1  # 10% от depth для experiment
+        spawn_movement_threshold_ratio=0.1,  # 10% от depth для experiment
+        
+        # Проекционная архитектура настройки
+        enable_displacement_filtering=False,  # Отключить фильтрацию для полной проекции
+        convergence_patience=8  # Увеличенная терпеливость для experiment
     )
 
 
@@ -291,13 +295,17 @@ def create_optimized_config() -> EnergyConfig:
         text_generation_temperature=1.0,
         
         
-        # НОВАЯ АРХИТЕКТУРА: Относительные координаты (опционально для optimized)
-        relative_coordinates=True,     # Отключено для production стабильности
-        center_start_enabled=True,     # Отключено для production
-        dual_output_planes=True,       # Отключено для production
-        movement_based_spawn=True,     # Отключено для production
-        boundary_reflection_enabled=True, # Отключено для production
-        spawn_movement_threshold_ratio=0.1
+        # НОВАЯ АРХИТЕКТУРА: Относительные координаты (включено для optimized)
+        relative_coordinates=True,     # Включить для оптимизированной конфигурации
+        center_start_enabled=True,     # Включить для optimized
+        dual_output_planes=True,       # Включить для optimized
+        movement_based_spawn=True,     # Включить для optimized
+        boundary_reflection_enabled=True, # Включить для optimized
+        spawn_movement_threshold_ratio=0.1,
+        
+        # Проекционная архитектура настройки
+        enable_displacement_filtering=False,  # Отключить фильтрацию для полной проекции
+        convergence_patience=12  # Максимальная терпеливость для optimized
     )
 
 

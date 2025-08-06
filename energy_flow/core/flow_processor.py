@@ -127,7 +127,7 @@ class FlowProcessor(nn.Module):
             initial_z_positions = torch.stack([flow.position[2] for flow in initial_flows[:10]])  # Первые 10
             logger.debug_energy(f"🏁 INITIAL positions (first 10): Z-coords = {initial_z_positions.tolist()}")
             if torch.any(initial_z_positions != 0):
-                logger.error(f"🚫 ERROR: Initial flows do NOT start at Z=0! Found Z = {initial_z_positions.unique().tolist()}")
+                logger.debug_energy(f"теперь это не ошибка: Initial flows do NOT start at Z=0! Found Z = {initial_z_positions.unique().tolist()}")
         
         # Сбрасываем статистику конвергенции
         initial_flows_count = len(flow_ids)
@@ -424,6 +424,80 @@ class FlowProcessor(nn.Module):
         
         # Маска активных потоков
         active_mask = ~is_terminated
+        
+        # ДВУХУРОВНЕВАЯ ПРОЕКЦИОННАЯ СИСТЕМА
+        # Проверяем потоки, которые сделали depth/2 шагов но не достигли выходных плоскостей
+        projection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        depth_half = self.config.lattice_depth / 2
+        
+        for i, flow in enumerate(flows):
+            # Только для активных потоков (не завершенных)
+            if active_mask[i]:
+                # Проверяем, сделал ли поток достаточно шагов для проекции
+                if flow.steps_taken >= depth_half:
+                    projection_mask[i] = True
+                    logger.debug_energy(f"🎯 Flow {flow.id} qualifies for projection: {flow.steps_taken} >= {depth_half} steps")
+        
+        # Обрабатываем потоки для проекции
+        if projection_mask.any():
+            projected_count = projection_mask.sum().item()
+            logger.info(f"📊 Projecting {projected_count} flows to nearest output surface (completed ≥{depth_half} steps)")
+            
+            # Извлекаем потоки для проекции
+            projection_flow_ids = flow_ids[projection_mask]
+            projection_positions = carrier_output.next_position[projection_mask]
+            projection_energies = carrier_output.energy_value[projection_mask]
+            projection_hidden = new_hidden[projection_mask]
+            
+            # Проецируем каждый поток на ближайшую выходную поверхность
+            for i, flow_id in enumerate(projection_flow_ids):
+                flow_id_item = flow_id.item()
+                if flow_id_item in self.lattice.active_flows:
+                    flow = self.lattice.active_flows[flow_id_item]
+                    current_pos = projection_positions[i]
+                    
+                    # Определяем ближайшую выходную поверхность по Z-координате
+                    z_current = current_pos[2].item()
+                    distance_to_z0 = abs(z_current - 0)
+                    distance_to_zdepth = abs(z_current - self.config.lattice_depth)
+                    
+                    # Проецируем на ближайшую поверхность
+                    if distance_to_z0 <= distance_to_zdepth:
+                        # Проецируем на Z=0 плоскость
+                        projected_pos = current_pos.clone()
+                        projected_pos[2] = 0
+                        surface_type = "z0"
+                        # Обновляем projected_surface в потоке
+                        flow.projected_surface = "z0_plane"
+                    else:
+                        # Проецируем на Z=depth плоскость
+                        projected_pos = current_pos.clone()
+                        projected_pos[2] = self.config.lattice_depth
+                        surface_type = "zdepth"
+                        # Обновляем projected_surface в потоке
+                        flow.projected_surface = "zdepth_plane"
+                    
+                    # ВАЖНО: Сохраняем ОРИГИНАЛЬНОЕ расстояние до проекции для весовой системы
+                    original_distance = min(distance_to_z0, distance_to_zdepth)
+                    flow.distance_to_surface = original_distance
+                    
+                    # Обновляем поток и буферизуем его
+                    flow.position = projected_pos
+                    flow.energy = projection_energies[i]
+                    flow.hidden_state = projection_hidden[i]
+                    flow.age += 1
+                    
+                    # Буферизуем поток на соответствующую поверхность
+                    if surface_type == "z0":
+                        self.lattice._buffer_flow_to_z0_plane(flow_id_item)
+                    else:
+                        self.lattice._buffer_flow_to_zdepth_plane(flow_id_item)
+                    
+                    logger.debug_energy(f"🎯 Projected flow {flow_id_item} to {surface_type} plane: "
+                                      f"original_distance={original_distance:.3f}, steps={flow.steps_taken}")
+            
+            # Убираем проецированные потоки из активных
+            active_mask = active_mask & ~projection_mask
         
         # Дополнительная фильтрация по длине смещения (переосмысленный carrier_dropout)
         if self.config.enable_displacement_filtering:
