@@ -250,25 +250,32 @@ class FlowProcessor(nn.Module):
         
         logger.debug(f"Final collection: {len(active_flows)} active flows, {buffered_count} buffered flows")
         
-        # Если есть активные потоки на выходной стороне - добавляем их в буфер
+        # НОВАЯ АРХИТЕКТУРА: Если есть активные потоки на выходной стороне - помечаем их как завершенные
         active_at_output = 0
         for flow in active_flows:
             z_pos = flow.position[2].item()
             if z_pos >= self.config.lattice_depth - 1:
-                # Поток достиг выхода но еще не буферизован
-                self.lattice._buffer_output_flow(flow.id)
+                # Поток достиг выхода - помечаем как завершенный
+                self.lattice._mark_flow_completed_zdepth_plane(flow.id)
+                active_at_output += 1
+            elif z_pos <= 0:
+                # Поток достиг начала - помечаем как завершенный на Z=0
+                self.lattice._mark_flow_completed_z0_plane(flow.id)  
                 active_at_output += 1
         
         if active_at_output > 0:
-            logger.debug(f"Moved {active_at_output} remaining flows to output buffer")
+            logger.debug(f"Marked {active_at_output} remaining flows as completed")
         
-        # Теперь собираем все из буфера используя маппер
-        output_embeddings, completed_flows = self.lattice.collect_output_energy(self.mapper)
+        # НОВАЯ АРХИТЕКТУРА: Собираем энергию напрямую из завершенных потоков (без буферизации)
+        output_embeddings, completed_flows = self.lattice.collect_completed_flows_direct()
         
-        # Очищаем буфер после сбора (FlowProcessor координирует жизненный цикл)
+        # Очищаем завершенные потоки после сбора
         if completed_flows:
-            self.lattice.clear_output_buffer()
-            logger.info(f"Collected and cleared {len(completed_flows)} flows from output buffer")
+            # Удаляем завершенные потоки из активного списка
+            for flow_id in completed_flows:
+                if flow_id in self.lattice.active_flows:
+                    del self.lattice.active_flows[flow_id]
+            logger.info(f"Collected and removed {len(completed_flows)} completed flows")
         
         return output_embeddings, completed_flows
     
@@ -285,24 +292,32 @@ class FlowProcessor(nn.Module):
         
         logger.debug(f"Surface collection: {len(active_flows)} active flows, {buffered_count} buffered flows")
         
-        # Если есть активные потоки на выходной стороне - добавляем их в буфер
+        # НОВАЯ АРХИТЕКТУРА: Если есть активные потоки на выходной стороне - помечаем их как завершенные
         active_at_output = 0
         for flow in active_flows:
             z_pos = flow.position[2].item()
             if z_pos >= self.config.lattice_depth - 1:
-                self.lattice._buffer_output_flow(flow.id)
+                # Поток достиг выхода - помечаем как завершенный
+                self.lattice._mark_flow_completed_zdepth_plane(flow.id)
+                active_at_output += 1
+            elif z_pos <= 0:
+                # Поток достиг начала - помечаем как завершенный на Z=0
+                self.lattice._mark_flow_completed_z0_plane(flow.id)
                 active_at_output += 1
         
         if active_at_output > 0:
-            logger.debug(f"Moved {active_at_output} remaining flows to output buffer")
+            logger.debug(f"Marked {active_at_output} remaining flows as completed")
         
-        # Собираем surface embeddings из буфера напрямую
-        output_surface_embeddings, completed_flows = self.lattice.collect_buffered_surface_energy()
+        # НОВАЯ АРХИТЕКТУРА: Собираем surface embeddings напрямую из завершенных потоков (без буферизации)
+        output_surface_embeddings, completed_flows = self.lattice.collect_completed_flows_surface_direct()
         
-        # Очищаем буфер после сбора (FlowProcessor координирует жизненный цикл)
+        # Очищаем завершенные потоки после сбора
         if completed_flows:
-            self.lattice.clear_output_buffer()
-            logger.info(f"Collected and cleared {len(completed_flows)} flows from output buffer")
+            # Удаляем завершенные потоки из активного списка
+            for flow_id in completed_flows:
+                if flow_id in self.lattice.active_flows:
+                    del self.lattice.active_flows[flow_id]
+            logger.info(f"Collected and removed {len(completed_flows)} completed flows")
         
         return output_surface_embeddings, completed_flows
     
@@ -487,11 +502,11 @@ class FlowProcessor(nn.Module):
                     flow.hidden_state = projection_hidden[i]
                     flow.age += 1
                     
-                    # Буферизуем поток на соответствующую поверхность
+                    # НОВАЯ АРХИТЕКТУРА: Помечаем поток как завершенный без буферизации  
                     if surface_type == "z0":
-                        self.lattice._buffer_flow_to_z0_plane(flow_id_item)
+                        self.lattice._mark_flow_completed_z0_plane(flow_id_item)
                     else:
-                        self.lattice._buffer_flow_to_zdepth_plane(flow_id_item)
+                        self.lattice._mark_flow_completed_zdepth_plane(flow_id_item)
                     
                     logger.debug_energy(f"🎯 Projected flow {flow_id_item} to {surface_type} plane: "
                                       f"original_distance={original_distance:.3f}, steps={flow.steps_taken}")
@@ -531,12 +546,12 @@ class FlowProcessor(nn.Module):
                 new_energy = output_energies[i]
                 new_hidden_state = output_hidden[i]
                 
-                # Определяем, какую плоскость достиг поток
+                # НОВАЯ АРХИТЕКТУРА: Помечаем поток как завершенный без буферизации
                 z_pos = new_position[2].item()
                 if z_pos <= 0:
-                    self.lattice._buffer_flow_to_z0_plane(flow_id_item)
+                    self.lattice._mark_flow_completed_z0_plane(flow_id_item)
                 elif z_pos >= self.config.lattice_depth:
-                    self.lattice._buffer_flow_to_zdepth_plane(flow_id_item)
+                    self.lattice._mark_flow_completed_zdepth_plane(flow_id_item)
                 
                 # Обновляем поток перед буферизацией
                 if flow_id_item in self.lattice.active_flows:

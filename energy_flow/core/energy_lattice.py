@@ -488,6 +488,60 @@ class EnergyLattice(nn.Module):
         if updated_count > 0:
             logger.debug(f"Batch updated {updated_count} flows")
     
+    def _mark_flow_completed_z0_plane(self, flow_id: int):
+        """НОВАЯ АРХИТЕКТУРА: Помечает поток как завершенный на Z=0 плоскости без буферизации"""
+        if flow_id not in self.active_flows:
+            return
+            
+        flow = self.active_flows[flow_id]
+        
+        # Проецируем позицию на Z=0 плоскость в нормализованных координатах
+        normalized_z0_value = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([0.0]), self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0]
+        
+        # Обновляем позицию потока
+        projected_position = torch.tensor([
+            flow.position[0],  # X, Y уже нормализованные
+            flow.position[1], 
+            normalized_z0_value  # Проецируем на нормализованную Z=0 плоскость
+        ], device=self.device)
+        
+        flow.position = projected_position
+        flow.projected_surface = "z0"
+        flow.is_active = False  # Помечаем как завершенный
+        self.stats['total_completed'] += 1
+        
+        logger.debug(f"Flow {flow_id} marked completed on Z=0 plane")
+    
+    def _mark_flow_completed_zdepth_plane(self, flow_id: int):
+        """НОВАЯ АРХИТЕКТУРА: Помечает поток как завершенный на Z=depth плоскости без буферизации"""
+        if flow_id not in self.active_flows:
+            return
+            
+        flow = self.active_flows[flow_id]
+        
+        # Проецируем позицию на Z=depth плоскость в нормализованных координатах
+        normalized_zdepth_value = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([float(self.depth)]), self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0]
+        
+        # Обновляем позицию потока
+        projected_position = torch.tensor([
+            flow.position[0],  # X, Y уже нормализованные
+            flow.position[1], 
+            normalized_zdepth_value  # Проецируем на нормализованную Z=depth плоскость
+        ], device=self.device)
+        
+        flow.position = projected_position
+        flow.projected_surface = "zdepth"
+        flow.is_active = False  # Помечаем как завершенный
+        self.stats['total_completed'] += 1
+        
+        logger.debug(f"Flow {flow_id} marked completed on Z={self.depth} plane")
+
     def _buffer_flow_to_z0_plane(self, flow_id: int):
         """Помещает поток в буфер левой выходной плоскости (Z=0)"""
         if flow_id not in self.active_flows:
@@ -648,6 +702,222 @@ class EnergyLattice(nn.Module):
         
         return total_importance
     
+    def collect_completed_flows_direct(self) -> Tuple[torch.Tensor, List[int]]:
+        """
+        НОВАЯ АРХИТЕКТУРА: Собирает энергию напрямую из завершенных потоков без буферизации
+        
+        Returns:
+            output_embeddings: [batch, embedding_dim] - собранные эмбеддинги  
+            flow_ids: ID завершенных потоков
+        """
+        # Находим все завершенные потоки (неактивные с известной проекционной поверхностью)
+        completed_flows = [
+            flow for flow in self.active_flows.values() 
+            if not flow.is_active and flow.projected_surface != "unknown"
+        ]
+        
+        if not completed_flows:
+            logger.debug("No completed flows found")
+            return torch.zeros(0, self.config.input_embedding_dim_from_teacher, device=self.device), []
+            
+        logger.debug(f"Found {len(completed_flows)} completed flows for direct collection")
+        
+        # Группируем потоки по нормализованным координатам
+        grouped_flows = {}
+        for flow in completed_flows:
+            key = self.get_normalized_buffer_key(flow.position)
+            if key not in grouped_flows:
+                grouped_flows[key] = []
+            grouped_flows[key].append(flow)
+        
+        flow_ids = []
+        output_embeddings = []
+        aggregation_stats = []
+        
+        # Итерируем по группам потоков
+        for key, flows_in_cell in grouped_flows.items():
+            # Собираем ID всех потоков в этой клетке
+            for flow in flows_in_cell:
+                flow_ids.append(flow.id)
+            
+            # Агрегация энергии в клетке
+            if len(flows_in_cell) == 1:
+                # Один поток - просто берем его энергию
+                aggregated = flows_in_cell[0].energy
+                stats = f"single_flow(id={flows_in_cell[0].id})"
+            else:
+                # Несколько потоков - взвешенное усреднение с ИСПРАВЛЕННОЙ весовой системой
+                energies = torch.stack([flow.energy for flow in flows_in_cell])
+                
+                weights = []
+                for flow in flows_in_cell:
+                    energy_magnitude = torch.norm(flow.energy).item()
+                    
+                    # ИСПРАВЛЕННЫЙ фактор близости для нормализованных координат
+                    proximity_factor = 1.0 / (1.0 + flow.distance_to_surface)
+                    
+                    # Фактор количества шагов
+                    steps_factor = 1.0 + flow.steps_taken * 0.1
+                    
+                    # Комбинированный вес
+                    weight = energy_magnitude * proximity_factor * steps_factor
+                    weights.append(weight)
+                
+                weights = torch.tensor(weights, device=self.device)
+                weights = weights / weights.sum()  # Нормализуем
+                
+                # Взвешенное усреднение
+                aggregated = (energies * weights.unsqueeze(-1)).sum(dim=0)
+                
+                # Статистика
+                flow_ids_cell = [flow.id for flow in flows_in_cell]
+                avg_age = sum(flow.age for flow in flows_in_cell) / len(flows_in_cell)
+                stats = f"weighted_avg({len(flows_in_cell)}_flows, ids={flow_ids_cell}, avg_age={avg_age:.1f})"
+                
+                logger.debug(f"Cell {key}: {stats}")
+            
+            aggregation_stats.append(stats)
+            output_embeddings.append(aggregated)
+        
+        # Собираем в тензор
+        output_embeddings = torch.stack(output_embeddings)  # [num_cells, embedding_dim]
+        
+        # Восстанавливаем исходную размерность эмбеддинга
+        output_embeddings = output_embeddings.view(-1)[:self.config.input_embedding_dim_from_teacher]
+        output_embeddings = output_embeddings.unsqueeze(0)  # [1, 768]
+        
+        # Статистика
+        cells_with_flows = len(aggregation_stats)
+        multi_flow_cells = len([stats for stats in aggregation_stats if 'weighted_avg' in stats])
+        
+        logger.info(f"Direct collection: {len(flow_ids)} completed flows from {cells_with_flows} cells, "
+                   f"{multi_flow_cells} cells with multiple flows")
+        
+        return output_embeddings, flow_ids
+    
+    def collect_completed_flows_surface_direct(self) -> Tuple[torch.Tensor, List[int]]:
+        """
+        НОВАЯ АРХИТЕКТУРА: Собирает surface embeddings напрямую из завершенных потоков
+        
+        Returns:
+            output_surface_embeddings: [batch, surface_dim] - surface embeddings
+            completed_flows: ID завершенных потоков
+        """
+        # Находим все завершенные потоки
+        completed_flows = [
+            flow for flow in self.active_flows.values() 
+            if not flow.is_active and flow.projected_surface != "unknown"
+        ]
+        
+        if not completed_flows:
+            logger.debug("No completed flows found for surface collection")
+            # Возвращаем нулевые surface embeddings с сохранением градиентов
+            surface_dim = self.width * self.height
+            reference_tensor = None
+            for flow in self.active_flows.values():
+                if flow.energy.requires_grad:
+                    reference_tensor = flow.energy
+                    break
+            if reference_tensor is not None:
+                zero_tensor = torch.zeros(1, surface_dim, device=self.device, dtype=reference_tensor.dtype, requires_grad=True)
+                return zero_tensor * 0.0, []
+            else:
+                return torch.zeros(1, surface_dim, device=self.device), []
+        
+        # Определяем размер батча
+        batch_indices = {flow.batch_idx for flow in completed_flows}
+        batch_size = max(batch_indices) + 1 if batch_indices else 1
+        
+        # Создаем surface tensor с градиентной связью
+        surface_dim = self.width * self.height
+        reference_energy = completed_flows[0].energy
+        if reference_energy.requires_grad:
+            output_surface = torch.zeros(batch_size, surface_dim, device=self.device, dtype=reference_energy.dtype)
+            # Создаем градиентную связь
+            all_energies = torch.stack([flow.energy for flow in completed_flows])
+            energy_sum = all_energies.sum()
+            output_surface = output_surface + energy_sum * 0.0
+        else:
+            output_surface = torch.zeros(batch_size, surface_dim, device=self.device)
+        
+        flow_ids = []
+        
+        logger.debug(f"Direct surface collection: {len(completed_flows)} completed flows, batch_size={batch_size}")
+        
+        # Группируем потоки по нормализованным координатам
+        grouped_flows = {}
+        for flow in completed_flows:
+            key = self.get_normalized_buffer_key(flow.position)
+            if key not in grouped_flows:
+                grouped_flows[key] = []
+            grouped_flows[key].append(flow)
+        
+        # Итерируем по группам потоков
+        for (norm_x, norm_y), flows in grouped_flows.items():
+            # Получаем surface_idx из предвычисленного mapping
+            surface_idx = self.normalized_to_surface_idx.get((norm_x, norm_y))
+            if surface_idx is None:
+                logger.warning(f"No surface mapping for normalized coords ({norm_x:.6f}, {norm_y:.6f})")
+                continue
+            
+            # Собираем ID всех потоков в этой клетке
+            cell_flow_ids = [flow.id for flow in flows]
+            flow_ids.extend(cell_flow_ids)
+            
+            if len(flows) == 1:
+                # Один поток - просто берем его энергию
+                flow = flows[0]
+                aggregated_energy = flow.energy
+                batch_idx = flow.batch_idx
+                logger.debug(f"Cell ({norm_x:.3f},{norm_y:.3f})->[idx={surface_idx}]: single_flow(id={flow.id}, batch={batch_idx})")
+            else:
+                # Несколько потоков - взвешенное усреднение с ИСПРАВЛЕННОЙ весовой системой
+                energies = []
+                weights = []
+                batch_indices_cell = []
+                
+                for flow in flows:
+                    energy_magnitude = torch.norm(flow.energy).item()
+                    
+                    # ИСПРАВЛЕННЫЙ фактор близости для нормализованных координат
+                    proximity_factor = 1.0 / (1.0 + flow.distance_to_surface)
+                    
+                    # Фактор количества шагов
+                    steps_factor = 1.0 + flow.steps_taken * 0.1
+                    
+                    # Комбинированный вес
+                    weight = energy_magnitude * proximity_factor * steps_factor
+                    
+                    energies.append(flow.energy)
+                    weights.append(weight)
+                    batch_indices_cell.append(flow.batch_idx)
+                
+                # Нормализуем веса
+                weights = torch.tensor(weights, device=self.device)
+                weights = weights / weights.sum()
+                
+                # Взвешенное усреднение энергий
+                energies_tensor = torch.stack(energies)
+                aggregated_energy = (energies_tensor * weights.unsqueeze(-1)).sum(dim=0)
+                
+                # Для множественных потоков берем batch_idx первого потока
+                batch_idx = batch_indices_cell[0]
+                
+                avg_age = sum(flow.age for flow in flows) / len(flows)
+                logger.debug(f"Cell ({norm_x:.3f},{norm_y:.3f})->[idx={surface_idx}]: weighted_avg({len(flows)}_flows, ids={cell_flow_ids}, avg_age={avg_age:.1f}, batch={batch_idx})")
+            
+            # Размещаем агрегированную энергию в surface tensor
+            if 0 <= batch_idx < batch_size:
+                if aggregated_energy.numel() == 1:
+                    output_surface[batch_idx, surface_idx] = aggregated_energy.squeeze()
+                else:
+                    output_surface[batch_idx, surface_idx] = aggregated_energy[0]
+            else:
+                logger.warning(f"Invalid batch_idx: {batch_idx} (expected 0 <= batch_idx < {batch_size})")
+        
+        logger.info(f"Direct surface collection: {len(flow_ids)} completed flows across {len(grouped_flows)} cells")
+        return output_surface, flow_ids
+
     def collect_buffered_energy(self) -> Tuple[torch.Tensor, List[int]]:
         """
         Собирает энергию из буфера выходных потоков
@@ -689,11 +959,8 @@ class EnergyLattice(nn.Module):
                     for flow in flows_in_cell:
                         energy_magnitude = torch.norm(flow.energy).item()
                         
-                        # Фактор близости: чем меньше расстояние, тем больше вес
-                        if flow.distance_to_surface == 0:
-                            proximity_factor = 1.0
-                        else:
-                            proximity_factor = 1.0 / flow.distance_to_surface
+                        # Фактор близости: чем меньше расстояние, тем больше вес (сбалансированный для нормализованных координат)
+                        proximity_factor = 1.0 / (1.0 + flow.distance_to_surface)
                         
                         # Фактор количества шагов: чем больше шагов, тем больше вес (больше "заработан")
                         steps_factor = 1.0 + flow.steps_taken * 0.1
@@ -830,11 +1097,8 @@ class EnergyLattice(nn.Module):
                     # НОВАЯ весовая система на основе distance_to_surface и steps_taken
                     energy_magnitude = torch.norm(flow.energy).item()
 
-                    # Фактор близости: чем меньше расстояние, тем больше вес
-                    if flow.distance_to_surface == 0:
-                        proximity_factor = 1.0
-                    else:
-                        proximity_factor = 1.0 / flow.distance_to_surface
+                    # Фактор близости: чем меньше расстояние, тем больше вес (сбалансированный для нормализованных координат)
+                    proximity_factor = 1.0 / (1.0 + flow.distance_to_surface)
                     
                     # Фактор количества шагов: чем больше шагов, тем больше вес (больше "заработан")
                     steps_factor = 1.0 + flow.steps_taken * 0.1
@@ -945,10 +1209,10 @@ class EnergyLattice(nn.Module):
         }
     
     def reset(self):
-        """Сбрасывает состояние решетки"""
+        """Сбрасывает состояние решетки (НОВАЯ АРХИТЕКТУРА: без буферизации)"""
         self.active_flows.clear()
-        self.output_buffer_z0.clear()    # Очищаем буфер Z=0 плоскости
-        self.output_buffer_zdepth.clear() # Очищаем буфер Z=depth плоскости
+        # УДАЛЕНО: очистка буферов в новой архитектуре без буферизации
+        # Буферы остаются для обратной совместимости, но не используются
         self.next_flow_id = 0
         self.stats = {
             'total_created': 0,
@@ -956,7 +1220,7 @@ class EnergyLattice(nn.Module):
             'total_died': 0,
             'max_concurrent': 0
         }
-        logger.info("EnergyLattice reset (triplaner architecture)")
+        logger.info("EnergyLattice reset (direct flows architecture - no buffering)")
 
 
 def create_energy_lattice(config=None) -> EnergyLattice:
