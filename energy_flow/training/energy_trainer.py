@@ -465,46 +465,15 @@ class EnergyTrainer:
                     logger.warning(f"❌ Text bridge computation failed: {e}")
                     text_loss = torch_module.tensor(0.1, device=self.device)
             
-            # 5. Forward Movement Reward (поощряем движение вперед)
-            forward_reward = torch_module.tensor(0.0, device=self.device)
-            if self.config.use_forward_movement_reward and global_training_step is not None:
-                # Вычисляем forward movement reward на основе Z-координат потоков
-                try:
-                    # Получаем статистику потоков, которые достигли выхода
-                    flow_stats = self.flow_processor.get_performance_stats()
-                    flows_reached_output = flow_stats.get('lattice_stats', {}).get('total_completed', 0)
-                    total_initial_flows = batch_size  # Предполагаем 1 поток на образец
-                    
-                    if total_initial_flows > 0:
-                        completion_rate = flows_reached_output / total_initial_flows
-                        # Forward reward пропорционален доле потоков, достигших выхода
-                        forward_reward = torch_module.tensor(completion_rate, device=self.device)
-                    
-                    # Прогрессивное уменьшение веса reward'а (как curriculum learning)
-                    reward_weight_decay = max(0.0, 1.0 - (global_training_step / self.config.forward_reward_decay_steps))
-                    current_reward_weight = self.config.forward_reward_weight * reward_weight_decay
-                    
-                    forward_reward = forward_reward * current_reward_weight
-                    
-                    # Логирование forward reward
-                    if logger.isEnabledFor(DEBUG_TRAINING) and forward_reward > 0:
-                        logger.log(DEBUG_TRAINING, 
-                                  f"🏆 Forward reward: completion_rate={completion_rate:.3f}, "
-                                  f"weight={current_reward_weight:.3f}, reward={forward_reward:.4f}")
-                
-                except Exception as reward_error:
-                    logger.debug(f"Forward reward computation failed: {reward_error}")
-                    forward_reward = torch_module.tensor(0.0, device=self.device)
+            # 5. Комбинированный loss (без forward_movement_reward - модель учится сама)
+            total_loss = energy_loss + self.config.text_loss_weight * text_loss
             
-            # 6. Комбинированный loss (ВОЗНАГРАЖДЕНИЕ для движения вперед!)
-            total_loss = energy_loss + self.config.text_loss_weight * text_loss - forward_reward
-            
-            # 7. Gradient accumulation: нормализуем loss 
+            # 6. Gradient accumulation: нормализуем loss 
             normalized_loss = total_loss / self.config.gradient_accumulation_steps
             
             # Диагностика перед обратным распространением
             logger.log(DEBUG_TRAINING, f"📊 Losses: energy={energy_loss:.4f}, text={text_loss:.4f}, "
-                                      f"forward_reward={forward_reward:.4f}, total={total_loss:.4f}, normalized={normalized_loss:.4f}")
+                                      f"total={total_loss:.4f}, normalized={normalized_loss:.4f}")
             logger.log(DEBUG_TRAINING, f"📊 Total loss requires_grad: {total_loss.requires_grad}")
             
             # 8. Обратное распространение с normalized loss И GRADIENT SCALING

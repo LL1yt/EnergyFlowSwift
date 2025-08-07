@@ -280,6 +280,20 @@ class EnergyLattice(nn.Module):
         # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: стартовая Z-координата в центре куба
         start_z = self.depth // 2  # Z = depth/2 (центр куба)
         
+        # ДИАГНОСТИКА: логируем нормализацию координат
+        test_raw = torch.tensor([0, 0, start_z], dtype=torch.float32, device=self.device)
+        test_norm = self.config.normalization_manager.normalize_coordinates(test_raw.unsqueeze(0))[0]
+        test_z0_raw = torch.tensor([0, 0, 0], dtype=torch.float32, device=self.device)  
+        test_z0_norm = self.config.normalization_manager.normalize_coordinates(test_z0_raw.unsqueeze(0))[0]
+        test_zdepth_raw = torch.tensor([0, 0, self.depth], dtype=torch.float32, device=self.device)
+        test_zdepth_norm = self.config.normalization_manager.normalize_coordinates(test_zdepth_raw.unsqueeze(0))[0]
+        
+        logger.info(f"🔍 NORMALIZATION DEBUG:")
+        logger.info(f"  Raw start center Z={start_z} → normalized Z={test_norm[2]:.6f}")
+        logger.info(f"  Raw output Z=0 → normalized Z={test_z0_norm[2]:.6f}")  
+        logger.info(f"  Raw output Z={self.depth} → normalized Z={test_zdepth_norm[2]:.6f}")
+        logger.info(f"  Z normalization range: {self.config.normalization_manager.ranges.z_range}")
+        
         for (x, y), energy, batch_idx in cell_energies:
             if len(self.active_flows) >= self.max_active_flows:
                 logger.warning(f"Reached max active flows limit: {self.max_active_flows}")
@@ -296,9 +310,9 @@ class EnergyLattice(nn.Module):
             
             # ДИАГНОСТИКА: логируем первые 5 созданных потоков
             if len(flow_ids) <= 5:
-                logger.debug_init(f"🆫 Created flow {flow_id}: position=({x}, {y}, {start_z}), energy_norm={torch.norm(energy):.3f}")
+                logger.debug_init(f"🆫 Created flow {flow_id}: raw=({x}, {y}, {start_z}) → norm=({normalized_position[0]:.3f}, {normalized_position[1]:.3f}, {normalized_position[2]:.3f}), energy_norm={torch.norm(energy):.3f}")
         
-        logger.info(f"🏗️ Created {len(flow_ids)} initial flows on center input plane (Z={start_z})")
+        logger.info(f"🏗️ Created {len(flow_ids)} initial flows on center input plane (raw Z={start_z})")
         logger.info(f"🎯 Triplaner architecture: input Z={start_z}, outputs Z=0 and Z={self.depth}")
         return flow_ids
     

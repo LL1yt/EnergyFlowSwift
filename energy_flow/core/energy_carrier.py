@@ -214,6 +214,22 @@ class EnergyCarrier(nn.Module):
         # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
         if current_position is not None:
             next_position = current_position + displacement_normalized
+            
+            # ДИАГНОСТИКА Z-движения: детальный анализ проблемы Z=0.000
+            if global_training_step is not None and global_training_step == 0:
+                z_current = current_position[:, 2]
+                z_next = next_position[:, 2]
+                z_delta = z_next - z_current
+                
+                logger.debug_forward(f"🎯 Z-movement detailed: current_range=[{z_current.min():.6f}, {z_current.max():.6f}]")
+                logger.debug_forward(f"🎯 Z-movement detailed: delta_range=[{z_delta.min():.6f}, {z_delta.max():.6f}]")
+                logger.debug_forward(f"🎯 Z-movement detailed: next_range=[{z_next.min():.6f}, {z_next.max():.6f}]")
+                
+                # Анализ направлений движения
+                forward_count = (z_delta > 0).sum().item()
+                backward_count = (z_delta < 0).sum().item()
+                neutral_count = (z_delta == 0).sum().item()
+                logger.debug_forward(f"🎯 Z-direction: forward={forward_count}, backward={backward_count}, neutral={neutral_count}")
         else:
             # Если текущая позиция не передана, используем смещения как абсолютные координаты
             logger.warning("⚠️ Current position is None, using displacement as absolute position")

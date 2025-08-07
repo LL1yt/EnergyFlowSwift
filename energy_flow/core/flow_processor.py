@@ -88,6 +88,9 @@ class FlowProcessor(nn.Module):
             'best_completed_count': 0
         }
         
+        # Счетчик всех созданных потоков для точной статистики конвергенции
+        self.total_flows_created = 0
+        
         logger.info(f"FlowProcessor initialized on {self.device}")
         logger.info(f"Components: Lattice {config.lattice_width}x{config.lattice_height}x{config.lattice_depth}, "
                    f"SimpleNeuron, EnergyCarrier")
@@ -114,6 +117,9 @@ class FlowProcessor(nn.Module):
         # Размещаем входную энергию с использованием маппера
         self.lattice.reset()
         flow_ids = self.lattice.place_initial_energy(input_embeddings, self.mapper)
+        
+        # Инициализируем счетчик потоков
+        self.total_flows_created = len(flow_ids)
         
         # Определяем количество шагов
         if max_steps is None:
@@ -602,35 +608,71 @@ class FlowProcessor(nn.Module):
     
     def reflect_boundaries(self, position: torch.Tensor) -> torch.Tensor:
         """
-        Отражение границ для X/Y координат
+        Отражение границ для нормализованного пространства [-1, 1]
         
         Args:
-            position: [batch, 3] - позиции для отражения
+            position: [batch, 3] - позиции для отражения в нормализованном пространстве
             
         Returns:
-            reflected_position: [batch, 3] - позиции с отраженными X/Y
+            reflected_position: [batch, 3] - позиции с отраженными X/Y в [-1, 1]
         """
         reflected_pos = position.clone()
         x, y, z = reflected_pos[:, 0], reflected_pos[:, 1], reflected_pos[:, 2]
         
-        # Отражение X координаты
-        x = torch.where(x < 0, -x, x)
-        x = torch.where(x >= self.config.lattice_width,
-                       2*(self.config.lattice_width-1) - x, x)
+        # Отражение X координаты в нормализованном пространстве [-1, 1]
+        x = torch.where(x < -1.0, -2.0 - x, x)  # Отражение от левой границы -1
+        x = torch.where(x > 1.0, 2.0 - x, x)    # Отражение от правой границы 1
         
-        # Отражение Y координаты
-        y = torch.where(y < 0, -y, y)
-        y = torch.where(y >= self.config.lattice_height,
-                       2*(self.config.lattice_height-1) - y, y)
+        # Отражение Y координаты в нормализованном пространстве [-1, 1]
+        y = torch.where(y < -1.0, -2.0 - y, y)
+        y = torch.where(y > 1.0, 2.0 - y, y)
         
-        # Z остается без изменений
+        # Z остается без изменений (движение только к выходным плоскостям)
         
         reflected_pos[:, 0] = x
         reflected_pos[:, 1] = y
         
-        logger.debug_reflection(f"🔄 Reflected {position.shape[0]} positions: "
-                               f"X [{x.min().item():.1f}, {x.max().item():.1f}], "
-                               f"Y [{y.min().item():.1f}, {y.max().item():.1f}]")
+        # Детальное логирование первых примеров отражения
+        num_reflected = position.shape[0]
+        
+        # Считаем количество отражений по осям
+        x_reflected_left = (position[:, 0] < -1.0).sum().item()
+        x_reflected_right = (position[:, 0] > 1.0).sum().item()
+        y_reflected_left = (position[:, 1] < -1.0).sum().item()
+        y_reflected_right = (position[:, 1] > 1.0).sum().item()
+        
+        # Логируем детальные примеры первых 3-х отражений
+        reflection_examples = []
+        for i in range(min(3, num_reflected)):
+            orig_x, orig_y, orig_z = position[i, 0].item(), position[i, 1].item(), position[i, 2].item()
+            new_x, new_y = x[i].item(), y[i].item()
+            
+            # Определяем тип отражения
+            reflection_type = []
+            if orig_x < -1.0:
+                reflection_type.append(f"X<-1({orig_x:.3f}→{new_x:.3f})")
+            elif orig_x > 1.0:
+                reflection_type.append(f"X>1({orig_x:.3f}→{new_x:.3f})")
+            if orig_y < -1.0:
+                reflection_type.append(f"Y<-1({orig_y:.3f}→{new_y:.3f})")
+            elif orig_y > 1.0:
+                reflection_type.append(f"Y>1({orig_y:.3f}→{new_y:.3f})")
+            
+            if reflection_type:
+                reflection_examples.append(f"flow_{i}[{','.join(reflection_type)}]")
+        
+        # Агрегированная статистика
+        logger.debug_reflection(f"🔄 Reflected {num_reflected} positions: "
+                               f"X_left={x_reflected_left}, X_right={x_reflected_right}, "
+                               f"Y_left={y_reflected_left}, Y_right={y_reflected_right}")
+        
+        # Детальные примеры
+        if reflection_examples:
+            logger.debug_reflection(f"🔄 Examples: {', '.join(reflection_examples)}")
+        
+        # Финальные диапазоны
+        logger.debug_reflection(f"🔄 Final ranges: X[{x.min().item():.3f}, {x.max().item():.3f}], "
+                               f"Y[{y.min().item():.3f}, {y.max().item():.3f}]")
         
         return reflected_pos
     
@@ -662,6 +704,11 @@ class FlowProcessor(nn.Module):
             return []
         
         spawn_info_list = []
+        total_candidates = spawn_mask.sum().item()
+        total_potential_spawns = 0
+        total_actual_spawns = 0
+        total_limited_spawns = 0
+        spawn_examples = []
         
         # Обрабатываем каждый поток, который должен создать spawn
         spawn_indices = torch.where(spawn_mask)[0]
@@ -670,15 +717,17 @@ class FlowProcessor(nn.Module):
             delta_length = displacement_lengths[idx].item()
             flow_id = flow_ids[idx].item()
             
-            # Количество дополнительных потоков
-            num_spawns = int((delta_length - threshold) // threshold)
-            num_spawns = min(num_spawns, self.config.max_spawn_per_step)  # Ограничиваем
+            # Количество дополнительных потоков (исправленная формула)
+            potential_spawns = int(delta_length / threshold) - 1
+            actual_spawns = min(potential_spawns, self.config.max_spawn_per_step)
             
-            if num_spawns > 0:
+            total_potential_spawns += potential_spawns
+            
+            if actual_spawns > 0:
                 # Получаем энергию родительского потока
                 if flow_id in self.lattice.active_flows:
                     parent_energy = self.lattice.active_flows[flow_id].energy
-                    spawn_energies = [parent_energy.clone() for _ in range(num_spawns)]
+                    spawn_energies = [parent_energy.clone() for _ in range(actual_spawns)]
                     
                     # Создаем SpawnInfo структуру (должна быть импортирована)
                     from .energy_carrier import SpawnInfo
@@ -688,9 +737,24 @@ class FlowProcessor(nn.Module):
                     )
                     spawn_info_list.append(spawn_info)
                     
-                    logger.debug_spawn_movement(f"🎆 Movement spawn: flow {flow_id} "
-                                               f"normalized_displacement={delta_length:.3f} > {threshold:.3f}, "
-                                               f"spawning {num_spawns} flows")
+                    total_actual_spawns += actual_spawns
+                    if potential_spawns > actual_spawns:
+                        total_limited_spawns += (potential_spawns - actual_spawns)
+                    
+                    # Детальные примеры для первых 3-х spawn'ов
+                    if len(spawn_examples) < 3:
+                        spawn_examples.append(f"flow_{flow_id}[disp={delta_length:.3f}→{actual_spawns}spawns]")
+        
+        # Агрегированное логирование
+        if total_candidates > 0:
+            logger.debug_spawn_movement(f"🎆 Movement spawn summary: {total_candidates} candidates, "
+                                       f"{total_potential_spawns} potential → {total_actual_spawns} actual spawns")
+            if total_limited_spawns > 0:
+                logger.debug_spawn_movement(f"🎆 Limited by config: {total_limited_spawns} spawns restricted by max_spawn_per_step={self.config.max_spawn_per_step}")
+            
+            # Детальные примеры
+            if spawn_examples:
+                logger.debug_spawn_movement(f"🎆 Examples: {', '.join(spawn_examples)}")
         
         return spawn_info_list
     
@@ -704,6 +768,12 @@ class FlowProcessor(nn.Module):
         for spawn_info in carrier_output.spawn_info:
             spawn_by_idx[spawn_info.parent_batch_idx] = spawn_info
         
+        # Статистика spawn'ов
+        total_spawn_requests = len(spawn_by_idx)
+        total_spawned = 0
+        spawn_examples = []
+        parent_flows = []
+        
         # Обрабатываем spawn'ы только для живых потоков
         alive_indices = torch.where(alive_mask)[0] if alive_mask.any() else torch.tensor([], dtype=torch.long)
         for idx in alive_indices:
@@ -714,9 +784,29 @@ class FlowProcessor(nn.Module):
                     # Ограничиваем количество spawn'ов конфигом
                     spawn_energies = spawn_info.energies[:self.config.max_spawn_per_step]
                     flow_id = flows[idx_val].id
-                    self.lattice.spawn_flows(flow_id, spawn_energies)
+                    new_flow_ids = self.lattice.spawn_flows(flow_id, spawn_energies)
                     
-                    logger.debug_spawn(f"🎆 Spawned {len(spawn_energies)} flows from parent {flow_id}")
+                    # Обновляем счетчик всех созданных потоков
+                    self.total_flows_created += len(spawn_energies)
+                    total_spawned += len(spawn_energies)
+                    
+                    # Детальные примеры для первых 3-х spawn'ов
+                    if len(spawn_examples) < 3:
+                        spawn_examples.append(f"parent_{flow_id}→{len(spawn_energies)}flows")
+                    parent_flows.append(flow_id)
+        
+        # Агрегированное логирование
+        if total_spawn_requests > 0:
+            logger.debug_spawn(f"🎆 Spawn summary: {total_spawn_requests} requests → {total_spawned} new flows created")
+            
+            # Детальные примеры
+            if spawn_examples:
+                logger.debug_spawn(f"🎆 Examples: {', '.join(spawn_examples)}")
+            
+            # Остальные spawn'ы в агрегированном виде
+            if len(parent_flows) > 3:
+                other_parents = parent_flows[3:]
+                logger.debug_spawn(f"🎆 Additional parents: {len(other_parents)} flows (ids: {other_parents[:5]}{'...' if len(other_parents) > 5 else ''})")
     
     def _check_convergence(self, step: int, initial_flows_count: int) -> bool:
         """
@@ -743,10 +833,10 @@ class FlowProcessor(nn.Module):
         # Добавляем в историю
         self.convergence_stats['completed_count_history'].append(completed_count)
         
-        # Проверяем порог конвергенции
-        completion_rate = completed_count / initial_flows_count if initial_flows_count > 0 else 0
+        # Проверяем порог конвергенции (учитывая все созданные потоки, включая spawn'ы)
+        completion_rate = completed_count / self.total_flows_created if self.total_flows_created > 0 else 0
         
-        logger.log(20, f"Convergence check step {step}: {completed_count}/{initial_flows_count} "
+        logger.log(20, f"Convergence check step {step}: {completed_count}/{self.total_flows_created} "
                       f"flows completed ({completion_rate:.2f})")
         
         # Условие 1: Достигнут порог конвергенции
