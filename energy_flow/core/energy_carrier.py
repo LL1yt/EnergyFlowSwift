@@ -185,51 +185,46 @@ class EnergyCarrier(nn.Module):
         if global_training_step is not None and global_training_step == 0:  # Только первый шаг
             logger.debug_forward(f"🧠 GRU output stats: min={gru_output.min():.3f}, max={gru_output.max():.3f}, "
                        f"mean={gru_output.mean():.3f}, std={gru_output.std():.3f}")
+            
+            # ДИАГНОСТИКА: проверяем bias'ы в displacement_projection
+            for i, module in enumerate(self.displacement_projection):
+                if isinstance(module, nn.Linear) and module.bias is not None:
+                    bias_stats = module.bias.data
+                    logger.debug_forward(f"📊 displacement_projection[{i}] bias: "
+                                       f"min={bias_stats.min():.4f}, max={bias_stats.max():.4f}, "
+                                       f"mean={bias_stats.mean():.4f}, std={bias_stats.std():.4f}")
         
         # Получаем сырой выход смещений (до активации)
         displacement_raw = self.displacement_projection(gru_output)  # [batch, 3] без ограничений
         
-        # ДИАГНОСТИКА: логируем сырой выход модели (ДО Tanh)
+        # ДИАГНОСТИКА: логируем сырой выход модели (ДО Clamp)
         if global_training_step is not None and global_training_step == 0:  # Только первый шаг
             raw_delta_z = displacement_raw[:, 2]
-            logger.debug_forward(f"🔥 RAW displacement output (before Tanh): ΔZ min={raw_delta_z.min():.3f}, "
+            logger.debug_forward(f"🔥 RAW displacement output (before Clamp): ΔZ min={raw_delta_z.min():.3f}, "
                        f"max={raw_delta_z.max():.3f}, mean={raw_delta_z.mean():.3f}, std={raw_delta_z.std():.3f}")
         
-        # Применяем активацию (Tanh) для нормализованных смещений
-        displacement_normalized = self.displacement_activation(displacement_raw)  # [batch, 3] в [-1, 1]
+        # Применяем ограничение диапазона (Clamp вместо неэффективного Tanh)
+        displacement_normalized = torch.clamp(displacement_raw, -1.0, 1.0)  # [batch, 3] в [-1, 1]
         
-        # ДИАГНОСТИКА: логируем нормализованные смещения (ПОСЛЕ Tanh)
+        # ДИАГНОСТИКА: логируем нормализованные смещения (ПОСЛЕ Clamp)
         norm_delta_z = displacement_normalized[:, 2]
-        logger.debug_energy(f"📊 Normalized displacement (after Tanh): ΔZ min={norm_delta_z.min():.3f}, "
+        logger.debug_energy(f"📊 Normalized displacement (after Clamp): ΔZ min={norm_delta_z.min():.3f}, "
                        f"max={norm_delta_z.max():.3f}, mean={norm_delta_z.mean():.3f}")
         
-        # Показываем диапазон смещений для нормализации
-        disp_range = self.config.normalization_manager.ranges.displacement_range
-        logger.debug_energy(f"🔧 Displacement range: {disp_range} (depth={self.config.lattice_depth})")
-        
-        # Денормализуем смещения в реальные значения
-        displacement_real = self.config.normalization_manager.denormalize_displacement(
-            displacement_normalized
-        )
-        
-        # ДИАГНОСТИКА: логируем реальные смещения
-        real_delta_z = displacement_real[:, 2]
-        logger.debug_energy(f"📊 Real displacement: ΔZ min={real_delta_z.min():.3f}, "
-                       f"max={real_delta_z.max():.3f}, mean={real_delta_z.mean():.3f}")
-        
-        # Применяем смещения к текущей позиции
+        # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
         if current_position is not None:
-            next_position = current_position + displacement_real
+            next_position = current_position + displacement_normalized
         else:
             # Если текущая позиция не передана, используем смещения как абсолютные координаты
             logger.warning("⚠️ Current position is None, using displacement as absolute position")
-            next_position = displacement_real
+            next_position = displacement_normalized
         
-        # Exploration noise для разнообразия путей (применяем к смещениям)
+        # Exploration noise для разнообразия путей (в нормализованном пространстве)
         if self.config.use_exploration_noise:
-            noise = torch.randn_like(displacement_real) * self.config.exploration_noise
+            # Exploration noise тоже должен быть в нормализованном пространстве
+            noise = torch.randn_like(displacement_normalized) * self.config.exploration_noise
             next_position += noise
-            logger.debug(f"🎲 Added exploration noise to displacement: std={self.config.exploration_noise}")
+            logger.debug(f"🎲 Added normalized exploration noise: std={self.config.exploration_noise}")
         
         # Применяем логику завершения потоков для новой трехплоскостной архитектуры
         next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position)

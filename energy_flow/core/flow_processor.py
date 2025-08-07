@@ -142,11 +142,9 @@ class FlowProcessor(nn.Module):
         for step in range(max_steps):
             actual_steps = step + 1
             active_flows = self.lattice.get_active_flows()
-            buffered_count = self.lattice.get_buffered_flows_count()
-            
-            # Проверяем условие завершения: нет активных потоков И нет потоков в буфере
-            if not active_flows and buffered_count == 0:
-                logger.info(f"No active flows and empty buffer at step {step}, stopping")
+            # Проверяем условие завершения: нет активных потоков
+            if not active_flows:
+                logger.info(f"No active flows at step {step}, stopping")
                 break
             
             # Проверяем конвергенцию (adaptive max_steps)
@@ -161,10 +159,9 @@ class FlowProcessor(nn.Module):
             # Логирование прогресса с детальной статистикой в первые шаги
             if step % self.config.log_interval == 0:
                 stats = self.lattice.get_statistics()
-                buffered_count = self.lattice.get_buffered_flows_count()
                 completion_rate = stats['total_completed'] / initial_flows_count if initial_flows_count > 0 else 0
                 logger.info(f"Step {step}: {stats['current_active']} active flows, "
-                          f"{stats['total_completed']} completed ({completion_rate:.2f}), {buffered_count} buffered")
+                          f"{stats['total_completed']} completed ({completion_rate:.2f})")
                 
                 # ДЕТАЛЬНАЯ СТАТИСТИКА для первых 5 шагов
                 if step <= 5 and active_flows:
@@ -246,9 +243,8 @@ class FlowProcessor(nn.Module):
             completed_flows: ID завершенных потоков
         """
         active_flows = self.lattice.get_active_flows()
-        buffered_count = self.lattice.get_buffered_flows_count()
         
-        logger.debug(f"Final collection: {len(active_flows)} active flows, {buffered_count} buffered flows")
+        logger.debug(f"Final collection: {len(active_flows)} active flows")
         
         # НОВАЯ АРХИТЕКТУРА: Если есть активные потоки на выходной стороне - помечаем их как завершенные
         active_at_output = 0
@@ -288,9 +284,8 @@ class FlowProcessor(nn.Module):
             completed_flows: ID завершенных потоков
         """
         active_flows = self.lattice.get_active_flows()
-        buffered_count = self.lattice.get_buffered_flows_count()
         
-        logger.debug(f"Surface collection: {len(active_flows)} active flows, {buffered_count} buffered flows")
+        logger.debug(f"Surface collection: {len(active_flows)} active flows")
         
         # НОВАЯ АРХИТЕКТУРА: Если есть активные потоки на выходной стороне - помечаем их как завершенные
         active_at_output = 0
@@ -657,8 +652,8 @@ class FlowProcessor(nn.Module):
         displacement = next_positions - current_positions  # [batch, 3]
         displacement_lengths = torch.norm(displacement, dim=1)  # [batch]
         
-        # Порог для spawn
-        threshold = self.config.lattice_depth * self.config.spawn_movement_threshold_ratio
+        # Порог для spawn в нормализованном пространстве [-1, 1]
+        threshold = self.config.spawn_movement_threshold_ratio  # Прямо в нормализованном пространстве
         
         # Маска для spawn
         spawn_mask = displacement_lengths > threshold
@@ -694,7 +689,7 @@ class FlowProcessor(nn.Module):
                     spawn_info_list.append(spawn_info)
                     
                     logger.debug_spawn_movement(f"🎆 Movement spawn: flow {flow_id} "
-                                               f"displacement={delta_length:.2f} > {threshold:.2f}, "
+                                               f"normalized_displacement={delta_length:.3f} > {threshold:.3f}, "
                                                f"spawning {num_spawns} flows")
         
         return spawn_info_list
