@@ -156,6 +156,7 @@ class EnergyLattice(nn.Module):
     def round_to_nearest_lattice_position(self, normalized_positions: torch.Tensor) -> torch.Tensor:
         """
         Округляет нормализованные позиции до ближайших координат решетки.
+        ОПТИМИЗИРОВАННАЯ ВЕКТОРИЗОВАННАЯ ВЕРСИЯ для GPU параллелизма.
         
         Args:
             normalized_positions: [batch, 3] нормализованные позиции в [-1, 1]
@@ -170,20 +171,25 @@ class EnergyLattice(nn.Module):
         if self.normalized_lattice_grid.device != device:
             self.normalized_lattice_grid = self.normalized_lattice_grid.to(device)
         
-        # Для каждой позиции найдем ближайшую точку сетки
-        rounded_positions = torch.zeros_like(normalized_positions)
+        # ВЕКТОРИЗОВАННАЯ ВЕРСИЯ: обрабатываем весь батч одновременно
+        grid_flat = self.normalized_lattice_grid.view(-1, 3)  # [N_grid, 3]
         
-        for i in range(batch_size):
-            pos = normalized_positions[i]  # [3]
-            
-            # Вычисляем расстояние до всех точек сетки
-            # normalized_lattice_grid: [W, H, D+1, 3] -> [W*H*(D+1), 3]
-            grid_flat = self.normalized_lattice_grid.view(-1, 3)
-            distances = torch.norm(grid_flat - pos.unsqueeze(0), dim=1)
-            
-            # Находим ближайшую точку
-            nearest_idx = torch.argmin(distances)
-            rounded_positions[i] = grid_flat[nearest_idx]
+        # Эффективное вычисление расстояний для всего батча
+        # Используем broadcasting: [batch, 1, 3] - [1, N_grid, 3] = [batch, N_grid, 3]
+        positions_expanded = normalized_positions.unsqueeze(1)  # [batch, 1, 3]
+        grid_expanded = grid_flat.unsqueeze(0)  # [1, N_grid, 3]
+        
+        # Вычисляем разности
+        diff = positions_expanded - grid_expanded  # [batch, N_grid, 3]
+        
+        # Вычисляем евклидовы расстояния
+        distances = torch.norm(diff, dim=2)  # [batch, N_grid]
+        
+        # Находим индексы ближайших точек для всего батча
+        nearest_indices = torch.argmin(distances, dim=1)  # [batch]
+        
+        # Извлекаем ближайшие позиции
+        rounded_positions = grid_flat[nearest_indices]  # [batch, 3]
         
         return rounded_positions
     
@@ -247,6 +253,7 @@ class EnergyLattice(nn.Module):
     def place_initial_energy(self, embeddings: torch.Tensor, mapper=None) -> List[int]:
         """
         Размещает входные эмбеддинги на входной плоскости в центре куба (Z = depth/2)
+        ОПТИМИЗИРОВАННАЯ ВЕРСИЯ: батчевое создание потоков
         
         DUAL OUTPUT PLANES АРХИТЕКТУРА:
         - Входная плоскость: Z = depth/2 (центр куба, normalized Z = 0.0)
@@ -262,6 +269,9 @@ class EnergyLattice(nn.Module):
         Returns:
             flow_ids: Список ID созданных потоков
         """
+        import time
+        start_time = time.time()
+        
         batch_size = embeddings.shape[0]
         
         # Проверяем размерность
@@ -272,8 +282,6 @@ class EnergyLattice(nn.Module):
         # Очищаем неактивные потоки
         self._cleanup_inactive_flows()
         
-        flow_ids = []
-        
         if mapper is None:
             raise ValueError("EnergyFlowMapper is required! No fallback logic allowed.")
         
@@ -283,40 +291,105 @@ class EnergyLattice(nn.Module):
         # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: стартовая Z-координата в центре куба
         start_z = self.depth // 2  # Z = depth/2 (центр куба)
         
-        # ДИАГНОСТИКА: логируем нормализацию координат
-        test_raw = torch.tensor([0, 0, start_z], dtype=torch.float32, device=self.device)
-        test_norm = self.config.normalization_manager.normalize_coordinates(test_raw.unsqueeze(0))[0]
-        test_z0_raw = torch.tensor([0, 0, 0], dtype=torch.float32, device=self.device)  
-        test_z0_norm = self.config.normalization_manager.normalize_coordinates(test_z0_raw.unsqueeze(0))[0]
-        test_zdepth_raw = torch.tensor([0, 0, self.depth], dtype=torch.float32, device=self.device)
-        test_zdepth_norm = self.config.normalization_manager.normalize_coordinates(test_zdepth_raw.unsqueeze(0))[0]
+        # ОПТИМИЗАЦИЯ: логируем нормализацию только в debug режиме
+        if logger.isEnabledFor(20):  # DEBUG_CONVERGENCE level
+            test_raw = torch.tensor([0, 0, start_z], dtype=torch.float32, device=self.device)
+            test_norm = self.config.normalization_manager.normalize_coordinates(test_raw.unsqueeze(0))[0]
+            test_z0_raw = torch.tensor([0, 0, 0], dtype=torch.float32, device=self.device)  
+            test_z0_norm = self.config.normalization_manager.normalize_coordinates(test_z0_raw.unsqueeze(0))[0]
+            test_zdepth_raw = torch.tensor([0, 0, self.depth], dtype=torch.float32, device=self.device)
+            test_zdepth_norm = self.config.normalization_manager.normalize_coordinates(test_zdepth_raw.unsqueeze(0))[0]
+            
+            logger.debug_convergence(f"🔍 NORMALIZATION DEBUG:")
+            logger.debug_convergence(f"  Raw start center Z={start_z} → normalized Z={test_norm[2]:.6f}")
+            logger.debug_convergence(f"  Raw output Z=0 → normalized Z={test_z0_norm[2]:.6f}")  
+            logger.debug_convergence(f"  Raw output Z={self.depth} → normalized Z={test_zdepth_norm[2]:.6f}")
+            logger.debug_convergence(f"  Z normalization range: {self.config.normalization_manager.ranges.z_range}")
         
-        logger.info(f"🔍 NORMALIZATION DEBUG:")
-        logger.info(f"  Raw start center Z={start_z} → normalized Z={test_norm[2]:.6f}")
-        logger.info(f"  Raw output Z=0 → normalized Z={test_z0_norm[2]:.6f}")  
-        logger.info(f"  Raw output Z={self.depth} → normalized Z={test_zdepth_norm[2]:.6f}")
-        logger.info(f"  Z normalization range: {self.config.normalization_manager.ranges.z_range}")
+        # ОПТИМИЗАЦИЯ: Батчевое создание потоков
+        flow_ids = self._batch_create_flows(cell_energies, start_z)
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"🏗️ Created {len(flow_ids)} initial flows on center input plane (raw Z={start_z}) in {elapsed_time:.2f}s")
+        logger.info(f"🎯 Triplaner architecture: input Z={start_z}, outputs Z=0 and Z={self.depth}")
+        return flow_ids
+    
+    def _batch_create_flows(self, cell_energies, start_z: int) -> List[int]:
+        """
+        Батчевое создание потоков для оптимизации производительности
+        
+        Args:
+            cell_energies: Список кортежей ((x, y), energy, batch_idx)
+            start_z: Z-координата для всех потоков
+            
+        Returns:
+            flow_ids: Список созданных ID потоков
+        """
+        flow_ids = []
+        
+        # Собираем все данные в батчи для векторизованной обработки
+        positions_list = []
+        energies_list = []
+        batch_indices = []
         
         for (x, y), energy, batch_idx in cell_energies:
-            if len(self.active_flows) >= self.max_active_flows:
+            if len(flow_ids) >= self.max_active_flows:
                 logger.warning(f"Reached max active flows limit: {self.max_active_flows}")
                 break
             
-            # Создаем поток с позицией в центре куба
-            raw_position = torch.tensor([x, y, start_z], dtype=torch.float32, device=self.device)
-            # Нормализуем позицию сразу при создании
-            normalized_position = self.config.normalization_manager.normalize_coordinates(
-                raw_position.unsqueeze(0)
-            )[0]  # [3]
-            flow_id = self._create_flow(normalized_position, energy, batch_idx=batch_idx)
+            positions_list.append([x, y, start_z])
+            energies_list.append(energy)
+            batch_indices.append(batch_idx)
+        
+        if not positions_list:
+            return flow_ids
+        
+        # Векторизованная нормализация всех позиций сразу
+        raw_positions = torch.tensor(positions_list, dtype=torch.float32, device=self.device)
+        normalized_positions = self.config.normalization_manager.normalize_coordinates(raw_positions)
+        
+        # Создаем потоки батчем без индивидуального логирования
+        num_layers = self.config.carrier_num_layers
+        hidden_size = self.config.carrier_hidden_size
+        
+        for i, (norm_pos, energy, batch_idx) in enumerate(zip(normalized_positions, energies_list, batch_indices)):
+            flow_id = self.next_flow_id
+            self.next_flow_id += 1
+            
+            # Создаем скрытое состояние
+            hidden_state = torch.zeros(num_layers, hidden_size, device=self.device)
+            
+            # Вычисляем расстояние до ближайшей поверхности
+            distance_to_surface, projected_surface = self.calculate_distance_to_nearest_surface(norm_pos)
+            
+            flow = EnergyFlow(
+                id=flow_id,
+                position=norm_pos,
+                energy=energy,
+                hidden_state=hidden_state,
+                batch_idx=batch_idx,
+                parent_id=None,
+                age=0,
+                is_active=True,
+                steps_taken=0,
+                distance_to_surface=distance_to_surface,
+                projected_surface=projected_surface
+            )
+            
+            self.active_flows[flow_id] = flow
             flow_ids.append(flow_id)
             
-            # ДИАГНОСТИКА: логируем первые 5 созданных потоков
-            if len(flow_ids) <= 5:
-                logger.debug_init(f"🆫 Created flow {flow_id}: raw=({x}, {y}, {start_z}) → norm=({normalized_position[0]:.3f}, {normalized_position[1]:.3f}, {normalized_position[2]:.3f}), energy_norm={torch.norm(energy):.3f}")
+            # Логируем только первые несколько для диагностики
+            if i < 5 and logger.isEnabledFor(17):  # DEBUG_INIT level
+                x, y = positions_list[i][0], positions_list[i][1]
+                logger.debug_init(f"🆫 Created flow {flow_id}: raw=({x}, {y}, {start_z}) → "
+                                f"norm=({norm_pos[0]:.3f}, {norm_pos[1]:.3f}, {norm_pos[2]:.3f}), "
+                                f"energy_norm={torch.norm(energy):.3f}")
         
-        logger.info(f"🏗️ Created {len(flow_ids)} initial flows on center input plane (raw Z={start_z})")
-        logger.info(f"🎯 Triplaner architecture: input Z={start_z}, outputs Z=0 and Z={self.depth}")
+        # Обновляем статистику
+        self.stats['total_created'] += len(flow_ids)
+        self.stats['max_concurrent'] = max(self.stats['max_concurrent'], len(self.active_flows))
+        
         return flow_ids
     
     def _create_flow(self, position: torch.Tensor, energy: torch.Tensor, 

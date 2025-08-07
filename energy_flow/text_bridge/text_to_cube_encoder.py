@@ -130,13 +130,18 @@ class TextToCubeEncoder(nn.Module):
                 nn.init.zeros_(module.bias)
     
     def encode_text(self, texts: Union[str, List[str]],
-                   max_length: int = 128) -> torch.Tensor:
+                   max_length: int = 128,
+                   batch_process: bool = True,
+                   max_batch_size: int = 32) -> torch.Tensor:
         """
         Кодирует текст в эмбеддинги поверхности куба
+        ОПТИМИЗИРОВАННАЯ ВЕРСИЯ: батчевая обработка для ускорения
         
         Args:
             texts: строка или список строк для кодирования
             max_length: максимальная длина токенизации
+            batch_process: использовать батчевую обработку для больших списков
+            max_batch_size: максимальный размер батча для обработки
             
         Returns:
             surface_embeddings: [batch_size, surface_dim] - эмбеддинги поверхности куба
@@ -150,28 +155,33 @@ class TextToCubeEncoder(nn.Module):
                 logger.warning("Empty texts provided to encode_text")
                 return torch.zeros(1, self.surface_dim, device=self.device)
             
+            # ОПТИМИЗАЦИЯ: батчевая обработка для больших списков
+            if batch_process and len(texts) > max_batch_size:
+                return self._encode_text_batched(texts, max_length, max_batch_size)
+            
             batch_size = len(texts)
             
             # Фильтруем пустые тексты
             valid_texts = [text if text and text.strip() else "empty" for text in texts]
             
-            # Токенизация
-            encoded = self.tokenizer(
-                valid_texts,
-                padding=True,
-                truncation=True,
-                max_length=max_length,
-                return_tensors='pt'
-            )
+            # ОПТИМИЗАЦИЯ: токенизация с no_grad для экономии памяти
+            with torch.no_grad():
+                encoded = self.tokenizer(
+                    valid_texts,
+                    padding=True,
+                    truncation=True,
+                    max_length=max_length,
+                    return_tensors='pt'
+                )
             
             # Проверяем корректность токенизации
             if encoded['input_ids'].numel() == 0:
                 logger.warning("Empty tokenization result")
                 return torch.zeros(batch_size, self.surface_dim, device=self.device)
             
-            # Используем default device (CUDA автоматически)
-            input_ids = encoded['input_ids'].to(self.device)
-            attention_mask = encoded['attention_mask'].to(self.device)
+            # ОПТИМИЗАЦИЯ: быстрый перенос на GPU
+            input_ids = encoded['input_ids'].to(self.device, non_blocking=True)
+            attention_mask = encoded['attention_mask'].to(self.device, non_blocking=True)
             
             # Token embeddings
             token_embeddings = self.token_embedding(input_ids)  # [batch, seq_len, hidden_dim]
@@ -232,6 +242,39 @@ class TextToCubeEncoder(nn.Module):
             # Возвращаем безопасный результат с градиентами
             batch_size = 1 if isinstance(texts, str) else max(len(texts), 1)
             return torch.zeros(batch_size, self.surface_dim, device=self.device, requires_grad=True)
+    
+    def _encode_text_batched(self, texts: List[str], max_length: int, max_batch_size: int) -> torch.Tensor:
+        """
+        ОПТИМИЗИРОВАННАЯ батчевая обработка больших списков текстов
+        
+        Args:
+            texts: список текстов для кодирования
+            max_length: максимальная длина токенизации
+            max_batch_size: максимальный размер батча
+            
+        Returns:
+            surface_embeddings: [len(texts), surface_dim] - эмбеддинги поверхности
+        """
+        all_embeddings = []
+        
+        # Обрабатываем тексты батчами
+        for i in range(0, len(texts), max_batch_size):
+            batch_texts = texts[i:i + max_batch_size]
+            
+            # Обрабатываем батч без рекурсии
+            batch_embeddings = self.encode_text(
+                batch_texts, 
+                max_length=max_length,
+                batch_process=False  # Важно: избегаем рекурсии
+            )
+            all_embeddings.append(batch_embeddings)
+            
+            # Опционально: логирование прогресса
+            if logger.isEnabledFor(DEBUG_ENERGY) and i > 0:
+                logger.log(DEBUG_ENERGY, f"Processed {min(i + max_batch_size, len(texts))}/{len(texts)} texts")
+        
+        # Объединяем все эмбеддинги
+        return torch.cat(all_embeddings, dim=0)
     
     def forward(self, texts: Union[str, List[str]], **kwargs) -> torch.Tensor:
         """

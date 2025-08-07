@@ -1021,15 +1021,17 @@ class EnergyTrainer:
         self, 
         checkpoint_path: Optional[Union[str, Path]] = None,
         load_latest: bool = False,
-        load_best: bool = False
+        load_best: bool = False,
+        strict_validation: bool = False
     ) -> bool:
         """
-        Загрузка чекпоинта с умным поиском
+        Загрузка чекпоинта с умным поиском и валидацией конфигурации
         
         Args:
             checkpoint_path: Конкретный путь к чекпоинту
             load_latest: Загрузить последний чекпоинт из active
             load_best: Загрузить лучший чекпоинт из active
+            strict_validation: Если True, несовместимость конфигураций прерывает загрузку
             
         Returns:
             True если загрузка прошла успешно
@@ -1038,20 +1040,32 @@ class EnergyTrainer:
         loaded_path = None
         
         if checkpoint_path:
-            # Загружаем конкретный чекпоинт
-            checkpoint_data = self.checkpoint_loader.load_checkpoint(checkpoint_path)
+            # Загружаем конкретный чекпоинт с валидацией
+            checkpoint_data = self.checkpoint_loader.load_checkpoint(
+                checkpoint_path, 
+                current_config=self.config,
+                strict_validation=strict_validation
+            )
             loaded_path = Path(checkpoint_path)
         elif load_best:
-            # Загружаем лучший чекпоинт
-            checkpoint_data = self.checkpoint_loader.load_best_checkpoint()
+            # Загружаем лучший чекпоинт с валидацией
+            checkpoint_data = self.checkpoint_loader.load_best_checkpoint(
+                current_config=self.config,
+                strict_validation=strict_validation
+            )
             if checkpoint_data:
-                best_path = self.checkpoint_loader.find_best_checkpoint(self.checkpoint_loader.active_dir)
+                from ..utils.checkpoint_utils import find_best_checkpoint
+                best_path = find_best_checkpoint(self.checkpoint_loader.active_dir)
                 loaded_path = best_path
         elif load_latest:
-            # Загружаем последний чекпоинт
-            checkpoint_data = self.checkpoint_loader.load_latest_checkpoint()
+            # Загружаем последний чекпоинт с валидацией
+            checkpoint_data = self.checkpoint_loader.load_latest_checkpoint(
+                current_config=self.config,
+                strict_validation=strict_validation
+            )
             if checkpoint_data:
-                latest_path = self.checkpoint_loader.find_latest_checkpoint(self.checkpoint_loader.active_dir)
+                from ..utils.checkpoint_utils import find_latest_checkpoint
+                latest_path = find_latest_checkpoint(self.checkpoint_loader.active_dir)
                 loaded_path = latest_path
         
         if checkpoint_data is None:
@@ -1103,13 +1117,26 @@ class EnergyTrainer:
             logger.error(f"❌ Failed to load checkpoint state: {e}")
             return False
     
-    def load_checkpoint(self, filepath: Union[str, Path]) -> None:
-        """Загрузка чекпоинта модели"""
+    def load_checkpoint(self, filepath: Union[str, Path], strict_validation: bool = False) -> None:
+        """Загрузка чекпоинта модели с валидацией конфигурации
+        
+        Args:
+            filepath: Путь к чекпоинту
+            strict_validation: Если True, несовместимость конфигураций вызывает ошибку
+        """
         filepath = Path(filepath)
         if not filepath.exists():
             raise FileNotFoundError(f"Checkpoint not found: {filepath}")
 
-        checkpoint = torch_module.load(filepath, map_location=self.device)
+        # Используем checkpoint_loader для загрузки с валидацией
+        checkpoint = self.checkpoint_loader.load_checkpoint(
+            filepath,
+            current_config=self.config,
+            strict_validation=strict_validation
+        )
+        
+        if checkpoint is None:
+            raise RuntimeError(f"Failed to load checkpoint from {filepath}")
 
         # Восстановление состояния
         self.epoch = checkpoint['epoch']

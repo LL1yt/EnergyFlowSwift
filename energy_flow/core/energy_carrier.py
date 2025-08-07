@@ -83,6 +83,14 @@ class EnergyCarrier(nn.Module):
             batch_first=True
         )
         
+        # Память предыдущих позиций для улучшения контекста
+        self.position_memory_size = 5  # Храним 5 предыдущих позиций
+        self.position_memory = nn.Linear(
+            3 * self.position_memory_size,  # 5 позиций * 3 координаты = 15
+            self.hidden_size // 4
+        )
+        self.position_history_buffer = {}  # Буфер для хранения истории позиций
+        
         # Projection heads для структурированного вывода
         # 1. Скалярная энергия (выход должен быть скаляром для consistency)
         self.energy_projection = nn.Sequential(
@@ -203,13 +211,14 @@ class EnergyCarrier(nn.Module):
             logger.debug_forward(f"🔥 RAW displacement output (before Clamp): ΔZ min={raw_delta_z.min():.3f}, "
                        f"max={raw_delta_z.max():.3f}, mean={raw_delta_z.mean():.3f}, std={raw_delta_z.std():.3f}")
         
-        # Применяем ограничение диапазона (будет финальный clamp после всех операций)
-        displacement_normalized = displacement_raw  # Пока без clamp - отложим до конца
-        
-        # СИСТЕМА РАЗОГРЕВА СМЕЩЕНИЙ: адаптивное масштабирование на основе global_training_step
+        # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: правильное масштабирование с учетом границ
+        # Сначала применяем масштабирование
         current_scale = self._calculate_displacement_scale(global_training_step)
-        displacement_normalized *= current_scale
-        # НЕ clamp здесь - отложим до финального clamp после всех операций
+        displacement_scaled = displacement_raw * current_scale
+        
+        # ОБЯЗАТЕЛЬНЫЙ clamp смещений ДО применения к позиции
+        # Это гарантирует, что смещения не выведут позицию за границы [-1, 1]
+        displacement_normalized = torch.clamp(displacement_scaled, -0.5, 0.5)  # Ограничиваем смещения
         
         if global_training_step is not None and global_training_step % self.config.displacement_scale_update_interval == 0:
             logger.debug_forward(f"🔧 DISPLACEMENT SCALING: step={global_training_step}, scale={current_scale:.3f}")
@@ -229,7 +238,10 @@ class EnergyCarrier(nn.Module):
         
         # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
         if current_position is not None:
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: применяем смещения с немедленным clamp
             next_position = current_position + displacement_normalized
+            # Гарантируем, что позиция остается в [-1, 1] сразу после сложения
+            next_position = torch.clamp(next_position, -1.0, 1.0)
             
             # ДИАГНОСТИКА Z-движения: детальный анализ с пояснениями
             if global_training_step is not None and global_training_step == 0:
@@ -263,12 +275,10 @@ class EnergyCarrier(nn.Module):
         # Exploration noise для разнообразия путей (в нормализованном пространстве)
         if self.config.use_exploration_noise:
             # Exploration noise тоже должен быть в нормализованном пространстве
-            noise = torch.randn_like(displacement_normalized) * self.config.exploration_noise
-            next_position += noise
+            noise = torch.randn_like(next_position) * self.config.exploration_noise
+            # Применяем шум с немедленным clamp для гарантии границ
+            next_position = torch.clamp(next_position + noise, -1.0, 1.0)
             logger.debug(f"🎲 Added normalized exploration noise: std={self.config.exploration_noise}")
-        
-        # ФИНАЛЬНЫЙ CLAMP: гарантируем [-1, 1] после всех координатных операций (scaling + exploration)
-        next_position = torch.clamp(next_position, -1.0, 1.0)
         
         # Применяем логику завершения потоков для новой трехплоскостной архитектуры
         next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position, global_training_step)

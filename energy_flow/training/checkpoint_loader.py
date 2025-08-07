@@ -47,12 +47,16 @@ class SimpleCheckpointLoader:
         
         logger.info(f"SimpleCheckpointLoader initialized: {self.active_dir}")
     
-    def load_checkpoint(self, checkpoint_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
+    def load_checkpoint(self, checkpoint_path: Union[str, Path], 
+                       current_config: Optional[EnergyConfig] = None,
+                       strict_validation: bool = False) -> Optional[Dict[str, Any]]:
         """
-        Загружает конкретный чекпоинт
+        Загружает конкретный чекпоинт с валидацией конфигурации
         
         Args:
             checkpoint_path: Путь к чекпоинту
+            current_config: Текущая конфигурация для валидации (опционально)
+            strict_validation: Если True, несовместимость вызывает ошибку, иначе предупреждение
             
         Returns:
             Данные чекпоинта или None при ошибке
@@ -69,6 +73,13 @@ class SimpleCheckpointLoader:
             # Загружаем чекпоинт
             checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
             
+            # Валидация конфигурации если предоставлена текущая конфигурация
+            if current_config is not None:
+                validation_passed = self._validate_checkpoint_config(checkpoint, current_config, strict_validation)
+                if not validation_passed and strict_validation:
+                    logger.error(f"Checkpoint validation failed in strict mode. Aborting load.")
+                    return None
+            
             # Логируем информацию о чекпоинте
             self._log_checkpoint_info(checkpoint_path, checkpoint)
             
@@ -78,9 +89,14 @@ class SimpleCheckpointLoader:
             logger.error(f"Failed to load checkpoint {checkpoint_path}: {e}")
             return None
     
-    def load_latest_checkpoint(self) -> Optional[Dict[str, Any]]:
+    def load_latest_checkpoint(self, current_config: Optional[EnergyConfig] = None,
+                              strict_validation: bool = False) -> Optional[Dict[str, Any]]:
         """
         Загружает самый свежий чекпоинт из активной директории
+        
+        Args:
+            current_config: Текущая конфигурация для валидации (опционально)
+            strict_validation: Если True, несовместимость вызывает ошибку, иначе предупреждение
         
         Returns:
             Данные чекпоинта или None, если не найден
@@ -92,11 +108,16 @@ class SimpleCheckpointLoader:
             return None
         
         logger.info(f"Found latest checkpoint: {latest_path.name}")
-        return self.load_checkpoint(latest_path)
+        return self.load_checkpoint(latest_path, current_config, strict_validation)
     
-    def load_best_checkpoint(self) -> Optional[Dict[str, Any]]:
+    def load_best_checkpoint(self, current_config: Optional[EnergyConfig] = None,
+                            strict_validation: bool = False) -> Optional[Dict[str, Any]]:
         """
         Загружает лучший чекпоинт (с префиксом best_) из активной директории
+        
+        Args:
+            current_config: Текущая конфигурация для валидации (опционально)
+            strict_validation: Если True, несовместимость вызывает ошибку, иначе предупреждение
         
         Returns:
             Данные чекпоинта или None, если не найден
@@ -108,14 +129,18 @@ class SimpleCheckpointLoader:
             return None
         
         logger.info(f"Found best checkpoint: {best_path.name}")
-        return self.load_checkpoint(best_path)
+        return self.load_checkpoint(best_path, current_config, strict_validation)
     
-    def load_checkpoint_by_pattern(self, pattern: str) -> Optional[Dict[str, Any]]:
+    def load_checkpoint_by_pattern(self, pattern: str, 
+                                   current_config: Optional[EnergyConfig] = None,
+                                   strict_validation: bool = False) -> Optional[Dict[str, Any]]:
         """
         Загружает чекпоинт по паттерну в имени файла
         
         Args:
             pattern: Паттерн для поиска (например, "epoch_050")
+            current_config: Текущая конфигурация для валидации (опционально)
+            strict_validation: Если True, несовместимость вызывает ошибку, иначе предупреждение
             
         Returns:
             Данные чекпоинта или None, если не найден
@@ -152,7 +177,7 @@ class SimpleCheckpointLoader:
             selected_path = matching_files[0]
         
         logger.info(f"Loading checkpoint by pattern '{pattern}': {selected_path.name}")
-        return self.load_checkpoint(selected_path)
+        return self.load_checkpoint(selected_path, current_config, strict_validation)
     
     def list_available_checkpoints(self) -> list:
         """
@@ -253,6 +278,117 @@ class SimpleCheckpointLoader:
         has_text_decoder = 'text_decoder_state_dict' in checkpoint
         if has_text_encoder or has_text_decoder:
             logger.info(f"   Text bridge: encoder={has_text_encoder}, decoder={has_text_decoder}")
+    
+    def _validate_checkpoint_config(self, checkpoint: Dict[str, Any], 
+                                   current_config: EnergyConfig, 
+                                   strict: bool = False) -> bool:
+        """
+        Валидирует совместимость конфигурации чекпоинта с текущей конфигурацией
+        
+        Args:
+            checkpoint: Данные чекпоинта
+            current_config: Текущая конфигурация
+            strict: Если True, любое несоответствие считается критическим
+            
+        Returns:
+            True если валидация прошла успешно, False при критических несоответствиях
+        """
+        saved_config = checkpoint.get('config', {})
+        if not saved_config:
+            logger.warning("⚠️ Checkpoint has no config data. Skipping validation.")
+            return True
+        
+        validation_passed = True
+        warnings = []
+        errors = []
+        
+        # Критические параметры (размеры решетки) - должны совпадать
+        critical_params = [
+            ('lattice_width', 'Lattice width'),
+            ('lattice_height', 'Lattice height'), 
+            ('lattice_depth', 'Lattice depth'),
+            ('carrier_hidden_size', 'Carrier hidden size'),
+            ('carrier_num_layers', 'Carrier layers'),
+            ('neuron_hidden_dim', 'Neuron hidden dim'),
+            ('neuron_output_dim', 'Neuron output dim')
+        ]
+        
+        for param_name, display_name in critical_params:
+            saved_value = saved_config.get(param_name)
+            current_value = getattr(current_config, param_name, None)
+            
+            if saved_value is not None and current_value is not None:
+                if saved_value != current_value:
+                    msg = f"{display_name}: saved={saved_value}, current={current_value}"
+                    errors.append(msg)
+                    validation_passed = False
+        
+        # Важные параметры (влияют на поведение) - предупреждения
+        important_params = [
+            ('text_bridge_enabled', 'Text bridge'),
+            ('relative_coordinates', 'Relative coordinates'),
+            ('center_start_enabled', 'Center start'),
+            ('dual_output_planes', 'Dual output planes'),
+            ('boundary_reflection_enabled', 'Boundary reflection'),
+            ('movement_based_spawn', 'Movement-based spawn'),
+            ('enable_displacement_filtering', 'Displacement filtering'),
+            ('convergence_enabled', 'Convergence detection')
+        ]
+        
+        for param_name, display_name in important_params:
+            saved_value = saved_config.get(param_name)
+            current_value = getattr(current_config, param_name, None)
+            
+            if saved_value is not None and current_value is not None:
+                if saved_value != current_value:
+                    msg = f"{display_name}: saved={saved_value}, current={current_value}"
+                    warnings.append(msg)
+                    if strict:
+                        validation_passed = False
+        
+        # Числовые параметры с допустимыми отклонениями
+        numeric_params = [
+            ('learning_rate', 'Learning rate', 0.0),
+            ('batch_size', 'Batch size', 0),
+            ('max_active_flows', 'Max active flows', 0),
+            ('text_loss_weight', 'Text loss weight', 0.2),  # Допустимое отклонение 20%
+            ('exploration_noise', 'Exploration noise', 0.1),
+            ('displacement_scale', 'Displacement scale', 1.0)
+        ]
+        
+        for param_name, display_name, tolerance in numeric_params:
+            saved_value = saved_config.get(param_name)
+            current_value = getattr(current_config, param_name, None)
+            
+            if saved_value is not None and current_value is not None:
+                if tolerance > 0:
+                    # Относительная разница для параметров с допуском
+                    if saved_value != 0:
+                        rel_diff = abs(saved_value - current_value) / abs(saved_value)
+                        if rel_diff > tolerance:
+                            msg = f"{display_name}: saved={saved_value:.4f}, current={current_value:.4f} (diff={rel_diff:.1%})"
+                            warnings.append(msg)
+                elif saved_value != current_value:
+                    msg = f"{display_name}: saved={saved_value}, current={current_value}"
+                    warnings.append(msg)
+        
+        # Логирование результатов валидации
+        if errors:
+            logger.error("❌ Checkpoint validation errors:")
+            for error in errors:
+                logger.error(f"   - {error}")
+        
+        if warnings:
+            logger.warning("⚠️ Checkpoint validation warnings:")
+            for warning in warnings:
+                logger.warning(f"   - {warning}")
+        
+        if validation_passed and not errors and not warnings:
+            logger.info("✅ Checkpoint config validation passed")
+        elif validation_passed:
+            logger.info("✅ Checkpoint loaded with warnings")
+        
+        return validation_passed
 
 
 def create_checkpoint_loader(active_dir: Optional[Union[str, Path]] = None) -> SimpleCheckpointLoader:

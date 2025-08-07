@@ -91,6 +91,11 @@ class FlowProcessor(nn.Module):
         # Счетчик всех созданных потоков для точной статистики конвергенции
         self.total_flows_created = 0
         
+        # Параметры очистки памяти
+        self.memory_cleanup_interval = 10  # Каждые 10 шагов
+        self.memory_threshold_gb = 20.0    # Порог для очистки GPU кэша (20GB для RTX 5090)
+        self.step_counter = 0
+        
         logger.info(f"FlowProcessor initialized on {self.device}")
         logger.info(f"Components: Lattice {config.lattice_width}x{config.lattice_height}x{config.lattice_depth}, "
                    f"SimpleNeuron, EnergyCarrier")
@@ -98,6 +103,8 @@ class FlowProcessor(nn.Module):
         if config.convergence_enabled:
             logger.info(f"Adaptive convergence enabled: threshold={config.convergence_threshold:.2f}, "
                        f"min_steps={config.convergence_min_steps}, patience={config.convergence_patience}")
+        
+        logger.info(f"Memory management: cleanup every {self.memory_cleanup_interval} steps, threshold={self.memory_threshold_gb}GB")
     
     def forward(self, input_embeddings: torch.Tensor, max_steps: Optional[int] = None, 
                 global_training_step: Optional[int] = None) -> torch.Tensor:
@@ -161,6 +168,9 @@ class FlowProcessor(nn.Module):
             # Если есть активные потоки - обрабатываем их
             if active_flows:
                 self.step(active_flows, global_training_step=global_training_step)
+            
+            # Периодическая очистка памяти
+            self.cleanup_memory_safe()
             
             # Логирование прогресса с детальной статистикой в первые шаги
             if step % self.config.log_interval == 0:
@@ -831,6 +841,45 @@ class FlowProcessor(nn.Module):
             if len(parent_flows) > 3:
                 other_parents = parent_flows[3:]
                 logger.debug_spawn(f"🎆 Additional parents: {len(other_parents)} flows (ids: {other_parents[:5]}{'...' if len(other_parents) > 5 else ''})")
+    
+    def cleanup_memory_safe(self):
+        """
+        Безопасная очистка памяти без удаления активных данных
+        
+        Очищает только завершенные потоки и GPU кэш при необходимости.
+        """
+        self.step_counter += 1
+        
+        # Проверяем интервал очистки
+        if self.step_counter % self.memory_cleanup_interval != 0:
+            return
+        
+        # 1. Удаляем только завершенные потоки
+        completed_ids = [fid for fid, flow in self.lattice.active_flows.items() 
+                        if not flow.is_active]
+        
+        if completed_ids:
+            for fid in completed_ids:
+                del self.lattice.active_flows[fid]
+            logger.debug(f"🧹 Cleaned {len(completed_ids)} completed flows")
+        
+        # 2. Очищаем GPU кэш только при высоком использовании
+        if self.device.type == 'cuda':
+            mem_allocated = torch.cuda.memory_allocated() / 1e9  # GB
+            mem_reserved = torch.cuda.memory_reserved() / 1e9    # GB
+            
+            if mem_allocated > self.memory_threshold_gb:
+                # Очищаем кэш GPU
+                torch.cuda.empty_cache()
+                
+                # Повторно замеряем память
+                mem_allocated_after = torch.cuda.memory_allocated() / 1e9
+                mem_freed = mem_allocated - mem_allocated_after
+                
+                logger.info(f"🧹 GPU memory cleanup: {mem_allocated:.2f}GB → {mem_allocated_after:.2f}GB "
+                          f"(freed {mem_freed:.2f}GB, reserved: {mem_reserved:.2f}GB)")
+            else:
+                logger.debug(f"💾 Memory check: allocated={mem_allocated:.2f}GB < threshold={self.memory_threshold_gb}GB (no cleanup needed)")
     
     def _check_convergence(self, step: int, initial_flows_count: int) -> bool:
         """
