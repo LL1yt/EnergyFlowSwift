@@ -412,7 +412,7 @@ class EnergyLattice(nn.Module):
                 x, y = positions_xy[i]
                 logger.debug_init(f"🅫 Created flow {flow_ids[i]}: raw=({x}, {y}, {start_z}) → "
                                 f"norm=({normalized_positions[i][0]:.3f}, {normalized_positions[i][1]:.3f}, "
-                                f"{normalized_positions[i][2]:.3f}), energy_norm={torch.norm(energies_tensors[i]):.3f}")
+                                f"{normalized_positions[i][2]:.3f}), embedding_magnitude={torch.norm(energies_tensors[i]):.3f}")
         
         # Обновляем статистику
         self.stats['total_created'] += num_flows

@@ -183,9 +183,24 @@ class FlowProcessor(nn.Module):
                 if step <= 5 and active_flows:
                     # Собираем Z-координаты всех активных потоков
                     z_positions = torch.stack([flow.position[2] for flow in active_flows])
-                    logger.info(f"📊 Step {step} Z-distribution: "
+                    
+                    # Детальная статистика границ
+                    boundary_stats = {
+                        'z_min_boundary': (z_positions <= -0.95).sum().item(),  # Близко к Z=0 плоскости
+                        'z_max_boundary': (z_positions >= 0.95).sum().item(),   # Близко к Z=depth плоскости
+                        'z_center': ((z_positions > -0.2) & (z_positions < 0.2)).sum().item(),  # Центр
+                        'total': len(active_flows)
+                    }
+                    
+                    logger.debug_convergence(f"📊 Step {step} Z-distribution: "
                               f"min={z_positions.min():.2f}, max={z_positions.max():.2f}, "
                               f"mean={z_positions.mean():.2f}, std={z_positions.std():.2f}")
+                    
+                    logger.debug_convergence(f"📊 Step {step} Boundary distribution: "
+                              f"z0_plane={boundary_stats['z_min_boundary']}, "
+                              f"zdepth_plane={boundary_stats['z_max_boundary']}, "
+                              f"center={boundary_stats['z_center']}, "
+                              f"total={boundary_stats['total']}")
                     
                     # КРИТИЧЕСКАЯ ПРОВЕРКА: Z-координаты в ожидаемом диапазоне
                     max_valid_z = self.config.lattice_depth - 1  # 59 для depth=60
@@ -968,8 +983,8 @@ class FlowProcessor(nn.Module):
         
         for flow in active_flows:
             positions.append(flow.position.cpu().numpy())
-            energy_norm = torch.norm(flow.energy).item()
-            energies.append(energy_norm)
+            embedding_magnitude = torch.norm(flow.energy).item()
+            energies.append(embedding_magnitude)
             ages.append(flow.age)
         
         return {

@@ -190,7 +190,7 @@ class EnergyCarrier(nn.Module):
         
         # 2. Вычисляем смещения (относительные координаты)
         # ДИАГНОСТИКА: логируем GRU выход перед displacement_projection
-        if global_training_step is not None and global_training_step == 0:  # Только первый шаг
+        if global_training_step is not None and global_training_step <= 3:  # Первые 3 шага
             logger.debug_forward(f"🧠 GRU output stats: min={gru_output.min():.3f}, max={gru_output.max():.3f}, "
                        f"mean={gru_output.mean():.3f}, std={gru_output.std():.3f}")
             
@@ -206,7 +206,7 @@ class EnergyCarrier(nn.Module):
         displacement_raw = self.displacement_projection(gru_output)  # [batch, 3] без ограничений
         
         # ДИАГНОСТИКА: логируем сырой выход модели (ДО Clamp)
-        if global_training_step is not None and global_training_step == 0:  # Только первый шаг
+        if global_training_step is not None and global_training_step <= 3:  # Первые 3 шага
             raw_delta_z = displacement_raw[:, 2]
             logger.debug_forward(f"🔥 RAW displacement output (before Clamp): ΔZ min={raw_delta_z.min():.3f}, "
                        f"max={raw_delta_z.max():.3f}, mean={raw_delta_z.mean():.3f}, std={raw_delta_z.std():.3f}")
@@ -229,7 +229,7 @@ class EnergyCarrier(nn.Module):
                        f"max={norm_delta_z.max():.3f}, mean={norm_delta_z.mean():.3f}")
         
         # ДИАГНОСТИКА смещений (только на первых шагах)
-        if global_training_step is not None and global_training_step == 0:
+        if global_training_step is not None and global_training_step <= 3:
             depth = self.config.lattice_depth
             real_displacement_z = norm_delta_z * (depth / 2)  # Денормализуем смещения
             logger.debug_forward(f"🔍 Real world Z displacement: min={real_displacement_z.min():.3f}, "
@@ -244,7 +244,7 @@ class EnergyCarrier(nn.Module):
             next_position = torch.clamp(next_position, -1.0, 1.0)
             
             # ДИАГНОСТИКА Z-движения: детальный анализ с пояснениями
-            if global_training_step is not None and global_training_step == 0:
+            if global_training_step is not None and global_training_step <= 3:
                 z_current = current_position[:, 2]
                 z_next = next_position[:, 2]
                 z_delta = z_next - z_current
@@ -407,7 +407,7 @@ class EnergyCarrier(nn.Module):
         final_position = torch.round(final_position)
         
         # ДИАГНОСТИКА округления (только для первых шагов)
-        if global_training_step is not None and global_training_step == 0 and batch_size <= 1000:
+        if global_training_step is not None and global_training_step <= 3 and batch_size <= 1000:
             post_round_z = final_position[:, 2]
             logger.debug_forward(f"🔍 ROUNDING: Z after round: min={post_round_z.min().item():.3f}, "
                                f"max={post_round_z.max().item():.3f}, mean={post_round_z.mean().item():.3f}")
