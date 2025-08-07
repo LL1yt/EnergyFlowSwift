@@ -316,7 +316,8 @@ class EnergyLattice(nn.Module):
     
     def _batch_create_flows(self, cell_energies, start_z: int) -> List[int]:
         """
-        Батчевое создание потоков для оптимизации производительности
+        Батчевое создание потоков - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
+        Используем векторизованные операции вместо циклов
         
         Args:
             cell_energies: Список кортежей ((x, y), energy, batch_idx)
@@ -325,69 +326,96 @@ class EnergyLattice(nn.Module):
         Returns:
             flow_ids: Список созданных ID потоков
         """
-        flow_ids = []
+        # Ограничиваем количество потоков
+        num_flows = min(len(cell_energies), self.max_active_flows)
+        if num_flows < len(cell_energies):
+            logger.warning(f"Limiting flows to {self.max_active_flows} (requested: {len(cell_energies)})")
+            cell_energies = cell_energies[:num_flows]
         
-        # Собираем все данные в батчи для векторизованной обработки
-        positions_list = []
-        energies_list = []
-        batch_indices = []
+        if num_flows == 0:
+            return []
         
-        for (x, y), energy, batch_idx in cell_energies:
-            if len(flow_ids) >= self.max_active_flows:
-                logger.warning(f"Reached max active flows limit: {self.max_active_flows}")
-                break
-            
-            positions_list.append([x, y, start_z])
-            energies_list.append(energy)
-            batch_indices.append(batch_idx)
+        # ОПТИМИЗАЦИЯ: Создаем все тензоры разом
+        # Извлекаем данные через быстрые list comprehensions
+        positions_xy = [ce[0] for ce in cell_energies]  # [(x, y), ...]
+        energies_tensors = [ce[1] for ce in cell_energies]  # [tensor, ...]
+        batch_indices = [ce[2] for ce in cell_energies]  # [idx, ...]
         
-        if not positions_list:
-            return flow_ids
+        # Создаем матрицу позиций векторизованно
+        positions_tensor = torch.tensor(
+            [[x, y, start_z] for x, y in positions_xy],
+            dtype=torch.float32, 
+            device=self.device
+        )
         
-        # Векторизованная нормализация всех позиций сразу
-        raw_positions = torch.tensor(positions_list, dtype=torch.float32, device=self.device)
-        normalized_positions = self.config.normalization_manager.normalize_coordinates(raw_positions)
+        # Векторизованная нормализация всех позиций одним вызовом
+        normalized_positions = self.config.normalization_manager.normalize_coordinates(positions_tensor)
         
-        # Создаем потоки батчем без индивидуального логирования
+        # ОПТИМИЗАЦИЯ: Векторизованное вычисление расстояний
+        # Вычисляем расстояния до обеих поверхностей векторизованно
+        norm_z_values = normalized_positions[:, 2]  # [num_flows]
+        
+        # Нормализованные Z для выходных поверхностей
+        norm_z0 = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([0.0], device=self.device), 
+            self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0]
+        
+        norm_zdepth = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([float(self.depth)], device=self.device), 
+            self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0]
+        
+        # Векторизованные расстояния
+        distances_to_z0 = torch.abs(norm_z_values - norm_z0)
+        distances_to_zdepth = torch.abs(norm_z_values - norm_zdepth)
+        
+        # Определяем ближайшие поверхности
+        is_closer_to_z0 = distances_to_z0 <= distances_to_zdepth
+        distances = torch.where(is_closer_to_z0, distances_to_z0, distances_to_zdepth)
+        surfaces = ["z0" if is_z0 else "zdepth" for is_z0 in is_closer_to_z0]
+        
+        # ОПТИМИЗАЦИЯ: Создаем все hidden states одним тензором
         num_layers = self.config.carrier_num_layers
         hidden_size = self.config.carrier_hidden_size
+        all_hidden_states = torch.zeros(
+            num_flows, num_layers, hidden_size, 
+            device=self.device
+        )
         
-        for i, (norm_pos, energy, batch_idx) in enumerate(zip(normalized_positions, energies_list, batch_indices)):
-            flow_id = self.next_flow_id
-            self.next_flow_id += 1
-            
-            # Создаем скрытое состояние
-            hidden_state = torch.zeros(num_layers, hidden_size, device=self.device)
-            
-            # Вычисляем расстояние до ближайшей поверхности
-            distance_to_surface, projected_surface = self.calculate_distance_to_nearest_surface(norm_pos)
-            
+        # Генерируем ID потоков
+        flow_ids = list(range(self.next_flow_id, self.next_flow_id + num_flows))
+        self.next_flow_id += num_flows
+        
+        # Создаем все потоки батчем
+        for i in range(num_flows):
             flow = EnergyFlow(
-                id=flow_id,
-                position=norm_pos,
-                energy=energy,
-                hidden_state=hidden_state,
-                batch_idx=batch_idx,
+                id=flow_ids[i],
+                position=normalized_positions[i],
+                energy=energies_tensors[i],
+                hidden_state=all_hidden_states[i],
+                batch_idx=batch_indices[i],
                 parent_id=None,
                 age=0,
                 is_active=True,
                 steps_taken=0,
-                distance_to_surface=distance_to_surface,
-                projected_surface=projected_surface
+                distance_to_surface=distances[i].item(),
+                projected_surface=surfaces[i]
             )
             
-            self.active_flows[flow_id] = flow
-            flow_ids.append(flow_id)
+            self.active_flows[flow_ids[i]] = flow
             
             # Логируем только первые несколько для диагностики
             if i < 5 and logger.isEnabledFor(17):  # DEBUG_INIT level
-                x, y = positions_list[i][0], positions_list[i][1]
-                logger.debug_init(f"🆫 Created flow {flow_id}: raw=({x}, {y}, {start_z}) → "
-                                f"norm=({norm_pos[0]:.3f}, {norm_pos[1]:.3f}, {norm_pos[2]:.3f}), "
-                                f"energy_norm={torch.norm(energy):.3f}")
+                x, y = positions_xy[i]
+                logger.debug_init(f"🅫 Created flow {flow_ids[i]}: raw=({x}, {y}, {start_z}) → "
+                                f"norm=({normalized_positions[i][0]:.3f}, {normalized_positions[i][1]:.3f}, "
+                                f"{normalized_positions[i][2]:.3f}), energy_norm={torch.norm(energies_tensors[i]):.3f}")
         
         # Обновляем статистику
-        self.stats['total_created'] += len(flow_ids)
+        self.stats['total_created'] += num_flows
         self.stats['max_concurrent'] = max(self.stats['max_concurrent'], len(self.active_flows))
         
         return flow_ids
