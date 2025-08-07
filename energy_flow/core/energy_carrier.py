@@ -206,10 +206,27 @@ class EnergyCarrier(nn.Module):
         # Применяем ограничение диапазона (Clamp вместо неэффективного Tanh)
         displacement_normalized = torch.clamp(displacement_raw, -1.0, 1.0)  # [batch, 3] в [-1, 1]
         
+        # ВРЕМЕННОЕ ИСПРАВЛЕНИЕ: усиливаем смещения для лучшего движения
+        # Модель обучена на слишком маленьких смещениях, нужно их масштабировать
+        displacement_scale = 5.0  # Увеличиваем смещения в 5 раз
+        displacement_normalized *= displacement_scale
+        displacement_normalized = torch.clamp(displacement_normalized, -1.0, 1.0)  # Снова ограничиваем [-1, 1]
+        logger.debug_forward(f"🔧 DISPLACEMENT SCALING: applied scale={displacement_scale}x, re-clamped to [-1, 1]")
+        
         # ДИАГНОСТИКА: логируем нормализованные смещения (ПОСЛЕ Clamp)
         norm_delta_z = displacement_normalized[:, 2]
         logger.debug_energy(f"📊 Normalized displacement (after Clamp): ΔZ min={norm_delta_z.min():.3f}, "
                        f"max={norm_delta_z.max():.3f}, mean={norm_delta_z.mean():.3f}")
+        
+        # ДОПОЛНИТЕЛЬНАЯ ДИАГНОСТИКА: сравниваем с размерами решетки 
+        if global_training_step is not None and global_training_step == 0:
+            # Преобразуем в реальные единицы для понимания
+            depth = self.config.lattice_depth
+            real_displacement_z = norm_delta_z * (depth / 2)  # Денормализуем смещения
+            logger.debug_forward(f"🔍 Real world Z displacement: min={real_displacement_z.min():.3f}, "
+                               f"max={real_displacement_z.max():.3f}, mean={real_displacement_z.mean():.3f} "
+                               f"(in units of depth={depth})")
+            logger.debug_forward(f"🔍 Problem: displacement range {real_displacement_z.max().item() - real_displacement_z.min().item():.3f} is too small for depth {depth}")
         
         # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
         if current_position is not None:
@@ -294,19 +311,43 @@ class EnergyCarrier(nn.Module):
         is_terminated = torch.zeros(batch_size, dtype=torch.bool, device=next_position.device)
         termination_reasons = []
         
-        depth = self.config.lattice_depth
-        
-        # Проверяем завершение по Z координате в трехплоскостной архитектуре
-        # Z ≤ 0: достижение левой выходной плоскости
-        # Z ≥ depth: достижение правой выходной плоскости
-        reached_z0_plane = next_position[:, 2] <= 0
-        reached_zdepth_plane = next_position[:, 2] >= depth
+        # ИСПРАВЛЕНО: проверяем завершение по Z координате в НОРМАЛИЗОВАННОМ пространстве
+        # Z ≤ -1.0: достижение левой выходной плоскости (raw Z=0)
+        # Z ≥ +1.0: достижение правой выходной плоскости (raw Z=depth)
+        reached_z0_plane = next_position[:, 2] <= -1.0
+        reached_zdepth_plane = next_position[:, 2] >= 1.0
         reached_output_plane = reached_z0_plane | reached_zdepth_plane
         
-        # Проверяем выход за пределы по X и Y (обрабатывается отражением в FlowProcessor)
-        out_of_bounds_x = (next_position[:, 0] < 0) | (next_position[:, 0] >= self.config.lattice_width)
-        out_of_bounds_y = (next_position[:, 1] < 0) | (next_position[:, 1] >= self.config.lattice_height)
+        # ДИАГНОСТИКА Z: логируем количество завершенных потоков
+        if reached_output_plane.any():
+            num_z0 = reached_z0_plane.sum().item()
+            num_zdepth = reached_zdepth_plane.sum().item()
+            logger.debug_forward(f"🔍 Z TERMINATION: z0_plane={num_z0}, zdepth_plane={num_zdepth}, total={reached_output_plane.sum().item()}")
+        
+        # ПРОБЛЕМА НАЙДЕНА: проверка границ должна быть в нормализованном пространстве [-1, 1]
+        # НЕ в raw координатах решетки!
+        
+        # ДИАГНОСТИКА: логируем диапазоны координат
+        if batch_size <= 10000:  # Избегаем логирования для больших батчей
+            x_min, x_max = next_position[:, 0].min().item(), next_position[:, 0].max().item()
+            y_min, y_max = next_position[:, 1].min().item(), next_position[:, 1].max().item()
+            z_min, z_max = next_position[:, 2].min().item(), next_position[:, 2].max().item()
+            logger.debug_forward(f"🔍 BOUNDS CHECK: positions range X[{x_min:.3f}, {x_max:.3f}], "
+                               f"Y[{y_min:.3f}, {y_max:.3f}], Z[{z_min:.3f}, {z_max:.3f}]")
+        
+        # ИСПРАВЛЕНО: проверяем границы в нормализованном пространстве [-1, 1]
+        out_of_bounds_x = (next_position[:, 0] < -1.0) | (next_position[:, 0] > 1.0)
+        out_of_bounds_y = (next_position[:, 1] < -1.0) | (next_position[:, 1] > 1.0)
         out_of_bounds_xy = out_of_bounds_x | out_of_bounds_y
+        
+        # ДИАГНОСТИКА: логируем количество потоков, требующих отражения
+        if out_of_bounds_xy.any():
+            num_x_left = (next_position[:, 0] < -1.0).sum().item()
+            num_x_right = (next_position[:, 0] > 1.0).sum().item()
+            num_y_left = (next_position[:, 1] < -1.0).sum().item()
+            num_y_right = (next_position[:, 1] > 1.0).sum().item()
+            logger.debug_forward(f"🔍 OUT OF BOUNDS: X_left={num_x_left}, X_right={num_x_right}, "
+                               f"Y_left={num_y_left}, Y_right={num_y_right}, total={out_of_bounds_xy.sum().item()}")
         
         # В новой архитектуре X/Y границы НЕ завершают поток (отражение)
         # Завершение только при достижении выходных плоскостей по Z
@@ -326,25 +367,41 @@ class EnergyCarrier(nn.Module):
         # Для завершенных потоков проецируем на соответствующую выходную плоскость
         final_position = next_position.clone()
         
-        # Проецирование на Z=0 плоскость
+        # ИСПРАВЛЕНО: Проецирование на нормализованные выходные плоскости
+        # Проецирование на Z=0 плоскость (norm Z = -1.0)
         if reached_z0_plane.any():
-            final_position[reached_z0_plane, 2] = 0
+            final_position[reached_z0_plane, 2] = -1.0
         
-        # Проецирование на Z=depth плоскость
+        # Проецирование на Z=depth плоскость (norm Z = +1.0)
         if reached_zdepth_plane.any():
-            final_position[reached_zdepth_plane, 2] = depth
+            final_position[reached_zdepth_plane, 2] = 1.0
         
-        # Округляем координаты для дискретной решетки
-        final_position = torch.round(final_position)
+        # ДИАГНОСТИКА: проверяем проблему округления
+        if batch_size <= 1000:  # Логируем только для небольших батчей
+            pre_round_z = final_position[:, 2]
+            logger.debug_forward(f"🔍 ROUNDING DIAGNOSIS: Z before round: min={pre_round_z.min().item():.6f}, "
+                               f"max={pre_round_z.max().item():.6f}, mean={pre_round_z.mean().item():.6f}")
+        
+        # ВРЕМЕННО УБИРАЕМ округление для диагностики!
+        # TODO: вернуть округление после исправления смещений
+        # final_position = torch.round(final_position)
+        logger.debug_forward(f"⚠️ ROUNDING DISABLED for diagnosis - positions kept as float")
+        
+        if batch_size <= 1000:  # Логируем только для небольших батчей  
+            post_round_z = final_position[:, 2]
+            logger.debug_forward(f"🔍 ROUNDING DIAGNOSIS: Z after round: min={post_round_z.min().item():.6f}, "
+                               f"max={post_round_z.max().item():.6f}, mean={post_round_z.mean().item():.6f}")
         
         return final_position, is_terminated, termination_reasons
     
     def init_hidden(self, batch_size: int, device: torch.device) -> torch.Tensor:
-        """Инициализация скрытого состояния GRU"""
-        return torch.zeros(
+        """Инициализация скрытого состояния GRU с небольшим шумом для лучшего обучения"""
+        hidden = torch.randn(
             self.num_layers, batch_size, self.hidden_size,
             device=device, dtype=torch.float32
-        )
+        ) * 0.01  # Маленькая дисперсия для стабильности
+        logger.debug_init(f"🎲 Initialized GRU hidden state with noise: std=0.01, shape={hidden.shape}")
+        return hidden
     
     # УДАЛЕН: check_energy_level() - в архитектуре относительных координат 
     # потоки не умирают от "недостатка энергии". Эмбеддинги - это данные, а не энергия.

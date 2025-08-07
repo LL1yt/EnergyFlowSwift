@@ -264,8 +264,8 @@ def create_experiment_config() -> EnergyConfig:
         dual_output_planes=True,        # Две выходные плоскости
         movement_based_spawn=True,      # Spawn на основе длины движения
         boundary_reflection_enabled=True, # Отражение границ для экспериментов
-        spawn_movement_threshold_ratio=0.1,  # 10% от depth для experiment
-        
+        spawn_movement_threshold_ratio=0.4,  # 40% от depth для experiment
+        exploration_noise=0.2,  # Умеренный шум для экспериментов
         # Проекционная архитектура настройки
         enable_displacement_filtering=False,  # Отключить фильтрацию для полной проекции
         convergence_patience=8  # Увеличенная терпеливость для experiment

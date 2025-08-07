@@ -468,6 +468,9 @@ class EnergyTrainer:
             # 5. Комбинированный loss (без forward_movement_reward - модель учится сама)
             total_loss = energy_loss + self.config.text_loss_weight * text_loss
             
+            # Временная заглушка для forward_reward (для совместимости метрик)
+            forward_reward = torch.tensor(0.0, device=self.device)
+            
             # 6. Gradient accumulation: нормализуем loss 
             normalized_loss = total_loss / self.config.gradient_accumulation_steps
             

@@ -394,15 +394,20 @@ class EnergyLattice(nn.Module):
         Returns:
             new_flow_ids: ID созданных потоков
         """
+        # ДИАГНОСТИКА: логируем причины отказов в spawn
         if parent_id not in self.active_flows:
+            logger.debug_spawn(f"🚫 Spawn failed: parent {parent_id} not in active_flows")
             return []
         
         parent = self.active_flows[parent_id]
         new_flow_ids = []
+        requested_count = len(spawn_energies)
+        max_flows_reached = False
         
-        for energy in spawn_energies:
+        for i, energy in enumerate(spawn_energies):
             if len(self.active_flows) >= self.max_active_flows:
-                logger.warning("Cannot spawn: max flows reached")
+                logger.debug_spawn(f"🚫 Spawn limited: max_active_flows={self.max_active_flows} reached at spawn {i}/{requested_count}")
+                max_flows_reached = True
                 break
             
             # Новые потоки начинают с позиции родителя
@@ -415,8 +420,22 @@ class EnergyLattice(nn.Module):
             )
             new_flow_ids.append(flow_id)
         
-        if new_flow_ids:
-            logger.debug(f"Spawned {len(new_flow_ids)} flows from parent {parent_id}")
+        # ДИАГНОСТИКА: детальная статистика spawn'а (только первые примеры)
+        created_count = len(new_flow_ids)
+        if requested_count > 0:
+            # Логируем только первые 3 примера spawn'а за обработку
+            if not hasattr(self, '_spawn_log_counter'):
+                self._spawn_log_counter = 0
+            
+            if self._spawn_log_counter < 3:
+                logger.debug_spawn(f"✅ Spawn result: parent_{parent_id} requested={requested_count} → created={created_count}")
+                if created_count < requested_count:
+                    logger.debug_spawn(f"⚠️ Spawn limited: {requested_count - created_count} flows not created " +
+                                     (f"(max_flows_reached)" if max_flows_reached else "(unknown reason)"))
+                self._spawn_log_counter += 1
+            elif self._spawn_log_counter == 3:
+                logger.debug_spawn(f"... (дальнейшие индивидуальные логи spawn скрыты для чистоты вывода)")
+                self._spawn_log_counter += 1
         
         return new_flow_ids
     
@@ -473,13 +492,25 @@ class EnergyLattice(nn.Module):
                           alive_energies: torch.Tensor,
                           alive_hidden: torch.Tensor):
         """ВЕКТОРИЗОВАННОЕ обновление множества потоков одновременно"""
+        # Сбрасываем счетчик индивидуальных логов spawn для нового батча
+        self._spawn_log_counter = 0
         # Преобразуем только ID в CPU, остальное оставляем на GPU
         alive_ids = alive_flow_ids.detach().cpu().tolist()
         
         updated_count = 0
+        position_changes = []
+        
         for i, flow_id in enumerate(alive_ids):
             if flow_id in self.active_flows:
                 flow = self.active_flows[flow_id]
+                
+                # ДИАГНОСТИКА: логируем изменения позиций для первых нескольких потоков
+                if updated_count < 5:
+                    old_pos = flow.position.clone()
+                    new_pos = alive_positions[i]
+                    pos_diff = torch.norm(new_pos - old_pos).item()
+                    position_changes.append(f"flow_{flow_id}[{old_pos[0]:.3f},{old_pos[1]:.3f},{old_pos[2]:.3f}]→[{new_pos[0]:.3f},{new_pos[1]:.3f},{new_pos[2]:.3f}](diff={pos_diff:.3f})")
+                
                 # Обновляем БЕЗ .clone() для ускорения (данные уже отделены от графа)
                 flow.position = alive_positions[i]
                 flow.energy = alive_energies[i] 
@@ -488,7 +519,15 @@ class EnergyLattice(nn.Module):
                 updated_count += 1
         
         if updated_count > 0:
-            logger.debug(f"Batch updated {updated_count} flows")
+            # ДИАГНОСТИКА: общая статистика позиций
+            z_positions = alive_positions[:, 2]
+            z_min, z_max, z_mean = z_positions.min().item(), z_positions.max().item(), z_positions.mean().item()
+            
+            logger.debug(f"🔄 Batch updated {updated_count} flows: Z range [{z_min:.3f}, {z_max:.3f}], mean={z_mean:.3f}")
+            
+            # Детальные примеры изменений позиций
+            if position_changes:
+                logger.debug(f"🔄 Position changes: {'; '.join(position_changes)}")
     
     def _mark_flow_completed_z0_plane(self, flow_id: int):
         """НОВАЯ АРХИТЕКТУРА: Помечает поток как завершенный на Z=0 плоскости без буферизации"""

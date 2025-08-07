@@ -564,7 +564,19 @@ class FlowProcessor(nn.Module):
         # 3. Применяем отражение границ (если включено)
         if reflection_mask.any() and self.config.boundary_reflection_enabled:
             reflection_flow_ids = flow_ids[reflection_mask]
-            reflection_positions = self.reflect_boundaries(carrier_output.next_position[reflection_mask])
+            reflection_count = reflection_mask.sum().item()
+            
+            # ДИАГНОСТИКА: логируем потоки до отражения с их ID
+            reflection_positions_before = carrier_output.next_position[reflection_mask]
+            logger.debug_reflection(f"🔄 BEFORE reflection: {reflection_count} flows need reflection")
+            
+            # Показываем первые 3 примера потоков до отражения
+            for i in range(min(3, reflection_count)):
+                flow_id = reflection_flow_ids[i].item()
+                pos = reflection_positions_before[i]
+                logger.debug_reflection(f"🔄 Flow {flow_id} before: X={pos[0].item():.6f}, Y={pos[1].item():.6f}, Z={pos[2].item():.6f}")
+            
+            reflection_positions = self.reflect_boundaries(reflection_positions_before, reflection_flow_ids)
             reflection_energies = carrier_output.energy_value[reflection_mask]
             reflection_hidden = new_hidden[reflection_mask]
             
@@ -606,12 +618,13 @@ class FlowProcessor(nn.Module):
         
         self._process_spawns_optimized(flows, carrier_output, final_active_mask)
     
-    def reflect_boundaries(self, position: torch.Tensor) -> torch.Tensor:
+    def reflect_boundaries(self, position: torch.Tensor, flow_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Отражение границ для нормализованного пространства [-1, 1]
         
         Args:
             position: [batch, 3] - позиции для отражения в нормализованном пространстве
+            flow_ids: [batch] - ID потоков (для логирования)
             
         Returns:
             reflected_position: [batch, 3] - позиции с отраженными X/Y в [-1, 1]
@@ -673,6 +686,17 @@ class FlowProcessor(nn.Module):
         # Финальные диапазоны
         logger.debug_reflection(f"🔄 Final ranges: X[{x.min().item():.3f}, {x.max().item():.3f}], "
                                f"Y[{y.min().item():.3f}, {y.max().item():.3f}]")
+        
+        # ДИАГНОСТИКА: показываем результат отражения для первых 3 потоков
+        if flow_ids is not None:
+            logger.debug_reflection(f"🔄 AFTER reflection examples:")
+            for i in range(min(3, len(position))):
+                flow_id = flow_ids[i].item()
+                orig_pos = position[i]
+                new_pos = reflected_pos[i]
+                logger.debug_reflection(f"🔄 Flow {flow_id} after: X={new_pos[0].item():.6f}, Y={new_pos[1].item():.6f}, Z={new_pos[2].item():.6f} "
+                                       f"(changed: ΔX={new_pos[0].item() - orig_pos[0].item():.6f}, "
+                                       f"ΔY={new_pos[1].item() - orig_pos[1].item():.6f})")
         
         return reflected_pos
     
