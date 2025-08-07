@@ -130,8 +130,8 @@ class FlowProcessor(nn.Module):
         
         # Определяем количество шагов
         if max_steps is None:
-            max_steps = self.config.lattice_depth
-        
+            max_steps = self.config.lattice_depth / 2  # Половина глубины решетки
+
         logger.info(f"Starting energy propagation: {len(flow_ids)} initial flows, max {max_steps} steps")
         
         # ДИАГНОСТИКА: проверяем начальные позиции потоков
