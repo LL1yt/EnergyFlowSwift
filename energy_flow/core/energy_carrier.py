@@ -161,7 +161,7 @@ class EnergyCarrier(nn.Module):
         """
         batch_size = neuron_output.shape[0]
         
-        # ДИАГНОСТИКА: логируем параметры входа
+        # ДИАГНОСТИКА основных параметров
         if global_training_step is not None:
             logger.debug_energy(f"🔄 EnergyCarrier forward: batch={batch_size}, global_step={global_training_step}")
             if current_position is not None:
@@ -203,50 +203,58 @@ class EnergyCarrier(nn.Module):
             logger.debug_forward(f"🔥 RAW displacement output (before Clamp): ΔZ min={raw_delta_z.min():.3f}, "
                        f"max={raw_delta_z.max():.3f}, mean={raw_delta_z.mean():.3f}, std={raw_delta_z.std():.3f}")
         
-        # Применяем ограничение диапазона (Clamp вместо неэффективного Tanh)
-        displacement_normalized = torch.clamp(displacement_raw, -1.0, 1.0)  # [batch, 3] в [-1, 1]
+        # Применяем ограничение диапазона (будет финальный clamp после всех операций)
+        displacement_normalized = displacement_raw  # Пока без clamp - отложим до конца
         
-        # ВРЕМЕННОЕ ИСПРАВЛЕНИЕ: усиливаем смещения для лучшего движения
-        # Модель обучена на слишком маленьких смещениях, нужно их масштабировать
-        displacement_scale = 5.0  # Увеличиваем смещения в 5 раз
-        displacement_normalized *= displacement_scale
-        displacement_normalized = torch.clamp(displacement_normalized, -1.0, 1.0)  # Снова ограничиваем [-1, 1]
-        logger.debug_forward(f"🔧 DISPLACEMENT SCALING: applied scale={displacement_scale}x, re-clamped to [-1, 1]")
+        # СИСТЕМА РАЗОГРЕВА СМЕЩЕНИЙ: адаптивное масштабирование на основе global_training_step
+        current_scale = self._calculate_displacement_scale(global_training_step)
+        displacement_normalized *= current_scale
+        # НЕ clamp здесь - отложим до финального clamp после всех операций
         
-        # ДИАГНОСТИКА: логируем нормализованные смещения (ПОСЛЕ Clamp)
+        if global_training_step is not None and global_training_step % self.config.displacement_scale_update_interval == 0:
+            logger.debug_forward(f"🔧 DISPLACEMENT SCALING: step={global_training_step}, scale={current_scale:.3f}")
+        
+        # ДИАГНОСТИКА: логируем смещения после масштабирования (ДО финального clamp)
         norm_delta_z = displacement_normalized[:, 2]
-        logger.debug_energy(f"📊 Normalized displacement (after Clamp): ΔZ min={norm_delta_z.min():.3f}, "
+        logger.debug_energy(f"📊 Scaled displacement (before final clamp): ΔZ min={norm_delta_z.min():.3f}, "
                        f"max={norm_delta_z.max():.3f}, mean={norm_delta_z.mean():.3f}")
         
-        # ДОПОЛНИТЕЛЬНАЯ ДИАГНОСТИКА: сравниваем с размерами решетки 
+        # ДИАГНОСТИКА смещений (только на первых шагах)
         if global_training_step is not None and global_training_step == 0:
-            # Преобразуем в реальные единицы для понимания
             depth = self.config.lattice_depth
             real_displacement_z = norm_delta_z * (depth / 2)  # Денормализуем смещения
             logger.debug_forward(f"🔍 Real world Z displacement: min={real_displacement_z.min():.3f}, "
                                f"max={real_displacement_z.max():.3f}, mean={real_displacement_z.mean():.3f} "
-                               f"(in units of depth={depth})")
-            logger.debug_forward(f"🔍 Problem: displacement range {real_displacement_z.max().item() - real_displacement_z.min().item():.3f} is too small for depth {depth}")
+                               f"(depth={depth})")
         
         # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
         if current_position is not None:
             next_position = current_position + displacement_normalized
             
-            # ДИАГНОСТИКА Z-движения: детальный анализ проблемы Z=0.000
+            # ДИАГНОСТИКА Z-движения: детальный анализ с пояснениями
             if global_training_step is not None and global_training_step == 0:
                 z_current = current_position[:, 2]
                 z_next = next_position[:, 2]
                 z_delta = z_next - z_current
                 
-                logger.debug_forward(f"🎯 Z-movement detailed: current_range=[{z_current.min():.6f}, {z_current.max():.6f}]")
-                logger.debug_forward(f"🎯 Z-movement detailed: delta_range=[{z_delta.min():.6f}, {z_delta.max():.6f}]")
-                logger.debug_forward(f"🎯 Z-movement detailed: next_range=[{z_next.min():.6f}, {z_next.max():.6f}]")
+                # Расшифровка координат в понятном виде
+                depth = self.config.lattice_depth
+                current_real = self.config.normalization_manager.denormalize_coordinates(current_position)[:, 2]
+                next_real = self.config.normalization_manager.denormalize_coordinates(next_position)[:, 2]
                 
-                # Анализ направлений движения
-                forward_count = (z_delta > 0).sum().item()
-                backward_count = (z_delta < 0).sum().item()
+                logger.debug_forward(f"🎯 Z-POSITION ANALYSIS:")
+                logger.debug_forward(f"  📍 Current normalized: [{z_current.min():.3f}, {z_current.max():.3f}] mean={z_current.mean():.3f}")
+                logger.debug_forward(f"  📍 Current real: [{current_real.min():.1f}, {current_real.max():.1f}] mean={current_real.mean():.1f} (depth={depth})")
+                logger.debug_forward(f"  📈 Delta normalized: [{z_delta.min():.3f}, {z_delta.max():.3f}] mean={z_delta.mean():.3f}")
+                logger.debug_forward(f"  📍 Next normalized: [{z_next.min():.3f}, {z_next.max():.3f}] mean={z_next.mean():.3f}")
+                logger.debug_forward(f"  📍 Next real: [{next_real.min():.1f}, {next_real.max():.1f}] mean={next_real.mean():.1f}")
+                
+                # Анализ направлений движения (ОБА направления валидны в dual output planes архитектуре!)
+                positive_z_count = (z_delta > 0).sum().item()  # К Z=depth выходной плоскости
+                negative_z_count = (z_delta < 0).sum().item() # К Z=0 выходной плоскости  
                 neutral_count = (z_delta == 0).sum().item()
-                logger.debug_forward(f"🎯 Z-direction: forward={forward_count}, backward={backward_count}, neutral={neutral_count}")
+                logger.debug_forward(f"  🎯 Movement direction: to_zdepth_plane={positive_z_count}, to_z0_plane={negative_z_count}, neutral={neutral_count}")
+                logger.debug_forward(f"  ℹ️  Both directions are valid - model chooses optimal output plane")
         else:
             # Если текущая позиция не передана, используем смещения как абсолютные координаты
             logger.warning("⚠️ Current position is None, using displacement as absolute position")
@@ -259,8 +267,11 @@ class EnergyCarrier(nn.Module):
             next_position += noise
             logger.debug(f"🎲 Added normalized exploration noise: std={self.config.exploration_noise}")
         
+        # ФИНАЛЬНЫЙ CLAMP: гарантируем [-1, 1] после всех координатных операций (scaling + exploration)
+        next_position = torch.clamp(next_position, -1.0, 1.0)
+        
         # Применяем логику завершения потоков для новой трехплоскостной архитектуры
-        next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position)
+        next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position, global_training_step)
         
         # ДИАГНОСТИКА: логируем результаты
         if logger.isEnabledFor(10):  # DEBUG level
@@ -289,18 +300,23 @@ class EnergyCarrier(nn.Module):
         return output, new_hidden
     
     def _compute_next_position_relative(self, 
-                                   next_position: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
+                                   next_position: torch.Tensor,
+                                   global_training_step: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
         """
         Вычисляет следующую позицию для трехплоскостной архитектуры относительных координат
         
-        Новая логика трехплоскостной архитектуры:
-        1. Входная плоскость: Z = depth/2 (центр куба)
-        2. Выходные плоскости: Z = 0 и Z = depth (края куба)
+        DUAL OUTPUT PLANES архитектура:
+        1. Входная плоскость: Z = depth/2 (центр куба) - normalized Z = 0.0
+        2. Выходные плоскости: Z = 0 (normalized Z = -1.0) И Z = depth (normalized Z = +1.0)
         3. X/Y границы: отражение обрабатывается в FlowProcessor
-        4. Потоки завершаются при достижении Z ≤ 0 или Z ≥ depth
+        4. Потоки завершаются при достижении любой из двух выходных плоскостей
+        
+        ВАЖНО: Движение в любом Z-направлении валидно! Модель сама выбирает оптимальную
+        выходную плоскость для каждого потока на основе обучающих данных.
         
         Args:
             next_position: [batch, 3] - позиция после применения смещения
+            global_training_step: Шаг обучения для диагностики
             
         Returns:
             next_position: [batch, 3] - следующая позиция (целые координаты)
@@ -376,23 +392,48 @@ class EnergyCarrier(nn.Module):
         if reached_zdepth_plane.any():
             final_position[reached_zdepth_plane, 2] = 1.0
         
-        # ДИАГНОСТИКА: проверяем проблему округления
-        if batch_size <= 1000:  # Логируем только для небольших батчей
-            pre_round_z = final_position[:, 2]
-            logger.debug_forward(f"🔍 ROUNDING DIAGNOSIS: Z before round: min={pre_round_z.min().item():.6f}, "
-                               f"max={pre_round_z.max().item():.6f}, mean={pre_round_z.mean().item():.6f}")
+        # Округляем координаты для дискретной решетки (восстановлено)
+        # Теперь смещения достаточно большие и округление не "съедает" движение
+        final_position = torch.round(final_position)
         
-        # ВРЕМЕННО УБИРАЕМ округление для диагностики!
-        # TODO: вернуть округление после исправления смещений
-        # final_position = torch.round(final_position)
-        logger.debug_forward(f"⚠️ ROUNDING DISABLED for diagnosis - positions kept as float")
-        
-        if batch_size <= 1000:  # Логируем только для небольших батчей  
+        # ДИАГНОСТИКА округления (только для первых шагов)
+        if global_training_step is not None and global_training_step == 0 and batch_size <= 1000:
             post_round_z = final_position[:, 2]
-            logger.debug_forward(f"🔍 ROUNDING DIAGNOSIS: Z after round: min={post_round_z.min().item():.6f}, "
-                               f"max={post_round_z.max().item():.6f}, mean={post_round_z.mean().item():.6f}")
+            logger.debug_forward(f"🔍 ROUNDING: Z after round: min={post_round_z.min().item():.3f}, "
+                               f"max={post_round_z.max().item():.3f}, mean={post_round_z.mean().item():.3f}")
         
         return final_position, is_terminated, termination_reasons
+    
+    def _calculate_displacement_scale(self, global_training_step: Optional[int]) -> float:
+        """
+        Вычисляет текущий масштаб смещений на основе системы разогрева
+        
+        Логика:
+        - Первые warmup_steps: полный scale
+        - Далее: постепенное убывание scale *= decay каждые update_interval шагов
+        - Минимум: scale_min (натуральные смещения модели)
+        
+        Args:
+            global_training_step: Текущий шаг обучения
+            
+        Returns:
+            current_scale: Текущий масштаб смещений
+        """
+        if global_training_step is None or global_training_step < self.config.displacement_warmup_steps:
+            # Фаза разогрева: полный scale
+            return self.config.displacement_scale
+        
+        # Фаза убывания: считаем количество интервалов после warmup
+        steps_after_warmup = global_training_step - self.config.displacement_warmup_steps
+        decay_intervals = steps_after_warmup // self.config.displacement_scale_update_interval
+        
+        # Применяем экспоненциальное убывание
+        current_scale = self.config.displacement_scale * (self.config.displacement_scale_decay ** decay_intervals)
+        
+        # Ограничиваем минимумом
+        current_scale = max(current_scale, self.config.displacement_scale_min)
+        
+        return current_scale
     
     def init_hidden(self, batch_size: int, device: torch.device) -> torch.Tensor:
         """Инициализация скрытого состояния GRU с небольшим шумом для лучшего обучения"""

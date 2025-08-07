@@ -248,9 +248,12 @@ class EnergyLattice(nn.Module):
         """
         Размещает входные эмбеддинги на входной плоскости в центре куба (Z = depth/2)
         
-        НОВАЯ ТРЕХПЛОСКОСТНАЯ АРХИТЕКТУРА:
-        - Входная плоскость: Z = depth/2 (центр куба)
-        - Выходные плоскости: Z = 0 и Z = depth (края куба)
+        DUAL OUTPUT PLANES АРХИТЕКТУРА:
+        - Входная плоскость: Z = depth/2 (центр куба, normalized Z = 0.0)
+        - Выходные плоскости: Z = 0 (normalized Z = -1.0) И Z = depth (normalized Z = +1.0)
+        
+        Потоки могут двигаться к любой из двух выходных плоскостей - модель сама выбирает
+        оптимальное направление для каждого эмбеддинга.
         
         Args:
             embeddings: [batch, embedding_dim] - входные эмбеддинги (768D)
@@ -406,7 +409,17 @@ class EnergyLattice(nn.Module):
         
         for i, energy in enumerate(spawn_energies):
             if len(self.active_flows) >= self.max_active_flows:
-                logger.debug_spawn(f"🚫 Spawn limited: max_active_flows={self.max_active_flows} reached at spawn {i}/{requested_count}")
+                # Логируем только первые 3 случая max_active_flows ограничения
+                if not hasattr(self, '_spawn_limit_log_counter'):
+                    self._spawn_limit_log_counter = 0
+                
+                if self._spawn_limit_log_counter < 3:
+                    logger.debug_spawn(f"🚫 Spawn limited: max_active_flows={self.max_active_flows} reached at spawn {i}/{requested_count}")
+                    self._spawn_limit_log_counter += 1
+                elif self._spawn_limit_log_counter == 3:
+                    logger.debug_spawn(f"... (дальнейшие логи max_active_flows ограничений скрыты)")
+                    self._spawn_limit_log_counter += 1
+                
                 max_flows_reached = True
                 break
             
@@ -492,8 +505,9 @@ class EnergyLattice(nn.Module):
                           alive_energies: torch.Tensor,
                           alive_hidden: torch.Tensor):
         """ВЕКТОРИЗОВАННОЕ обновление множества потоков одновременно"""
-        # Сбрасываем счетчик индивидуальных логов spawn для нового батча
+        # Сбрасываем счетчики логирования для нового батча
         self._spawn_log_counter = 0
+        self._spawn_limit_log_counter = 0
         # Преобразуем только ID в CPU, остальное оставляем на GPU
         alive_ids = alive_flow_ids.detach().cpu().tolist()
         

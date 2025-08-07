@@ -97,6 +97,13 @@ class EnergyConfig:
     # Эксплорация и шум (для относительных координат)
     exploration_noise: float = 0.1  # Небольшой шум для разнообразия движений
     use_exploration_noise: bool = True  # Включать exploration noise
+    
+    # Система масштабирования смещений (displacement scaling)
+    displacement_scale: float = 5.0        # Временное масштабирование смещений для обучения
+    displacement_warmup_steps: int = 100   # Количество шагов разогрева с полным масштабом
+    displacement_scale_decay: float = 0.95 # Коэффициент убывания scale (каждые 10 шагов)
+    displacement_scale_min: float = 1.0    # Минимальный scale (натуральные смещения модели)
+    displacement_scale_update_interval: int = 10  # Интервал обновления scale (в шагах)
 
     # Новая архитектура относительных координат
     relative_coordinates: bool = False  # Включить относительные координаты вместо абсолютных
