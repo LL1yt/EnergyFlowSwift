@@ -89,7 +89,13 @@ class EnergyCarrier(nn.Module):
             3 * self.position_memory_size,  # 5 позиций * 3 координаты = 15
             self.hidden_size // 4
         )
-        self.position_history_buffer = {}  # Буфер для хранения истории позиций
+        
+        # Комбинирование истории позиций с GRU выходом
+        self.history_fusion = nn.Sequential(
+            nn.Linear(self.hidden_size + self.hidden_size // 4, self.hidden_size),
+            nn.GELU(),
+            nn.Linear(self.hidden_size, self.hidden_size)
+        )
         
         # Projection heads для структурированного вывода
         # 1. Скалярная энергия (выход должен быть скаляром для consistency)
@@ -151,7 +157,8 @@ class EnergyCarrier(nn.Module):
                 hidden_state: Optional[torch.Tensor] = None,
                 current_position: Optional[torch.Tensor] = None,
                 flow_age: Optional[torch.Tensor] = None,
-                global_training_step: Optional[int] = None) -> Tuple[EnergyOutput, torch.Tensor]:
+                global_training_step: Optional[int] = None,
+                position_history: Optional[torch.Tensor] = None) -> Tuple[EnergyOutput, torch.Tensor]:
         """
         Прямой проход через EnergyCarrier
         
@@ -162,6 +169,7 @@ class EnergyCarrier(nn.Module):
             current_position: [batch, 3] - текущая позиция (для расчета следующей)
             flow_age: [batch] - возраст потоков для progressive bias
             global_training_step: Глобальный шаг обучения для curriculum learning
+            position_history: [batch, memory_size, 3] - история позиций (опционально)
             
         Returns:
             output: EnergyOutput - структурированный вывод
@@ -184,6 +192,28 @@ class EnergyCarrier(nn.Module):
         # Проход через GRU
         gru_output, new_hidden = self.gru(combined_input, hidden_state)
         gru_output = gru_output.squeeze(1)  # [batch, hidden_size]
+        
+        # Интеграция истории позиций для лучшего предсказания траекторий
+        if position_history is not None and position_history.shape[1] > 0:
+            # Flatten history: [batch, memory_size * 3]
+            history_flat = position_history.view(batch_size, -1)
+            
+            # Дополняем нулями если история короче memory_size
+            if history_flat.shape[1] < 3 * self.position_memory_size:
+                padding_size = 3 * self.position_memory_size - history_flat.shape[1]
+                padding = torch.zeros(batch_size, padding_size, device=history_flat.device)
+                history_flat = torch.cat([history_flat, padding], dim=1)
+            
+            # Проецируем историю в features
+            history_features = self.position_memory(history_flat)  # [batch, hidden_size // 4]
+            
+            # Объединяем с GRU выходом
+            combined_features = torch.cat([gru_output, history_features], dim=-1)
+            gru_output = self.history_fusion(combined_features)  # [batch, hidden_size]
+            
+            if global_training_step is not None and global_training_step <= 3:
+                logger.debug_forward(f"📜 Position history integrated: shape={position_history.shape}, "
+                                   f"history_features norm={history_features.norm(dim=-1).mean():.3f}")
         
         # 1. Генерируем текущую энергию
         energy_value = self.energy_projection(gru_output)  # [batch, embedding_dim]

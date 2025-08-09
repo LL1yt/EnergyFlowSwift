@@ -100,6 +100,9 @@ class EnergyLattice(nn.Module):
         # Предвычисляем mapping: нормализованные координаты -> surface_idx
         self._precompute_normalized_to_surface_mapping()
         
+        # ОПТИМИЗАЦИЯ: Предкешируем нормализованные Z плоскости для избежания повторных вычислений
+        self._precompute_normalized_z_planes()
+        
         logger.info(f"EnergyLattice initialized: {self.width}x{self.height}x{self.depth}")
         logger.info(f"Input/output cells: {self.width * self.height}, max flows: {self.max_active_flows}")
     
@@ -152,6 +155,31 @@ class EnergyLattice(nn.Module):
                 self.normalized_to_surface_idx[norm_key] = surface_idx
         
         logger.debug(f"Precomputed normalized->surface mapping for {len(self.normalized_to_surface_idx)} positions")
+    
+    def _precompute_normalized_z_planes(self):
+        """Предвычисляет нормализованные значения Z для выходных плоскостей."""
+        # Вычисляем один раз при инициализации
+        self.norm_z0 = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([0.0], device=self.device), 
+            self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0].item()
+        
+        self.norm_zdepth = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([float(self.depth)], device=self.device), 
+            self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0].item()
+        
+        # Также вычисляем нормализованное значение для центра (входная плоскость)
+        self.norm_zcenter = self.config.normalization_manager._normalize_to_range(
+            torch.tensor([float(self.depth // 2)], device=self.device), 
+            self.config.normalization_manager.ranges.z_range[0], 
+            self.config.normalization_manager.ranges.z_range[1]
+        )[0].item()
+        
+        logger.debug(f"Precomputed normalized Z planes: z0={self.norm_z0:.6f}, "
+                    f"center={self.norm_zcenter:.6f}, zdepth={self.norm_zdepth:.6f}")
     
     def round_to_nearest_lattice_position(self, normalized_positions: torch.Tensor) -> torch.Tensor:
         """
@@ -225,20 +253,10 @@ class EnergyLattice(nn.Module):
         """
         norm_z = normalized_position[2].item()
         
-        # Получаем нормализованные значения выходных поверхностей
-        norm_z0 = self.config.normalization_manager._normalize_to_range(
-            torch.tensor([0.0]), self.config.normalization_manager.ranges.z_range[0], 
-            self.config.normalization_manager.ranges.z_range[1]
-        )[0].item()
-        
-        norm_zdepth = self.config.normalization_manager._normalize_to_range(
-            torch.tensor([float(self.depth)]), self.config.normalization_manager.ranges.z_range[0], 
-            self.config.normalization_manager.ranges.z_range[1]
-        )[0].item()
-        
+        # Используем предвычисленные нормализованные значения выходных поверхностей
         # Вычисляем расстояния до обеих поверхностей
-        distance_to_z0 = abs(norm_z - norm_z0)
-        distance_to_zdepth = abs(norm_z - norm_zdepth)
+        distance_to_z0 = abs(norm_z - self.norm_z0)
+        distance_to_zdepth = abs(norm_z - self.norm_zdepth)
         
         # Возвращаем ближайшую поверхность
         if distance_to_z0 <= distance_to_zdepth:
@@ -353,22 +371,10 @@ class EnergyLattice(nn.Module):
         # Вычисляем расстояния до обеих поверхностей векторизованно
         norm_z_values = normalized_positions[:, 2]  # [num_flows]
         
-        # Нормализованные Z для выходных поверхностей
-        norm_z0 = self.config.normalization_manager._normalize_to_range(
-            torch.tensor([0.0], device=self.device), 
-            self.config.normalization_manager.ranges.z_range[0], 
-            self.config.normalization_manager.ranges.z_range[1]
-        )[0]
-        
-        norm_zdepth = self.config.normalization_manager._normalize_to_range(
-            torch.tensor([float(self.depth)], device=self.device), 
-            self.config.normalization_manager.ranges.z_range[0], 
-            self.config.normalization_manager.ranges.z_range[1]
-        )[0]
-        
+        # Используем предвычисленные нормализованные Z для выходных поверхностей
         # Векторизованные расстояния
-        distances_to_z0 = torch.abs(norm_z_values - norm_z0)
-        distances_to_zdepth = torch.abs(norm_z_values - norm_zdepth)
+        distances_to_z0 = torch.abs(norm_z_values - self.norm_z0)
+        distances_to_zdepth = torch.abs(norm_z_values - self.norm_zdepth)
         
         # Определяем ближайшие поверхности
         is_closer_to_z0 = distances_to_z0 <= distances_to_zdepth
@@ -649,17 +655,12 @@ class EnergyLattice(nn.Module):
             
         flow = self.active_flows[flow_id]
         
-        # Проецируем позицию на Z=0 плоскость в нормализованных координатах
-        normalized_z0_value = self.config.normalization_manager._normalize_to_range(
-            torch.tensor([0.0]), self.config.normalization_manager.ranges.z_range[0], 
-            self.config.normalization_manager.ranges.z_range[1]
-        )[0]
-        
+        # Используем предвычисленное нормализованное значение Z=0 плоскости
         # Обновляем позицию потока
         projected_position = torch.tensor([
             flow.position[0],  # X, Y уже нормализованные
             flow.position[1], 
-            normalized_z0_value  # Проецируем на нормализованную Z=0 плоскость
+            self.norm_z0  # Проецируем на нормализованную Z=0 плоскость
         ], device=self.device)
         
         flow.position = projected_position
@@ -676,17 +677,12 @@ class EnergyLattice(nn.Module):
             
         flow = self.active_flows[flow_id]
         
-        # Проецируем позицию на Z=depth плоскость в нормализованных координатах
-        normalized_zdepth_value = self.config.normalization_manager._normalize_to_range(
-            torch.tensor([float(self.depth)]), self.config.normalization_manager.ranges.z_range[0], 
-            self.config.normalization_manager.ranges.z_range[1]
-        )[0]
-        
+        # Используем предвычисленное нормализованное значение Z=depth плоскости
         # Обновляем позицию потока
         projected_position = torch.tensor([
             flow.position[0],  # X, Y уже нормализованные
             flow.position[1], 
-            normalized_zdepth_value  # Проецируем на нормализованную Z=depth плоскость
+            self.norm_zdepth  # Проецируем на нормализованную Z=depth плоскость
         ], device=self.device)
         
         flow.position = projected_position

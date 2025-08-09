@@ -133,7 +133,7 @@ class FlowProcessor(nn.Module):
         
         # Определяем количество шагов
         if max_steps is None:
-            max_steps = self.config.lattice_depth / 2  # Половина глубины решетки
+            max_steps = self.config.lattice_depth // 2  # Половина глубины решетки
 
         logger.info(f"Starting energy propagation: {len(flow_ids)} initial flows, max {max_steps} steps")
         
@@ -472,7 +472,7 @@ class FlowProcessor(nn.Module):
         # ДВУХУРОВНЕВАЯ ПРОЕКЦИОННАЯ СИСТЕМА
         # Проверяем потоки, которые сделали depth/2 шагов но не достигли выходных плоскостей
         projection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
-        depth_half = self.config.lattice_depth / 2
+        depth_half = self.config.lattice_depth // 2
         
         for i, flow in enumerate(flows):
             # Только для активных потоков (не завершенных)
