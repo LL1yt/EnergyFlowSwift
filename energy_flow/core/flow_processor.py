@@ -81,11 +81,14 @@ class FlowProcessor(nn.Module):
             'flows_killed_energy': 0
         }
         
-        # Статистика конвергенции
+        # Улучшенная статистика конвергенции со скользящим окном
         self.convergence_stats = {
             'completed_count_history': [],
             'no_improvement_steps': 0,
-            'best_completed_count': 0
+            'best_completed_count': 0,
+            'moving_average_window': 5,  # Размер окна для скользящего среднего
+            'last_moving_avg': 0.0,
+            'improvement_threshold': 0.01  # Минимальное улучшение для считывания прогресса
         }
         
         # Счетчик всех созданных потоков для точной статистики конвергенции
@@ -898,7 +901,7 @@ class FlowProcessor(nn.Module):
     
     def _check_convergence(self, step: int, initial_flows_count: int) -> bool:
         """
-        Проверяет условия конвергенции для adaptive max_steps
+        Улучшенная проверка конвергенции со скользящим окном
         
         Args:
             step: Текущий шаг
@@ -917,6 +920,7 @@ class FlowProcessor(nn.Module):
         # Получаем текущую статистику
         stats = self.lattice.get_statistics()
         completed_count = stats['total_completed']
+        active_count = stats['current_active']
         
         # Добавляем в историю
         self.convergence_stats['completed_count_history'].append(completed_count)
@@ -924,25 +928,56 @@ class FlowProcessor(nn.Module):
         # Проверяем порог конвергенции (учитывая все созданные потоки, включая spawn'ы)
         completion_rate = completed_count / self.total_flows_created if self.total_flows_created > 0 else 0
         
-        logger.log(20, f"Convergence check step {step}: {completed_count}/{self.total_flows_created} "
-                      f"flows completed ({completion_rate:.2f})")
+        # УЛУЧШЕНИЕ 1: Вычисляем скользящее среднее для стабильности
+        window_size = self.convergence_stats['moving_average_window']
+        if len(self.convergence_stats['completed_count_history']) >= window_size:
+            recent_counts = self.convergence_stats['completed_count_history'][-window_size:]
+            moving_avg = sum(recent_counts) / window_size
+            
+            # Проверяем улучшение относительно предыдущего скользящего среднего
+            if self.convergence_stats['last_moving_avg'] > 0:
+                improvement = (moving_avg - self.convergence_stats['last_moving_avg']) / self.convergence_stats['last_moving_avg']
+                if improvement < self.convergence_stats['improvement_threshold']:
+                    self.convergence_stats['no_improvement_steps'] += 1
+                else:
+                    self.convergence_stats['no_improvement_steps'] = 0
+            
+            self.convergence_stats['last_moving_avg'] = moving_avg
+            
+            logger.log(20, f"Convergence check step {step}: {completed_count}/{self.total_flows_created} completed "
+                          f"(rate={completion_rate:.2f}, moving_avg={moving_avg:.1f}, active={active_count})")
+        else:
+            logger.log(20, f"Convergence check step {step}: {completed_count}/{self.total_flows_created} completed "
+                          f"(rate={completion_rate:.2f}, active={active_count}) - building history")
         
         # Условие 1: Достигнут порог конвергенции
         if completion_rate >= self.config.convergence_threshold:
-            logger.log(20, f"Convergence threshold reached: {completion_rate:.2f} >= {self.config.convergence_threshold:.2f}")
+            logger.log(20, f"✅ Convergence threshold reached: {completion_rate:.2f} >= {self.config.convergence_threshold:.2f}")
             return True
         
-        # Условие 2: Patience - нет улучшения в течение N шагов
+        # УЛУЧШЕНИЕ 2: Проверяем стагнацию - нет активных потоков и мало завершенных
+        if active_count == 0 and completion_rate < 0.5:
+            logger.log(20, f"⚠️ Stagnation detected: no active flows, only {completion_rate:.2f} completion rate")
+            return True
+        
+        # Условие 2: Обновленный Patience на основе скользящего среднего
         if completed_count > self.convergence_stats['best_completed_count']:
             self.convergence_stats['best_completed_count'] = completed_count
-            self.convergence_stats['no_improvement_steps'] = 0
-        else:
-            self.convergence_stats['no_improvement_steps'] += 1
+            # Сбрасываем счетчик только при значительном улучшении
+            if self.convergence_stats['best_completed_count'] - completed_count > 1:
+                self.convergence_stats['no_improvement_steps'] = 0
         
         if self.convergence_stats['no_improvement_steps'] >= self.config.convergence_patience:
-            logger.log(20, f"Convergence patience exceeded: {self.convergence_stats['no_improvement_steps']} "
-                          f">= {self.config.convergence_patience}")
+            logger.log(20, f"⏸️ Convergence patience exceeded: {self.convergence_stats['no_improvement_steps']} "
+                          f">= {self.config.convergence_patience} steps without improvement")
             return True
+        
+        # УЛУЧШЕНИЕ 3: Адаптивная остановка при высокой эффективности
+        if step > 10 and completion_rate > 0.8:
+            # Если уже достигли 80% и прогресс замедлился
+            if self.convergence_stats['no_improvement_steps'] > self.config.convergence_patience // 2:
+                logger.log(20, f"🎯 High efficiency early stop: {completion_rate:.2f} completion with slowing progress")
+                return True
         
         return False
     

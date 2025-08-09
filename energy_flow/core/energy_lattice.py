@@ -156,7 +156,7 @@ class EnergyLattice(nn.Module):
     def round_to_nearest_lattice_position(self, normalized_positions: torch.Tensor) -> torch.Tensor:
         """
         Округляет нормализованные позиции до ближайших координат решетки.
-        ОПТИМИЗИРОВАННАЯ ВЕКТОРИЗОВАННАЯ ВЕРСИЯ для GPU параллелизма.
+        АРИФМЕТИЧЕСКАЯ ВЕРСИЯ O(1) - прямое вычисление без поиска.
         
         Args:
             normalized_positions: [batch, 3] нормализованные позиции в [-1, 1]
@@ -164,32 +164,30 @@ class EnergyLattice(nn.Module):
         Returns:
             [batch, 3] нормализованные координаты ближайших позиций решетки
         """
-        batch_size = normalized_positions.shape[0]
         device = normalized_positions.device
         
-        # Переносим предвычисленную сетку на нужное устройство если необходимо
-        if self.normalized_lattice_grid.device != device:
-            self.normalized_lattice_grid = self.normalized_lattice_grid.to(device)
+        # АРИФМЕТИЧЕСКАЯ КВАНТИЗАЦИЯ: O(1) операция вместо O(N*M) поиска
+        # Преобразуем из [-1, 1] в индексы решетки [0, size-1]
         
-        # ВЕКТОРИЗОВАННАЯ ВЕРСИЯ: обрабатываем весь батч одновременно
-        grid_flat = self.normalized_lattice_grid.view(-1, 3)  # [N_grid, 3]
+        # X координата: [-1, 1] -> [0, width-1]
+        idx_x = ((normalized_positions[:, 0] + 1) * 0.5 * (self.width - 1))
+        idx_x = idx_x.round().clamp(0, self.width - 1)
         
-        # Эффективное вычисление расстояний для всего батча
-        # Используем broadcasting: [batch, 1, 3] - [1, N_grid, 3] = [batch, N_grid, 3]
-        positions_expanded = normalized_positions.unsqueeze(1)  # [batch, 1, 3]
-        grid_expanded = grid_flat.unsqueeze(0)  # [1, N_grid, 3]
+        # Y координата: [-1, 1] -> [0, height-1]
+        idx_y = ((normalized_positions[:, 1] + 1) * 0.5 * (self.height - 1))
+        idx_y = idx_y.round().clamp(0, self.height - 1)
         
-        # Вычисляем разности
-        diff = positions_expanded - grid_expanded  # [batch, N_grid, 3]
+        # Z координата: [-1, 1] -> [0, depth]
+        idx_z = ((normalized_positions[:, 2] + 1) * 0.5 * self.depth)
+        idx_z = idx_z.round().clamp(0, self.depth)
         
-        # Вычисляем евклидовы расстояния
-        distances = torch.norm(diff, dim=2)  # [batch, N_grid]
+        # Преобразуем обратно в нормализованные координаты [-1, 1]
+        norm_x = (idx_x / (self.width - 1)) * 2 - 1
+        norm_y = (idx_y / (self.height - 1)) * 2 - 1
+        norm_z = (idx_z / self.depth) * 2 - 1
         
-        # Находим индексы ближайших точек для всего батча
-        nearest_indices = torch.argmin(distances, dim=1)  # [batch]
-        
-        # Извлекаем ближайшие позиции
-        rounded_positions = grid_flat[nearest_indices]  # [batch, 3]
+        # Собираем результат
+        rounded_positions = torch.stack([norm_x, norm_y, norm_z], dim=-1)
         
         return rounded_positions
     
@@ -782,25 +780,26 @@ class EnergyLattice(nn.Module):
                 aggregated = flows_in_cell[0].energy
                 stats = f"single_flow(id={flows_in_cell[0].id})"
             else:
-                # Несколько потоков - взвешенное усреднение с ИСПРАВЛЕННОЙ весовой системой
+                # ВЕКТОРИЗОВАННАЯ агрегация - все операции через тензоры
                 energies = torch.stack([flow.energy for flow in flows_in_cell])
                 
-                weights = []
-                for flow in flows_in_cell:
-                    energy_magnitude = torch.norm(flow.energy).item()
-                    
-                    # ИСПРАВЛЕННЫЙ фактор близости для нормализованных координат
-                    proximity_factor = 1.0 / (1.0 + flow.distance_to_surface)
-                    
-                    # Фактор количества шагов
-                    steps_factor = 1.0 + flow.steps_taken * 0.1
-                    
-                    # Комбинированный вес
-                    weight = energy_magnitude * proximity_factor * steps_factor
-                    weights.append(weight)
+                # Векторизованное вычисление весов
+                # Собираем атрибуты в тензоры для параллельной обработки
+                energy_magnitudes = torch.norm(energies, dim=-1)  # [num_flows]
+                distances_to_surface = torch.tensor([flow.distance_to_surface for flow in flows_in_cell], 
+                                                   device=self.device)
+                steps_taken = torch.tensor([flow.steps_taken for flow in flows_in_cell], 
+                                          device=self.device, dtype=torch.float32)
                 
-                weights = torch.tensor(weights, device=self.device)
-                weights = weights / weights.sum()  # Нормализуем
+                # Векторизованное вычисление факторов
+                proximity_factors = 1.0 / (1.0 + distances_to_surface)
+                steps_factors = 1.0 + steps_taken * 0.1
+                
+                # Комбинированные веса одной операцией
+                weights = energy_magnitudes * proximity_factors * steps_factors
+                
+                # Softmax нормализация для стабильности (вместо простого деления)
+                weights = torch.softmax(weights, dim=0)
                 
                 # Взвешенное усреднение
                 aggregated = (energies * weights.unsqueeze(-1)).sum(dim=0)
@@ -907,33 +906,26 @@ class EnergyLattice(nn.Module):
                 batch_idx = flow.batch_idx
                 logger.debug(f"Cell ({norm_x:.3f},{norm_y:.3f})->[idx={surface_idx}]: single_flow(id={flow.id}, batch={batch_idx})")
             else:
-                # Несколько потоков - взвешенное усреднение с ИСПРАВЛЕННОЙ весовой системой
-                energies = []
-                weights = []
-                batch_indices_cell = []
+                # ВЕКТОРИЗОВАННАЯ агрегация для surface collection
+                energies_tensor = torch.stack([flow.energy for flow in flows])
+                batch_indices_cell = [flow.batch_idx for flow in flows]
                 
-                for flow in flows:
-                    energy_magnitude = torch.norm(flow.energy).item()
-                    
-                    # ИСПРАВЛЕННЫЙ фактор близости для нормализованных координат
-                    proximity_factor = 1.0 / (1.0 + flow.distance_to_surface)
-                    
-                    # Фактор количества шагов
-                    steps_factor = 1.0 + flow.steps_taken * 0.1
-                    
-                    # Комбинированный вес
-                    weight = energy_magnitude * proximity_factor * steps_factor
-                    
-                    energies.append(flow.energy)
-                    weights.append(weight)
-                    batch_indices_cell.append(flow.batch_idx)
+                # Векторизованное вычисление весов через тензорные операции
+                energy_magnitudes = torch.norm(energies_tensor, dim=-1)  # [num_flows]
+                distances_to_surface = torch.tensor([flow.distance_to_surface for flow in flows],
+                                                   device=self.device)
+                steps_taken = torch.tensor([flow.steps_taken for flow in flows],
+                                          device=self.device, dtype=torch.float32)
                 
-                # Нормализуем веса
-                weights = torch.tensor(weights, device=self.device)
-                weights = weights / weights.sum()
+                # Векторизованные факторы
+                proximity_factors = 1.0 / (1.0 + distances_to_surface)
+                steps_factors = 1.0 + steps_taken * 0.1
+                
+                # Комбинированные веса с softmax нормализацией
+                weights = energy_magnitudes * proximity_factors * steps_factors
+                weights = torch.softmax(weights, dim=0)
                 
                 # Взвешенное усреднение энергий
-                energies_tensor = torch.stack(energies)
                 aggregated_energy = (energies_tensor * weights.unsqueeze(-1)).sum(dim=0)
                 
                 # Для множественных потоков берем batch_idx первого потока
