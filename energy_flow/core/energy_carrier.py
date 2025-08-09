@@ -268,10 +268,10 @@ class EnergyCarrier(nn.Module):
         
         # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
         if current_position is not None:
-            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: применяем смещения с немедленным clamp
-            next_position = current_position + displacement_normalized
-            # Гарантируем, что позиция остается в [-1, 1] сразу после сложения
-            next_position = torch.clamp(next_position, -1.0, 1.0)
+            # Сначала вычислим "сырую" следующую позицию БЕЗ clamp — нужна для корректной детекции выхода за границы X/Y
+            raw_next_position = current_position + displacement_normalized
+            # Затем сформируем безопасную позицию с clamp как базу дальнейшей обработки
+            next_position = torch.clamp(raw_next_position, -1.0, 1.0)
             
             # ДИАГНОСТИКА Z-движения: детальный анализ с пояснениями
             if global_training_step is not None and global_training_step <= 3:
@@ -300,18 +300,20 @@ class EnergyCarrier(nn.Module):
         else:
             # Если текущая позиция не передана, используем смещения как абсолютные координаты
             logger.warning("⚠️ Current position is None, using displacement as absolute position")
-            next_position = displacement_normalized
+            raw_next_position = displacement_normalized
+            next_position = torch.clamp(raw_next_position, -1.0, 1.0)
         
         # Exploration noise для разнообразия путей (в нормализованном пространстве)
         if self.config.use_exploration_noise:
             # Exploration noise тоже должен быть в нормализованном пространстве
             noise = torch.randn_like(next_position) * self.config.exploration_noise
             # Применяем шум с немедленным clamp для гарантии границ
+            raw_next_position = raw_next_position + noise
             next_position = torch.clamp(next_position + noise, -1.0, 1.0)
             logger.debug(f"🎲 Added normalized exploration noise: std={self.config.exploration_noise}")
         
         # Применяем логику завершения потоков для новой трехплоскостной архитектуры
-        next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position, global_training_step)
+        next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position, global_training_step, raw_next_position=raw_next_position)
         
         # ДИАГНОСТИКА: логируем результаты
         if logger.isEnabledFor(10):  # DEBUG level
@@ -341,7 +343,8 @@ class EnergyCarrier(nn.Module):
     
     def _compute_next_position_relative(self, 
                                    next_position: torch.Tensor,
-                                   global_training_step: Optional[int] = None) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
+                                   global_training_step: Optional[int] = None,
+                                   raw_next_position: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
         """
         Вычисляет следующую позицию для трехплоскостной архитектуры относительных координат
         
@@ -391,17 +394,18 @@ class EnergyCarrier(nn.Module):
             logger.debug_forward(f"🔍 BOUNDS CHECK: positions range X[{x_min:.3f}, {x_max:.3f}], "
                                f"Y[{y_min:.3f}, {y_max:.3f}], Z[{z_min:.3f}, {z_max:.3f}]")
         
-        # ИСПРАВЛЕНО: проверяем границы в нормализованном пространстве [-1, 1]
-        out_of_bounds_x = (next_position[:, 0] < -1.0) | (next_position[:, 0] > 1.0)
-        out_of_bounds_y = (next_position[:, 1] < -1.0) | (next_position[:, 1] > 1.0)
+        # Проверяем выход за границы X/Y по СЫРЫМ координатам до clamp, если они предоставлены
+        pos_for_bounds = raw_next_position if raw_next_position is not None else next_position
+        out_of_bounds_x = (pos_for_bounds[:, 0] < -1.0) | (pos_for_bounds[:, 0] > 1.0)
+        out_of_bounds_y = (pos_for_bounds[:, 1] < -1.0) | (pos_for_bounds[:, 1] > 1.0)
         out_of_bounds_xy = out_of_bounds_x | out_of_bounds_y
         
-        # ДИАГНОСТИКА: логируем количество потоков, требующих отражения
+        # ДИАГНОСТИКА: логируем количество потоков, требующих отражения (по "сырым" координатам до clamp)
         if out_of_bounds_xy.any():
-            num_x_left = (next_position[:, 0] < -1.0).sum().item()
-            num_x_right = (next_position[:, 0] > 1.0).sum().item()
-            num_y_left = (next_position[:, 1] < -1.0).sum().item()
-            num_y_right = (next_position[:, 1] > 1.0).sum().item()
+            num_x_left = (pos_for_bounds[:, 0] < -1.0).sum().item()
+            num_x_right = (pos_for_bounds[:, 0] > 1.0).sum().item()
+            num_y_left = (pos_for_bounds[:, 1] < -1.0).sum().item()
+            num_y_right = (pos_for_bounds[:, 1] > 1.0).sum().item()
             logger.debug_forward(f"🔍 OUT OF BOUNDS: X_left={num_x_left}, X_right={num_x_right}, "
                                f"Y_left={num_y_left}, Y_right={num_y_right}, total={out_of_bounds_xy.sum().item()}")
         
@@ -432,15 +436,8 @@ class EnergyCarrier(nn.Module):
         if reached_zdepth_plane.any():
             final_position[reached_zdepth_plane, 2] = 1.0
         
-        # Округляем координаты для дискретной решетки (восстановлено)
-        # Теперь смещения достаточно большие и округление не "съедает" движение
-        final_position = torch.round(final_position)
-        
-        # ДИАГНОСТИКА округления (только для первых шагов)
-        if global_training_step is not None and global_training_step <= 3 and batch_size <= 1000:
-            post_round_z = final_position[:, 2]
-            logger.debug_forward(f"🔍 ROUNDING: Z after round: min={post_round_z.min().item():.3f}, "
-                               f"max={post_round_z.max().item():.3f}, mean={post_round_z.mean().item():.3f}")
+        # ВАЖНО: НЕ выполняем округление координат в нормализованном пространстве — сохраняем непрерывные значения
+        # Квантование выполняется только при индексации дискретных поверхностей/агрегации
         
         return final_position, is_terminated, termination_reasons
     

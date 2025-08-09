@@ -99,9 +99,9 @@ class EnergyConfig:
     use_exploration_noise: bool = True  # Включать exploration noise
     
     # Система масштабирования смещений (displacement scaling)
-    displacement_scale: float = 5.0        # Временное масштабирование смещений для обучения
+    displacement_scale: float = 1.0        # Временное масштабирование смещений для обучения
     displacement_warmup_steps: int = 100   # Количество шагов разогрева с полным масштабом
-    displacement_scale_decay: float = 0.95 # Коэффициент убывания scale (каждые 10 шагов)
+    displacement_scale_decay: float = 0.90 # Коэффициент убывания scale
     displacement_scale_min: float = 1.0    # Минимальный scale (натуральные смещения модели)
     displacement_scale_update_interval: int = 10  # Интервал обновления scale (в шагах)
 
@@ -121,6 +121,9 @@ class EnergyConfig:
     proximity_weight: float = 0.7      # Вес близости к выходу
     path_length_weight: float = 0.3    # Вес длины пути
     safe_distance_minimum: float = 0.5 # Минимальное расстояние для безопасного деления
+    
+    # Тензорное хранилище потоков
+    tensorized_storage_enabled: bool = True  # Включить TensorizedFlowStorage для активных потоков
     
     def __post_init__(self):
         """Валидация и вычисление производных параметров"""
@@ -272,7 +275,7 @@ def create_experiment_config() -> EnergyConfig:
         movement_based_spawn=True,      # Spawn на основе длины движения
         boundary_reflection_enabled=True, # Отражение границ для экспериментов
         spawn_movement_threshold_ratio=0.5,  # 50% от depth для experiment
-        exploration_noise=0.2,  # Умеренный шум для экспериментов
+        exploration_noise=0.05,  # Умеренный шум для экспериментов
         # Проекционная архитектура настройки
         enable_displacement_filtering=False,  # Отключить фильтрацию для полной проекции
         convergence_patience=8  # Увеличенная терпеливость для experiment

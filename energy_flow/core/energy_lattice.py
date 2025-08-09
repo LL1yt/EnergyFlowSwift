@@ -15,6 +15,7 @@ import numpy as np
 from ..utils.logging import get_logger, log_memory_state
 from ..config import get_energy_config, create_debug_config, set_energy_config
 from ..utils.device_manager import get_device_manager
+from .tensorized_storage import TensorizedFlowStorage
 
 logger = get_logger(__name__)
 
@@ -81,6 +82,17 @@ class EnergyLattice(nn.Module):
         # Активные потоки
         self.active_flows: Dict[int, EnergyFlow] = {}
         self.next_flow_id = 0
+        
+        # Необязательное тензорное хранилище активных потоков
+        self.tensor_storage: Optional[TensorizedFlowStorage] = None
+        if getattr(self.config, 'tensorized_storage_enabled', False):
+            self.tensor_storage = TensorizedFlowStorage(
+                max_flows=self.max_active_flows,
+                embedding_dim=1,
+                hidden_layers=self.config.carrier_num_layers,
+                hidden_size=self.config.carrier_hidden_size,
+                device=self.device
+            )
         
         # УДАЛЕНО: Буферная система больше не используется в новой архитектуре прямой работы с потоками
         # Все данные хранятся напрямую в active_flows до момента сбора и удаления
@@ -418,6 +430,22 @@ class EnergyLattice(nn.Module):
                                 f"norm=({normalized_positions[i][0]:.3f}, {normalized_positions[i][1]:.3f}, "
                                 f"{normalized_positions[i][2]:.3f}), embedding_magnitude={torch.norm(energies_tensors[i]):.3f}")
         
+        # Синхронизация с тензорным хранилищем (если включено)
+        if self.tensor_storage is not None and num_flows > 0:
+            # Энергии как [N,1]
+            energies_matrix = torch.stack(energies_tensors, dim=0).view(num_flows, 1).to(self.device)
+            batch_indices_tensor = torch.tensor(batch_indices[:num_flows], device=self.device, dtype=torch.long)
+            # allocate в tensor_storage с теми же flow_ids
+            _ = self.tensor_storage.allocate_flows(
+                num_flows=num_flows,
+                initial_positions=normalized_positions[:num_flows],
+                initial_energies=energies_matrix,
+                batch_indices_list=batch_indices_tensor.tolist(),
+                parent_ids=None,
+                flow_ids=flow_ids,
+                initial_hidden=all_hidden_states[:num_flows]
+            )
+        
         # Обновляем статистику
         self.stats['total_created'] += num_flows
         self.stats['max_concurrent'] = max(self.stats['max_concurrent'], len(self.active_flows))
@@ -491,7 +519,7 @@ class EnergyLattice(nn.Module):
             self._buffer_flow_to_zdepth_plane(flow_id)
             logger.debug(f"Flow {flow_id} reached Z={self.depth} output plane at age {flow.age} (buffered)")
     
-    def spawn_flows(self, parent_id: int, spawn_energies: List[torch.Tensor]) -> List[int]:
+    def spawn_flows(self, parent_id: int, spawn_energies: List[torch.Tensor], start_position: Optional[torch.Tensor] = None) -> List[int]:
         """
         Создает новые потоки от родительского
         
@@ -528,15 +556,36 @@ class EnergyLattice(nn.Module):
                 max_flows_reached = True
                 break
             
-            # Новые потоки начинают с позиции родителя
+            # Новые потоки начинают с позиции родителя ДО перемещения (или явно заданной позиции)
+            start_pos = start_position if start_position is not None else parent.position
             flow_id = self._create_flow(
-                parent.position.clone(),
+                start_pos,
                 energy,
                 batch_idx=parent.batch_idx,  # Наследуем batch_idx от родителя
                 parent_id=parent_id,
                 hidden_state=parent.hidden_state.clone()
             )
             new_flow_ids.append(flow_id)
+        
+        # Синхронизация с тензорным хранилищем (если включено)
+        if self.tensor_storage is not None and new_flow_ids:
+            num_new = len(new_flow_ids)
+            # Позиции: один start_pos для всех
+            positions = torch.stack([start_pos for _ in range(num_new)]).to(self.device)
+            # Энергии: [N,1]
+            energies_matrix = torch.stack(spawn_energies[:num_new], dim=0).view(num_new, 1).to(self.device)
+            batch_indices_list = [parent.batch_idx for _ in range(num_new)]
+            # Подготовим hidden states от родителя
+            parent_hidden_matrix = torch.stack([parent.hidden_state for _ in range(num_new)], dim=0).to(self.device)
+            self.tensor_storage.allocate_flows(
+                num_flows=num_new,
+                initial_positions=positions,
+                initial_energies=energies_matrix,
+                batch_indices_list=batch_indices_list,
+                parent_ids=[parent_id for _ in range(num_new)],
+                flow_ids=new_flow_ids,
+                initial_hidden=parent_hidden_matrix
+            )
         
         # ДИАГНОСТИКА: детальная статистика spawn'а (только первые примеры)
         created_count = len(new_flow_ids)
@@ -625,7 +674,8 @@ class EnergyLattice(nn.Module):
                 
                 # ДИАГНОСТИКА: логируем изменения позиций для первых нескольких потоков
                 if updated_count < 5:
-                    old_pos = flow.position.clone()
+                    # Копия не требуется: мы переassign'им flow.position ниже, старый тензор останется доступным
+                    old_pos = flow.position
                     new_pos = alive_positions[i]
                     pos_diff = torch.norm(new_pos - old_pos).item()
                     position_changes.append(f"flow_{flow_id}[{old_pos[0]:.3f},{old_pos[1]:.3f},{old_pos[2]:.3f}]→[{new_pos[0]:.3f},{new_pos[1]:.3f},{new_pos[2]:.3f}](diff={pos_diff:.3f})")
@@ -636,6 +686,20 @@ class EnergyLattice(nn.Module):
                 flow.hidden_state = alive_hidden[i]
                 flow.age += 1
                 updated_count += 1
+        
+        # Обновляем тензорное хранилище (если включено)
+        if self.tensor_storage is not None and alive_flow_ids.numel() > 0:
+            # Приводим энергии к форме [N,1] при необходимости
+            energies_tensor = alive_energies
+            if energies_tensor.dim() == 1:
+                energies_tensor = energies_tensor.view(-1, 1)
+            self.tensor_storage.batch_update(
+                flow_ids=alive_flow_ids,
+                new_positions=alive_positions,
+                new_energies=energies_tensor,
+                new_hidden=alive_hidden,
+                increment_age=True
+            )
         
         if updated_count > 0:
             # ДИАГНОСТИКА: общая статистика позиций
@@ -668,6 +732,10 @@ class EnergyLattice(nn.Module):
         flow.is_active = False  # Помечаем как завершенный
         self.stats['total_completed'] += 1
         
+        # Обновляем тензорное хранилище (если включено)
+        if self.tensor_storage is not None:
+            self.tensor_storage.mark_completed([flow_id], surface_type='z0')
+        
         logger.debug(f"Flow {flow_id} marked completed on Z=0 plane")
     
     def _mark_flow_completed_zdepth_plane(self, flow_id: int):
@@ -689,6 +757,10 @@ class EnergyLattice(nn.Module):
         flow.projected_surface = "zdepth"
         flow.is_active = False  # Помечаем как завершенный
         self.stats['total_completed'] += 1
+        
+        # Обновляем тензорное хранилище (если включено)
+        if self.tensor_storage is not None:
+            self.tensor_storage.mark_completed([flow_id], surface_type='zdepth')
         
         logger.debug(f"Flow {flow_id} marked completed on Z={self.depth} plane")
 
@@ -941,6 +1013,59 @@ class EnergyLattice(nn.Module):
         
         logger.info(f"Direct surface collection: {len(flow_ids)} completed flows across {len(grouped_flows)} cells")
         return output_surface, flow_ids
+    
+    def collect_completed_flows_surface_direct_tensorized(self) - 3e Tuple[torch.Tensor, List[int]]:
+        """Tensorized fast path: собирает surface embeddings напрямую из TensorizedFlowStorage"""
+        if self.tensor_storage is None:
+            return self.collect_completed_flows_surface_direct()
+        storage = self.tensor_storage
+        device = self.device
+        # Маска завершенных
+        completed_mask = storage.is_completed & (storage.projected_surface != 0)
+        completed_indices = torch.where(completed_mask)[0]
+        if completed_indices.numel() == 0:
+            surface_dim = self.width * self.height
+            return torch.zeros(1, surface_dim, device=device), []
+        # Данные завершенных
+        pos = storage.positions[completed_indices]        # [N,3] нормализованные
+        energy = storage.energies[completed_indices].view(-1)  # [N]
+        batch_idx = storage.batch_indices[completed_indices]   # [N]
+        steps_taken = storage.steps_taken[completed_indices].to(device).float()
+        # Расстояние до ближайшей поверхности в нормализованном пространстве
+        z = pos[:, 2]
+        dist_z0 = (z - self.norm_z0).abs()
+        dist_zd = (z - self.norm_zdepth).abs()
+        dist = torch.minimum(dist_z0, dist_zd)  # [N]
+        # Квантование X/Y в индексы
+        idx_x = (((pos[:, 0] + 1) * 0.5) * (self.width - 1)).round().clamp(0, self.width - 1).long()
+        idx_y = (((pos[:, 1] + 1) * 0.5) * (self.height - 1)).round().clamp(0, self.height - 1).long()
+        surface_idx = idx_y * self.width + idx_x  # [N]
+        # Группировка по (batch, surface)
+        surface_dim = self.width * self.height
+        key = batch_idx.long() * surface_dim + surface_idx
+        uniq, inv = torch.unique(key, return_inverse=True)
+        num_groups = uniq.shape[0]
+        batch_size = (batch_idx.max().item() + 1) if batch_idx.numel() > 0 else 1
+        output_surface = torch.zeros(max(batch_size, 1), surface_dim, device=device)
+        # Веса: |energy| * 1/(1+dist) * (1 + steps*0.1)
+        energy_mag = energy.abs()
+        weights = energy_mag * (1.0 / (1.0 + dist)) * (1.0 + steps_taken * 0.1)
+        # Нормируем веса в группе и агрегируем
+        for g in range(num_groups):
+            mask = (inv == g)
+            if mask.any():
+                w = weights[mask]
+                w_norm = torch.softmax(w, dim=0)
+                e = energy[mask]
+                agg = (w_norm * e).sum()
+                # Восстановим batch, surface из ключа
+                k_val = uniq[g]
+                b = (k_val // surface_dim).item()
+                s = (k_val % surface_dim).item()
+                output_surface[b, s] = agg
+        # Соберем flow_ids
+        flow_ids = [storage.index_to_id[idx.item()] for idx in completed_indices if idx.item() in storage.index_to_id]
+        return output_surface, flow_ids
 
     # УДАЛЕНО: collect_buffered_energy() - заменен на collect_completed_flows_direct()
     # в новой архитектуре прямой работы с потоками
@@ -983,6 +1108,13 @@ class EnergyLattice(nn.Module):
     
     def reset(self):
         """Сбрасывает состояние решетки (НОВАЯ АРХИТЕКТУРА: без буферизации)"""
+        # Деаллокация в тензорном хранилище (если включено)
+        if self.tensor_storage is not None:
+            # Освобождаем все активные ID
+            all_ids = list(self.active_flows.keys())
+            if all_ids:
+                self.tensor_storage.deallocate_flows(all_ids)
+        
         self.active_flows.clear()
         # УДАЛЕНО: очистка буферов в новой архитектуре без буферизации
         # Буферы остаются для обратной совместимости, но не используются
