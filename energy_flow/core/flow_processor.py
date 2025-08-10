@@ -155,13 +155,20 @@ class FlowProcessor(nn.Module):
                     f"теперь это не ошибка: Initial flows do NOT start at Z=0! Found Z = {initial_z_positions.unique().tolist()}"
                 )
         
-        # Сбрасываем статистику конвергенции
+        # Сбрасываем статистику конвергенции, сохраняя дефолтные параметры окна/порогов
         initial_flows_count = len(flow_ids)
-        self.convergence_stats = {
+        # Не пересоздаем словарь, чтобы не потерять ключи как moving_average_window
+        self.convergence_stats.update({
             'completed_count_history': [],
             'no_improvement_steps': 0,
-            'best_completed_count': 0
-        }
+            'best_completed_count': 0,
+            'last_moving_avg': 0.0,
+        })
+        # Гарантируем наличие обязательных ключей (на случай старых чекпоинтов/сериализаций)
+        if 'moving_average_window' not in self.convergence_stats:
+            self.convergence_stats['moving_average_window'] = 5
+        if 'improvement_threshold' not in self.convergence_stats:
+            self.convergence_stats['improvement_threshold'] = 0.01
         
         # Основной цикл распространения с adaptive convergence
         actual_steps = 0
@@ -550,11 +557,15 @@ class FlowProcessor(nn.Module):
         # Маска потоков, достигших выходных плоскостей
         output_reached_mask = is_terminated
         
-        # Маска потоков, требующих отражения
+        # Маска потоков, требующих отражения (по raw_next_position до clamp)
         reflection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
-        for i, reason in enumerate(termination_reasons):
-            if reason == "xy_reflection_needed":
-                reflection_mask[i] = True
+        raw_next = getattr(carrier_output, 'raw_next_position', None)
+        if raw_next is not None:
+            reflection_mask = (raw_next[:, 0] < -1.0) | (raw_next[:, 0] > 1.0) | (raw_next[:, 1] < -1.0) | (raw_next[:, 1] > 1.0)
+        else:
+            for i, reason in enumerate(termination_reasons):
+                if reason == "xy_reflection_needed":
+                    reflection_mask[i] = True
         
         # Маска активных потоков
         active_mask = ~is_terminated
@@ -684,10 +695,13 @@ class FlowProcessor(nn.Module):
             reflection_flow_ids = flow_ids[reflection_mask]
             reflection_count = reflection_mask.sum().item()
             
-            # ДИАГНОСТИКА: логируем потоки до отражения с их ID
-            reflection_positions_before = carrier_output.next_position[reflection_mask]
-            logger.debug_reflection(f"🔄 BEFORE reflection: {reflection_count} flows need reflection")
-            
+            # ДИАГНОСТИКА: логируем агрегированные счетчики и примеры до отражения
+            reflection_positions_before = (raw_next if raw_next is not None else carrier_output.next_position)[reflection_mask]
+            x_left = (reflection_positions_before[:, 0] < -1.0).sum().item()
+            x_right = (reflection_positions_before[:, 0] > 1.0).sum().item()
+            y_left = (reflection_positions_before[:, 1] < -1.0).sum().item()
+            y_right = (reflection_positions_before[:, 1] > 1.0).sum().item()
+            logger.debug_reflection(f"🔄 BEFORE reflection: {reflection_count} flows need reflection | X_left={x_left}, X_right={x_right}, Y_left={y_left}, Y_right={y_right}")
             # Показываем первые 3 примера потоков до отражения
             for i in range(min(3, reflection_count)):
                 flow_id = reflection_flow_ids[i].item()
@@ -769,11 +783,15 @@ class FlowProcessor(nn.Module):
         is_terminated = carrier_output.is_terminated
         termination_reasons = carrier_output.termination_reason
         
-        # Reflection mask by reasons
+        # Reflection mask by raw positions if provided; fallback to reasons list
         reflection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
-        for i, reason in enumerate(termination_reasons):
-            if reason == "xy_reflection_needed":
-                reflection_mask[i] = True
+        raw_next = getattr(carrier_output, 'raw_next_position', None)
+        if raw_next is not None:
+            reflection_mask = (raw_next[:, 0] < -1.0) | (raw_next[:, 0] > 1.0) | (raw_next[:, 1] < -1.0) | (raw_next[:, 1] > 1.0)
+        else:
+            for i, reason in enumerate(termination_reasons):
+                if reason == "xy_reflection_needed":
+                    reflection_mask[i] = True
         
         active_mask = ~is_terminated
         
@@ -829,7 +847,7 @@ class FlowProcessor(nn.Module):
         # Reflection
         if reflection_mask.any() and self.config.boundary_reflection_enabled:
             refl_ids = flow_ids[reflection_mask]
-            refl_pos_before = carrier_output.next_position[reflection_mask]
+            refl_pos_before = (raw_next if raw_next is not None else carrier_output.next_position)[reflection_mask]
             refl_pos = self.reflect_boundaries(refl_pos_before, refl_ids)
             refl_energy = carrier_output.energy_value[reflection_mask]
             refl_hidden = new_hidden_bt[reflection_mask]
@@ -887,22 +905,22 @@ class FlowProcessor(nn.Module):
         
         reflected_pos[:, 0] = x
         reflected_pos[:, 1] = y
-        
+
         # Детальное логирование первых примеров отражения
         num_reflected = position.shape[0]
-        
-        # Считаем количество отражений по осям
+
+        # Считаем количество отражений по осям ПО СЫРЫМ ВХОДНЫМ позициям
         x_reflected_left = (position[:, 0] < -1.0).sum().item()
         x_reflected_right = (position[:, 0] > 1.0).sum().item()
         y_reflected_left = (position[:, 1] < -1.0).sum().item()
         y_reflected_right = (position[:, 1] > 1.0).sum().item()
-        
+
         # Логируем детальные примеры первых 3-х отражений
         reflection_examples = []
         for i in range(min(3, num_reflected)):
             orig_x, orig_y, orig_z = position[i, 0].item(), position[i, 1].item(), position[i, 2].item()
             new_x, new_y = x[i].item(), y[i].item()
-            
+
             # Определяем тип отражения
             reflection_type = []
             if orig_x < -1.0:
@@ -913,23 +931,26 @@ class FlowProcessor(nn.Module):
                 reflection_type.append(f"Y<-1({orig_y:.3f}→{new_y:.3f})")
             elif orig_y > 1.0:
                 reflection_type.append(f"Y>1({orig_y:.3f}→{new_y:.3f})")
-            
+
             if reflection_type:
                 reflection_examples.append(f"flow_{i}[{','.join(reflection_type)}]")
-        
+
         # Агрегированная статистика
-        logger.debug_reflection(f"🔄 Reflected {num_reflected} positions: "
-                               f"X_left={x_reflected_left}, X_right={x_reflected_right}, "
-                               f"Y_left={y_reflected_left}, Y_right={y_reflected_right}")
-        
+        logger.debug_reflection(
+            f"🔄 Reflected candidates: {num_reflected} | X_left={x_reflected_left}, X_right={x_reflected_right}, "
+            f"Y_left={y_reflected_left}, Y_right={y_reflected_right}"
+        )
+
         # Детальные примеры
         if reflection_examples:
             logger.debug_reflection(f"🔄 Examples: {', '.join(reflection_examples)}")
-        
+
         # Финальные диапазоны
-        logger.debug_reflection(f"🔄 Final ranges: X[{x.min().item():.3f}, {x.max().item():.3f}], "
-                               f"Y[{y.min().item():.3f}, {y.max().item():.3f}]")
-        
+        logger.debug_reflection(
+            f"🔄 Post-reflection ranges: X[{x.min().item():.3f}, {x.max().item():.3f}], "
+            f"Y[{y.min().item():.3f}, {y.max().item():.3f}]"
+        )
+
         # ДИАГНОСТИКА: показываем результат отражения для первых 3 потоков
         if flow_ids is not None:
             logger.debug_reflection(f"🔄 AFTER reflection examples:")
@@ -937,10 +958,11 @@ class FlowProcessor(nn.Module):
                 flow_id = flow_ids[i].item()
                 orig_pos = position[i]
                 new_pos = reflected_pos[i]
-                logger.debug_reflection(f"🔄 Flow {flow_id} after: X={new_pos[0].item():.6f}, Y={new_pos[1].item():.6f}, Z={new_pos[2].item():.6f} "
-                                       f"(changed: ΔX={new_pos[0].item() - orig_pos[0].item():.6f}, "
-                                       f"ΔY={new_pos[1].item() - orig_pos[1].item():.6f})")
-        
+                logger.debug_reflection(
+                    f"🔄 Flow {flow_id} after: X={new_pos[0].item():.6f}, Y={new_pos[1].item():.6f}, Z={new_pos[2].item():.6f} "
+                    f"(ΔX={new_pos[0].item() - orig_pos[0].item():.6f}, ΔY={new_pos[1].item() - orig_pos[1].item():.6f})"
+                )
+
         return reflected_pos
     
     def _check_movement_spawn(self, current_positions: torch.Tensor, 
@@ -1151,15 +1173,17 @@ class FlowProcessor(nn.Module):
         completion_rate = completed_count / self.total_flows_created if self.total_flows_created > 0 else 0
         
         # УЛУЧШЕНИЕ 1: Вычисляем скользящее среднее для стабильности
-        window_size = self.convergence_stats['moving_average_window']
+        window_size = self.convergence_stats.get('moving_average_window', 5)
         if len(self.convergence_stats['completed_count_history']) >= window_size:
             recent_counts = self.convergence_stats['completed_count_history'][-window_size:]
             moving_avg = sum(recent_counts) / window_size
             
             # Проверяем улучшение относительно предыдущего скользящего среднего
-            if self.convergence_stats['last_moving_avg'] > 0:
-                improvement = (moving_avg - self.convergence_stats['last_moving_avg']) / self.convergence_stats['last_moving_avg']
-                if improvement < self.convergence_stats['improvement_threshold']:
+            last_moving_avg = self.convergence_stats.get('last_moving_avg', 0.0)
+            improvement_threshold = self.convergence_stats.get('improvement_threshold', 0.01)
+            if last_moving_avg > 0:
+                improvement = (moving_avg - last_moving_avg) / last_moving_avg
+                if improvement < improvement_threshold:
                     self.convergence_stats['no_improvement_steps'] += 1
                 else:
                     self.convergence_stats['no_improvement_steps'] = 0

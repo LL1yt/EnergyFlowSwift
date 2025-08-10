@@ -30,6 +30,7 @@ class EnergyOutput:
     """Структурированный вывод EnergyCarrier"""
     energy_value: torch.Tensor      # Текущая энергия/эмбеддинг
     next_position: torch.Tensor     # Координаты следующей клетки
+    raw_next_position: Optional[torch.Tensor]  # Неклампленные координаты до отражения/шумов (для X/Y отражений)
     spawn_info: List[SpawnInfo]     # Структурированная информация о spawn'ах
     
     # Флаги завершения потоков (для обработки в FlowProcessor)
@@ -331,7 +332,7 @@ class EnergyCarrier(nn.Module):
                 every=0,
             )
         
-        # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
+    # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
         if current_position is not None:
             # Сначала вычислим "сырую" следующую позицию БЕЗ clamp — нужна для корректной детекции выхода за границы X/Y
             raw_next_position = current_position + displacement_normalized
@@ -357,7 +358,7 @@ class EnergyCarrier(nn.Module):
                         f"delta=[{z_delta.min():.3f},{z_delta.max():.3f}] mean={z_delta.mean():.3f}; "
                         f"next_norm=[{z_next.min():.3f},{z_next.max():.3f}] mean={z_next.mean():.3f}; "
                         f"next_real=[{next_real.min():.1f},{next_real.max():.1f}] mean={next_real.mean():.1f}; "
-                        f"dirs: +={positive_z_count}, -={negative_z_count}, 0={neutral_count} (both directions valid)"
+                        f"dirs: +={negative_z_count}, -={positive_z_count}, 0={neutral_count} (both directions valid)"
                     )
                 gated_log(
                     logger,
@@ -378,10 +379,44 @@ class EnergyCarrier(nn.Module):
         if self.config.use_exploration_noise:
             # Exploration noise тоже должен быть в нормализованном пространстве
             noise = torch.randn_like(next_position) * self.config.exploration_noise
+            if not getattr(self.config, 'exploration_noise_apply_to_z', False):
+                # Обнуляем шум по Z, чтобы не ломать направление к выходным плоскостям
+                noise[:, 2] = 0.0
             # Применяем шум с немедленным clamp для гарантии границ
             raw_next_position = raw_next_position + noise
             next_position = torch.clamp(next_position + noise, -1.0, 1.0)
             logger.debug(f"🎲 Added normalized exploration noise: std={self.config.exploration_noise}")
+
+        # После применения шума повторно логируем Z-анализ, чтобы значения curr/next соответствовали следующему шагу
+        if current_position is not None and global_training_step is not None and global_training_step <= 3:
+            z_current = current_position[:, 2]
+            z_next = next_position[:, 2]
+            z_delta = z_next - z_current
+            depth = self.config.lattice_depth
+            current_real = self.config.normalization_manager.denormalize_coordinates(current_position)[:, 2]
+            next_real = self.config.normalization_manager.denormalize_coordinates(next_position)[:, 2]
+            def _z_analysis_post_noise():
+                positive_z_count = (z_delta < 0).sum().item()
+                negative_z_count = (z_delta > 0).sum().item()
+                neutral_count = (z_delta == 0).sum().item()
+                return (
+                    "🎯 Z-POSITION ANALYSIS (post-noise): "
+                    f"curr_norm=[{z_current.min():.3f},{z_current.max():.3f}] mean={z_current.mean():.3f}; "
+                    f"curr_real=[{current_real.min():.1f},{current_real.max():.1f}] mean={current_real.mean():.1f} (depth={depth}); "
+                    f"delta=[{z_delta.min():.3f},{z_delta.max():.3f}] mean={z_delta.mean():.3f}; "
+                    f"next_norm=[{z_next.min():.3f},{z_next.max():.3f}] mean={z_next.mean():.3f}; "
+                    f"next_real=[{next_real.min():.1f},{next_real.max():.1f}] mean={next_real.mean():.1f}; "
+                    f"dirs: +={negative_z_count}, -={positive_z_count}, 0={neutral_count} (both directions valid)"
+                )
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step,
+                key='z_position_analysis_post_noise',
+                msg_or_factory=_z_analysis_post_noise,
+                first_n_steps=3,
+                every=0,
+            )
         
         # Применяем логику завершения потоков для новой трехплоскостной архитектуры
         next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position, global_training_step, raw_next_position=raw_next_position)
@@ -415,6 +450,7 @@ class EnergyCarrier(nn.Module):
         output = EnergyOutput(
             energy_value=energy_value,
             next_position=next_position,
+            raw_next_position=raw_next_position,
             spawn_info=spawn_info,
             is_terminated=is_terminated,
             termination_reason=termination_reasons

@@ -97,6 +97,7 @@ class EnergyConfig:
     # Эксплорация и шум (для относительных координат)
     exploration_noise: float = 0.1  # Небольшой шум для разнообразия движений
     use_exploration_noise: bool = True  # Включать exploration noise
+    exploration_noise_apply_to_z: bool = True  # Применять ли шум по оси Z (по умолчанию нет)
     
     # Система масштабирования смещений (displacement scaling)
     displacement_scale: float = 1.0        # Временное масштабирование смещений для обучения
