@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
-from ..utils.logging import get_logger
+from ..utils.logging import get_logger, gated_log, summarize_step, format_first_n
 from ..config import create_debug_config, set_energy_config
 
 logger = get_logger(__name__)
@@ -177,13 +177,24 @@ class EnergyCarrier(nn.Module):
         """
         batch_size = neuron_output.shape[0]
         
-        # ДИАГНОСТИКА основных параметров
+        # ДИАГНОСТИКА (с частотным гейтом на первые шаги)
         if global_training_step is not None:
-            logger.debug_energy(f"🔄 EnergyCarrier forward: batch={batch_size}, global_step={global_training_step}")
-            if current_position is not None:
-                current_z = current_position[:, 2]
-                logger.debug_energy(f"📍 Current Z positions: min={current_z.min():.3f}, "
-                           f"max={current_z.max():.3f}, mean={current_z.mean():.3f}")
+            gated_log(
+                logger,
+                'DEBUG_ENERGY',
+                step=global_training_step,
+                key='carrier_forward_intro',
+                msg_or_factory=lambda: (
+                    f"🔄 EnergyCarrier forward: batch={batch_size}, global_step={global_training_step}"
+                    + (
+                        (lambda cz: f"; Z(min={cz.min():.3f}, max={cz.max():.3f}, mean={cz.mean():.3f})")(
+                            current_position[:, 2]
+                        ) if current_position is not None else ""
+                    )
+                ),
+                first_n_steps=3,
+                every=0,
+            )
         
         # Объединяем входы
         combined_input = torch.cat([neuron_output, embedding_part], dim=-1)
@@ -219,27 +230,55 @@ class EnergyCarrier(nn.Module):
         energy_value = self.energy_projection(gru_output)  # [batch, embedding_dim]
         
         # 2. Вычисляем смещения (относительные координаты)
-        # ДИАГНОСТИКА: логируем GRU выход перед displacement_projection
-        if global_training_step is not None and global_training_step <= 3:  # Первые 3 шага
-            logger.debug_forward(f"🧠 GRU output stats: min={gru_output.min():.3f}, max={gru_output.max():.3f}, "
-                       f"mean={gru_output.mean():.3f}, std={gru_output.std():.3f}")
-            
-            # ДИАГНОСТИКА: проверяем bias'ы в displacement_projection
-            for i, module in enumerate(self.displacement_projection):
-                if isinstance(module, nn.Linear) and module.bias is not None:
-                    bias_stats = module.bias.data
-                    logger.debug_forward(f"📊 displacement_projection[{i}] bias: "
-                                       f"min={bias_stats.min():.4f}, max={bias_stats.max():.4f}, "
-                                       f"mean={bias_stats.mean():.4f}, std={bias_stats.std():.4f}")
+        # ДИАГНОСТИКА: логируем GRU выход и bias'ы (только первые шаги, лениво)
+        if global_training_step is not None and global_training_step <= 3:
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step,
+                key='gru_output_stats',
+                msg_or_factory=lambda: (
+                    f"🧠 GRU output stats: min={gru_output.min():.3f}, max={gru_output.max():.3f}, "
+                    f"mean={gru_output.mean():.3f}, std={gru_output.std():.3f}"
+                ),
+                first_n_steps=3,
+                every=0,
+            )
+            def _bias_msg():
+                parts = []
+                for i, module in enumerate(self.displacement_projection):
+                    if isinstance(module, nn.Linear) and module.bias is not None:
+                        b = module.bias.data
+                        parts.append(
+                            f"[{i}] min={b.min():.4f}, max={b.max():.4f}, mean={b.mean():.4f}, std={b.std():.4f}"
+                        )
+                return "📊 displacement_projection bias: " + "; ".join(parts) if parts else "📊 displacement_projection bias: none"
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step,
+                key='disp_bias_stats',
+                msg_or_factory=_bias_msg,
+                first_n_steps=3,
+                every=0,
+            )
         
         # Получаем сырой выход смещений (до активации)
         displacement_raw = self.displacement_projection(gru_output)  # [batch, 3] без ограничений
         
-        # ДИАГНОСТИКА: логируем сырой выход модели (ДО Clamp)
-        if global_training_step is not None and global_training_step <= 3:  # Первые 3 шага
-            raw_delta_z = displacement_raw[:, 2]
-            logger.debug_forward(f"🔥 RAW displacement output (before Clamp): ΔZ min={raw_delta_z.min():.3f}, "
-                       f"max={raw_delta_z.max():.3f}, mean={raw_delta_z.mean():.3f}, std={raw_delta_z.std():.3f}")
+        # ДИАГНОСТИКА: логируем сырой выход модели (ДО Clamp) — первые шаги
+        if global_training_step is not None and global_training_step <= 3:
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step,
+                key='raw_displacement_stats',
+                msg_or_factory=lambda: (
+                    lambda d: f"🔥 RAW displacement ΔZ: min={d.min():.3f}, max={d.max():.3f}, mean={d.mean():.3f}, std={d.std():.3f}"
+                )(displacement_raw[:, 2]),
+                first_n_steps=3,
+                every=0,
+            )
         
         # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: правильное масштабирование с учетом границ
         # Сначала применяем масштабирование
@@ -251,20 +290,46 @@ class EnergyCarrier(nn.Module):
         displacement_normalized = torch.clamp(displacement_scaled, -0.5, 0.5)  # Ограничиваем смещения
         
         if global_training_step is not None and global_training_step % self.config.displacement_scale_update_interval == 0:
-            logger.debug_forward(f"🔧 DISPLACEMENT SCALING: step={global_training_step}, scale={current_scale:.3f}")
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step,
+                key='displacement_scaling',
+                msg_or_factory=lambda: f"🔧 DISPLACEMENT SCALING: step={global_training_step}, scale={current_scale:.3f}",
+                first_n_steps=1,
+                every=self.config.displacement_scale_update_interval,
+            )
         
         # ДИАГНОСТИКА: логируем смещения после масштабирования (ДО финального clamp)
         norm_delta_z = displacement_normalized[:, 2]
-        logger.debug_energy(f"📊 Scaled displacement (before final clamp): ΔZ min={norm_delta_z.min():.3f}, "
-                       f"max={norm_delta_z.max():.3f}, mean={norm_delta_z.mean():.3f}")
+        gated_log(
+            logger,
+            'DEBUG_ENERGY',
+            step=global_training_step or 0,
+            key='scaled_displacement_stats',
+            msg_or_factory=lambda: (
+                f"📊 Scaled displacement ΔZ: min={norm_delta_z.min():.3f}, max={norm_delta_z.max():.3f}, mean={norm_delta_z.mean():.3f}"
+            ),
+            first_n_steps=3,
+            every=0,
+        )
         
         # ДИАГНОСТИКА смещений (только на первых шагах)
-        if global_training_step is not None and global_training_step <= 3:
+        if global_training_step is not None and global_training_step <= 3:  # Первые 3 шага
             depth = self.config.lattice_depth
-            real_displacement_z = norm_delta_z * (depth / 2)  # Денормализуем смещения
-            logger.debug_forward(f"🔍 Real world Z displacement: min={real_displacement_z.min():.3f}, "
-                               f"max={real_displacement_z.max():.3f}, mean={real_displacement_z.mean():.3f} "
-                               f"(depth={depth})")
+            real_displacement_z = norm_delta_z * (depth / 2)
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step,
+                key='real_world_disp_z',
+                msg_or_factory=lambda: (
+                    f"🔍 Real Z displacement: min={real_displacement_z.min():.3f}, max={real_displacement_z.max():.3f}, "
+                    f"mean={real_displacement_z.mean():.3f} (depth={depth})"
+                ),
+                first_n_steps=3,
+                every=0,
+            )
         
         # Применяем нормализованные смещения к текущей позиции (все в [-1, 1] пространстве)
         if current_position is not None:
@@ -278,25 +343,31 @@ class EnergyCarrier(nn.Module):
                 z_current = current_position[:, 2]
                 z_next = next_position[:, 2]
                 z_delta = z_next - z_current
-                
-                # Расшифровка координат в понятном виде
                 depth = self.config.lattice_depth
                 current_real = self.config.normalization_manager.denormalize_coordinates(current_position)[:, 2]
                 next_real = self.config.normalization_manager.denormalize_coordinates(next_position)[:, 2]
-                
-                logger.debug_forward(f"🎯 Z-POSITION ANALYSIS:")
-                logger.debug_forward(f"  📍 Current normalized: [{z_current.min():.3f}, {z_current.max():.3f}] mean={z_current.mean():.3f}")
-                logger.debug_forward(f"  📍 Current real: [{current_real.min():.1f}, {current_real.max():.1f}] mean={current_real.mean():.1f} (depth={depth})")
-                logger.debug_forward(f"  📈 Delta normalized: [{z_delta.min():.3f}, {z_delta.max():.3f}] mean={z_delta.mean():.3f}")
-                logger.debug_forward(f"  📍 Next normalized: [{z_next.min():.3f}, {z_next.max():.3f}] mean={z_next.mean():.3f}")
-                logger.debug_forward(f"  📍 Next real: [{next_real.min():.1f}, {next_real.max():.1f}] mean={next_real.mean():.1f}")
-                
-                # Анализ направлений движения (ОБА направления валидны в dual output planes архитектуре!)
-                positive_z_count = (z_delta > 0).sum().item()  # К Z=depth выходной плоскости
-                negative_z_count = (z_delta < 0).sum().item() # К Z=0 выходной плоскости  
-                neutral_count = (z_delta == 0).sum().item()
-                logger.debug_forward(f"  🎯 Movement direction: to_zdepth_plane={positive_z_count}, to_z0_plane={negative_z_count}, neutral={neutral_count}")
-                logger.debug_forward(f"  ℹ️  Both directions are valid - model chooses optimal output plane")
+                def _z_analysis_msg():
+                    positive_z_count = (z_delta < 0).sum().item()
+                    negative_z_count = (z_delta > 0).sum().item()
+                    neutral_count = (z_delta == 0).sum().item()
+                    return (
+                        "🎯 Z-POSITION ANALYSIS: "
+                        f"curr_norm=[{z_current.min():.3f},{z_current.max():.3f}] mean={z_current.mean():.3f}; "
+                        f"curr_real=[{current_real.min():.1f},{current_real.max():.1f}] mean={current_real.mean():.1f} (depth={depth}); "
+                        f"delta=[{z_delta.min():.3f},{z_delta.max():.3f}] mean={z_delta.mean():.3f}; "
+                        f"next_norm=[{z_next.min():.3f},{z_next.max():.3f}] mean={z_next.mean():.3f}; "
+                        f"next_real=[{next_real.min():.1f},{next_real.max():.1f}] mean={next_real.mean():.1f}; "
+                        f"dirs: +={positive_z_count}, -={negative_z_count}, 0={neutral_count} (both directions valid)"
+                    )
+                gated_log(
+                    logger,
+                    'DEBUG_FORWARD',
+                    step=global_training_step,
+                    key='z_position_analysis',
+                    msg_or_factory=_z_analysis_msg,
+                    first_n_steps=3,
+                    every=0,
+                )
         else:
             # Если текущая позиция не передана, используем смещения как абсолютные координаты
             logger.warning("⚠️ Current position is None, using displacement as absolute position")
@@ -315,16 +386,26 @@ class EnergyCarrier(nn.Module):
         # Применяем логику завершения потоков для новой трехплоскостной архитектуры
         next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position, global_training_step, raw_next_position=raw_next_position)
         
-        # ДИАГНОСТИКА: логируем результаты
-        if logger.isEnabledFor(10):  # DEBUG level
-            terminated_count = is_terminated.sum().item()
-            logger.debug(f"🛡️ Termination: {terminated_count}/{batch_size} flows terminated")
-            if terminated_count > 0:
-                # Подсчитываем причины
-                reason_counts = {}
-                for reason in termination_reasons:
-                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
-                logger.debug(f"📈 Termination reasons: {reason_counts}")
+        # ДИАГНОСТИКА: компактная сводка завершений (gated)
+        terminated_count = is_terminated.sum().item()
+        def _term_summary():
+            reason_counts = {}
+            for reason in termination_reasons:
+                reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            return summarize_step({
+                'terminated': terminated_count,
+                'active': batch_size - terminated_count,
+                **{f"r:{k}": v for k, v in reason_counts.items()}
+            }, prefix='TERM')
+        gated_log(
+            logger,
+            'DEBUG',
+            step=global_training_step or 0,
+            key='termination_summary',
+            msg_or_factory=_term_summary,
+            first_n_steps=5,
+            every=0,
+        )
         
         # 3. Spawn потоков теперь контролируется только movement_based_spawn в FlowProcessor
         # Устаревшая логика spawn на основе эмбеддингов удалена

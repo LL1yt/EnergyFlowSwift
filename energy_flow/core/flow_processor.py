@@ -11,7 +11,7 @@ import torch.nn as nn
 from typing import List, Dict, Optional, Tuple
 import time
 
-from ..utils.logging import get_logger, log_memory_state
+from ..utils.logging import get_logger, log_memory_state, gated_log, summarize_step, format_first_n
 from ..config import get_energy_config, create_debug_config, set_energy_config
 from ..utils.device_manager import get_device_manager
 from .simple_neuron import SimpleNeuron, create_simple_neuron
@@ -140,10 +140,20 @@ class FlowProcessor(nn.Module):
         # ДИАГНОСТИКА: проверяем начальные позиции потоков
         initial_flows = self.lattice.get_active_flows()
         if initial_flows:
-            initial_z_positions = torch.stack([flow.position[2] for flow in initial_flows[:10]])  # Первые 10
-            logger.debug_energy(f"🏁 INITIAL positions (first 10): Z-coords = {initial_z_positions.tolist()}")
+            initial_z_positions = torch.stack([flow.position[2] for flow in initial_flows])
+            gated_log(
+                logger,
+                'DEBUG_ENERGY',
+                step=0,
+                key='initial_positions',
+                msg_or_factory=lambda: f"🏁 INITIAL positions: Z={format_first_n(initial_z_positions, n=10)}",
+                first_n_steps=1,
+                every=0,
+            )
             if torch.any(initial_z_positions != 0):
-                logger.debug_energy(f"теперь это не ошибка: Initial flows do NOT start at Z=0! Found Z = {initial_z_positions.unique().tolist()}")
+                logger.debug_energy(
+                    f"теперь это не ошибка: Initial flows do NOT start at Z=0! Found Z = {initial_z_positions.unique().tolist()}"
+                )
         
         # Сбрасываем статистику конвергенции
         initial_flows_count = len(flow_ids)
@@ -175,48 +185,71 @@ class FlowProcessor(nn.Module):
             # Периодическая очистка памяти
             self.cleanup_memory_safe()
             
-            # Логирование прогресса с детальной статистикой в первые шаги
-            if step % self.config.log_interval == 0:
-                stats = self.lattice.get_statistics()
-                completion_rate = stats['total_completed'] / initial_flows_count if initial_flows_count > 0 else 0
-                logger.info(f"Step {step}: {stats['current_active']} active flows, "
-                          f"{stats['total_completed']} completed ({completion_rate:.2f})")
-                
-                # ДЕТАЛЬНАЯ СТАТИСТИКА для первых 5 шагов
-                if step <= 5 and active_flows:
-                    # Собираем Z-координаты всех активных потоков
-                    z_positions = torch.stack([flow.position[2] for flow in active_flows])
-                    
-                    # Детальная статистика границ
+            # Логирование прогресса: частотный гейт и ленивое формирование
+            stats = self.lattice.get_statistics()
+            completion_rate = stats['total_completed'] / initial_flows_count if initial_flows_count > 0 else 0
+            gated_log(
+                logger,
+                'INFO',
+                step=step,
+                key='flow_step_progress',
+                msg_or_factory=lambda: summarize_step({
+                    'active': stats['current_active'],
+                    'completed': stats['total_completed'],
+                    'rate': completion_rate,
+                }, step=step, prefix='FLOW'),
+                first_n_steps=5,
+                every=getattr(self.config, 'log_interval', 10),
+            )
+            
+            # ДЕТАЛИ (только для первых шагов) через частотный гейт
+            if active_flows:
+                z_positions = torch.stack([flow.position[2] for flow in active_flows])
+                def _detail_stats():
                     boundary_stats = {
-                        'z_min_boundary': (z_positions <= -0.95).sum().item(),  # Близко к Z=0 плоскости
-                        'z_max_boundary': (z_positions >= 0.95).sum().item(),   # Близко к Z=depth плоскости
-                        'z_center': ((z_positions > -0.2) & (z_positions < 0.2)).sum().item(),  # Центр
+                        'z_min_boundary': (z_positions <= -0.95).sum().item(),
+                        'z_max_boundary': (z_positions >= 0.95).sum().item(),
+                        'z_center': ((z_positions > -0.2) & (z_positions < 0.2)).sum().item(),
                         'total': len(active_flows)
                     }
-                    
-                    logger.debug_convergence(f"📊 Step {step} Z-distribution: "
-                              f"min={z_positions.min():.2f}, max={z_positions.max():.2f}, "
-                              f"mean={z_positions.mean():.2f}, std={z_positions.std():.2f}")
-                    
-                    logger.debug_convergence(f"📊 Step {step} Boundary distribution: "
-                              f"z0_plane={boundary_stats['z_min_boundary']}, "
-                              f"zdepth_plane={boundary_stats['z_max_boundary']}, "
-                              f"center={boundary_stats['z_center']}, "
-                              f"total={boundary_stats['total']}")
-                    
-                    # КРИТИЧЕСКАЯ ПРОВЕРКА: Z-координаты в ожидаемом диапазоне
-                    max_valid_z = self.config.lattice_depth - 1  # 59 для depth=60
-                    out_of_bounds_flows = (z_positions > max_valid_z * 2).sum().item()  # Более чем в 2 раза больше
-                    if out_of_bounds_flows > 0:
-                        logger.error(f"🚫 CRITICAL BOUNDS ERROR: {out_of_bounds_flows}/{len(active_flows)} flows "
-                                   f"have Z > {max_valid_z * 2} (expected max ≈ {max_valid_z})")
-                        logger.error(f"🔍 Z-range in normalization: {self.config.normalization_manager.ranges.z_range}")
-                    
-                    # Показываем распределение по Z через гистограмму в нормализованном пространстве [-1, 1]
+                    return (
+                        f"📊 Z: min={z_positions.min():.2f}, max={z_positions.max():.2f}, "
+                        f"mean={z_positions.mean():.2f}, std={z_positions.std():.2f}; "
+                        f"bounds: z0={boundary_stats['z_min_boundary']}, "
+                        f"zdepth={boundary_stats['z_max_boundary']}, center={boundary_stats['z_center']}, "
+                        f"total={boundary_stats['total']}"
+                    )
+                gated_log(
+                    logger,
+                    'DEBUG_CONVERGENCE',
+                    step=step,
+                    key='flow_step_details',
+                    msg_or_factory=_detail_stats,
+                    first_n_steps=5,
+                    every=0,
+                )
+                # Критическая проверка
+                max_valid_z = self.config.lattice_depth - 1
+                out_of_bounds_flows = (z_positions > max_valid_z * 2).sum().item()
+                if out_of_bounds_flows > 0:
+                    logger.error(
+                        f"🚫 CRITICAL BOUNDS ERROR: {out_of_bounds_flows}/{len(active_flows)} flows have Z > {max_valid_z * 2} (expected max ≈ {max_valid_z})"
+                    )
+                    logger.error(f"🔍 Z-range in normalization: {self.config.normalization_manager.ranges.z_range}")
+                # Гистограмма только в первые шаги по гейту
+                def _hist_msg():
                     bins = 20
                     hist = torch.histc(z_positions, bins=bins, min=-1.0, max=1.0)
-                    logger.info(f"📊 Step {step} Z histogram (norm, bins={bins}): {hist.tolist()}")
+                    return f"📊 Z histogram (norm, bins={bins}): {format_first_n(hist, n=20)}"
+                gated_log(
+                    logger,
+                    'INFO',
+                    step=step,
+                    key='flow_step_hist',
+                    msg_or_factory=_hist_msg,
+                    first_n_steps=3,
+                    every=0,
+                )
         
         # Собираем выходную энергию из буфера (БЕЗ преобразования в 768D!)
         output_surface_embeddings, completed_flows = self._collect_final_surface_output()
@@ -249,10 +282,15 @@ class FlowProcessor(nn.Module):
             speedup = max_steps / actual_steps if actual_steps > 0 else 1.0
             logger.log(20, f"Adaptive convergence saved {steps_saved} steps ({speedup:.2f}x speedup)")
         
-        logger.info(f"Energy propagation complete ({actual_steps}/{max_steps} steps): "
-                   f"{final_stats['total_completed']} flows reached output, "
-                   f"{final_stats['total_died']} died "
-                   f"(energy: {killed_energy}, backward: {killed_backward}, bounds: {killed_bounds})")
+        # Компактный свод по завершении шага
+        summary = summarize_step({
+            'completed': final_stats['total_completed'],
+            'died': final_stats['total_died'],
+            'killed_energy': killed_energy,
+            'killed_backward': killed_backward,
+            'killed_bounds': killed_bounds,
+        }, step=actual_steps, prefix='FLOW-END')
+        logger.info(f"Energy propagation complete ({actual_steps}/{max_steps} steps). {summary}")
         
         # ДОПОЛНИТЕЛЬНАЯ ДИАГНОСТИКА при проблемах
         if killed_backward > initial_flows_count * 0.8:  # Более 80% потоков умерли из-за backward движения

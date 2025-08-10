@@ -27,7 +27,7 @@ import time
 from datetime import datetime
 import json
 
-from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_CONVERGENCE, DEBUG_PERFORMANCE, DEBUG_PROFILING
+from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_CONVERGENCE, DEBUG_PERFORMANCE, DEBUG_PROFILING, summarize_step, gated_log
 from ..utils.device_manager import get_device_manager
 from ..utils.checkpoint_utils import generate_checkpoint_path, create_checkpoint_summary
 from ..config import EnergyConfig, get_energy_config, create_debug_config, set_energy_config
@@ -658,18 +658,37 @@ class EnergyTrainer:
                     pass  # Игнорируем ошибки профилирования
             
             # Логирование только при завершении accumulation или для промежуточных шагов в debug режиме
-            if is_accumulation_complete and self.global_step % self.config.log_interval == 0:
+            if is_accumulation_complete:
+                # Компактный свод по шагу с гейтом частоты
                 avg_loss = self.accumulation_loss / self.config.gradient_accumulation_steps
                 avg_energy = self.accumulation_metrics['energy_loss'] / self.config.gradient_accumulation_steps
                 avg_text = self.accumulation_metrics['text_loss'] / self.config.gradient_accumulation_steps
                 avg_forward_reward = self.accumulation_metrics['forward_reward'] / self.config.gradient_accumulation_steps
-                logger.log(DEBUG_TRAINING,
-                          f"✅ Step {self.global_step} (accumulated): total_loss={avg_loss:.4f}, "
-                          f"energy_loss={avg_energy:.4f}, text_loss={avg_text:.4f}, forward_reward={avg_forward_reward:.4f}")
-            elif not is_accumulation_complete and logger.isEnabledFor(DEBUG_TRAINING):
-                logger.log(DEBUG_TRAINING,
-                          f"🔄 Accumulating {self.current_accumulation_step}/{self.config.gradient_accumulation_steps}: "
-                          f"total_loss={total_loss.item():.4f}, forward_reward={forward_reward.item():.4f}")
+                gated_log(
+                    logger,
+                    DEBUG_TRAINING,
+                    step=self.global_step,
+                    key='train_step_summary',
+                    msg_or_factory=lambda: summarize_step({
+                        'loss': avg_loss,
+                        'energy': avg_energy,
+                        'text': avg_text,
+                        'fwd': avg_forward_reward,
+                        'lr': self.optimizer.param_groups[0]['lr'],
+                    }, step=self.global_step, prefix='TRAIN'),
+                    first_n_steps=5,
+                    every=self.config.log_interval,
+                )
+            elif logger.isEnabledFor(DEBUG_TRAINING):
+                gated_log(
+                    logger,
+                    DEBUG_TRAINING,
+                    step=self.current_accumulation_step,
+                    key='train_accumulating',
+                    msg_or_factory=lambda: f"🔄 Accumulating {self.current_accumulation_step}/{self.config.gradient_accumulation_steps}: total_loss={total_loss.item():.4f}, forward_reward={forward_reward.item():.4f}",
+                    first_n_steps=2,
+                    every=0,
+                )
             
             # SMART MEMORY MANAGEMENT: Conditional cleanup вместо агрессивного empty_cache()
             # Устраняет 15-20% performance penalty от forced memory reallocation
@@ -793,10 +812,8 @@ class EnergyTrainer:
         self.scheduler.step(epoch_metrics['total_loss'])
         
         # Логирование эпохи
-        logger.log(DEBUG_TRAINING,
-                  f"✅ Epoch {self.epoch} completed: "
-                  f"avg_loss={epoch_metrics['total_loss']:.4f}, "
-                  f"time={epoch_time:.1f}s, batches={total_batches}")
+        epoch_summary = summarize_step({'loss': epoch_metrics['total_loss'], 'time_s': epoch_time, 'batches': total_batches}, prefix='EPOCH')
+        logger.log(DEBUG_TRAINING, f"✅ {epoch_summary}")
         logger.log(DEBUG_CONVERGENCE,
                   f"Convergence stats: flows_reached_output={epoch_metrics['flows_reached_output']:.1f}, "
                   f"active_flows={epoch_metrics['active_flows']:.1f}")

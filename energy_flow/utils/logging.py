@@ -398,6 +398,10 @@ def setup_logging(
     enable_deduplication: bool = False,
     enable_context: bool = True,
     debug_categories: Optional[List[str]] = None,
+    *,
+    first_n_items: int = 5,
+    gate_every: int = 10,
+    level_aliases: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Настраивает централизованное логирование.
@@ -411,7 +415,17 @@ def setup_logging(
         enable_deduplication: ОТКЛЮЧЕНО - может скрыть реальные проблемы в коде
         enable_context: Включить контекстное логирование
         debug_categories: Список категорий debug для включения (например: ['cache', 'spatial'])
+        first_n_items: Сколько первых значений печатать у последовательностей/тензоров
+        gate_every: Частотный гейт для длинных циклов (0 = выкл, N = каждые N шагов, первые first_n_steps всегда логируем)
+        level_aliases: Словарь алиасов уровней (например {'debug_forward': 'DEBUG_FORWARD'})
     """
+    # Сохраняем глобальные настройки форматирования и гейта
+    global _GLOBAL_FIRST_N_ITEMS, _GLOBAL_GATE_EVERY, _LEVEL_ALIASES
+    _GLOBAL_FIRST_N_ITEMS = max(0, int(first_n_items))
+    _GLOBAL_GATE_EVERY = max(0, int(gate_every))
+    if level_aliases:
+        _LEVEL_ALIASES.update({k.lower(): v for k, v in level_aliases.items()})
+
     # Получаем root logger
     root_logger = logging.getLogger()
 
@@ -516,7 +530,7 @@ def setup_logging(
     logger = get_logger("logging_setup")
     level_name = logging.getLevelName(log_level)
     logger.info(
-        f"Logging configured: level={level_name}, debug={debug_mode}, context={enable_context}"
+        f"Logging configured: level={level_name}, debug={debug_mode}, context={enable_context}, first_n_items={_GLOBAL_FIRST_N_ITEMS}, gate_every={_GLOBAL_GATE_EVERY}"
     )
 
 
@@ -908,3 +922,170 @@ class ContextualFormatter(logging.Formatter):
             record.msg = f"{context_str} {record.msg}"
 
         return super().format(record)
+
+
+# === ЧАСТОТНЫЙ ГЕЙТ, ЛЕНИВОЕ ЛОГИРОВАНИЕ И САММАРИ ===
+
+# Глобальные настройки, заполняются в setup_logging
+_GLOBAL_FIRST_N_ITEMS: int = 5
+_GLOBAL_GATE_EVERY: int = 0
+_LEVEL_ALIASES: Dict[str, str] = {
+    # Алиасы для единообразия
+    'debug_forward': 'DEBUG_FORWARD',
+    'forward': 'DEBUG_FORWARD',
+    'debug_energy': 'DEBUG_ENERGY',
+    'energy': 'DEBUG_ENERGY',
+    'debug_training': 'DEBUG_TRAINING',
+    'training': 'DEBUG_TRAINING',
+}
+
+_level_name_to_no: Dict[str, int] = {
+    'DEBUG': logging.DEBUG,
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+    'CRITICAL': logging.CRITICAL,
+    'DEBUG_CACHE': DEBUG_CACHE,
+    'DEBUG_SPATIAL': DEBUG_SPATIAL,
+    'DEBUG_FORWARD': DEBUG_FORWARD,
+    'DEBUG_MEMORY': DEBUG_MEMORY,
+    'DEBUG_TRAINING': DEBUG_TRAINING,
+    'DEBUG_INIT': DEBUG_INIT,
+    'DEBUG_VERBOSE': DEBUG_VERBOSE,
+    'DEBUG_ENERGY': DEBUG_ENERGY,
+    'DEBUG_SPAWN': DEBUG_SPAWN,
+    'DEBUG_CONVERGENCE': DEBUG_CONVERGENCE,
+    'DEBUG_RELATIVE': DEBUG_RELATIVE,
+    'DEBUG_SPAWN_MOVEMENT': DEBUG_SPAWN_MOVEMENT,
+    'DEBUG_REFLECTION': DEBUG_REFLECTION,
+    'DEBUG_IMPORTANCE': DEBUG_IMPORTANCE,
+}
+
+def _resolve_level(level: str | int) -> int:
+    """Принимает имя уровня/алиас/число и возвращает номер уровня."""
+    if isinstance(level, int):
+        return level
+    key = level.upper()
+    # применяем алиасы (могут прийти в нижнем регистре из конфигов)
+    if level.lower() in _LEVEL_ALIASES:
+        key = _LEVEL_ALIASES[level.lower()]
+    return _level_name_to_no.get(key, logging.DEBUG)
+
+
+class FrequencyGate:
+    """Частотный гейт: логируем первые N шагов и затем каждые K шагов.
+    Хранит счетчики по произвольному ключу (например, название цикла).
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._counters: Dict[str, int] = {}
+
+    def should_emit(self, key: str, step: int, *, first_n: int, every: int) -> bool:
+        if every <= 0 and first_n <= 0:
+            return True
+        # первых N всегда
+        if step < first_n:
+            return True
+        if every <= 0:
+            return False
+        return (step % every) == 0
+
+_GATE = FrequencyGate()
+
+
+def format_first_n(value: Any, n: Optional[int] = None) -> str:
+    """Форматирует последовательности/тензоры, показывая только первые N значений.
+    Безопасно для отсутствующего torch.
+    """
+    n = _GLOBAL_FIRST_N_ITEMS if n is None else max(0, int(n))
+    try:
+        import torch  # noqa: F401
+        has_torch = True
+    except Exception:
+        has_torch = False
+
+    # torch.Tensor
+    if has_torch:
+        import torch
+        if isinstance(value, torch.Tensor):
+            flat = value.detach().flatten().cpu()
+            total = flat.numel()
+            head = flat[:n].tolist() if n > 0 else []
+            head_str = ', '.join(f"{x:.4f}" if isinstance(x, float) else str(x) for x in head)
+            ell = ' …' if total > n else ''
+            return f"Tensor(shape={tuple(value.shape)}, dtype={value.dtype}, head=[{head_str}]{ell})"
+
+    # list/tuple
+    if isinstance(value, (list, tuple)):
+        total = len(value)
+        head = value[:n]
+        head_str = ', '.join(str(x) for x in head)
+        ell = ' …' if total > n else ''
+        tname = type(value).__name__
+        return f"{tname}(len={total}, head=[{head_str}]{ell})"
+
+    # dict
+    if isinstance(value, dict):
+        items = list(value.items())
+        head = items[:n]
+        head_str = ', '.join(f"{k}={v}" for k, v in head)
+        ell = ' …' if len(items) > n else ''
+        return f"dict({head_str}{ell})"
+
+    # по умолчанию
+    return str(value)
+
+
+def gated_log(
+    logger: logging.Logger,
+    level: str | int,
+    step: Optional[int],
+    key: str,
+    msg_or_factory: Any,
+    *,
+    first_n_steps: int = 0,
+    every: Optional[int] = None,
+) -> None:
+    """Ленивое логирование с частотным гейтом.
+    msg_or_factory может быть строкой или callable без аргументов, который вернет строку.
+    """
+    lvl = _resolve_level(level)
+    if not logger.isEnabledFor(lvl):
+        return
+
+    use_every = _GLOBAL_GATE_EVERY if every is None else max(0, int(every))
+    first_n = max(0, int(first_n_steps))
+    if step is not None and not _GATE.should_emit(key, int(step), first_n=first_n, every=use_every):
+        return
+
+    try:
+        msg = msg_or_factory() if callable(msg_or_factory) else msg_or_factory
+    except Exception as e:
+        msg = f"<lazy-log-error: {e}>"
+
+    logger._log(lvl, msg, ())
+
+
+def summarize_step(step_metrics: Dict[str, Any], *, step: Optional[int] = None, prefix: str = "SUMM") -> str:
+    """Формирует компактный свод по шагу: ключевые метрики одной строкой.
+    Возвращает строку, которую можно передать в logger.info.
+    """
+    parts = []
+    ordered = []
+    # Если есть loss/perf — выводим первыми
+    for k in ['loss', 'lr', 'throughput', 'gpu_mem', 'active_flows']:
+        if k in step_metrics:
+            ordered.append((k, step_metrics.pop(k)))
+    # Добавляем остаток (ограничим количеством для компактности)
+    others = list(step_metrics.items())
+    head = others[:max(0, _GLOBAL_FIRST_N_ITEMS)]
+    ordered.extend(head)
+
+    for k, v in ordered:
+        if isinstance(v, float):
+            parts.append(f"{k}={v:.4f}")
+        else:
+            parts.append(f"{k}={v}")
+    step_str = f"step={step} " if step is not None else ""
+    return f"{prefix} {step_str}| " + ", ".join(parts)

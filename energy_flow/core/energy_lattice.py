@@ -12,7 +12,7 @@ from typing import List, Dict, Optional, Tuple, NamedTuple
 from dataclasses import dataclass, field
 import numpy as np
 
-from ..utils.logging import get_logger, log_memory_state
+from ..utils.logging import get_logger, log_memory_state, gated_log, summarize_step, format_first_n
 from ..config import get_energy_config, create_debug_config, set_energy_config
 from ..utils.device_manager import get_device_manager
 from .tensorized_storage import TensorizedFlowStorage
@@ -338,8 +338,8 @@ class EnergyLattice(nn.Module):
         flow_ids = self._batch_create_flows(cell_energies, start_z)
         
         elapsed_time = time.time() - start_time
-        logger.info(f"🏗️ Created {len(flow_ids)} initial flows on center input plane (raw Z={start_z}) in {elapsed_time:.2f}s")
-        logger.info(f"🎯 Triplaner architecture: input Z={start_z}, outputs Z=0 and Z={self.depth}")
+        summary = summarize_step({'flows': len(flow_ids), 'start_z': start_z, 'depth': self.depth, 'time_s': round(elapsed_time, 2)}, prefix='INIT')
+        logger.info(f"🏗️ Created initial flows. {summary}")
         return flow_ids
     
     def _batch_create_flows(self, cell_energies, start_z: int) -> List[int]:
@@ -422,13 +422,32 @@ class EnergyLattice(nn.Module):
             )
             
             self.active_flows[flow_ids[i]] = flow
-            
-            # Логируем только первые несколько для диагностики
-            if i < 5 and logger.isEnabledFor(17):  # DEBUG_INIT level
-                x, y = positions_xy[i]
-                logger.debug_init(f"🅫 Created flow {flow_ids[i]}: raw=({x}, {y}, {start_z}) → "
-                                f"norm=({normalized_positions[i][0]:.3f}, {normalized_positions[i][1]:.3f}, "
-                                f"{normalized_positions[i][2]:.3f}), embedding_magnitude={torch.norm(energies_tensors[i]):.3f}")
+        
+        # Ленивое диагностическое логирование первых примеров (одна агрегированная строка)
+        def _created_examples_msg():
+            k = min(5, num_flows)
+            raw_examples = [(positions_xy[i][0], positions_xy[i][1], start_z) for i in range(k)]
+            norm_examples = [
+                (
+                    float(normalized_positions[i][0]),
+                    float(normalized_positions[i][1]),
+                    float(normalized_positions[i][2])
+                ) for i in range(k)
+            ]
+            mags = [float(torch.norm(energies_tensors[i]).item()) for i in range(k)]
+            return (
+                f"🅫 Created {num_flows} flows (showing {k}): raw={raw_examples}, "
+                f"norm={norm_examples}, |emb|={mags}"
+            )
+        gated_log(
+            logger,
+            'DEBUG_INIT',
+            step=0,
+            key='flows_created_examples',
+            msg_or_factory=_created_examples_msg,
+            first_n_steps=1,
+            every=0,
+        )
         
         # Синхронизация с тензорным хранилищем (если включено)
         if self.tensor_storage is not None and num_flows > 0:
@@ -702,15 +721,28 @@ class EnergyLattice(nn.Module):
             )
         
         if updated_count > 0:
-            # ДИАГНОСТИКА: общая статистика позиций
+            # Компактная сводка и ленивые примеры
             z_positions = alive_positions[:, 2]
             z_min, z_max, z_mean = z_positions.min().item(), z_positions.max().item(), z_positions.mean().item()
-            
-            logger.debug(f"🔄 Batch updated {updated_count} flows: Z range [{z_min:.3f}, {z_max:.3f}], mean={z_mean:.3f}")
-            
-            # Детальные примеры изменений позиций
+            gated_log(
+                logger,
+                'DEBUG',
+                step=None,
+                key='lattice_batch_update',
+                msg_or_factory=lambda: f"🔄 Batch updated {updated_count} flows: Z range [{z_min:.3f}, {z_max:.3f}], mean={z_mean:.3f}",
+                first_n_steps=1,
+                every=0,
+            )
             if position_changes:
-                logger.debug(f"🔄 Position changes: {'; '.join(position_changes)}")
+                gated_log(
+                    logger,
+                    'DEBUG',
+                    step=None,
+                    key='lattice_position_changes',
+                    msg_or_factory=lambda: f"🔄 Position changes: {'; '.join(position_changes)}",
+                    first_n_steps=1,
+                    every=0,
+                )
     
     def _mark_flow_completed_z0_plane(self, flow_id: int):
         """НОВАЯ АРХИТЕКТУРА: Помечает поток как завершенный на Z=0 плоскости без буферизации"""
@@ -893,8 +925,8 @@ class EnergyLattice(nn.Module):
         cells_with_flows = len(aggregation_stats)
         multi_flow_cells = len([stats for stats in aggregation_stats if 'weighted_avg' in stats])
         
-        logger.info(f"Direct collection: {len(flow_ids)} completed flows from {cells_with_flows} cells, "
-                   f"{multi_flow_cells} cells with multiple flows")
+        summary = summarize_step({'flows': len(flow_ids), 'cells': cells_with_flows, 'multi_cells': multi_flow_cells}, prefix='COLLECT')
+        logger.info(summary)
         
         return output_embeddings, flow_ids
     
@@ -1011,7 +1043,8 @@ class EnergyLattice(nn.Module):
             else:
                 logger.warning(f"Invalid batch_idx: {batch_idx} (expected 0 <= batch_idx < {batch_size})")
         
-        logger.info(f"Direct surface collection: {len(flow_ids)} completed flows across {len(grouped_flows)} cells")
+        summary = summarize_step({'flows': len(flow_ids), 'cells': len(grouped_flows)}, prefix='SURFACE')
+        logger.info(summary)
         return output_surface, flow_ids
     
     def collect_completed_flows_surface_direct_tensorized(self) -> Tuple[torch.Tensor, List[int]]:
