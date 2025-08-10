@@ -1014,7 +1014,7 @@ class EnergyLattice(nn.Module):
         logger.info(f"Direct surface collection: {len(flow_ids)} completed flows across {len(grouped_flows)} cells")
         return output_surface, flow_ids
     
-    def collect_completed_flows_surface_direct_tensorized(self) - 3e Tuple[torch.Tensor, List[int]]:
+    def collect_completed_flows_surface_direct_tensorized(self) -> Tuple[torch.Tensor, List[int]]:
         """Tensorized fast path: собирает surface embeddings напрямую из TensorizedFlowStorage"""
         if self.tensor_storage is None:
             return self.collect_completed_flows_surface_direct()

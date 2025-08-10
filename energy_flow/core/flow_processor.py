@@ -812,7 +812,7 @@ class FlowProcessor(nn.Module):
         
         return
     
-    def reflect_boundaries(self, position: torch.Tensor, flow_ids: Optional[torch.Tensor] = None) -\> torch.Tensor:
+    def reflect_boundaries(self, position: torch.Tensor, flow_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Отражение границ для нормализованного пространства [-1, 1]
         
