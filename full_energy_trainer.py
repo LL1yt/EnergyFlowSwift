@@ -19,6 +19,7 @@ import argparse
 from pathlib import Path
 import torch
 from datetime import datetime
+from contextlib import nullcontext
 
 # Добавляем корень проекта в path
 project_root = Path(__file__).parent
@@ -27,8 +28,15 @@ sys.path.insert(0, str(project_root))
 from energy_flow.config import create_experiment_config, set_energy_config
 from energy_flow.training import EnergyTrainer
 from energy_flow.training.checkpoint_loader import create_checkpoint_loader
-from energy_flow.utils.logging import DEBUG_ENERGY, get_logger, DEBUG_TRAINING, setup_logging
+from energy_flow.utils.logging import DEBUG_ENERGY, get_logger, DEBUG_TRAINING, setup_logging, DEBUG_PERFORMANCE, DEBUG_MEMORY
 from energy_flow.utils.checkpoint_utils import list_checkpoints
+from energy_flow.utils import (
+    MetricsConfig,
+    MetricsCollector,
+    GPUMonitor,
+    ProfilerManager,
+    memory_guard,
+)
 
 logger = get_logger(__name__)
 
@@ -150,7 +158,12 @@ def run_training_session(
     dataloader,
     num_epochs: int = 10,
     validate_every: int = 5,
-    save_every: int = 2
+    save_every: int = 2,
+    *,
+    metrics: MetricsCollector | None = None,
+    gpu_monitor: GPUMonitor | None = None,
+    profiler: ProfilerManager | None = None,
+    mem_guard_gb: float | None = None,
 ):
     """Запуск тренировочной сессии"""
     logger.info(f"🚀 Starting training session:")
@@ -188,14 +201,40 @@ def run_training_session(
                 target_texts = batch['target_text']
                 input_embeddings = batch['input_embedding']
                 target_embeddings = batch['target_embedding']
-                
-                # Один шаг обучения
-                step_metrics = trainer.train_step(
-                    input_texts=input_texts,
-                    target_texts=target_texts,
-                    teacher_input_embeddings=input_embeddings,
-                    teacher_target_embeddings=target_embeddings
-                )
+
+                # Guards and profiling contexts (no-op if disabled)
+                mg_ctx = memory_guard(mem_guard_gb) if (mem_guard_gb is not None) else nullcontext()
+                pf_ctx = profiler.profile_step("train_step") if profiler is not None else nullcontext()
+                tm_ctx = metrics.time_component("total_step") if metrics is not None else nullcontext()
+                flow_ctx = metrics.time_component("flow_processor") if metrics is not None else nullcontext()
+
+                with mg_ctx:
+                    with pf_ctx:
+                        with tm_ctx:
+                            # Один шаг обучения
+                            with flow_ctx:
+                                pass  # timing wrapper around flow; actual call below includes total time
+                            step_metrics = trainer.train_step(
+                                input_texts=input_texts,
+                                target_texts=target_texts,
+                                teacher_input_embeddings=input_embeddings,
+                                teacher_target_embeddings=target_embeddings
+                            )
+
+                # Optional metrics
+                if metrics is not None:
+                    st = float(step_metrics.get('step_time', 0.0) or 0.0)
+                    bs = input_embeddings.shape[0] if hasattr(input_embeddings, 'shape') else 0
+                    if st > 0 and bs > 0:
+                        metrics.record_throughput("samples", items=int(bs), elapsed_s=st)
+                    # Snapshot GPU memory occasionally
+                    if batch_idx % max(1, metrics.config.metrics_log_interval) == 0:
+                        metrics.snapshot_gpu_memory(label=f"epoch{current_epoch+1}_batch{batch_idx+1}")
+
+                # Optional GPU utilization log (rate-limited inside monitor)
+                if gpu_monitor is not None and batch_idx % max(1, (metrics.config.metrics_log_interval if metrics else 10)) == 0:
+                    util = gpu_monitor.gpu_utilization
+                    logger.log(DEBUG_PERFORMANCE, f"GPU util (cached): {util:.0f}%")
                 
                 # Аккумулируем метрики
                 for key in ['total_loss', 'energy_loss', 'text_loss', 'step_time', 'flow_time']:
@@ -376,6 +415,13 @@ def main():
                        help="List available checkpoints and exit")
     parser.add_argument("--batch-size", type=int, default=None,
                        help="Override default batch size")
+
+    # Optional metrics/profiling/memory flags (opt-in; default off)
+    parser.add_argument("--enable-metrics", action="store_true", help="Enable lightweight metrics collection")
+    parser.add_argument("--enable-profiler", action="store_true", help="Enable torch.profiler (heavier)")
+    parser.add_argument("--enable-gpu-monitor", action="store_true", help="Enable GPU utilization monitor (NVML)")
+    parser.add_argument("--metrics-log-interval", type=int, default=10, help="Metrics logging interval (batches)")
+    parser.add_argument("--mem-guard-gb", type=float, default=None, help="Enable memory guard with threshold in GB (e.g., 28.0)")
     
     args = parser.parse_args()
     
@@ -415,6 +461,17 @@ def main():
         )
         logger.info(f"✅ DataLoader ready: {len(dataloader)} batches, batch_size={config.batch_size}")
         
+        # Optional metrics components (zero-overhead if not enabled)
+        mcfg = MetricsConfig(
+            enable_metrics=bool(args.enable_metrics),
+            enable_profiler=bool(args.enable_profiler),
+            enable_gpu_monitoring=bool(args.enable_gpu_monitor),
+            metrics_log_interval=int(args.metrics_log_interval),
+        )
+        metrics = MetricsCollector(mcfg) if mcfg.enable_metrics else None
+        profiler = ProfilerManager(mcfg) if mcfg.enable_profiler else None
+        gpu_monitor = GPUMonitor(mcfg) if mcfg.enable_gpu_monitoring else None
+
         # Запуск обучения
         logger.info(f"\n4️⃣ Starting experiment training session...")
         success = run_training_session(
@@ -422,7 +479,11 @@ def main():
             dataloader=dataloader,
             num_epochs=args.epochs,
             validate_every=args.validate_every,
-            save_every=args.save_every
+            save_every=args.save_every,
+            metrics=metrics,
+            gpu_monitor=gpu_monitor,
+            profiler=profiler,
+            mem_guard_gb=args.mem_guard_gb,
         )
         
         if success:

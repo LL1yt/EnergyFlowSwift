@@ -303,11 +303,14 @@ class FlowProcessor(nn.Module):
         
         return output_surface_embeddings
     
-    def _collect_final_output(self) -> Tuple[torch.Tensor, List[int]]:
+    def _collect_final_output(self, batch_size: int = None) -> Tuple[torch.Tensor, List[int]]:
         """
         Гибридный сбор финальной энергии
         
         Проверяет активные потоки и буфер, собирает энергию когда все готово.
+        
+        Args:
+            batch_size: Размер батча для восстановления выходных эмбеддингов (опционально)
         
         Returns:
             output_embeddings: [batch, embedding_dim] - собранные эмбеддинги
@@ -333,6 +336,13 @@ class FlowProcessor(nn.Module):
         if active_at_output > 0:
             logger.debug(f"Marked {active_at_output} remaining flows as completed")
         
+        # Определяем batch_size если не передан
+        if batch_size is None:
+            # Попробуем получить из config или по количеству активных потоков
+            batch_size = self.config.batch_size
+            if batch_size is None:
+                logger.error(f"Cannot determine batch_size")
+
         # НОВАЯ АРХИТЕКТУРА: Собираем энергию напрямую из завершенных потоков (без буферизации)
         # ВОССТАНОВЛЕНИЕ 768D ЧЕРЕЗ MAPPER: используем surface-агрегацию и обратный маппер
         output_embeddings, completed_flows = self.lattice.collect_completed_flows_direct(self.mapper, expected_batch_size=batch_size)
