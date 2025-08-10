@@ -334,7 +334,8 @@ class FlowProcessor(nn.Module):
             logger.debug(f"Marked {active_at_output} remaining flows as completed")
         
         # НОВАЯ АРХИТЕКТУРА: Собираем энергию напрямую из завершенных потоков (без буферизации)
-        output_embeddings, completed_flows = self.lattice.collect_completed_flows_direct()
+        # ВОССТАНОВЛЕНИЕ 768D ЧЕРЕЗ MAPPER: используем surface-агрегацию и обратный маппер
+        output_embeddings, completed_flows = self.lattice.collect_completed_flows_direct(self.mapper, expected_batch_size=batch_size)
         
         # Очищаем завершенные потоки после сбора
         if completed_flows:
@@ -1095,6 +1096,11 @@ class FlowProcessor(nn.Module):
             if mem_allocated > self.memory_threshold_gb:
                 # Очищаем кэш GPU
                 torch.cuda.empty_cache()
+                # Сброс пиковых метрик памяти для корректной телеметрии
+                try:
+                    torch.cuda.reset_peak_memory_stats()
+                except Exception as e:
+                    logger.debug(f"reset_peak_memory_stats not available or failed: {e}")
                 
                 # Повторно замеряем память
                 mem_allocated_after = torch.cuda.memory_allocated() / 1e9
