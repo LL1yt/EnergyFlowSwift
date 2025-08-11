@@ -26,6 +26,8 @@ from pathlib import Path
 import time
 from datetime import datetime
 import json
+import os
+import psutil
 
 from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_CONVERGENCE, DEBUG_PERFORMANCE, DEBUG_PROFILING, summarize_step, gated_log
 from ..utils.device_manager import get_device_manager
@@ -109,6 +111,13 @@ class EnergyTrainer:
         self.checkpoint_base_dir = Path("checkpoints/energy_flow")
         
         logger.log(DEBUG_TRAINING, "✅ EnergyTrainer successfully initialized")
+        
+        # Инициализация пиковых метрик GPU памяти для корректной телеметрии
+        if torch_module.cuda.is_available():
+            try:
+                torch_module.cuda.reset_peak_memory_stats()
+            except Exception:
+                pass
     
     def _init_core_components(self):
         """Инициализация основных компонентов energy_flow"""
@@ -235,6 +244,59 @@ class EnergyTrainer:
             else:
                 logger.log(DEBUG_TRAINING, "Mixed Precision Training disabled: CUDA not available")
     
+    def _snapshot_memory(self, stage: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Снимок состояния памяти (GPU/CPU) и важных флагов.
+        Возвращает словарь метрик и логирует на уровне DEBUG.
+        """
+        metrics: Dict[str, Any] = {
+            'stage': stage,
+            'global_step': self.global_step,
+        }
+        # CPU RSS
+        try:
+            proc = psutil.Process(os.getpid())
+            rss_gb = proc.memory_info().rss / 1e9
+            metrics['cpu_rss_gb'] = round(rss_gb, 3)
+        except Exception:
+            pass
+        # GPU metrics
+        if torch_module.cuda.is_available():
+            try:
+                torch_module.cuda.synchronize()
+            except Exception:
+                pass
+            try:
+                metrics.update({
+                    'gpu_alloc_gb': round(torch_module.cuda.memory_allocated() / 1e9, 3),
+                    'gpu_reserved_gb': round(torch_module.cuda.memory_reserved() / 1e9, 3),
+                    'gpu_max_alloc_gb': round(torch_module.cuda.max_memory_allocated() / 1e9, 3),
+                    'gpu_max_reserved_gb': round(getattr(torch_module.cuda, 'max_memory_reserved', lambda: 0.0)() / 1e9, 3) if hasattr(torch_module.cuda, 'max_memory_reserved') else None,
+                })
+            except Exception:
+                pass
+        # AMP / scaler info
+        try:
+            metrics['autocast_enabled'] = bool(self.autocast_kwargs.get('enabled', False))
+        except Exception:
+            pass
+        try:
+            if self.scaler is not None and hasattr(self.scaler, 'get_scale'):
+                metrics['grad_scale'] = float(self.scaler.get_scale())
+        except Exception:
+            pass
+        # Merge extras
+        if extra:
+            metrics.update(extra)
+        # Log compact line
+        if logger.isEnabledFor(10):
+            msg = (
+                f"🧠 Mem[{stage}]: CPU {metrics.get('cpu_rss_gb','?')}GB; "
+                f"GPU alloc {metrics.get('gpu_alloc_gb','?')}GB, res {metrics.get('gpu_reserved_gb','?')}GB, "
+                f"max_alloc {metrics.get('gpu_max_alloc_gb','?')}GB"
+            )
+            logger.log(DEBUG_ENERGY, msg)
+        return metrics
+    
     def _compute_losses(self, input_texts: List[str], target_texts: List[str], 
                        teacher_input_embeddings: torch_module.Tensor, teacher_target_embeddings: torch_module.Tensor) -> Dict[str, Any]:
         """
@@ -339,6 +401,13 @@ class EnergyTrainer:
             Словарь с метриками шага
         """
         # Gradient accumulation: очищаем градиенты только в начале accumulation
+        if torch_module.cuda.is_available():
+            # Начинаем измерение пиков памяти на каждом шаге
+            try:
+                torch_module.cuda.reset_peak_memory_stats()
+            except Exception:
+                pass
+        self._snapshot_memory('begin', {'acc_step': self.current_accumulation_step + 1})
         if self.current_accumulation_step == 0:
             self.optimizer.zero_grad()
             self.accumulation_loss = 0.0
@@ -377,6 +446,7 @@ class EnergyTrainer:
                     global_training_step=global_training_step or self.global_step
                 )
             flow_time = time.time() - flow_start_time
+            self._snapshot_memory('after_forward', {'flow_time_ms': flow_time * 1000.0})
             
             # Диагностика: проверяем выход куба
             logger.log(DEBUG_TRAINING, f"📊 Cube output surface shape: {cube_output_surface.shape}")
@@ -411,6 +481,7 @@ class EnergyTrainer:
             # 3. Energy loss - сравниваем на уровне surface С MIXED PRECISION
             with torch_module.autocast(**self.autocast_kwargs):
                 energy_loss = nn.functional.mse_loss(cube_output_surface, target_surface_output)
+            self._snapshot_memory('after_energy_loss')
             
             # 4. Text Bridge обучение - ОПТИМИЗИРОВАННАЯ БАТЧЕВАЯ ВЕРСИЯ
             text_loss = torch_module.tensor(0.0, device=self.device)
@@ -474,6 +545,7 @@ class EnergyTrainer:
                     
                     # Performance logging
                     text_bridge_time = time.time() - text_bridge_start_time
+                    self._snapshot_memory('after_text_bridge', {'text_bridge_time_ms': text_bridge_time * 1000.0})
                     if logger.isEnabledFor(DEBUG_TRAINING):
                         logger.log(DEBUG_TRAINING, 
                                  f"📊 Text bridge: encoder={encoder_loss:.4f}, decoder={decoder_loss:.4f}, "
@@ -504,12 +576,14 @@ class EnergyTrainer:
             logger.log(DEBUG_TRAINING, f"📊 Total loss requires_grad: {total_loss.requires_grad}")
             
             # 8. Обратное распространение с normalized loss И GRADIENT SCALING
+            self._snapshot_memory('pre_backward')
             if self.scaler is not None:
                 # Mixed precision backward pass с gradient scaling
                 self.scaler.scale(normalized_loss).backward()
             else:
                 # Обычный backward pass
                 normalized_loss.backward()
+            self._snapshot_memory('post_backward')
             
             # Накапливаем метрики для финального возврата
             self.accumulation_loss += total_loss.item()
@@ -562,6 +636,11 @@ class EnergyTrainer:
             
             if is_accumulation_complete:
                 if self.scaler is not None:
+                    pre_step_scale = None
+                    try:
+                        pre_step_scale = float(self.scaler.get_scale())
+                    except Exception:
+                        pass
                     # MIXED PRECISION: gradient clipping и optimizer step с scaler
                     if self.config.gradient_clip > 0:
                         # Unscale gradients перед clipping
@@ -574,6 +653,7 @@ class EnergyTrainer:
                     # Optimizer step с scaling check
                     self.scaler.step(self.optimizer)
                     self.scaler.update()  # Обновляем scale factor
+                    self._snapshot_memory('post_optimizer_step', {'grad_scale_before': pre_step_scale, 'grad_scale_after': float(self.scaler.get_scale()) if hasattr(self.scaler, 'get_scale') else None})
                 else:
                     # ОБЫЧНЫЙ: gradient clipping и optimizer step
                     if self.config.gradient_clip > 0:
@@ -583,6 +663,7 @@ class EnergyTrainer:
                         )
                     
                     self.optimizer.step()
+                    self._snapshot_memory('post_optimizer_step')
                 
                 self.global_step += 1  # Увеличиваем global_step только после полного accumulation
                 
@@ -770,6 +851,8 @@ class EnergyTrainer:
                 )
                 
                 if should_cleanup:
+                    # Снимем пиковые метрики перед очисткой
+                    self._snapshot_memory('pre_cleanup', {'current_gb': current_gb})
                     # Use best-effort cleanup sequence (GPU + CPU)
                     try:
                         torch_module.cuda.empty_cache()
@@ -792,6 +875,12 @@ class EnergyTrainer:
                             f"reserved {current_reserved_gb:.1f}→{memory_after_reserved:.1f}GB "
                             f"(step {self.step_counter}, interval={self.memory_cleanup_interval})"
                         )
+                    # После очистки сбрасываем пик и логируем
+                    try:
+                        torch_module.cuda.reset_peak_memory_stats()
+                    except Exception:
+                        pass
+                    self._snapshot_memory('post_cleanup')
                 elif logger.isEnabledFor(DEBUG_PERFORMANCE):
                     logger.log(
                         DEBUG_PERFORMANCE,
@@ -805,6 +894,8 @@ class EnergyTrainer:
             except Exception:
                 pass
             
+            # Финальный снимок памяти для шага
+            self._snapshot_memory('end', {'accumulation_complete': bool(is_accumulation_complete)})
             return step_metrics
             
         except Exception as e:
