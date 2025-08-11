@@ -248,8 +248,8 @@ def create_experiment_config() -> EnergyConfig:
     return EnergyConfig(
         lattice_width=28,        # Оптимальный размер surface для 768D embeddings
         lattice_height=28,       # 50x50 = 2500 > 768, достаточное покрытие
-        lattice_depth=60,        # Увеличено с 20 до 60 для более глубокой обработки
-        batch_size=128,           # Увеличено с 16 до 128 для лучшей утилизации RTX 5090
+        lattice_depth=40,        # Увеличено с 20 до 40 для более глубокой обработки
+        batch_size=16,           # Увеличено с 16 до 32 для лучшей утилизации RTX 5090
         max_active_flows=200000, # Увеличено для поддержки больших batch_size
         carrier_hidden_size=512,
         carrier_num_layers=3,

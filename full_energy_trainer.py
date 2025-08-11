@@ -46,6 +46,8 @@ setup_logging(debug_mode=True, level="DEBUG_FORWARD")
 # Путь к experiment датасету
 EXPERIMENT_DATASET_PATH = "data/energy_flow/active/experiment_mixed_5021pairs_20250729_121801.pt"
 
+# torch.autograd.set_detect_anomaly(True)
+
 
 def load_experiment_dataset(dataset_path: str):
     """Загрузка experiment датасета"""
@@ -55,7 +57,8 @@ def load_experiment_dataset(dataset_path: str):
         raise FileNotFoundError(f"Experiment dataset not found: {dataset_path}")
     
     # Загружаем датасет
-    dataset = torch.load(dataset_path, map_location='cuda', weights_only=False)
+    # Load dataset on CPU to avoid permanently reserving GPU memory
+    dataset = torch.load(dataset_path, map_location='cpu', weights_only=False)
     
     total_pairs = len(dataset['text_pairs'])
     embedding_dim = dataset['input_embeddings'].shape[1]

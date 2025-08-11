@@ -345,8 +345,12 @@ class EnergyCarrier(nn.Module):
                 z_next = next_position[:, 2]
                 z_delta = z_next - z_current
                 depth = self.config.lattice_depth
-                current_real = self.config.normalization_manager.denormalize_coordinates(current_position)[:, 2]
-                next_real = self.config.normalization_manager.denormalize_coordinates(next_position)[:, 2]
+                # Безопасная денормализация только для логирования: clamp в [-1,1] предотвращает срабатывание жёсткого assert
+                nm = self.config.normalization_manager
+                safe_curr = torch.clamp(current_position, -1.0, 1.0)
+                safe_next = torch.clamp(next_position, -1.0, 1.0)
+                current_real = nm.denormalize_coordinates(safe_curr)[:, 2]
+                next_real = nm.denormalize_coordinates(safe_next)[:, 2]
                 def _z_analysis_msg():
                     positive_z_count = (z_delta < 0).sum().item()
                     negative_z_count = (z_delta > 0).sum().item()
@@ -393,8 +397,12 @@ class EnergyCarrier(nn.Module):
             z_next = next_position[:, 2]
             z_delta = z_next - z_current
             depth = self.config.lattice_depth
-            current_real = self.config.normalization_manager.denormalize_coordinates(current_position)[:, 2]
-            next_real = self.config.normalization_manager.denormalize_coordinates(next_position)[:, 2]
+            # Безопасная денормализация только для логирования: clamp в [-1,1] предотвращает срабатывание жёсткого assert
+            nm = self.config.normalization_manager
+            safe_curr = torch.clamp(current_position, -1.0, 1.0)
+            safe_next = torch.clamp(next_position, -1.0, 1.0)
+            current_real = nm.denormalize_coordinates(safe_curr)[:, 2]
+            next_real = nm.denormalize_coordinates(safe_next)[:, 2]
             def _z_analysis_post_noise():
                 positive_z_count = (z_delta < 0).sum().item()
                 negative_z_count = (z_delta > 0).sum().item()

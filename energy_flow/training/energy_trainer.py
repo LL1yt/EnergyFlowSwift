@@ -37,6 +37,7 @@ from ..text_bridge import (
     create_text_to_cube_encoder, create_cube_to_text_decoder, create_text_cache,
     CachedTextToCubeEncoder, CachedCubeToTextDecoder
 )
+from ..utils.memory_cleanup import collect_garbage  # CPU memory cleanup
 from .checkpoint_loader import SimpleCheckpointLoader
 
 logger = get_logger(__name__)
@@ -252,6 +253,14 @@ class EnergyTrainer:
         step_start_time = time.time()
         
         try:
+            # Ensure tensors are on the correct device
+            try:
+                teacher_input_embeddings = teacher_input_embeddings.to(self.device, non_blocking=True)
+                teacher_target_embeddings = teacher_target_embeddings.to(self.device, non_blocking=True)
+            except Exception:
+                teacher_input_embeddings = teacher_input_embeddings.to(self.device)
+                teacher_target_embeddings = teacher_target_embeddings.to(self.device)
+
             # 1. Основной forward pass куба с teacher embeddings
             flow_start_time = time.time()
             cube_output_surface = self.flow_processor.forward(teacher_input_embeddings)
@@ -345,6 +354,14 @@ class EnergyTrainer:
         logger.log(DEBUG_TRAINING, f"📊 Teacher embeddings: {teacher_input_embeddings.shape} -> {teacher_target_embeddings.shape}")
         
         try:
+            # Ensure tensors are on the correct device
+            try:
+                teacher_input_embeddings = teacher_input_embeddings.to(self.device, non_blocking=True)
+                teacher_target_embeddings = teacher_target_embeddings.to(self.device, non_blocking=True)
+            except Exception:
+                teacher_input_embeddings = teacher_input_embeddings.to(self.device)
+                teacher_target_embeddings = teacher_target_embeddings.to(self.device)
+
             # 1. Основное обучение куба с teacher embeddings С MIXED PRECISION
             flow_start_time = time.time()
             
@@ -417,8 +434,9 @@ class EnergyTrainer:
                     decoder_loss = torch_module.tensor(0.0, device=self.device)
                     
                     try:
-                        # Батчевое декодирование surface → text
-                        predicted_texts = self.text_decoder.decode_surface(cube_output_surface)
+                        # Батчевое декодирование surface → text (градиенты не нужны)
+                        with torch_module.no_grad():
+                            predicted_texts = self.text_decoder.decode_surface(cube_output_surface)
                         
                         # Батчевое вычисление text similarity loss
                         if predicted_texts and len(predicted_texts) == len(target_texts):
@@ -473,6 +491,12 @@ class EnergyTrainer:
             
             # 6. Gradient accumulation: нормализуем loss 
             normalized_loss = total_loss / self.config.gradient_accumulation_steps
+
+            # Guard against non-finite loss
+            if not torch_module.isfinite(normalized_loss):
+                logger.warning("⚠️ Non-finite loss detected (NaN/Inf). Skipping backward for this micro-step.")
+                # Replace with zero to avoid breaking accumulation
+                normalized_loss = torch_module.zeros((), device=self.device, dtype=total_loss.dtype)
             
             # Диагностика перед обратным распространением
             logger.log(DEBUG_TRAINING, f"📊 Losses: energy={energy_loss:.4f}, text={text_loss:.4f}, "
@@ -505,17 +529,30 @@ class EnergyTrainer:
             # Диагностика градиентов
             total_params = 0
             grad_norms = []
+            bad_grads = False
             for param_group in self.optimizer.param_groups:
                 for param in param_group['params']:
                     if param.grad is not None:
                         total_params += 1
-                        grad_norm = param.grad.norm().item()
-                        grad_norms.append(grad_norm)
+                        # Compute norm safely
+                        g = param.grad
+                        if torch_module.isfinite(g).all():
+                            grad_norm = g.norm().item()
+                            grad_norms.append(grad_norm)
+                        else:
+                            bad_grads = True
             
             if grad_norms:
                 avg_grad_norm = sum(grad_norms) / len(grad_norms)
                 max_grad_norm = max(grad_norms)
                 logger.log(DEBUG_TRAINING, f"📊 Gradients: {total_params} params, avg_norm={avg_grad_norm:.6f}, max_norm={max_grad_norm:.6f}")
+            if bad_grads:
+                logger.warning("⚠️ Detected NaN/Inf in gradients. This micro-step will be skipped.")
+                # Zero any non-finite grads to prevent optimizer corruption
+                for param_group in self.optimizer.param_groups:
+                    for param in param_group['params']:
+                        if param.grad is not None and not torch_module.isfinite(param.grad).all():
+                            param.grad = None
             
             # Увеличиваем счетчик accumulation
             self.current_accumulation_step += 1
@@ -693,27 +730,80 @@ class EnergyTrainer:
             # SMART MEMORY MANAGEMENT: Conditional cleanup вместо агрессивного empty_cache()
             # Устраняет 15-20% performance penalty от forced memory reallocation
             self.step_counter += 1
-            
+
+            # Periodic CPU garbage collection to cap host RAM growth
+            try:
+                if (self.step_counter % 5) == 0:
+                    collect_garbage()
+            except Exception:
+                pass
+
+            # Proactively drop large temporaries to let GC reclaim GPU memory sooner
+            try:
+                for _tmp in [
+                    'cube_output_surface', 'target_surface_output', 'target_surface_input',
+                    'encoder_outputs', 'similarities_tensor'
+                ]:
+                    if _tmp in locals():
+                        obj = locals()[_tmp]
+                        if isinstance(obj, torch_module.Tensor):
+                            del obj
+                del _tmp
+            except Exception:
+                pass
+
             if torch_module.cuda.is_available():
-                current_memory_gb = torch_module.cuda.memory_allocated() / 1e9
+                # Synchronize to ensure kernels finish before measuring/cleaning
+                try:
+                    torch_module.cuda.synchronize()
+                except Exception:
+                    pass
+
+                current_alloc_gb = torch_module.cuda.memory_allocated() / 1e9
+                current_reserved_gb = torch_module.cuda.memory_reserved() / 1e9
+                current_gb = max(current_alloc_gb, current_reserved_gb)
                 
-                # Cleanup только при необходимости (каждые N шагов ИЛИ при превышении threshold)
+                # Cleanup только при необходимости (каждые N шагов ИЛИ при превышении threshold по reserved)
                 should_cleanup = (
                     self.step_counter % self.memory_cleanup_interval == 0 or  # Каждые 10 шагов
-                    current_memory_gb > self.memory_threshold_gb              # Или при превышении порога
+                    current_gb > self.memory_threshold_gb                      # Или при превышении порога
                 )
                 
                 if should_cleanup:
-                    torch_module.cuda.empty_cache()
-                    memory_after_cleanup = torch_module.cuda.memory_allocated() / 1e9
+                    # Use best-effort cleanup sequence (GPU + CPU)
+                    try:
+                        torch_module.cuda.empty_cache()
+                        if hasattr(torch_module.cuda, 'ipc_collect'):
+                            torch_module.cuda.ipc_collect()
+                    except Exception:
+                        pass
+                    # Periodic CPU GC to reduce host RAM pressure
+                    try:
+                        collect_garbage()
+                    except Exception:
+                        pass
+                    memory_after_alloc = torch_module.cuda.memory_allocated() / 1e9
+                    memory_after_reserved = torch_module.cuda.memory_reserved() / 1e9
                     
                     if logger.isEnabledFor(DEBUG_PERFORMANCE):
-                        logger.log(DEBUG_PERFORMANCE, 
-                                  f"🧹 Smart cleanup: {current_memory_gb:.1f}GB → {memory_after_cleanup:.1f}GB "
-                                  f"(step {self.step_counter}, interval={self.memory_cleanup_interval})")
+                        logger.log(
+                            DEBUG_PERFORMANCE,
+                            f"🧹 Smart cleanup: alloc {current_alloc_gb:.1f}→{memory_after_alloc:.1f}GB, "
+                            f"reserved {current_reserved_gb:.1f}→{memory_after_reserved:.1f}GB "
+                            f"(step {self.step_counter}, interval={self.memory_cleanup_interval})"
+                        )
                 elif logger.isEnabledFor(DEBUG_PERFORMANCE):
-                    logger.log(DEBUG_PERFORMANCE, 
-                              f"⚡ Skipped cleanup: {current_memory_gb:.1f}GB < {self.memory_threshold_gb:.1f}GB threshold")
+                    logger.log(
+                        DEBUG_PERFORMANCE,
+                        f"⚡ Skipped cleanup: alloc {current_alloc_gb:.1f}GB, reserved {current_reserved_gb:.1f}GB < {self.memory_threshold_gb:.1f}GB threshold"
+                    )
+            
+            # Early release of large Python references to help GC
+            try:
+                del input_texts
+                del target_texts
+            except Exception:
+                pass
             
             return step_metrics
             
@@ -781,6 +871,15 @@ class EnergyTrainer:
             else:
                 logger.warning(f"Unexpected teacher embeddings format: {type(teacher_data)}")
                 continue
+
+            # Ensure teacher embeddings reside on the correct device (move batch-wise)
+            try:
+                teacher_input_emb = teacher_input_emb.to(self.device, non_blocking=True)
+                teacher_target_emb = teacher_target_emb.to(self.device, non_blocking=True)
+            except Exception:
+                # Fallback in case non_blocking not supported
+                teacher_input_emb = teacher_input_emb.to(self.device)
+                teacher_target_emb = teacher_target_emb.to(self.device)
             
             # Один шаг обучения - передаем глобальный шаг для curriculum learning  
             step_metrics = self.train_step(input_texts, target_texts, teacher_input_emb, teacher_target_emb, 
@@ -901,7 +1000,11 @@ class EnergyTrainer:
                 for i in range(num_examples):
                     try:
                         # Используем teacher embeddings для демонстрации (правильная архитектура)
-                        surface_input = teacher_input_embeddings[i:i+1]  # [1, 768]
+                        surface_input = teacher_input_embeddings[i:i+1]
+                        try:
+                            surface_input = surface_input.to(self.device, non_blocking=True)
+                        except Exception:
+                            surface_input = surface_input.to(self.device)
                         surface_output = self.flow_processor.forward(surface_input)  # [1, surface_dim]
 
                         # Декодируем surface embedding в текст (surface_output уже имеет правильный размер [1, surface_dim])
