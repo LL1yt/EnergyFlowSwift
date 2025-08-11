@@ -29,7 +29,7 @@ import json
 import os
 import psutil
 
-from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_CONVERGENCE, DEBUG_PERFORMANCE, DEBUG_PROFILING, summarize_step, gated_log
+from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_MEMORY, DEBUG_CONVERGENCE, DEBUG_PERFORMANCE, DEBUG_PROFILING, summarize_step, gated_log
 from ..utils.device_manager import get_device_manager
 from ..utils.checkpoint_utils import generate_checkpoint_path, create_checkpoint_summary
 from ..config import EnergyConfig, get_energy_config, create_debug_config, set_energy_config
@@ -80,6 +80,24 @@ class EnergyTrainer:
         self._init_text_bridge()
         self._init_optimizer()
         self._init_mixed_precision()
+        
+        # Стабилизационные твики обучения (временные): снизим LR и усилим клиппинг
+        try:
+            original_lr = self.optimizer.param_groups[0]['lr']
+            new_lr = max(original_lr * 0.25, 1e-6)
+            for pg in self.optimizer.param_groups:
+                pg['lr'] = new_lr
+            # Усилим gradient clip, если включен
+            if getattr(self.config, 'gradient_clip', 0.0) <= 0.0:
+                self.config.gradient_clip = 0.1
+            else:
+                self.config.gradient_clip = min(self.config.gradient_clip, 0.1)
+            logger.info(f"Stability tweaks: lr {original_lr:.2e} -> {new_lr:.2e}, gradient_clip={self.config.gradient_clip}")
+        except Exception:
+            pass
+        
+        # Включим аномалии на первых шагах (потом отключим)
+        self._anomaly_steps_remaining = 2
         
         # Метрики обучения
         self.training_history = {
@@ -294,7 +312,7 @@ class EnergyTrainer:
                 f"GPU alloc {metrics.get('gpu_alloc_gb','?')}GB, res {metrics.get('gpu_reserved_gb','?')}GB, "
                 f"max_alloc {metrics.get('gpu_max_alloc_gb','?')}GB"
             )
-            logger.log(DEBUG_ENERGY, msg)
+            logger.log(DEBUG_MEMORY, msg)
         return metrics
     
     def _compute_losses(self, input_texts: List[str], target_texts: List[str], 
@@ -315,6 +333,12 @@ class EnergyTrainer:
         step_start_time = time.time()
         
         try:
+            # Включаем anomaly detection также на forward для первых шагов
+            try:
+                if self._anomaly_steps_remaining and self._anomaly_steps_remaining > 0:
+                    torch_module.autograd.set_detect_anomaly(True)
+            except Exception:
+                pass
             # Ensure tensors are on the correct device
             try:
                 teacher_input_embeddings = teacher_input_embeddings.to(self.device, non_blocking=True)
@@ -464,6 +488,26 @@ class EnergyTrainer:
                 target_surface_output = self.flow_processor.mapper.input_mapper.forward(teacher_target_embeddings)
                 target_surface_input = self.flow_processor.mapper.input_mapper.forward(teacher_input_embeddings)
             
+            # Быстрые NaN-гварды на surface тензорах
+            if not torch_module.isfinite(cube_output_surface).all() or not torch_module.isfinite(target_surface_output).all():
+                logger.warning("⚠️ Non-finite tensors in cube/target surface; skipping micro-step safely")
+                # Заполним безопасными значениями, чтобы метрики не ломались
+                safe_metrics = {
+                    'total_loss': float('inf'),
+                    'energy_loss': float('inf'),
+                    'text_loss': 0.0,
+                    'learning_rate': self.optimizer.param_groups[0]['lr'],
+                    'step_time': time.time() - step_start_time,
+                    'flow_time': flow_time,
+                    'active_flows': 0,
+                    'spawned_flows': 0,
+                    'flows_reached_output': 0,
+                    'batch_size': batch_size,
+                    'accumulation_complete': False,
+                    'accumulation_step': self.current_accumulation_step
+                }
+                return safe_metrics
+            
             # Диагностика: проверяем формы
             logger.log(DEBUG_TRAINING, f"📊 Target surface output shape: {target_surface_output.shape}")
             logger.log(DEBUG_TRAINING, f"📊 Target surface input shape: {target_surface_input.shape}")
@@ -577,13 +621,41 @@ class EnergyTrainer:
             
             # 8. Обратное распространение с normalized loss И GRADIENT SCALING
             self._snapshot_memory('pre_backward')
+            backward_start = time.time()
+            # Для градиентной аккумуляции: удерживаем граф на промежуточных шагах
+            retain_needed = (self.current_accumulation_step + 1) < self.config.gradient_accumulation_steps
+            
+            # Включаем anomaly detection на первых шагах для точного источника NaN
+            anomaly_prev = None
+            try:
+                if self._anomaly_steps_remaining and self._anomaly_steps_remaining > 0:
+                    anomaly_prev = torch_module.autograd.set_detect_anomaly(True)
+            except Exception:
+                anomaly_prev = None
+            
             if self.scaler is not None:
+                # Снизим init scale для устойчивости на первых шагах
+                try:
+                    if self._anomaly_steps_remaining and self._anomaly_steps_remaining > 0 and hasattr(self.scaler, 'update'):
+                        # уменьшать scale вручную не рекомендуется, но можно снижать через _get_scale if needed
+                        pass
+                except Exception:
+                    pass
                 # Mixed precision backward pass с gradient scaling
-                self.scaler.scale(normalized_loss).backward()
+                self.scaler.scale(normalized_loss).backward(retain_graph=retain_needed)
             else:
                 # Обычный backward pass
-                normalized_loss.backward()
-            self._snapshot_memory('post_backward')
+                normalized_loss.backward(retain_graph=retain_needed)
+            backward_time = (time.time() - backward_start) * 1000.0
+            self._snapshot_memory('post_backward', {'backward_time_ms': backward_time, 'threads': getattr(torch_module, 'get_num_threads', lambda: None)()})
+            # Отключаем anomaly detection после нескольких шагов
+            try:
+                if self._anomaly_steps_remaining and self._anomaly_steps_remaining > 0:
+                    self._anomaly_steps_remaining -= 1
+                    if self._anomaly_steps_remaining == 0:
+                        torch_module.autograd.set_detect_anomaly(False)
+            except Exception:
+                pass
             
             # Накапливаем метрики для финального возврата
             self.accumulation_loss += total_loss.item()
@@ -809,7 +881,7 @@ class EnergyTrainer:
                 )
             
             # SMART MEMORY MANAGEMENT: Conditional cleanup вместо агрессивного empty_cache()
-            # Устраняет 15-20% performance penalty от forced memory reallocation
+            # Устраняет 10-20% performance penalty от forced memory reallocation
             self.step_counter += 1
 
             # Periodic CPU garbage collection to cap host RAM growth
@@ -844,10 +916,11 @@ class EnergyTrainer:
                 current_reserved_gb = torch_module.cuda.memory_reserved() / 1e9
                 current_gb = max(current_alloc_gb, current_reserved_gb)
                 
-                # Cleanup только при необходимости (каждые N шагов ИЛИ при превышении threshold по reserved)
+                # Cleanup только при необходимости (каждые N шагов ИЛИ при превышении threshold по alloc ИЛИ reserved)
                 should_cleanup = (
                     self.step_counter % self.memory_cleanup_interval == 0 or  # Каждые 10 шагов
-                    current_gb > self.memory_threshold_gb                      # Или при превышении порога
+                    current_alloc_gb > self.memory_threshold_gb or
+                    current_reserved_gb > max(self.memory_threshold_gb, current_alloc_gb * 1.5)
                 )
                 
                 if should_cleanup:
@@ -895,7 +968,15 @@ class EnergyTrainer:
                 pass
             
             # Финальный снимок памяти для шага
-            self._snapshot_memory('end', {'accumulation_complete': bool(is_accumulation_complete)})
+            end_metrics = self._snapshot_memory('end', {'accumulation_complete': bool(is_accumulation_complete)})
+            # Если заметен скачок CPU RSS за шаг, логируем предупреждение
+            try:
+                if 'cpu_rss_gb' in end_metrics:
+                    # Сравнить с begin невозможно напрямую, но backward_time_ms подскажет
+                    if end_metrics.get('backward_time_ms') and end_metrics['backward_time_ms'] > 2000:
+                        logger.log(DEBUG_PERFORMANCE, f"⏳ Backward took {end_metrics['backward_time_ms']:.0f}ms; CPU_RSS={end_metrics['cpu_rss_gb']}GB")
+            except Exception:
+                pass
             return step_metrics
             
         except Exception as e:

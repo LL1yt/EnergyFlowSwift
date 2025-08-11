@@ -11,7 +11,7 @@ import torch.nn as nn
 from typing import List, Dict, Optional, Tuple
 import time
 
-from ..utils.logging import get_logger, log_memory_state, gated_log, summarize_step, format_first_n
+from ..utils.logging import get_logger, log_memory_state, gated_log, summarize_step, format_first_n, DEBUG_PERFORMANCE
 from ..config import get_energy_config, create_debug_config, set_energy_config
 from ..utils.device_manager import get_device_manager
 from .simple_neuron import SimpleNeuron, create_simple_neuron
@@ -417,6 +417,7 @@ class FlowProcessor(nn.Module):
             active_flows: Список активных потоков (если None - получаем из lattice)
         """
         start_time = time.time()
+        phase = 'tensorized' if self.lattice.tensor_storage is not None else 'list'
         
         if self.lattice.tensor_storage is not None:
             # Tensorized fast path
@@ -424,6 +425,7 @@ class FlowProcessor(nn.Module):
             if positions.numel() == 0:
                 return
             flows_count = positions.shape[0]
+            t0 = time.time()
             self._process_flow_batch_tensorized(
                 positions,
                 energies,
@@ -433,6 +435,9 @@ class FlowProcessor(nn.Module):
                 steps_taken,
                 global_training_step=global_training_step
             )
+            proc_time = (time.time() - t0) * 1000.0
+            if logger.isEnabledFor(10):
+                logger.log(DEBUG_PERFORMANCE, f"STEP[{phase}] flows={flows_count}: process_batch_tensorized={proc_time:.1f}ms")
             # Lazy consistency logs for first few flows
             try:
                 if logger.isEnabledFor(10):  # DEBUG
@@ -469,17 +474,25 @@ class FlowProcessor(nn.Module):
             
             flows_count = len(active_flows)
             max_flows_per_step = self.config.max_active_flows  # RTX 5090 может обработать все сразу
-            
             if flows_count <= max_flows_per_step:
                 # Оптимальный случай: обрабатываем ВСЕ потоки одним большим batch'ем
+                t0 = time.time()
                 self._process_flow_batch(active_flows, global_training_step=global_training_step)
+                proc_time = (time.time() - t0) * 1000.0
+                if logger.isEnabledFor(10):
+                    logger.log(DEBUG_PERFORMANCE, f"STEP[{phase}] flows={flows_count}: process_flow_batch={proc_time:.1f}ms")
             else:
                 # Fallback: если слишком много потоков (>200K), делим на крупные chunk'и
                 optimal_chunk_size = max_flows_per_step // 2  # 100K потоков за раз
                 
                 for i in range(0, flows_count, optimal_chunk_size):
                     chunk_flows = active_flows[i:i + optimal_chunk_size]
+                    t0 = time.time()
                     self._process_flow_batch(chunk_flows, global_training_step=global_training_step)
+                    proc_time = (time.time() - t0) * 1000.0
+                    if logger.isEnabledFor(10):
+                        logger.log(DEBUG_PERFORMANCE, f"STEP[{phase}] chunk[{i}:{i+len(chunk_flows)}]: process_flow_batch={proc_time:.1f}ms")
+                        logger.log(DEBUG_PERFORMANCE, f"STEP[{phase}] chunk[{i}:{i+len(chunk_flows)}]: process_flow_batch={proc_time:.1f}ms")
         
         # Статистика
         step_time = time.time() - start_time
@@ -490,26 +503,46 @@ class FlowProcessor(nn.Module):
             memory_info = self.device_manager.get_memory_info()
             self.perf_stats['gpu_memory_usage'].append(memory_info['gpu_allocated_gb'])
     
+    def _sanitize_tensor(self, t: torch.Tensor, clip_value: float = 10.0, clamp_only: bool = False) -> torch.Tensor:
+        """Заменяет NaN/Inf и ограничивает экстремальные значения для стабильности RNN."""
+        if t is None:
+            return t
+        t = torch.nan_to_num(t, nan=0.0, posinf=clip_value, neginf=-clip_value)
+        if not clamp_only:
+            return t.clamp_(-clip_value, clip_value)
+        return t
+
     def _process_flow_batch(self, flows, global_training_step: Optional[int] = None):
         """Обрабатывает батч потоков с векторизованными операциями"""
         batch_size = len(flows)
+        t_collect = time.time()
         
         # Собираем данные потоков и ID
         positions = torch.stack([f.position for f in flows])  # [batch, 3]
         energies = torch.stack([f.energy for f in flows])     # [batch, embedding_dim]
         hidden_states = torch.stack([f.hidden_state for f in flows])  # [batch, layers, hidden]
+
+        # Санитизация входов (нормализованные позиции и энергии)
+        positions = self._sanitize_tensor(positions, clip_value=1.0)  # clamp к [-1,1]
+        energies = self._sanitize_tensor(energies, clip_value=10.0)
         flow_ids = torch.tensor([f.id for f in flows], dtype=torch.long, device=positions.device)
         
         # Транспонируем hidden states для GRU и делаем непрерывными
         hidden_states = hidden_states.transpose(0, 1).contiguous()  # [layers, batch, hidden]
         
+        collect_ms = (time.time() - t_collect) * 1000.0
         # 1. SimpleNeuron обрабатывает позиции и энергии
+        t_neuron = time.time()
         neuron_output = self.neuron(positions, energies)  # [batch, neuron_output_dim]
+        # Санитизация выхода нейрона
+        neuron_output = self._sanitize_tensor(neuron_output, clip_value=10.0)
+        neuron_ms = (time.time() - t_neuron) * 1000.0
         
         # Собираем возраста потоков для progressive bias
         ages = torch.tensor([flow.age for flow in flows], dtype=torch.float32, device=positions.device)
         
         # 2. EnergyCarrier генерирует следующее состояние с curriculum learning
+        t_carrier = time.time()
         carrier_output, new_hidden = self.carrier(
             neuron_output, 
             energies,
@@ -518,12 +551,25 @@ class FlowProcessor(nn.Module):
             flow_age=ages,
             global_training_step=global_training_step  # Передаем глобальный шаг
         )
+        # Санитизация выходов carrier
+        try:
+            carrier_output.next_position = self._sanitize_tensor(getattr(carrier_output, 'next_position', None), clip_value=1.0)
+            carrier_output.energy_value = self._sanitize_tensor(getattr(carrier_output, 'energy_value', None), clip_value=10.0)
+            if hasattr(carrier_output, 'raw_next_position') and carrier_output.raw_next_position is not None:
+                carrier_output.raw_next_position = self._sanitize_tensor(carrier_output.raw_next_position, clip_value=1.0)
+        except Exception:
+            pass
         
         # Транспонируем обратно и делаем непрерывными
         new_hidden = new_hidden.transpose(0, 1).contiguous()  # [batch, layers, hidden]
+        carrier_ms = (time.time() - t_carrier) * 1000.0
         
         # 3. ВЕКТОРИЗОВАННАЯ обработка результатов
+        t_results = time.time()
         self._process_results_vectorized(flows, flow_ids, positions, carrier_output, new_hidden)
+        results_ms = (time.time() - t_results) * 1000.0
+        if logger.isEnabledFor(10):
+            logger.log(DEBUG_PERFORMANCE, f"BATCH timings: collect={collect_ms:.1f}ms, neuron={neuron_ms:.1f}ms, carrier={carrier_ms:.1f}ms, results={results_ms:.1f}ms (batch={batch_size})")
     
     def _process_results_vectorized(self, flows, flow_ids, current_positions, carrier_output, new_hidden):
         """Векторизованная обработка результатов carrier_output с поддержкой относительных координат"""
@@ -572,18 +618,21 @@ class FlowProcessor(nn.Module):
         
         # ДВУХУРОВНЕВАЯ ПРОЕКЦИОННАЯ СИСТЕМА
         # Проверяем потоки, которые сделали depth/2 шагов но не достигли выходных плоскостей
-        projection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        t_projmask = time.time()
         depth_half = self.config.lattice_depth // 2
-        
-        for i, flow in enumerate(flows):
-            # Только для активных потоков (не завершенных)
-            if active_mask[i]:
-                # Проверяем, сделал ли поток достаточно шагов для проекции
-                if flow.steps_taken >= depth_half:
-                    projection_mask[i] = True
-                    logger.debug_energy(f"🎯 Flow {flow.id} qualifies for projection: {flow.steps_taken} >= {depth_half} steps")
+        # Векторизованное вычисление projection_mask (вместо цикла)
+        try:
+            steps_taken_tensor = torch.tensor([f.steps_taken for f in flows], device=device)
+            projection_mask = active_mask & (steps_taken_tensor >= depth_half)
+        except Exception:
+            # Fallback: пустая маска
+            projection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        projmask_ms = (time.time() - t_projmask) * 1000.0
+        if logger.isEnabledFor(10):
+            logger.log(DEBUG_PERFORMANCE, f"RESULTS: build_masks: projection_mask={projmask_ms:.1f}ms (count={int(projection_mask.sum().item())})")
         
         # Обрабатываем потоки для проекции
+        t_project = time.time()
         if projection_mask.any():
             projected_count = projection_mask.sum().item()
             logger.info(f"📊 Projecting {projected_count} flows to nearest output surface (completed ≥{depth_half} steps)")
@@ -594,52 +643,31 @@ class FlowProcessor(nn.Module):
             projection_energies = carrier_output.energy_value[projection_mask]
             projection_hidden = new_hidden[projection_mask]
             
-            # Проецируем каждый поток на ближайшую выходную поверхность
-            for i, flow_id in enumerate(projection_flow_ids):
-                flow_id_item = flow_id.item()
-                if flow_id_item in self.lattice.active_flows:
-                    flow = self.lattice.active_flows[flow_id_item]
-                    current_pos = projection_positions[i]
-                    
-                    # Определяем ближайшую выходную поверхность по Z-координате
-                    z_current = current_pos[2].item()
-                    distance_to_z0 = abs(z_current - 0)
-                    distance_to_zdepth = abs(z_current - self.config.lattice_depth)
-                    
-                    # Проецируем на ближайшую поверхность
-                    if distance_to_z0 <= distance_to_zdepth:
-                        # Проецируем на Z=0 плоскость
-                        projected_pos = current_pos.clone()
-                        projected_pos[2] = 0
-                        surface_type = "z0"
-                        # Обновляем projected_surface в потоке
-                        flow.projected_surface = "z0_plane"
-                    else:
-                        # Проецируем на Z=depth плоскость
-                        projected_pos = current_pos.clone()
-                        projected_pos[2] = self.config.lattice_depth
-                        surface_type = "zdepth"
-                        # Обновляем projected_surface в потоке
-                        flow.projected_surface = "zdepth_plane"
-                    
-                    # ВАЖНО: Сохраняем ОРИГИНАЛЬНОЕ расстояние до проекции для весовой системы
-                    original_distance = min(distance_to_z0, distance_to_zdepth)
-                    flow.distance_to_surface = original_distance
-                    
-                    # Обновляем поток и буферизуем его
-                    flow.position = projected_pos
-                    flow.energy = projection_energies[i]
-                    flow.hidden_state = projection_hidden[i]
-                    flow.age += 1
-                    
-                    # НОВАЯ АРХИТЕКТУРА: Помечаем поток как завершенный без буферизации  
-                    if surface_type == "z0":
-                        self.lattice._mark_flow_completed_z0_plane(flow_id_item)
-                    else:
-                        self.lattice._mark_flow_completed_zdepth_plane(flow_id_item)
-                    
-                    logger.debug_energy(f"🎯 Projected flow {flow_id_item} to {surface_type} plane: "
-                                      f"original_distance={original_distance:.3f}, steps={flow.steps_taken}")
+            # Векторизованно определяем ближайшую поверхность (в НОРМАЛИЗОВАННОМ Z)
+            proj_z = projection_positions[:, 2]
+            dist_z0 = (proj_z - self.lattice.norm_z0).abs()
+            dist_zd = (proj_z - self.lattice.norm_zdepth).abs()
+            to_z0_mask = dist_z0 <= dist_zd
+            to_zd_mask = ~to_z0_mask
+            
+            # Формируем проецированные позиции
+            projected_positions = projection_positions.clone()
+            projected_positions[to_z0_mask, 2] = self.lattice.norm_z0
+            projected_positions[to_zd_mask, 2] = self.lattice.norm_zdepth
+            
+            # Обновляем состояния потоков батчем
+            self.lattice.batch_update_flows(
+                projection_flow_ids,
+                projected_positions,
+                projection_energies,
+                projection_hidden,
+            )
+            
+            # Помечаем завершенными батчем
+            if to_z0_mask.any():
+                self.lattice.mark_flows_completed_z0_batch(projection_flow_ids[to_z0_mask])
+            if to_zd_mask.any():
+                self.lattice.mark_flows_completed_zdepth_batch(projection_flow_ids[to_zd_mask])
             
             # Убираем проецированные потоки из активных
             active_mask = active_mask & ~projection_mask
@@ -830,19 +858,20 @@ class FlowProcessor(nn.Module):
             out_pos = carrier_output.next_position[is_terminated]
             out_energy = carrier_output.energy_value[is_terminated]
             out_hidden = new_hidden_bt[is_terminated]
-            # Mark completed depending on Z
+            # Mark completed depending on normalized Z
             z_vals = out_pos[:, 2]
-            to_z0_mask = z_vals <= 0
-            to_zd_mask = z_vals >= self.config.lattice_depth
-            if to_z0_mask.any():
-                for fid in out_ids[to_z0_mask].detach().cpu().tolist():
-                    self.lattice._mark_flow_completed_z0_plane(fid)
-            if to_zd_mask.any():
-                for fid in out_ids[to_zd_mask].detach().cpu().tolist():
-                    self.lattice._mark_flow_completed_zdepth_plane(fid)
-            # Update flow state before completion (optional)
-            # Note: batch_update_flows will skip non-existing ids
+            to_z0_mask = (z_vals - self.lattice.norm_z0).abs() <= (z_vals - self.lattice.norm_zdepth).abs()
+            to_zd_mask = ~to_z0_mask
+            # Проецируем Z к плоскостям для консистентности
+            out_pos[to_z0_mask, 2] = self.lattice.norm_z0
+            out_pos[to_zd_mask, 2] = self.lattice.norm_zdepth
+            # Обновляем состояния потоков сразу
             self.lattice.batch_update_flows(out_ids, out_pos, out_energy, out_hidden)
+            # Отмечаем завершенными батчем
+            if to_z0_mask.any():
+                self.lattice.mark_flows_completed_z0_batch(out_ids[to_z0_mask])
+            if to_zd_mask.any():
+                self.lattice.mark_flows_completed_zdepth_batch(out_ids[to_zd_mask])
         
         # Reflection
         if reflection_mask.any() and self.config.boundary_reflection_enabled:

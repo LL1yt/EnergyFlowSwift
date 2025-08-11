@@ -777,6 +777,22 @@ class EnergyLattice(nn.Module):
         
         logger.debug(f"Flow {flow_id} marked completed on Z={self.depth} plane")
 
+    def mark_flows_completed_z0_batch(self, flow_ids: torch.Tensor):
+        """Батчевое помечение потоков завершенными на плоскости Z=0 (нормализованной)."""
+        if flow_ids is None or flow_ids.numel() == 0:
+            return
+        ids = flow_ids.detach().cpu().tolist()
+        for fid in ids:
+            self._mark_flow_completed_z0_plane(fid)
+
+    def mark_flows_completed_zdepth_batch(self, flow_ids: torch.Tensor):
+        """Батчевое помечение потоков завершенными на плоскости Z=depth (нормализованной)."""
+        if flow_ids is None or flow_ids.numel() == 0:
+            return
+        ids = flow_ids.detach().cpu().tolist()
+        for fid in ids:
+            self._mark_flow_completed_zdepth_plane(fid)
+
     # УДАЛЕНО: _buffer_flow_to_z0_plane() и _buffer_flow_to_zdepth_plane()
     # Заменены на _mark_flow_completed_*_plane() в новой архитектуре прямой работы с потоками
     
