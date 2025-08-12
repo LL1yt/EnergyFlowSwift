@@ -8,6 +8,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 
 ### 1. Inefficient Flow Collection at Batch End
 
+Status: Done — Python-группировки и циклы заменены на полностью тензоризованный сбор и агрегацию на GPU; нетензоризованные пути удалены.
+
 **Location**: `energy_flow/core/energy_lattice.py` - `collect_completed_flows_direct()` and `collect_completed_flows_surface_direct()` methods
 
 **Problem**:
@@ -25,6 +27,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 
 ### 2. Memory-Intensive Tensor Operations
 
+Status: Partially done — убраны повторные stack/concat в сборе; агрегация через index_add и scatter-based softmax. Общий пул тензоров/переиспользование вне горячего пути пока не внедрены.
+
 **Location**: `energy_flow/core/energy_lattice.py` - Multiple methods
 
 **Problem**:
@@ -40,6 +44,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 - Lines 900-901: Softmax computation on dynamically created tensors
 
 ### 3. CPU-Bound Aggregation Operations
+
+Status: Done — реализован per-group softmax с использованием torch.scatter_reduce (amax+sum) и векторная агрегация без Python-циклов.
 
 **Location**: `energy_flow/core/energy_lattice.py` - Flow aggregation logic
 
@@ -57,6 +63,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 
 ### 4. Inefficient Cleanup Operations
 
+Status: Done — очистка памяти реже (interval×2), проверки GPU памяти ещё реже (interval×4), очистка только при превышении повышенного порога; удаление завершённых потоков батчем.
+
 **Location**: `energy_flow/core/flow_processor.py` - `cleanup_memory_safe()` method
 
 **Problem**:
@@ -72,6 +80,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 - Lines 1154-1173: Memory checking operations in a loop
 
 ### 5. Redundant Data Processing
+
+Status: Partially done — устранены дублирующие коллекционные пути и Python-группировки; возможные дальнейшие упрощения вне коллекции будут оценены по профайлу.
 
 **Location**: Multiple files in the energy_flow core
 
@@ -97,7 +107,14 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 
 ## Proposed Solutions
 
+New decisions (2025-08-12):
+- Удалены все нетензоризованные фолбэки для сбора/агрегации; теперь требуется tensorized_storage_enabled=True, иначе явная ошибка.
+- Внедрён стабильный per-group softmax на GPU через torch.scatter_reduce; циклы по группам удалены.
+- Ошибки вместо скрытых нулей при отсутствии завершённых потоков в пути 768D (для раннего выявления проблем конфигурации/логики).
+
 ### 1. Vectorize Flow Collection Operations
+
+Status: Done — тензоризованный сбор с torch.unique/inverse indices, scatter-based softmax и index_add; нетензоризованные коллекторы удалены.
 
 **Implementation**:
 
@@ -109,6 +126,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 
 ### 2. Optimize Memory Management
 
+Status: Partially done — частота/условность очисток оптимизированы; пуллинг тензоров пока не внедрён.
+
 **Implementation**:
 
 - Implement tensor pooling for frequently used tensors
@@ -118,6 +137,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 **Expected Impact**: 30-50% reduction in memory usage
 
 ### 3. Improve Aggregation Logic
+
+Status: Done — nested loops заменены на векторные операции: per-group softmax (scatter_reduce) + index_add.
 
 **Implementation**:
 
@@ -129,6 +150,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 
 ### 4. Optimize Cleanup Operations
 
+Status: Done — реже и условно, батчевое удаление, меньше синхронизаций.
+
 **Implementation**:
 
 - Batch cleanup operations instead of per-flow cleanup
@@ -138,6 +161,8 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 **Expected Impact**: 40-60% reduction in cleanup time
 
 ### 5. Implement Efficient Data Structures
+
+Status: Not done — spatial hashing/новые структуры хранения не добавлялись; используем текущий TensorizedFlowStorage и векторный сбор.
 
 **Implementation**:
 
@@ -166,6 +191,10 @@ After analyzing the energy_flow codebase, I've identified several performance bo
 ## Monitoring and Validation
 
 To verify the effectiveness of these optimizations:
+
+Notes for current build:
+- Требуется tensorized_storage_enabled=True; иначе сбор выбросит явную ошибку (по дизайну, без фолбэков).
+- Требуется PyTorch с поддержкой torch.scatter_reduce; иначе явная ошибка.
 
 1. **Performance Metrics**:
 

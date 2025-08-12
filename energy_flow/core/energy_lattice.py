@@ -115,6 +115,9 @@ class EnergyLattice(nn.Module):
         # ОПТИМИЗАЦИЯ: Предкешируем нормализованные Z плоскости для избежания повторных вычислений
         self._precompute_normalized_z_planes()
         
+        # Scratch buffers for allocation reuse in hot paths
+        self._scratch: Dict[str, torch.Tensor] = {}
+        
         logger.info(f"EnergyLattice initialized: {self.width}x{self.height}x{self.depth}")
         logger.info(f"Input/output cells: {self.width * self.height}, max flows: {self.max_active_flows}")
     
@@ -835,248 +838,103 @@ class EnergyLattice(nn.Module):
     
     def collect_completed_flows_direct(self, mapper, expected_batch_size: Optional[int] = None) -> Tuple[torch.Tensor, List[int]]:
         """
-        Собирает энергию завершенных потоков, агрегирует по surface и восстанавливает 768D
-        через обратный маппер (mapper.output_collector.reconstruction).
-        
-        Args:
-            mapper: EnergyFlowMapper instance (содержит output_collector)
-            expected_batch_size: если известен ожидаемый размер батча, использовать его при отсутствии завершенных потоков
-        
-        Returns:
-            output_embeddings: [batch, 768] - восстановленные эмбеддинги
-            flow_ids: ID завершенных потоков
+        Собирает энергию завершенных потоков, агрегирует по surface и восстанавливает 768D.
+        Требует tensorized_storage_enabled. Без фолбэков.
         """
-        # Находим все завершенные потоки
-        completed_flows = [
-            flow for flow in self.active_flows.values()
-            if not flow.is_active and flow.projected_surface != "unknown"
-        ]
-        
-        if not completed_flows:
-            # Нет завершенных потоков — вернем нули корректной размерности
-            batch_size = expected_batch_size or 1
-            zero = torch.zeros(batch_size, self.config.output_embedding_dim_to_teacher, device=self.device)
-            logger.debug("No completed flows found for direct 768D collection")
-            return zero, []
-        
-        # Определяем размер батча из потоков
-        batch_indices = {flow.batch_idx for flow in completed_flows}
-        batch_size = max(batch_indices) + 1 if batch_indices else (expected_batch_size or 1)
-        surface_dim = self.width * self.height
-        
-        # Подготовим поверхность [batch, surface_dim]
-        output_surface = torch.zeros(batch_size, surface_dim, device=self.device)
-        flow_ids: List[int] = []
-        
-        # Группируем по нормализованным XY и агрегируем энергии (как в surface_direct)
-        grouped_flows = {}
-        for flow in completed_flows:
-            key = self.get_normalized_buffer_key(flow.position)
-            grouped_flows.setdefault(key, []).append(flow)
-        
-        for (norm_x, norm_y), flows in grouped_flows.items():
-            # Получаем surface_idx из предвычисленного mapping
-            surface_idx = self.normalized_to_surface_idx.get((norm_x, norm_y))
-            if surface_idx is None:
-                logger.warning(f"No surface mapping for normalized coords ({norm_x:.6f}, {norm_y:.6f})")
-                continue
-            
-            # Копим ID
-            flow_ids.extend([f.id for f in flows])
-            
-            if len(flows) == 1:
-                f = flows[0]
-                energy_val = f.energy.squeeze()
-                b = f.batch_idx
-                if 0 <= b < batch_size:
-                    output_surface[b, surface_idx] = energy_val if energy_val.numel() == 1 else energy_val[0]
-            else:
-                energies_tensor = torch.stack([f.energy for f in flows])
-                energy_magnitudes = torch.norm(energies_tensor, dim=-1)
-                distances_to_surface = torch.tensor([f.distance_to_surface for f in flows], device=self.device)
-                steps_taken = torch.tensor([f.steps_taken for f in flows], device=self.device, dtype=torch.float32)
-                proximity = 1.0 / (1.0 + distances_to_surface)
-                steps_factor = 1.0 + steps_taken * 0.1
-                weights = torch.softmax(energy_magnitudes * proximity * steps_factor, dim=0)
-                aggregated_energy = (energies_tensor * weights.unsqueeze(-1)).sum(dim=0)
-                b = flows[0].batch_idx
-                if 0 <= b < batch_size:
-                    output_surface[b, surface_idx] = aggregated_energy.squeeze() if aggregated_energy.numel() == 1 else aggregated_energy[0]
-        
-        # Восстановление 768D через mapper.output_collector
+        if self.tensor_storage is None:
+            raise RuntimeError("Tensorized storage is required for 768D collection (tensorized_storage_enabled=True)")
+        output_surface, flow_ids = self.collect_completed_flows_surface_direct_tensorized()
+        if output_surface.numel() == 0 or output_surface.shape[0] == 0:
+            # Явная ошибка вместо скрытого нуля — пусть тренер обработает это явно
+            raise RuntimeError("No completed flows available for reconstruction at collection time")
         embeddings_768 = mapper.output_collector.reconstruction(output_surface)
-        
-        summary = summarize_step({'flows': len(flow_ids), 'cells': len(grouped_flows)}, prefix='COLLECT-768D')
+        summary = summarize_step({'flows': len(flow_ids), 'cells': output_surface.shape[1]}, prefix='COLLECT-768D')
         logger.info(summary)
         return embeddings_768, flow_ids
-    
+
     def collect_completed_flows_surface_direct(self) -> Tuple[torch.Tensor, List[int]]:
         """
-        НОВАЯ АРХИТЕКТУРА: Собирает surface embeddings напрямую из завершенных потоков
-        
-        Returns:
-            output_surface_embeddings: [batch, surface_dim] - surface embeddings
-            completed_flows: ID завершенных потоков
+        Собирает surface embeddings напрямую из TensorizedFlowStorage.
+        Требует включенного tensorized_storage_enabled. Без фолбэков.
         """
-        # Находим все завершенные потоки
-        completed_flows = [
-            flow for flow in self.active_flows.values() 
-            if not flow.is_active and flow.projected_surface != "unknown"
-        ]
-        
-        if not completed_flows:
-            logger.debug("No completed flows found for surface collection")
-            # Возвращаем нулевые surface embeddings с сохранением градиентов
-            surface_dim = self.width * self.height
-            reference_tensor = None
-            for flow in self.active_flows.values():
-                if flow.energy.requires_grad:
-                    reference_tensor = flow.energy
-                    break
-            if reference_tensor is not None:
-                zero_tensor = torch.zeros(1, surface_dim, device=self.device, dtype=reference_tensor.dtype, requires_grad=True)
-                return zero_tensor * 0.0, []
-            else:
-                return torch.zeros(1, surface_dim, device=self.device), []
-        
-        # Определяем размер батча
-        batch_indices = {flow.batch_idx for flow in completed_flows}
-        batch_size = max(batch_indices) + 1 if batch_indices else 1
-        
-        # Создаем surface tensor с градиентной связью
-        surface_dim = self.width * self.height
-        reference_energy = completed_flows[0].energy
-        if reference_energy.requires_grad:
-            output_surface = torch.zeros(batch_size, surface_dim, device=self.device, dtype=reference_energy.dtype)
-            # Создаем градиентную связь
-            all_energies = torch.stack([flow.energy for flow in completed_flows])
-            energy_sum = all_energies.sum()
-            output_surface = output_surface + energy_sum * 0.0
-        else:
-            output_surface = torch.zeros(batch_size, surface_dim, device=self.device)
-        
-        flow_ids = []
-        
-        logger.debug(f"Direct surface collection: {len(completed_flows)} completed flows, batch_size={batch_size}")
-        
-        # Группируем потоки по нормализованным координатам
-        grouped_flows = {}
-        for flow in completed_flows:
-            key = self.get_normalized_buffer_key(flow.position)
-            if key not in grouped_flows:
-                grouped_flows[key] = []
-            grouped_flows[key].append(flow)
-        
-        # Итерируем по группам потоков
-        for (norm_x, norm_y), flows in grouped_flows.items():
-            # Получаем surface_idx из предвычисленного mapping
-            surface_idx = self.normalized_to_surface_idx.get((norm_x, norm_y))
-            if surface_idx is None:
-                logger.warning(f"No surface mapping for normalized coords ({norm_x:.6f}, {norm_y:.6f})")
-                continue
-            
-            # Собираем ID всех потоков в этой клетке
-            cell_flow_ids = [flow.id for flow in flows]
-            flow_ids.extend(cell_flow_ids)
-            
-            if len(flows) == 1:
-                # Один поток - просто берем его энергию
-                flow = flows[0]
-                aggregated_energy = flow.energy
-                batch_idx = flow.batch_idx
-                logger.debug(f"Cell ({norm_x:.3f},{norm_y:.3f})->[idx={surface_idx}]: single_flow(id={flow.id}, batch={batch_idx})")
-            else:
-                # ВЕКТОРИЗОВАННАЯ агрегация для surface collection
-                energies_tensor = torch.stack([flow.energy for flow in flows])
-                batch_indices_cell = [flow.batch_idx for flow in flows]
-                
-                # Векторизованное вычисление весов через тензорные операции
-                energy_magnitudes = torch.norm(energies_tensor, dim=-1)  # [num_flows]
-                distances_to_surface = torch.tensor([flow.distance_to_surface for flow in flows],
-                                                   device=self.device)
-                steps_taken = torch.tensor([flow.steps_taken for flow in flows],
-                                          device=self.device, dtype=torch.float32)
-                
-                # Векторизованные факторы
-                proximity_factors = 1.0 / (1.0 + distances_to_surface)
-                steps_factors = 1.0 + steps_taken * 0.1
-                
-                # Комбинированные веса с softmax нормализацией
-                weights = energy_magnitudes * proximity_factors * steps_factors
-                weights = torch.softmax(weights, dim=0)
-                
-                # Взвешенное усреднение энергий
-                aggregated_energy = (energies_tensor * weights.unsqueeze(-1)).sum(dim=0)
-                
-                # Для множественных потоков берем batch_idx первого потока
-                batch_idx = batch_indices_cell[0]
-                
-                avg_age = sum(flow.age for flow in flows) / len(flows)
-                logger.debug(f"Cell ({norm_x:.3f},{norm_y:.3f})->[idx={surface_idx}]: weighted_avg({len(flows)}_flows, ids={cell_flow_ids}, avg_age={avg_age:.1f}, batch={batch_idx})")
-            
-            # Размещаем агрегированную энергию в surface tensor
-            if 0 <= batch_idx < batch_size:
-                if aggregated_energy.numel() == 1:
-                    output_surface[batch_idx, surface_idx] = aggregated_energy.squeeze()
-                else:
-                    output_surface[batch_idx, surface_idx] = aggregated_energy[0]
-            else:
-                logger.warning(f"Invalid batch_idx: {batch_idx} (expected 0 <= batch_idx < {batch_size})")
-        
-        summary = summarize_step({'flows': len(flow_ids), 'cells': len(grouped_flows)}, prefix='SURFACE')
-        logger.info(summary)
-        return output_surface, flow_ids
-    
-    def collect_completed_flows_surface_direct_tensorized(self) -> Tuple[torch.Tensor, List[int]]:
-        """Tensorized fast path: собирает surface embeddings напрямую из TensorizedFlowStorage"""
         if self.tensor_storage is None:
-            return self.collect_completed_flows_surface_direct()
+            raise RuntimeError("Tensorized storage is required for surface collection (tensorized_storage_enabled=True)")
+        return self.collect_completed_flows_surface_direct_tensorized()
+    
+    def _get_scratch(self, name: str, shape: Tuple[int, ...], dtype: torch.dtype, device: torch.device, fill: Optional[float] = None) -> torch.Tensor:
+        """Возвращает предварительно выделенный тензор нужной формы, при необходимости перевыделяет."""
+        t = self._scratch.get(name)
+        need_alloc = (t is None) or (t.dtype != dtype) or (t.device != device) or (tuple(t.shape) != tuple(shape))
+        if need_alloc:
+            t = torch.empty(*shape, device=device, dtype=dtype)
+            self._scratch[name] = t
+        if fill is not None:
+            t.fill_(fill)
+        return t
+
+    def collect_completed_flows_surface_direct_tensorized(self) -> Tuple[torch.Tensor, List[int]]:
+        """Полностью векторизованный сбор surface embeddings напрямую из TensorizedFlowStorage (без Python-циклов) с переиспользованием буферов."""
+        if self.tensor_storage is None:
+            raise RuntimeError("Tensorized storage is required for tensorized surface collection")
         storage = self.tensor_storage
         device = self.device
+        surface_dim = self.width * self.height
+        
         # Маска завершенных
         completed_mask = storage.is_completed & (storage.projected_surface != 0)
         completed_indices = torch.where(completed_mask)[0]
         if completed_indices.numel() == 0:
-            surface_dim = self.width * self.height
-            return torch.zeros(1, surface_dim, device=device), []
+            # Reuse a scratch zero if available
+            out = self._get_scratch('output_surface_empty', (1, surface_dim), torch.float32, device, fill=0.0)
+            return out, []
+        
         # Данные завершенных
-        pos = storage.positions[completed_indices]        # [N,3] нормализованные
-        energy = storage.energies[completed_indices].view(-1)  # [N]
-        batch_idx = storage.batch_indices[completed_indices]   # [N]
+        pos = storage.positions[completed_indices]            # [N,3] нормализованные
+        energy = storage.energies[completed_indices].view(-1) # [N]
+        batch_idx = storage.batch_indices[completed_indices]  # [N]
         steps_taken = storage.steps_taken[completed_indices].to(device).float()
-        # Расстояние до ближайшей поверхности в нормализованном пространстве
+        
+        # Расстояние до ближайшей поверхности (нормализованное пространство)
         z = pos[:, 2]
-        dist_z0 = (z - self.norm_z0).abs()
-        dist_zd = (z - self.norm_zdepth).abs()
-        dist = torch.minimum(dist_z0, dist_zd)  # [N]
-        # Квантование X/Y в индексы
+        dist = torch.minimum((z - self.norm_z0).abs(), (z - self.norm_zdepth).abs())  # [N]
+        
+        # Квантование X/Y в индексы поверхности
         idx_x = (((pos[:, 0] + 1) * 0.5) * (self.width - 1)).round().clamp(0, self.width - 1).long()
         idx_y = (((pos[:, 1] + 1) * 0.5) * (self.height - 1)).round().clamp(0, self.height - 1).long()
         surface_idx = idx_y * self.width + idx_x  # [N]
-        # Группировка по (batch, surface)
-        surface_dim = self.width * self.height
-        key = batch_idx.long() * surface_dim + surface_idx
+        
+        # Ключ группировки: (batch, surface)
+        key = batch_idx.long() * surface_dim + surface_idx  # [N]
         uniq, inv = torch.unique(key, return_inverse=True)
         num_groups = uniq.shape[0]
-        batch_size = (batch_idx.max().item() + 1) if batch_idx.numel() > 0 else 1
-        output_surface = torch.zeros(max(batch_size, 1), surface_dim, device=device)
-        # Веса: |energy| * 1/(1+dist) * (1 + steps*0.1)
-        energy_mag = energy.abs()
-        weights = energy_mag * (1.0 / (1.0 + dist)) * (1.0 + steps_taken * 0.1)
-        # Нормируем веса в группе и агрегируем
-        for g in range(num_groups):
-            mask = (inv == g)
-            if mask.any():
-                w = weights[mask]
-                w_norm = torch.softmax(w, dim=0)
-                e = energy[mask]
-                agg = (w_norm * e).sum()
-                # Восстановим batch, surface из ключа
-                k_val = uniq[g]
-                b = (k_val // surface_dim).item()
-                s = (k_val % surface_dim).item()
-                output_surface[b, s] = agg
-        # Соберем flow_ids
+        
+        # Batch size (sync point, acceptable)
+        batch_size = int(batch_idx.max().item()) + 1 if batch_idx.numel() > 0 else 1
+        
+        # Веса для softmax внутри группы
+        weights_raw = energy.abs() * (1.0 / (1.0 + dist)) * (1.0 + steps_taken * 0.1)  # [N]
+        
+        # Стабильный per-group softmax с помощью scatter_reduce
+        if not hasattr(torch, 'scatter_reduce'):
+            raise RuntimeError("Required torch.scatter_reduce is not available in this Torch version")
+        
+        # group_max for numerical stability (allocate/reuse and fill with -inf)
+        group_max = self._get_scratch('group_max', (num_groups,), weights_raw.dtype, device, fill=float('-inf'))
+        group_max = torch.scatter_reduce(group_max, 0, inv, weights_raw, reduce='amax', include_self=True)  # returns tensor
+        exps = torch.exp(weights_raw - group_max[inv])
+        # group sums (allocate/reuse and zero-fill)
+        denom = self._get_scratch('denom', (num_groups,), exps.dtype, device, fill=0.0)
+        denom = torch.scatter_reduce(denom, 0, inv, exps, reduce='sum', include_self=True)
+        weights = exps / (denom[inv] + 1e-12)
+        
+        # Взвешенная агрегация энергий по ключу (batch,surface) с переиспользованием буфера
+        weighted_energy = weights * energy  # [N]
+        output_flat = self._get_scratch('output_flat', (batch_size * surface_dim,), weighted_energy.dtype, device)
+        output_flat.zero_()
+        output_flat.index_add_(0, key, weighted_energy)
+        output_surface = output_flat.view(batch_size, surface_dim)
+        
+        # Собираем flow_ids
         flow_ids = [storage.index_to_id[idx.item()] for idx in completed_indices if idx.item() in storage.index_to_id]
         return output_surface, flow_ids
 

@@ -1133,45 +1133,42 @@ class FlowProcessor(nn.Module):
         Безопасная очистка памяти без удаления активных данных
         
         Очищает только завершенные потоки и GPU кэш при необходимости.
+        Оптимизировано: реже, батчево, условно.
         """
         self.step_counter += 1
         
-        # Проверяем интервал очистки
-        if self.step_counter % self.memory_cleanup_interval != 0:
+        # Менее частая очистка
+        if self.step_counter % (self.memory_cleanup_interval * 2) != 0:
             return
         
-        # 1. Удаляем только завершенные потоки
-        completed_ids = [fid for fid, flow in self.lattice.active_flows.items() 
-                        if not flow.is_active]
-        
+        # 1. Батч-удаление завершенных потоков
+        completed_ids = [fid for fid, flow in self.lattice.active_flows.items() if not flow.is_active]
         if completed_ids:
+            # Используем pop с default, чтобы избежать KeyError при гонках
             for fid in completed_ids:
-                del self.lattice.active_flows[fid]
+                self.lattice.active_flows.pop(fid, None)
             logger.debug(f"🧹 Cleaned {len(completed_ids)} completed flows")
         
-        # 2. Очищаем GPU кэш только при высоком использовании
+        # 2. Условные операции с памятью GPU реже и при более высоком пороге
         if self.device.type == 'cuda':
-            mem_allocated = torch.cuda.memory_allocated() / 1e9  # GB
-            mem_reserved = torch.cuda.memory_reserved() / 1e9    # GB
-            
-            if mem_allocated > self.memory_threshold_gb:
-                # Очищаем кэш GPU
-                torch.cuda.empty_cache()
-                # Сброс пиковых метрик памяти для корректной телеметрии
-                try:
-                    torch.cuda.reset_peak_memory_stats()
-                except Exception as e:
-                    logger.debug(f"reset_peak_memory_stats not available or failed: {e}")
+            # Проверяем память не на каждом вызове, а еще реже
+            if self.step_counter % (self.memory_cleanup_interval * 4) == 0:
+                mem_allocated = torch.cuda.memory_allocated() / 1e9  # GB
+                mem_reserved = torch.cuda.memory_reserved() / 1e9    # GB
                 
-                # Повторно замеряем память
-                mem_allocated_after = torch.cuda.memory_allocated() / 1e9
-                mem_freed = mem_allocated - mem_allocated_after
-                
-                logger.info(f"🧹 GPU memory cleanup: {mem_allocated:.2f}GB → {mem_allocated_after:.2f}GB "
-                          f"(freed {mem_freed:.2f}GB, reserved: {mem_reserved:.2f}GB)")
-            else:
-                logger.debug(f"💾 Memory check: allocated={mem_allocated:.2f}GB < threshold={self.memory_threshold_gb}GB (no cleanup needed)")
-    
+                if mem_allocated > self.memory_threshold_gb * 1.5:
+                    torch.cuda.empty_cache()
+                    try:
+                        torch.cuda.reset_peak_memory_stats()
+                    except Exception:
+                        pass
+                    mem_allocated_after = torch.cuda.memory_allocated() / 1e9
+                    mem_freed = mem_allocated - mem_allocated_after
+                    if mem_freed > 0.1:
+                        logger.info(f"🧹 GPU memory cleanup: freed {mem_freed:.2f}GB (alloc {mem_allocated:.2f}→{mem_allocated_after:.2f}GB, reserved {mem_reserved:.2f}GB)")
+                else:
+                    logger.debug(f"💾 Memory OK: allocated={mem_allocated:.2f}GB < threshold={self.memory_threshold_gb*1.5:.2f}GB")
+        
     def _check_convergence(self, step: int, initial_flows_count: int) -> bool:
         """
         Улучшенная проверка конвергенции со скользящим окном
