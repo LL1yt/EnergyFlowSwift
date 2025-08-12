@@ -507,12 +507,14 @@ class FlowProcessor(nn.Module):
             self.perf_stats['gpu_memory_usage'].append(memory_info['gpu_allocated_gb'])
     
     def _sanitize_tensor(self, t: torch.Tensor, clip_value: float = 10.0, clamp_only: bool = False) -> torch.Tensor:
-        """Заменяет NaN/Inf и ограничивает экстремальные значения для стабильности RNN."""
+        """Заменяет NaN/Inf и ограничивает экстремальные значения для стабильности RNN.
+        ВАЖНО: без in-place операций на тензорах, участвующих в autograd.
+        """
         if t is None:
             return t
         t = torch.nan_to_num(t, nan=0.0, posinf=clip_value, neginf=-clip_value)
         if not clamp_only:
-            return t.clamp_(-clip_value, clip_value)
+            return torch.clamp(t, -clip_value, clip_value)
         return t
 
     def _get_scratch(self, name: str, shape: Tuple[int, ...], dtype: torch.dtype, device: torch.device, fill: Optional[float] = None) -> torch.Tensor:
@@ -899,7 +901,8 @@ class FlowProcessor(nn.Module):
         # Output reached processing
         if is_terminated.any():
             out_ids = flow_ids[is_terminated]
-            out_pos = carrier_output.next_position[is_terminated]
+            # Клонируем позиции перед модификацией, чтобы избежать in-place на графовом тензоре
+            out_pos = carrier_output.next_position[is_terminated].clone()
             out_energy = carrier_output.energy_value[is_terminated]
             out_hidden = new_hidden_bt[is_terminated]
             # Mark completed depending on normalized Z
