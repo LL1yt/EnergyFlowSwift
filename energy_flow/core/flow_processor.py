@@ -67,6 +67,9 @@ class FlowProcessor(nn.Module):
         self.carrier = self.carrier.to(self.device)
         # Mapper уже инициализируется на правильном устройстве
         
+        # Scratch buffers for hot-path temporaries to reduce allocations
+        self._scratch: Dict[str, torch.Tensor] = {}
+        
         # Статистика производительности
         self.perf_stats = {
             'step_times': [],
@@ -512,6 +515,18 @@ class FlowProcessor(nn.Module):
             return t.clamp_(-clip_value, clip_value)
         return t
 
+    def _get_scratch(self, name: str, shape: Tuple[int, ...], dtype: torch.dtype, device: torch.device, fill: Optional[float] = None) -> torch.Tensor:
+        """Return a reusable tensor buffer with the requested spec.
+        Reallocates only if shape/dtype/device differ. Optionally fills with a scalar.
+        """
+        t = self._scratch.get(name)
+        if t is None or t.dtype != dtype or t.device != device or tuple(t.shape) != tuple(shape):
+            t = torch.empty(*shape, device=device, dtype=dtype)
+            self._scratch[name] = t
+        if fill is not None:
+            t.fill_(fill)
+        return t
+
     def _process_flow_batch(self, flows, global_training_step: Optional[int] = None):
         """Обрабатывает батч потоков с векторизованными операциями"""
         batch_size = len(flows)
@@ -818,14 +833,18 @@ class FlowProcessor(nn.Module):
         termination_reasons = carrier_output.termination_reason
         
         # Reflection mask by raw positions if provided; fallback to reasons list
-        reflection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        reflection_mask = self._get_scratch('reflection_mask_t', (batch_size,), torch.bool, device, fill=0)
         raw_next = getattr(carrier_output, 'raw_next_position', None)
         if raw_next is not None:
-            reflection_mask = (raw_next[:, 0] < -1.0) | (raw_next[:, 0] > 1.0) | (raw_next[:, 1] < -1.0) | (raw_next[:, 1] > 1.0)
+            cond = (raw_next[:, 0] < -1.0) | (raw_next[:, 0] > 1.0) | (raw_next[:, 1] < -1.0) | (raw_next[:, 1] > 1.0)
+            reflection_mask.copy_(cond)
         else:
-            for i, reason in enumerate(termination_reasons):
-                if reason == "xy_reflection_needed":
-                    reflection_mask[i] = True
+            # Fallback to reasons list
+            if reflection_mask.numel() > 0:
+                reflection_mask.zero_()
+                for i, reason in enumerate(termination_reasons):
+                    if reason == "xy_reflection_needed":
+                        reflection_mask[i] = True
         
         active_mask = ~is_terminated
         
@@ -857,6 +876,25 @@ class FlowProcessor(nn.Module):
                 for fid in zd_ids:
                     self.lattice._mark_flow_completed_zdepth_plane(fid)
             active_mask = active_mask & (~projection_mask)
+        
+        # Optional displacement filtering (tensorized path)
+        if self.config.enable_displacement_filtering:
+            # disp = next - current (reuse buffers)
+            disp_t = self._get_scratch('disp_t', (batch_size, 3), positions.dtype, device)
+            disp_t.copy_(carrier_output.next_position)
+            disp_t.add_(-positions)
+            # length^2 accumulation into 1D buffer, then sqrt
+            disp_sq_t = self._get_scratch('disp_sq_t', (batch_size,), positions.dtype, device, fill=0.0)
+            disp_sq_t.addcmul_(disp_t[:, 0], disp_t[:, 0], value=1.0)
+            disp_sq_t.addcmul_(disp_t[:, 1], disp_t[:, 1], value=1.0)
+            disp_sq_t.addcmul_(disp_t[:, 2], disp_t[:, 2], value=1.0)
+            disp_len_t = self._get_scratch('disp_len_t', (batch_size,), positions.dtype, device)
+            disp_len_t.copy_(disp_sq_t).sqrt_()
+            small_disp_mask_t = self._get_scratch('small_disp_mask_t', (batch_size,), torch.bool, device)
+            small_mask = disp_len_t < self.config.min_displacement_threshold
+            small_disp_mask_t.copy_(small_mask)
+            # Exclude from active updates
+            active_mask = active_mask & (~small_disp_mask_t)
         
         # Output reached processing
         if is_terminated.any():
