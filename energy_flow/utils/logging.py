@@ -1067,6 +1067,131 @@ def gated_log(
     logger._log(lvl, msg, ())
 
 
+def _to_python_scalar(x: Any) -> Any:
+    """Безопасно конвертирует 0-D тензор/скаляр в python-тип без лишних syncов.
+    Вызывает .item() только для 0-D tensor. Иначе возвращает исходное значение.
+    """
+    try:
+        import torch
+        if isinstance(x, torch.Tensor):
+            if x.dim() == 0:
+                return x.detach().cpu().item()
+            # не 0-D — возвращаем краткое представление
+            return x
+    except Exception:
+        pass
+    return x
+
+
+def item_str(x: Any, *, precision: int = 4) -> str:
+    """Форматирует скаляр/0-D тензор. Не дергает .item() для не-скаляров."""
+    v = _to_python_scalar(x)
+    if isinstance(v, float):
+        return f"{v:.{precision}f}"
+    return str(v)
+
+
+def debug_every(
+    logger: logging.Logger,
+    step: Optional[int],
+    key: str,
+    msg_factory: Any,
+    *,
+    level: str | int = 'DEBUG',
+    first_n_steps: int = 3,
+    every: Optional[int] = None,
+) -> None:
+    """Шорткат: логируем лениво и редко (по умолчанию первые 3 шага и дальше по глобальному every)."""
+    gated_log(
+        logger,
+        level,
+        step,
+        key,
+        msg_factory,
+        first_n_steps=first_n_steps,
+        every=every,
+    )
+
+
+def info_every(
+    logger: logging.Logger,
+    step: Optional[int],
+    key: str,
+    msg_factory: Any,
+    *,
+    first_n_steps: int = 1,
+    every: Optional[int] = None,
+) -> None:
+    """Шорткат для INFO с редкой частотой."""
+    gated_log(
+        logger,
+        'INFO',
+        step,
+        key,
+        msg_factory,
+        first_n_steps=first_n_steps,
+        every=every,
+    )
+
+
+def gated_scalar(
+    logger: logging.Logger,
+    name: str,
+    value: Any,
+    *,
+    step: Optional[int] = None,
+    key: Optional[str] = None,
+    level: str | int = 'DEBUG',
+    precision: int = 4,
+    first_n_steps: int = 3,
+    every: Optional[int] = None,
+) -> None:
+    """Логирует скаляр (в т.ч. 0-D tensor) лениво и с частотным гейтом.
+    Пример:
+        gated_scalar(logger, 'loss', loss_tensor, step=step, key='train/loss', level='DEBUG_TRAINING')
+    """
+    k = key or name
+    def _factory():
+        return f"{name}={item_str(value, precision=precision)}"
+    gated_log(
+        logger,
+        level,
+        step,
+        k,
+        _factory,
+        first_n_steps=first_n_steps,
+        every=every,
+    )
+
+
+def gated_metrics(
+    logger: logging.Logger,
+    metrics: Dict[str, Any],
+    *,
+    step: Optional[int] = None,
+    key: str = 'metrics',
+    level: str | int = 'DEBUG',
+    precision: int = 4,
+    first_n_steps: int = 3,
+    every: Optional[int] = None,
+) -> None:
+    """Логирует набор метрик, применяя safe .item() только если реально логируем."""
+    def _factory():
+        parts = []
+        for k, v in metrics.items():
+            parts.append(f"{k}={item_str(v, precision=precision)}")
+        return ', '.join(parts)
+    gated_log(
+        logger,
+        level,
+        step,
+        key,
+        _factory,
+        first_n_steps=first_n_steps,
+        every=every,
+    )
+
+
 def summarize_step(step_metrics: Dict[str, Any], *, step: Optional[int] = None, prefix: str = "SUMM") -> str:
     """Формирует компактный свод по шагу: ключевые метрики одной строкой.
     Возвращает строку, которую можно передать в logger.info.

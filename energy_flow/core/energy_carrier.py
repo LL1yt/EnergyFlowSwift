@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
-from ..utils.logging import get_logger, gated_log, summarize_step, format_first_n
+from ..utils.logging import get_logger, gated_log, summarize_step, format_first_n, item_str
 from ..config import create_debug_config, set_energy_config
 
 logger = get_logger(__name__)
@@ -203,7 +203,7 @@ class EnergyCarrier(nn.Module):
                 msg_or_factory=lambda: (
                     f"🔄 EnergyCarrier forward: batch={batch_size}, global_step={global_training_step}"
                     + (
-                        (lambda cz: f"; Z(min={cz.min():.3f}, max={cz.max():.3f}, mean={cz.mean():.3f})")(
+                        (lambda cz: f"; Z(min={item_str(cz.min())}, max={item_str(cz.max())}, mean={item_str(cz.mean())})")(
                             current_position[:, 2]
                         ) if current_position is not None else ""
                     )
@@ -239,10 +239,50 @@ class EnergyCarrier(nn.Module):
                 if hidden_state is not None:
                     hidden_state = hidden_state.clamp(-clip_v, clip_v)
         
-        gru_output, new_hidden = self.gru(combined_input, hidden_state)
-        
+        # Доп. лог экстремумов входов, если включено (до вызова GRU)
+        try:
+            if getattr(self.config, 'log_extreme_values', False):
+                gated_log(
+                    logger,
+                    'DEBUG_FORWARD',
+                    step=global_training_step or 0,
+                    key='gru_input_hidden_range',
+                    msg_or_factory=lambda: (
+                        f"GRU input range: ["
+                        f"{item_str(combined_input.min())}, {item_str(combined_input.max())}]"
+                        + (
+                            f" | GRU hidden range: [{item_str(hidden_state.min())}, {item_str(hidden_state.max())}]"
+                            if hidden_state is not None else ""
+                        )
+                    ),
+                    first_n_steps=3,
+                    every=0,
+                )
+        except Exception:
+            pass
+
+        # Вызов GRU (опционально в FP32 и/или с отключенным cuDNN)
+        if getattr(self.config, 'gru_force_fp32', True):
+            prev_cudnn_enabled = None
+            try:
+                if not getattr(self.config, 'enable_cudnn_rnn', True):
+                    import torch.backends.cudnn as cudnn
+                    prev_cudnn_enabled = cudnn.enabled
+                    cudnn.enabled = False
+                with torch.cuda.amp.autocast(enabled=False):
+                    gru_output, new_hidden = self.gru(
+                        combined_input.float(),
+                        hidden_state.float() if hidden_state is not None else None,
+                    )
+            finally:
+                if prev_cudnn_enabled is not None:
+                    import torch.backends.cudnn as cudnn
+                    cudnn.enabled = prev_cudnn_enabled
+        else:
+            gru_output, new_hidden = self.gru(combined_input, hidden_state)
+
+        # Санитизация выходов и дополнительный лог
         if getattr(self.config, 'enable_gru_nan_protection', True):
-            # Санитизация выходов
             gru_output = torch.nan_to_num(
                 gru_output, nan=0.0,
                 posinf=self.config.gru_output_clip_value,
@@ -257,8 +297,33 @@ class EnergyCarrier(nn.Module):
             if clip_o > 0:
                 gru_output = gru_output.clamp(-clip_o, clip_o)
                 new_hidden = new_hidden.clamp(-clip_o, clip_o)
-        
+
+        try:
+            if getattr(self.config, 'log_extreme_values', False):
+                gated_log(
+                    logger,
+                    'DEBUG_FORWARD',
+                    step=global_training_step or 0,
+                    key='gru_output_hidden_range',
+                    msg_or_factory=lambda: (
+                        f"GRU output range: ["
+                        f"{item_str(gru_output.min())}, {item_str(gru_output.max())}]"
+                        f" | hidden range: [{item_str(new_hidden.min())}, {item_str(new_hidden.max())}]"
+                    ),
+                    first_n_steps=3,
+                    every=0,
+                )
+        except Exception:
+            pass
+
         gru_output = gru_output.squeeze(1)  # [batch, hidden_size]
+        
+        # Валидация выходов GRU на первых шагах обучения
+        try:
+            if global_training_step is not None and global_training_step <= 5:
+                self.validate_forward_outputs(gru_output, new_hidden)
+        except Exception:
+            pass
         
         # Интеграция истории позиций для лучшего предсказания траекторий
         if position_history is not None and position_history.shape[1] > 0:
@@ -294,8 +359,8 @@ class EnergyCarrier(nn.Module):
                 step=global_training_step,
                 key='gru_output_stats',
                 msg_or_factory=lambda: (
-                    f"🧠 GRU output stats: min={gru_output.min():.3f}, max={gru_output.max():.3f}, "
-                    f"mean={gru_output.mean():.3f}, std={gru_output.std():.3f}"
+                    f"🧠 GRU output stats: min={item_str(gru_output.min())}, max={item_str(gru_output.max())}, "
+                    f"mean={item_str(gru_output.mean())}, std={item_str(gru_output.std())}"
                 ),
                 first_n_steps=3,
                 every=0,
@@ -330,7 +395,10 @@ class EnergyCarrier(nn.Module):
                 step=global_training_step,
                 key='raw_displacement_stats',
                 msg_or_factory=lambda: (
-                    lambda d: f"🔥 RAW displacement ΔZ: min={d.min():.3f}, max={d.max():.3f}, mean={d.mean():.3f}, std={d.std():.3f}"
+                    lambda d: (
+                        f"🔥 RAW displacement ΔZ: min={item_str(d.min())}, max={item_str(d.max())}, "
+                        f"mean={item_str(d.mean())}, std={item_str(d.std())}"
+                    )
                 )(displacement_raw[:, 2]),
                 first_n_steps=3,
                 every=0,
@@ -364,7 +432,8 @@ class EnergyCarrier(nn.Module):
             step=global_training_step or 0,
             key='scaled_displacement_stats',
             msg_or_factory=lambda: (
-                f"📊 Scaled displacement ΔZ: min={norm_delta_z.min():.3f}, max={norm_delta_z.max():.3f}, mean={norm_delta_z.mean():.3f}"
+                f"📊 Scaled displacement ΔZ: min={item_str(norm_delta_z.min())}, "
+                f"max={item_str(norm_delta_z.max())}, mean={item_str(norm_delta_z.mean())}"
             ),
             first_n_steps=3,
             every=0,
@@ -380,8 +449,9 @@ class EnergyCarrier(nn.Module):
                 step=global_training_step,
                 key='real_world_disp_z',
                 msg_or_factory=lambda: (
-                    f"🔍 Real Z displacement: min={real_displacement_z.min():.3f}, max={real_displacement_z.max():.3f}, "
-                    f"mean={real_displacement_z.mean():.3f} (depth={depth})"
+                    f"🔍 Real Z displacement: min={item_str(real_displacement_z.min())}, "
+                    f"max={item_str(real_displacement_z.max())}, "
+                    f"mean={item_str(real_displacement_z.mean())} (depth={depth})"
                 ),
                 first_n_steps=3,
                 every=0,
@@ -407,16 +477,16 @@ class EnergyCarrier(nn.Module):
                 current_real = nm.denormalize_coordinates(safe_curr)[:, 2]
                 next_real = nm.denormalize_coordinates(safe_next)[:, 2]
                 def _z_analysis_msg():
-                    positive_z_count = (z_delta < 0).sum().item()
-                    negative_z_count = (z_delta > 0).sum().item()
-                    neutral_count = (z_delta == 0).sum().item()
+                    positive_z_count = item_str((z_delta < 0).sum())
+                    negative_z_count = item_str((z_delta > 0).sum())
+                    neutral_count = item_str((z_delta == 0).sum())
                     return (
                         "🎯 Z-POSITION ANALYSIS: "
-                        f"curr_norm=[{z_current.min():.3f},{z_current.max():.3f}] mean={z_current.mean():.3f}; "
-                        f"curr_real=[{current_real.min():.1f},{current_real.max():.1f}] mean={current_real.mean():.1f} (depth={depth}); "
-                        f"delta=[{z_delta.min():.3f},{z_delta.max():.3f}] mean={z_delta.mean():.3f}; "
-                        f"next_norm=[{z_next.min():.3f},{z_next.max():.3f}] mean={z_next.mean():.3f}; "
-                        f"next_real=[{next_real.min():.1f},{next_real.max():.1f}] mean={next_real.mean():.1f}; "
+                        f"curr_norm=[{item_str(z_current.min())},{item_str(z_current.max())}] mean={item_str(z_current.mean())}; "
+                        f"curr_real=[{item_str(current_real.min())},{item_str(current_real.max())}] mean={item_str(current_real.mean())} (depth={depth}); "
+                        f"delta=[{item_str(z_delta.min())},{item_str(z_delta.max())}] mean={item_str(z_delta.mean())}; "
+                        f"next_norm=[{item_str(z_next.min())},{item_str(z_next.max())}] mean={item_str(z_next.mean())}; "
+                        f"next_real=[{item_str(next_real.min())},{item_str(next_real.max())}] mean={item_str(next_real.mean())}; "
                         f"dirs: +={negative_z_count}, -={positive_z_count}, 0={neutral_count} (both directions valid)"
                     )
                 gated_log(
@@ -444,7 +514,15 @@ class EnergyCarrier(nn.Module):
             # Применяем шум с немедленным clamp для гарантии границ
             raw_next_position = raw_next_position + noise
             next_position = torch.clamp(next_position + noise, -1.0, 1.0)
-            logger.debug(f"🎲 Added normalized exploration noise: std={self.config.exploration_noise}")
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step or 0,
+                key='exploration_noise_applied',
+                msg_or_factory=lambda: f"🎲 Added normalized exploration noise: std={self.config.exploration_noise}",
+                first_n_steps=3,
+                every=0,
+            )
 
         # После применения шума повторно логируем Z-анализ, чтобы значения curr/next соответствовали следующему шагу
         if current_position is not None and global_training_step is not None and global_training_step <= 3:
@@ -459,16 +537,16 @@ class EnergyCarrier(nn.Module):
             current_real = nm.denormalize_coordinates(safe_curr)[:, 2]
             next_real = nm.denormalize_coordinates(safe_next)[:, 2]
             def _z_analysis_post_noise():
-                positive_z_count = (z_delta < 0).sum().item()
-                negative_z_count = (z_delta > 0).sum().item()
-                neutral_count = (z_delta == 0).sum().item()
+                positive_z_count = item_str((z_delta < 0).sum())
+                negative_z_count = item_str((z_delta > 0).sum())
+                neutral_count = item_str((z_delta == 0).sum())
                 return (
                     "🎯 Z-POSITION ANALYSIS (post-noise): "
-                    f"curr_norm=[{z_current.min():.3f},{z_current.max():.3f}] mean={z_current.mean():.3f}; "
-                    f"curr_real=[{current_real.min():.1f},{current_real.max():.1f}] mean={current_real.mean():.1f} (depth={depth}); "
-                    f"delta=[{z_delta.min():.3f},{z_delta.max():.3f}] mean={z_delta.mean():.3f}; "
-                    f"next_norm=[{z_next.min():.3f},{z_next.max():.3f}] mean={z_next.mean():.3f}; "
-                    f"next_real=[{next_real.min():.1f},{next_real.max():.1f}] mean={next_real.mean():.1f}; "
+                    f"curr_norm=[{item_str(z_current.min())},{item_str(z_current.max())}] mean={item_str(z_current.mean())}; "
+                    f"curr_real=[{item_str(current_real.min())},{item_str(current_real.max())}] mean={item_str(current_real.mean())} (depth={depth}); "
+                    f"delta=[{item_str(z_delta.min())},{item_str(z_delta.max())}] mean={item_str(z_delta.mean())}; "
+                    f"next_norm=[{item_str(z_next.min())},{item_str(z_next.max())}] mean={item_str(z_next.mean())}; "
+                    f"next_real=[{item_str(next_real.min())},{item_str(next_real.max())}] mean={item_str(next_real.mean())}; "
                     f"dirs: +={negative_z_count}, -={positive_z_count}, 0={neutral_count} (both directions valid)"
                 )
             gated_log(
@@ -485,14 +563,14 @@ class EnergyCarrier(nn.Module):
         next_position, is_terminated, termination_reasons = self._compute_next_position_relative(next_position, global_training_step, raw_next_position=raw_next_position)
         
         # ДИАГНОСТИКА: компактная сводка завершений (gated)
-        terminated_count = is_terminated.sum().item()
         def _term_summary():
+            term_cnt = int(is_terminated.sum().item())
             reason_counts = {}
             for reason in termination_reasons:
                 reason_counts[reason] = reason_counts.get(reason, 0) + 1
             return summarize_step({
-                'terminated': terminated_count,
-                'active': batch_size - terminated_count,
+                'terminated': term_cnt,
+                'active': batch_size - term_cnt,
                 **{f"r:{k}": v for k, v in reason_counts.items()}
             }, prefix='TERM')
         gated_log(
@@ -583,20 +661,39 @@ class EnergyCarrier(nn.Module):
         
         # ДИАГНОСТИКА Z: логируем количество завершенных потоков
         if reached_output_plane.any():
-            num_z0 = reached_z0_plane.sum().item()
-            num_zdepth = reached_zdepth_plane.sum().item()
-            logger.debug_forward(f"🔍 Z TERMINATION: z0_plane={num_z0}, zdepth_plane={num_zdepth}, total={reached_output_plane.sum().item()}")
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step or 0,
+                key='z_termination_counts',
+                msg_or_factory=lambda: (
+                    f"🔍 Z TERMINATION: z0_plane={item_str(reached_z0_plane.sum())}, "
+                    f"zdepth_plane={item_str(reached_zdepth_plane.sum())}, "
+                    f"total={item_str(reached_output_plane.sum())}"
+                ),
+                first_n_steps=3,
+                every=0,
+            )
         
         # ПРОБЛЕМА НАЙДЕНА: проверка границ должна быть в нормализованном пространстве [-1, 1]
         # НЕ в raw координатах решетки!
         
         # ДИАГНОСТИКА: логируем диапазоны координат
-        if batch_size <= 10000:  # Избегаем логирования для больших батчей
-            x_min, x_max = next_position[:, 0].min().item(), next_position[:, 0].max().item()
-            y_min, y_max = next_position[:, 1].min().item(), next_position[:, 1].max().item()
-            z_min, z_max = next_position[:, 2].min().item(), next_position[:, 2].max().item()
-            logger.debug_forward(f"🔍 BOUNDS CHECK: positions range X[{x_min:.3f}, {x_max:.3f}], "
-                               f"Y[{y_min:.3f}, {y_max:.3f}], Z[{z_min:.3f}, {z_max:.3f}]")
+        if batch_size < 10000:  # Избегаем логирования для больших батчей
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step or 0,
+                key='bounds_check_ranges',
+                msg_or_factory=lambda: (
+                    f"🔍 BOUNDS CHECK: positions range "
+                    f"X[{item_str(next_position[:, 0].min())}, {item_str(next_position[:, 0].max())}], "
+                    f"Y[{item_str(next_position[:, 1].min())}, {item_str(next_position[:, 1].max())}], "
+                    f"Z[{item_str(next_position[:, 2].min())}, {item_str(next_position[:, 2].max())}]"
+                ),
+                first_n_steps=3,
+                every=0,
+            )
         
         # Проверяем выход за границы X/Y по СЫРЫМ координатам до clamp, если они предоставлены
         pos_for_bounds = raw_next_position if raw_next_position is not None else next_position
@@ -606,12 +703,22 @@ class EnergyCarrier(nn.Module):
         
         # ДИАГНОСТИКА: логируем количество потоков, требующих отражения (по "сырым" координатам до clamp)
         if out_of_bounds_xy.any():
-            num_x_left = (pos_for_bounds[:, 0] < -1.0).sum().item()
-            num_x_right = (pos_for_bounds[:, 0] > 1.0).sum().item()
-            num_y_left = (pos_for_bounds[:, 1] < -1.0).sum().item()
-            num_y_right = (pos_for_bounds[:, 1] > 1.0).sum().item()
-            logger.debug_forward(f"🔍 OUT OF BOUNDS: X_left={num_x_left}, X_right={num_x_right}, "
-                               f"Y_left={num_y_left}, Y_right={num_y_right}, total={out_of_bounds_xy.sum().item()}")
+            gated_log(
+                logger,
+                'DEBUG_FORWARD',
+                step=global_training_step or 0,
+                key='out_of_bounds_counts',
+                msg_or_factory=lambda: (
+                    f"🔍 OUT OF BOUNDS: "
+                    f"X_left={item_str((pos_for_bounds[:, 0] < -1.0).sum())}, "
+                    f"X_right={item_str((pos_for_bounds[:, 0] > 1.0).sum())}, "
+                    f"Y_left={item_str((pos_for_bounds[:, 1] < -1.0).sum())}, "
+                    f"Y_right={item_str((pos_for_bounds[:, 1] > 1.0).sum())}, "
+                    f"total={item_str(out_of_bounds_xy.sum())}"
+                ),
+                first_n_steps=3,
+                every=0,
+            )
         
         # В новой архитектуре X/Y границы НЕ завершают поток (отражение)
         # Завершение только при достижении выходных плоскостей по Z

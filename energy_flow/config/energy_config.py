@@ -137,6 +137,8 @@ class EnergyConfig:
     gru_output_clip_value: float = 10.0
     enable_gru_nan_protection: bool = True
     gru_initialization_method: str = "orthogonal"  # или "xavier"
+    enable_cudnn_rnn: bool = True                 # Разрешить CuDNN для GRU
+    gru_force_fp32: bool = True                   # Форсировать FP32 для GRU (даже при AMP)
 
     enable_detailed_gradient_monitoring: bool = False
     log_extreme_values: bool = True
@@ -255,7 +257,11 @@ def create_debug_config() -> EnergyConfig:
         movement_based_spawn=True,      # Spawn на основе длины движения
         boundary_reflection_enabled=True, # Отражение границ
         spawn_movement_threshold_ratio=0.15,  # 15% от depth для debug
-        exploration_noise=0.05  # Маленький шум для debug
+        exploration_noise=0.05,  # Маленький шум для debug
+        
+        # Включаем подробный мониторинг градиентов и лог экстремальных значений
+        enable_detailed_gradient_monitoring=True,
+        log_extreme_values=True
     )
 
 
@@ -295,7 +301,11 @@ def create_experiment_config() -> EnergyConfig:
         exploration_noise=0.05,  # Умеренный шум для экспериментов
         # Проекционная архитектура настройки
         enable_displacement_filtering=False,  # Отключить фильтрацию для полной проекции
-        convergence_patience=8  # Увеличенная терпеливость для experiment
+        convergence_patience=8,  # Увеличенная терпеливость для experiment
+        
+        # Включаем подробный мониторинг градиентов и лог экстремальных значений
+        enable_detailed_gradient_monitoring=True,
+        log_extreme_values=True
     )
 
 

@@ -29,7 +29,23 @@ import json
 import os
 import psutil
 
-from ..utils.logging import get_logger, DEBUG_TRAINING, DEBUG_ENERGY, DEBUG_MEMORY, DEBUG_CONVERGENCE, DEBUG_PERFORMANCE, DEBUG_PROFILING, summarize_step, gated_log
+from ..utils.logging import (
+    get_logger,
+    DEBUG_TRAINING,
+    DEBUG_ENERGY,
+    DEBUG_MEMORY,
+    DEBUG_CONVERGENCE,
+    DEBUG_PERFORMANCE,
+    DEBUG_PROFILING,
+    summarize_step,
+    gated_log,
+    debug_every,
+    info_every,
+    gated_scalar,
+    gated_metrics,
+    item_str,
+    format_first_n,
+)
 from ..utils.device_manager import get_device_manager
 from ..utils.checkpoint_utils import generate_checkpoint_path, create_checkpoint_summary
 from ..config import EnergyConfig, get_energy_config, create_debug_config, set_energy_config
@@ -433,7 +449,8 @@ class EnergyTrainer:
                 pass
         self._snapshot_memory('begin', {'acc_step': self.current_accumulation_step + 1})
         if self.current_accumulation_step == 0:
-            self.optimizer.zero_grad()
+            # set_to_none=True освобождает память под градиенты быстрее, снижая пиковое потребление между батчами
+            self.optimizer.zero_grad(set_to_none=True)
             self.accumulation_loss = 0.0
             self.accumulation_metrics = {}
         
@@ -472,9 +489,18 @@ class EnergyTrainer:
             flow_time = time.time() - flow_start_time
             self._snapshot_memory('after_forward', {'flow_time_ms': flow_time * 1000.0})
             
-            # Диагностика: проверяем выход куба
-            logger.log(DEBUG_TRAINING, f"📊 Cube output surface shape: {cube_output_surface.shape}")
-            logger.log(DEBUG_TRAINING, f"📊 Cube output surface stats: mean={cube_output_surface.mean():.4f}, std={cube_output_surface.std():.4f}")
+            # Диагностика: редкое логирование формы и статистик выхода куба
+            debug_every(
+                logger,
+                step=self.global_step,
+                key="cube/output",
+                msg_factory=lambda: (
+                    f"📊 Cube surface: shape={tuple(cube_output_surface.shape)}, "
+                    f"mean={item_str(cube_output_surface.mean())}, std={item_str(cube_output_surface.std())}"
+                ),
+                level=DEBUG_TRAINING,
+                first_n_steps=3,
+            )
             
             # Получаем статистику потоков
             flow_stats = {
@@ -483,10 +509,13 @@ class EnergyTrainer:
                 'flows_reached_output': batch_size
             }
             
-            # 2. Маппим teacher target в surface для сравнения С MIXED PRECISION
-            with torch_module.autocast(**self.autocast_kwargs):
-                target_surface_output = self.flow_processor.mapper.input_mapper.forward(teacher_target_embeddings)
-                target_surface_input = self.flow_processor.mapper.input_mapper.forward(teacher_input_embeddings)
+            # 2. Маппим teacher target в surface для сравнения БЕЗ построения графа
+            # Эти тензоры используются как цели, поэтому вычисляем их под no_grad(),
+            # чтобы не удерживать граф и экономить память между микро-шагами
+            with torch_module.no_grad():
+                with torch_module.autocast(**self.autocast_kwargs):
+                    target_surface_output = self.flow_processor.mapper.input_mapper.forward(teacher_target_embeddings)
+                    target_surface_input = self.flow_processor.mapper.input_mapper.forward(teacher_input_embeddings)
             
             # Быстрые NaN-гварды на surface тензорах
             if not torch_module.isfinite(cube_output_surface).all() or not torch_module.isfinite(target_surface_output).all():
@@ -508,9 +537,18 @@ class EnergyTrainer:
                 }
                 return safe_metrics
             
-            # Диагностика: проверяем формы
-            logger.log(DEBUG_TRAINING, f"📊 Target surface output shape: {target_surface_output.shape}")
-            logger.log(DEBUG_TRAINING, f"📊 Target surface input shape: {target_surface_input.shape}")
+            # Диагностика: редкое логирование форм target surface
+            debug_every(
+                logger,
+                step=self.global_step,
+                key="cube/targets",
+                msg_factory=lambda: (
+                    f"📊 Target surfaces: output_shape={tuple(target_surface_output.shape)}, "
+                    f"input_shape={tuple(target_surface_input.shape)}"
+                ),
+                level=DEBUG_TRAINING,
+                first_n_steps=3,
+            )
             
             # Приводим к правильной форме
             if target_surface_output.dim() == 3:
@@ -614,10 +652,19 @@ class EnergyTrainer:
                 # Replace with zero to avoid breaking accumulation
                 normalized_loss = torch_module.zeros((), device=self.device, dtype=total_loss.dtype)
             
-            # Диагностика перед обратным распространением
-            logger.log(DEBUG_TRAINING, f"📊 Losses: energy={energy_loss:.4f}, text={text_loss:.4f}, "
-                                      f"total={total_loss:.4f}, normalized={normalized_loss:.4f}")
-            logger.log(DEBUG_TRAINING, f"📊 Total loss requires_grad: {total_loss.requires_grad}")
+            # Диагностика перед обратным распространением (редко и лениво)
+            debug_every(
+                logger,
+                step=self.global_step,
+                key="losses/detail",
+                msg_factory=lambda: (
+                    f"📊 Losses: energy={item_str(energy_loss)}, text={item_str(text_loss)}, "
+                    f"total={item_str(total_loss)}, normalized={item_str(normalized_loss)}; "
+                    f"requires_grad={bool(getattr(total_loss, 'requires_grad', False))}"
+                ),
+                level=DEBUG_TRAINING,
+                first_n_steps=5,
+            )
             
             # 8. Обратное распространение с normalized loss И GRADIENT SCALING
             self._snapshot_memory('pre_backward')
@@ -672,28 +719,43 @@ class EnergyTrainer:
                 self.accumulation_metrics['forward_reward'] += forward_reward.item()
                 self.accumulation_metrics['batch_size'] += batch_size
             
-            # Диагностика градиентов
-            total_params = 0
-            grad_norms = []
-            bad_grads = False
-            for param_group in self.optimizer.param_groups:
-                for param in param_group['params']:
-                    if param.grad is not None:
-                        total_params += 1
-                        # Compute norm safely
-                        g = param.grad
-                        if torch_module.isfinite(g).all():
-                            grad_norm = g.norm().item()
-                            grad_norms.append(grad_norm)
-                        else:
-                            bad_grads = True
-            
-            if grad_norms:
-                avg_grad_norm = sum(grad_norms) / len(grad_norms)
-                max_grad_norm = max(grad_norms)
-                logger.log(DEBUG_TRAINING, f"📊 Gradients: {total_params} params, avg_norm={avg_grad_norm:.6f}, max_norm={max_grad_norm:.6f}")
-            if bad_grads:
-                logger.warning("⚠️ Detected NaN/Inf in gradients. This micro-step will be skipped.")
+            # Диагностика градиентов — вычисляем редко, чтобы избежать overhead
+            grad_diag_needed = (
+                logger.isEnabledFor(DEBUG_TRAINING)
+                and (
+                    self.current_accumulation_step + 1 >= self.config.gradient_accumulation_steps
+                    or (self.global_step % max(1, self.config.log_interval * 2) == 0)
+                )
+            )
+            if grad_diag_needed:
+                total_params = 0
+                grad_norms = []
+                bad_grads = False
+                for param_group in self.optimizer.param_groups:
+                    for param in param_group['params']:
+                        if param.grad is not None:
+                            total_params += 1
+                            g = param.grad
+                            if torch_module.isfinite(g).all():
+                                try:
+                                    grad_norms.append(g.norm().item())
+                                except Exception:
+                                    pass
+                            else:
+                                bad_grads = True
+                if grad_norms:
+                    avg_grad_norm = sum(grad_norms) / len(grad_norms)
+                    max_grad_norm = max(grad_norms)
+                    debug_every(
+                        logger,
+                        step=self.global_step,
+                        key="grads/stats",
+                        msg_factory=lambda: f"📊 Gradients: {total_params} params, avg_norm={avg_grad_norm:.6f}, max_norm={max_grad_norm:.6f}",
+                        level=DEBUG_TRAINING,
+                        first_n_steps=3,
+                    )
+                if bad_grads:
+                    logger.warning("⚠️ Detected NaN/Inf in gradients. This micro-step will be skipped.")
                 # Zero any non-finite grads to prevent optimizer corruption
                 for param_group in self.optimizer.param_groups:
                     for param in param_group['params']:
@@ -880,7 +942,10 @@ class EnergyTrainer:
                     DEBUG_TRAINING,
                     step=self.current_accumulation_step,
                     key='train_accumulating',
-                    msg_or_factory=lambda: f"🔄 Accumulating {self.current_accumulation_step}/{self.config.gradient_accumulation_steps}: total_loss={total_loss.item():.4f}, forward_reward={forward_reward.item():.4f}",
+                    msg_or_factory=lambda: (
+                        f"🔄 Accumulating {self.current_accumulation_step}/{self.config.gradient_accumulation_steps}: "
+                        f"total_loss={item_str(total_loss)}, forward_reward={item_str(forward_reward)}"
+                    ),
                     first_n_steps=2,
                     every=0,
                 )

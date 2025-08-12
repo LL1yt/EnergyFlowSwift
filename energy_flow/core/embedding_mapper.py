@@ -17,7 +17,7 @@ from typing import Tuple, Dict, Optional, List
 import numpy as np
 
 from ..config.energy_config import get_energy_config
-from ..utils.logging import get_logger, DEBUG_ENERGY
+from ..utils.logging import get_logger, DEBUG_ENERGY, gated_log, item_str
 
 logger = get_logger(__name__)
 
@@ -101,17 +101,21 @@ class EnergyEmbeddingMapper(nn.Module):
         # Добавляем позиционное кодирование для лучшего распределения
         surface_energy = surface_energy + self.positional_encoding.unsqueeze(0)
         
-        # Логирование статистики
-        if logger.isEnabledFor(DEBUG_ENERGY):
-            energy_stats = {
-                'mean': float(normalized.mean()),
-                'std': float(normalized.std()),
-                'min': float(normalized.min()),
-                'max': float(normalized.max()),
-                'scale': float(self.energy_scale),
-                'bias': float(self.energy_bias)
-            }
-            logger.log(DEBUG_ENERGY, f"Energy projection stats: {energy_stats}")
+        # Логирование статистики (лениво и гейтированно)
+        gated_log(
+            logger,
+            DEBUG_ENERGY,
+            step=0,
+            key='energy_projection_stats',
+            msg_or_factory=lambda: (
+                f"Energy projection stats: "
+                f"mean={item_str(normalized.mean())}, std={item_str(normalized.std())}, "
+                f"min={item_str(normalized.min())}, max={item_str(normalized.max())}, "
+                f"scale={item_str(self.energy_scale.squeeze())}, bias={item_str(self.energy_bias.squeeze())}"
+            ),
+            first_n_steps=3,
+            every=0,
+        )
         
         return surface_energy
     
@@ -218,9 +222,19 @@ class EnergyOutputCollector(nn.Module):
         # Заполняем энергией из потоков
         for (x, y), energy in surface_energy.items():
             if 0 <= x < self.width and 0 <= y < self.height:
-                # DEBUG: проверяем устройства
-                if logger.isEnabledFor(DEBUG_ENERGY):
-                    logger.log(DEBUG_ENERGY, f"Devices - energy: {energy.device}, position_weights: {self.position_weights.device}, surface: {surface.device}")
+                # DEBUG: проверяем устройства (редко)
+                gated_log(
+                    logger,
+                    DEBUG_ENERGY,
+                    step=0,
+                    key='devices_check',
+                    msg_or_factory=lambda: (
+                        f"Devices - energy: {energy.device}, "
+                        f"position_weights: {self.position_weights.device}, surface: {surface.device}"
+                    ),
+                    first_n_steps=1,
+                    every=0,
+                )
                 
                 # energy уже должна быть на правильном устройстве (default CUDA)
                 
@@ -232,10 +246,19 @@ class EnergyOutputCollector(nn.Module):
         flattened = surface.view(batch_size, -1)  # [batch, surface_dim]
         embeddings = self.reconstruction(flattened)  # [batch, 768]
         
-        # Логирование
-        if logger.isEnabledFor(DEBUG_ENERGY):
-            coverage = len(surface_energy) / self.surface_dim * 100
-            logger.log(DEBUG_ENERGY, f"Output collection: {len(surface_energy)} cells ({coverage:.1f}% coverage)")
+        # Логирование (ленивое)
+        gated_log(
+            logger,
+            DEBUG_ENERGY,
+            step=0,
+            key='output_collection_coverage',
+            msg_or_factory=lambda: (
+                f"Output collection: {len(surface_energy)} cells ("
+                f"{(len(surface_energy) / self.surface_dim * 100):.1f}% coverage)"
+            ),
+            first_n_steps=3,
+            every=0,
+        )
         
         return embeddings
 

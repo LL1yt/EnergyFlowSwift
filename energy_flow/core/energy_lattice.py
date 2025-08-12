@@ -12,7 +12,7 @@ from typing import List, Dict, Optional, Tuple, NamedTuple
 from dataclasses import dataclass, field
 import numpy as np
 
-from ..utils.logging import get_logger, log_memory_state, gated_log, summarize_step, format_first_n
+from ..utils.logging import get_logger, log_memory_state, gated_log, summarize_step, format_first_n, item_str, debug_every
 from ..config import get_energy_config, create_debug_config, set_energy_config
 from ..utils.device_manager import get_device_manager
 from .tensorized_storage import TensorizedFlowStorage
@@ -145,9 +145,21 @@ class EnergyLattice(nn.Module):
         self.normalized_lattice_grid = normalized_coords
         
         logger.debug(f"Precomputed normalized lattice grid: {normalized_coords.shape}")
-        logger.debug(f"Normalized coordinate ranges: X[{normalized_coords[..., 0].min():.3f}, {normalized_coords[..., 0].max():.3f}], "
-                    f"Y[{normalized_coords[..., 1].min():.3f}, {normalized_coords[..., 1].max():.3f}], "
-                    f"Z[{normalized_coords[..., 2].min():.3f}, {normalized_coords[..., 2].max():.3f}]")
+        # Ленивое и редкое логирование диапазонов координат
+        gated_log(
+            logger,
+            'DEBUG_INIT',
+            step=0,
+            key='norm_grid_ranges',
+            msg_or_factory=lambda: (
+                f"Normalized coordinate ranges: "
+                f"X[{item_str(normalized_coords[..., 0].min())}, {item_str(normalized_coords[..., 0].max())}], "
+                f"Y[{item_str(normalized_coords[..., 1].min())}, {item_str(normalized_coords[..., 1].max())}], "
+                f"Z[{item_str(normalized_coords[..., 2].min())}, {item_str(normalized_coords[..., 2].max())}]"
+            ),
+            first_n_steps=1,
+            every=0,
+        )
     
     def _precompute_normalized_to_surface_mapping(self):
         """Предвычисляет mapping: (norm_x, norm_y) -> surface_idx для избежания денормализации."""
@@ -333,11 +345,21 @@ class EnergyLattice(nn.Module):
             test_zdepth_raw = torch.tensor([0, 0, self.depth], dtype=torch.float32, device=self.device)
             test_zdepth_norm = self.config.normalization_manager.normalize_coordinates(test_zdepth_raw.unsqueeze(0))[0]
             
-            logger.debug_convergence(f"🔍 NORMALIZATION DEBUG:")
-            logger.debug_convergence(f"  Raw start center Z={start_z} → normalized Z={test_norm[2]:.6f}")
-            logger.debug_convergence(f"  Raw output Z=0 → normalized Z={test_z0_norm[2]:.6f}")  
-            logger.debug_convergence(f"  Raw output Z={self.depth} → normalized Z={test_zdepth_norm[2]:.6f}")
-            logger.debug_convergence(f"  Z normalization range: {self.config.normalization_manager.ranges.z_range}")
+            gated_log(
+                logger,
+                'DEBUG_CONVERGENCE',
+                step=0,
+                key='norm_debug',
+                msg_or_factory=lambda: (
+                    "🔍 NORMALIZATION DEBUG:\n" +
+                    f"  Raw start center Z={start_z} → normalized Z={item_str(test_norm[2])}\n" +
+                    f"  Raw output Z=0 → normalized Z={item_str(test_z0_norm[2])}\n" +
+                    f"  Raw output Z={self.depth} → normalized Z={item_str(test_zdepth_norm[2])}\n" +
+                    f"  Z normalization range: {self.config.normalization_manager.ranges.z_range}"
+                ),
+                first_n_steps=1,
+                every=0,
+            )
         
         # ОПТИМИЗАЦИЯ: Батчевое создание потоков
         flow_ids = self._batch_create_flows(cell_energies, start_z)
@@ -434,12 +456,12 @@ class EnergyLattice(nn.Module):
             raw_examples = [(positions_xy[i][0], positions_xy[i][1], start_z) for i in range(k)]
             norm_examples = [
                 (
-                    float(normalized_positions[i][0]),
-                    float(normalized_positions[i][1]),
-                    float(normalized_positions[i][2])
+                    item_str(normalized_positions[i][0]),
+                    item_str(normalized_positions[i][1]),
+                    item_str(normalized_positions[i][2])
                 ) for i in range(k)
             ]
-            mags = [float(torch.norm(energies_tensors[i]).item()) for i in range(k)]
+            mags = [item_str(torch.norm(energies_tensors[i])) for i in range(k)]
             return (
                 f"🅫 Created {num_flows} flows (showing {k}): raw={raw_examples}, "
                 f"norm={norm_examples}, |emb|={mags}"
@@ -705,17 +727,21 @@ class EnergyLattice(nn.Module):
                 new_hidden=alive_hidden,
                 increment_age=True
             )
-        
         if updated_count > 0:
             # Компактная сводка и ленивые примеры
-            z_positions = alive_positions[:, 2]
-            z_min, z_max, z_mean = z_positions.min().item(), z_positions.max().item(), z_positions.mean().item()
+            def _upd_msg():
+                z_positions = alive_positions[:, 2]
+                return (
+                    f"🔄 Batch updated {updated_count} flows: "
+                    f"Z range [{item_str(z_positions.min())}, {item_str(z_positions.max())}], "
+                    f"mean={item_str(z_positions.mean())}"
+                )
             gated_log(
                 logger,
                 'DEBUG',
                 step=None,
                 key='lattice_batch_update',
-                msg_or_factory=lambda: f"🔄 Batch updated {updated_count} flows: Z range [{z_min:.3f}, {z_max:.3f}], mean={z_mean:.3f}",
+                msg_or_factory=_upd_msg,
                 first_n_steps=1,
                 every=0,
             )

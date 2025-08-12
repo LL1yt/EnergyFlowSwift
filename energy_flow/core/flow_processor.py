@@ -11,7 +11,7 @@ import torch.nn as nn
 from typing import List, Dict, Optional, Tuple
 import time
 
-from ..utils.logging import get_logger, log_memory_state, gated_log, summarize_step, format_first_n, DEBUG_PERFORMANCE
+from ..utils.logging import get_logger, log_memory_state, gated_log, summarize_step, format_first_n, DEBUG_PERFORMANCE, debug_every, item_str
 from ..config import get_energy_config, create_debug_config, set_energy_config
 from ..utils.device_manager import get_device_manager
 from .simple_neuron import SimpleNeuron, create_simple_neuron
@@ -223,8 +223,8 @@ class FlowProcessor(nn.Module):
                         'total': len(active_flows)
                     }
                     return (
-                        f"📊 Z: min={z_positions.min():.2f}, max={z_positions.max():.2f}, "
-                        f"mean={z_positions.mean():.2f}, std={z_positions.std():.2f}; "
+                        f"📊 Z: min={item_str(z_positions.min())}, max={item_str(z_positions.max())}, "
+                        f"mean={item_str(z_positions.mean())}, std={item_str(z_positions.std())}; "
                         f"bounds: z0={boundary_stats['z_min_boundary']}, "
                         f"zdepth={boundary_stats['z_max_boundary']}, center={boundary_stats['z_center']}, "
                         f"total={boundary_stats['total']}"
@@ -627,14 +627,18 @@ class FlowProcessor(nn.Module):
         output_reached_mask = is_terminated
         
         # Маска потоков, требующих отражения (по raw_next_position до clamp)
-        reflection_mask = torch.zeros(batch_size, dtype=torch.bool, device=device)
         raw_next = getattr(carrier_output, 'raw_next_position', None)
         if raw_next is not None:
-            reflection_mask = (raw_next[:, 0] < -1.0) | (raw_next[:, 0] > 1.0) | (raw_next[:, 1] < -1.0) | (raw_next[:, 1] > 1.0)
+            # Создаем новый масочный тензор без дальнейших in-place модификаций
+            reflection_mask = ((raw_next[:, 0] < -1.0) | (raw_next[:, 0] > 1.0) |
+                               (raw_next[:, 1] < -1.0) | (raw_next[:, 1] > 1.0)).clone()
         else:
-            for i, reason in enumerate(termination_reasons):
-                if reason == "xy_reflection_needed":
-                    reflection_mask[i] = True
+            # Строим маску из причин завершения в виде нового тензора
+            reflection_mask = torch.tensor(
+                [reason == "xy_reflection_needed" for reason in termination_reasons],
+                dtype=torch.bool,
+                device=device,
+            )
         
         # Маска активных потоков
         active_mask = ~is_terminated
@@ -835,18 +839,18 @@ class FlowProcessor(nn.Module):
         termination_reasons = carrier_output.termination_reason
         
         # Reflection mask by raw positions if provided; fallback to reasons list
-        reflection_mask = self._get_scratch('reflection_mask_t', (batch_size,), torch.bool, device, fill=0)
         raw_next = getattr(carrier_output, 'raw_next_position', None)
         if raw_next is not None:
-            cond = (raw_next[:, 0] < -1.0) | (raw_next[:, 0] > 1.0) | (raw_next[:, 1] < -1.0) | (raw_next[:, 1] > 1.0)
-            reflection_mask.copy_(cond)
+            # Создаем новый масочный тензор без использования scratch-буфера и без in-place
+            reflection_mask = ((raw_next[:, 0] < -1.0) | (raw_next[:, 0] > 1.0) |
+                               (raw_next[:, 1] < -1.0) | (raw_next[:, 1] > 1.0)).clone()
         else:
-            # Fallback to reasons list
-            if reflection_mask.numel() > 0:
-                reflection_mask.zero_()
-                for i, reason in enumerate(termination_reasons):
-                    if reason == "xy_reflection_needed":
-                        reflection_mask[i] = True
+            # Строим маску из причин завершения как новый тензор
+            reflection_mask = torch.tensor(
+                [reason == "xy_reflection_needed" for reason in termination_reasons],
+                dtype=torch.bool,
+                device=device,
+            )
         
         active_mask = ~is_terminated
         
