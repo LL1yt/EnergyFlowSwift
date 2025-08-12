@@ -91,7 +91,9 @@ class EnergyLattice(nn.Module):
                 embedding_dim=1,
                 hidden_layers=self.config.carrier_num_layers,
                 hidden_size=self.config.carrier_hidden_size,
-                device=self.device
+                device=self.device,
+                lattice_width=self.width,
+                lattice_height=self.height
             )
         
         # УДАЛЕНО: Буферная система больше не используется в новой архитектуре прямой работы с потоками
@@ -880,11 +882,12 @@ class EnergyLattice(nn.Module):
         device = self.device
         surface_dim = self.width * self.height
         
+        import time
+        t0 = time.perf_counter()
         # Маска завершенных
         completed_mask = storage.is_completed & (storage.projected_surface != 0)
         completed_indices = torch.where(completed_mask)[0]
         if completed_indices.numel() == 0:
-            # Reuse a scratch zero if available
             out = self._get_scratch('output_surface_empty', (1, surface_dim), torch.float32, device, fill=0.0)
             return out, []
         
@@ -898,10 +901,13 @@ class EnergyLattice(nn.Module):
         z = pos[:, 2]
         dist = torch.minimum((z - self.norm_z0).abs(), (z - self.norm_zdepth).abs())  # [N]
         
-        # Квантование X/Y в индексы поверхности
-        idx_x = (((pos[:, 0] + 1) * 0.5) * (self.width - 1)).round().clamp(0, self.width - 1).long()
-        idx_y = (((pos[:, 1] + 1) * 0.5) * (self.height - 1)).round().clamp(0, self.height - 1).long()
-        surface_idx = idx_y * self.width + idx_x  # [N]
+        # Квантование X/Y в индексы поверхности (используем кэш если включен)
+        if getattr(self.config, 'cache_surface_indices_enabled', False):
+            surface_idx = storage.cached_surface_idx[completed_indices]
+        else:
+            idx_x = (((pos[:, 0] + 1) * 0.5) * (self.width - 1)).round().clamp(0, self.width - 1).long()
+            idx_y = (((pos[:, 1] + 1) * 0.5) * (self.height - 1)).round().clamp(0, self.height - 1).long()
+            surface_idx = idx_y * self.width + idx_x  # [N]
         
         # Ключ группировки: (batch, surface)
         key = batch_idx.long() * surface_dim + surface_idx  # [N]
@@ -911,8 +917,16 @@ class EnergyLattice(nn.Module):
         # Batch size (sync point, acceptable)
         batch_size = int(batch_idx.max().item()) + 1 if batch_idx.numel() > 0 else 1
         
-        # Веса для softmax внутри группы
-        weights_raw = energy.abs() * (1.0 / (1.0 + dist)) * (1.0 + steps_taken * 0.1)  # [N]
+        # Веса для softmax внутри группы (mixed precision опционально)
+        use_mp = getattr(self.config, 'collection_use_mixed_precision', False)
+        mp_dtype = getattr(self.config, 'collection_dtype', torch.bfloat16)
+        if use_mp:
+            wr_energy = energy.abs().to(mp_dtype)
+            wr_dist = dist.to(mp_dtype)
+            wr_steps = steps_taken.to(mp_dtype)
+            weights_raw = wr_energy * (1.0 / (1.0 + wr_dist)) * (1.0 + wr_steps * 0.1)
+        else:
+            weights_raw = energy.abs() * (1.0 / (1.0 + dist)) * (1.0 + steps_taken * 0.1)  # [N]
         
         # Стабильный per-group softmax с помощью scatter_reduce
         if not hasattr(torch, 'scatter_reduce'):
@@ -928,7 +942,10 @@ class EnergyLattice(nn.Module):
         weights = exps / (denom[inv] + 1e-12)
         
         # Взвешенная агрегация энергий по ключу (batch,surface) с переиспользованием буфера
-        weighted_energy = weights * energy  # [N]
+        if use_mp:
+            weighted_energy = weights.to(torch.float32) * energy.to(torch.float32)
+        else:
+            weighted_energy = weights * energy  # [N]
         output_flat = self._get_scratch('output_flat', (batch_size * surface_dim,), weighted_energy.dtype, device)
         output_flat.zero_()
         output_flat.index_add_(0, key, weighted_energy)
@@ -936,6 +953,11 @@ class EnergyLattice(nn.Module):
         
         # Собираем flow_ids
         flow_ids = [storage.index_to_id[idx.item()] for idx in completed_indices if idx.item() in storage.index_to_id]
+        t_total = (time.perf_counter() - t0) * 1000.0
+        try:
+            logger.debug(f"SURF-COLLECT tensorized: N={completed_indices.numel()}, groups={num_groups}, batch={batch_size}, time={t_total:.2f}ms")
+        except Exception:
+            pass
         return output_surface, flow_ids
 
     # УДАЛЕНО: collect_buffered_energy() - заменен на collect_completed_flows_direct()

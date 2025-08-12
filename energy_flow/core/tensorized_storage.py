@@ -27,7 +27,8 @@ class TensorizedFlowStorage:
     """
     
     def __init__(self, max_flows: int, embedding_dim: int, hidden_layers: int, 
-                 hidden_size: int, device: torch.device):
+                 hidden_size: int, device: torch.device,
+                 lattice_width: int, lattice_height: int):
         """
         Args:
             max_flows: Максимальное количество потоков
@@ -41,6 +42,8 @@ class TensorizedFlowStorage:
         self.hidden_layers = hidden_layers
         self.hidden_size = hidden_size
         self.device = device
+        self.lattice_width = lattice_width
+        self.lattice_height = lattice_height
         
         # Предаллоцированные тензоры для всех данных потоков
         self.positions = torch.zeros(max_flows, 3, device=device)
@@ -58,6 +61,9 @@ class TensorizedFlowStorage:
         self.is_active = torch.zeros(max_flows, dtype=torch.bool, device=device)
         self.is_completed = torch.zeros(max_flows, dtype=torch.bool, device=device)
         self.projected_surface = torch.zeros(max_flows, dtype=torch.long, device=device)  # 0=unknown, 1=z0, 2=zdepth
+
+        # Кэш квантованных индексов поверхности по XY
+        self.cached_surface_idx = torch.zeros(max_flows, dtype=torch.long, device=device)
         
         # Mapping: flow_id -> tensor_index
         self.id_to_index: Dict[int, int] = {}
@@ -109,7 +115,8 @@ class TensorizedFlowStorage:
         indices_tensor = torch.tensor(indices, device=self.device)
         
         # Заполняем тензоры данными новых потоков (приводим dtype к хранилищу)
-        self.positions[indices_tensor] = initial_positions[:num_flows].to(self.device).to(self.positions.dtype)
+        init_pos = initial_positions[:num_flows].to(self.device).to(self.positions.dtype)
+        self.positions[indices_tensor] = init_pos
         self.energies[indices_tensor] = initial_energies[:num_flows].to(self.device).to(self.energies.dtype)
         if initial_hidden is not None and initial_hidden.shape[0] >= num_flows:
             self.hidden_states[indices_tensor] = initial_hidden[:num_flows].to(self.device).to(self.hidden_states.dtype)
@@ -133,6 +140,15 @@ class TensorizedFlowStorage:
         self.is_active[indices_tensor] = True
         self.is_completed[indices_tensor] = False
         self.projected_surface[indices_tensor] = 0  # unknown
+        
+        # Обновляем кэш индексов поверхности по XY
+        try:
+            x = (((init_pos[:, 0] + 1) * 0.5) * (self.lattice_width - 1)).round().clamp(0, self.lattice_width - 1).long()
+            y = (((init_pos[:, 1] + 1) * 0.5) * (self.lattice_height - 1)).round().clamp(0, self.lattice_height - 1).long()
+            surf = y * self.lattice_width + x
+            self.cached_surface_idx[indices_tensor] = surf
+        except Exception:
+            pass
         
         # Создаем ID и mapping
         flow_ids_result = []
@@ -251,7 +267,16 @@ class TensorizedFlowStorage:
         
         # Обновляем данные
         if new_positions is not None:
-            self.positions[indices_tensor] = new_positions[:len(indices)].to(self.device).to(self.positions.dtype)
+            new_pos = new_positions[:len(indices)].to(self.device).to(self.positions.dtype)
+            self.positions[indices_tensor] = new_pos
+            # Обновляем кэш индексов поверхности по XY
+            try:
+                x = (((new_pos[:, 0] + 1) * 0.5) * (self.lattice_width - 1)).round().clamp(0, self.lattice_width - 1).long()
+                y = (((new_pos[:, 1] + 1) * 0.5) * (self.lattice_height - 1)).round().clamp(0, self.lattice_height - 1).long()
+                surf = y * self.lattice_width + x
+                self.cached_surface_idx[indices_tensor] = surf
+            except Exception:
+                pass
         
         if new_energies is not None:
             self.energies[indices_tensor] = new_energies[:len(indices)].to(self.device).to(self.energies.dtype)

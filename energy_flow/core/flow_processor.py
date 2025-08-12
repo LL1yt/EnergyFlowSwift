@@ -570,6 +570,12 @@ class FlowProcessor(nn.Module):
         results_ms = (time.time() - t_results) * 1000.0
         if logger.isEnabledFor(10):
             logger.log(DEBUG_PERFORMANCE, f"BATCH timings: collect={collect_ms:.1f}ms, neuron={neuron_ms:.1f}ms, carrier={carrier_ms:.1f}ms, results={results_ms:.1f}ms (batch={batch_size})")
+        # Throughput metric (flows per second) for this batch
+        try:
+            fps = (batch_size / ((collect_ms + neuron_ms + carrier_ms + results_ms) / 1000.0)) if (collect_ms + neuron_ms + carrier_ms + results_ms)  0 else 0.0
+            logger.log(DEBUG_PERFORMANCE, f"Throughput[step_batch]: {fps:.1f} flows/s (batch={batch_size})")
+        except Exception:
+            pass
     
     def _process_results_vectorized(self, flows, flow_ids, current_positions, carrier_output, new_hidden):
         """Векторизованная обработка результатов carrier_output с поддержкой относительных координат"""

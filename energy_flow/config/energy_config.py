@@ -125,6 +125,11 @@ class EnergyConfig:
     
     # Тензорное хранилище потоков
     tensorized_storage_enabled: bool = True  # Включить TensorizedFlowStorage для активных потоков
+
+    # Сбор/агрегация (оптимизация)
+    collection_use_mixed_precision: bool = True
+    collection_dtype: torch.dtype = torch.bfloat16
+    cache_surface_indices_enabled: bool = True  # Кэшировать quantized surface_idx в TensorizedFlowStorage
     
     def __post_init__(self):
         """Валидация и вычисление производных параметров"""

@@ -10,9 +10,9 @@ class MetricsConfig:
     """
 
     # Master switches
-    enable_metrics: bool = False
-    enable_profiler: bool = False
-    enable_gpu_monitoring: bool = False
+    enable_metrics: bool = True
+    enable_profiler: bool = True
+    enable_gpu_monitoring: bool = True
 
     # Lightweight metrics
     collect_timing: bool = True
