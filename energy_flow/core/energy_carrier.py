@@ -131,10 +131,28 @@ class EnergyCarrier(nn.Module):
         
     
     def _init_weights(self):
-        """Инициализация весов с smart initialization для движения вперед"""
-        # GRU уже имеет хорошую инициализацию по умолчанию
+        """Инициализация весов с устойчивостью для GRU и проекций"""
+        # Инициализация GRU согласно конфигу для лучшей численной стабильности
+        init_method = getattr(self.config, 'gru_initialization_method', 'orthogonal')
+        for name, param in self.gru.named_parameters():
+            if 'weight_ih' in name:
+                if init_method == 'xavier':
+                    nn.init.xavier_uniform_(param)
+                else:
+                    nn.init.xavier_uniform_(param)  # input→hidden обычно Xavier
+            elif 'weight_hh' in name:
+                # hidden→hidden — ортогональная для RNN-стабильности
+                nn.init.orthogonal_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+                # Для GRU положительно инициализируем часть bias_hh (reset/update)
+                try:
+                    seg = param.data.size(0) // 3
+                    param.data[seg:2*seg].fill_(1.0)
+                except Exception:
+                    pass
         
-        # Инициализируем projection heads (spawn компоненты удалены)
+        # Инициализируем projection heads
         for module in [self.energy_projection, self.displacement_projection]:
             if isinstance(module, nn.Sequential):
                 for layer in module:
@@ -147,10 +165,7 @@ class EnergyCarrier(nn.Module):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
         
-        # Для новой архитектуры относительных координат:
-        # - Нет smart initialization (смещения центрированы на 0)
-        # - Нет bias для движения вперед (модель учится сама)
-        logger.debug_init("🏗️ Relative coordinates architecture: no smart initialization, model learns naturally")
+        logger.debug_init("🏗️ Weights initialized: GRU[orthogonal hh, xavier ih], heads[xavier]")
     
     def forward(self, 
                 neuron_output: torch.Tensor,
@@ -201,8 +216,48 @@ class EnergyCarrier(nn.Module):
         combined_input = torch.cat([neuron_output, embedding_part], dim=-1)
         combined_input = combined_input.unsqueeze(1)  # [batch, 1, input_dim] для GRU
         
-        # Проход через GRU
+        # Проход через GRU с санитизацией входов/выходов
+        if getattr(self.config, 'enable_gru_nan_protection', True):
+            # Санитизация входов
+            combined_input = torch.nan_to_num(
+                combined_input,
+                nan=0.0,
+                posinf=self.config.gru_input_clip_value,
+                neginf=-self.config.gru_input_clip_value,
+            )
+            if hidden_state is not None:
+                hidden_state = torch.nan_to_num(
+                    hidden_state,
+                    nan=0.0,
+                    posinf=self.config.gru_input_clip_value,
+                    neginf=-self.config.gru_input_clip_value,
+                )
+            # Клип по модулю
+            clip_v = float(getattr(self.config, 'gru_input_clip_value', 10.0))
+            if clip_v > 0:
+                combined_input = combined_input.clamp(-clip_v, clip_v)
+                if hidden_state is not None:
+                    hidden_state = hidden_state.clamp(-clip_v, clip_v)
+        
         gru_output, new_hidden = self.gru(combined_input, hidden_state)
+        
+        if getattr(self.config, 'enable_gru_nan_protection', True):
+            # Санитизация выходов
+            gru_output = torch.nan_to_num(
+                gru_output, nan=0.0,
+                posinf=self.config.gru_output_clip_value,
+                neginf=-self.config.gru_output_clip_value,
+            )
+            new_hidden = torch.nan_to_num(
+                new_hidden, nan=0.0,
+                posinf=self.config.gru_output_clip_value,
+                neginf=-self.config.gru_output_clip_value,
+            )
+            clip_o = float(getattr(self.config, 'gru_output_clip_value', 10.0))
+            if clip_o > 0:
+                gru_output = gru_output.clamp(-clip_o, clip_o)
+                new_hidden = new_hidden.clamp(-clip_o, clip_o)
+        
         gru_output = gru_output.squeeze(1)  # [batch, hidden_size]
         
         # Интеграция истории позиций для лучшего предсказания траекторий
@@ -465,6 +520,30 @@ class EnergyCarrier(nn.Module):
         )
         
         return output, new_hidden
+
+    def validate_forward_outputs(self, gru_output: torch.Tensor, new_hidden: torch.Tensor) -> bool:
+        """Проверка стабильности выходов GRU (NaN/Inf/экстремумы)."""
+        issues = []
+        try:
+            if torch.isnan(gru_output).any():
+                issues.append("NaN in gru_output")
+            if torch.isnan(new_hidden).any():
+                issues.append("NaN in new_hidden")
+            if torch.isinf(gru_output).any():
+                issues.append("Inf in gru_output")
+            if torch.isinf(new_hidden).any():
+                issues.append("Inf in new_hidden")
+            max_thr = 1000.0
+            if gru_output.abs().max() > max_thr:
+                issues.append(f"Extreme gru_output (max={gru_output.abs().max().item():.1f})")
+            if new_hidden.abs().max() > max_thr:
+                issues.append(f"Extreme new_hidden (max={new_hidden.abs().max().item():.1f})")
+        except Exception:
+            pass
+        if issues:
+            logger.error(f"GRU output validation failed: {', '.join(issues)}")
+            return False
+        return True
     
     def _compute_next_position_relative(self, 
                                    next_position: torch.Tensor,

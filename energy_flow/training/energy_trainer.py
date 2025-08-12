@@ -713,27 +713,32 @@ class EnergyTrainer:
                         pre_step_scale = float(self.scaler.get_scale())
                     except Exception:
                         pass
-                    # MIXED PRECISION: gradient clipping и optimizer step с scaler
+                    # Unscale перед манипуляциями
+                    self.scaler.unscale_(self.optimizer)
+                    # Очистка и мягкий per-param клиппинг
+                    self._clean_and_clip_grads(max_norm=getattr(self.config, 'gru_max_gradient_norm', 1.0))
+                    # Глобальный clipping
                     if self.config.gradient_clip > 0:
-                        # Unscale gradients перед clipping
-                        self.scaler.unscale_(self.optimizer)
                         torch_module.nn.utils.clip_grad_norm_(
                             self.optimizer.param_groups[0]['params'],
                             self.config.gradient_clip
                         )
-                    
+                    if getattr(self.config, 'enable_detailed_gradient_monitoring', False):
+                        self._monitor_gradients(self.flow_processor)
                     # Optimizer step с scaling check
                     self.scaler.step(self.optimizer)
                     self.scaler.update()  # Обновляем scale factor
                     self._snapshot_memory('post_optimizer_step', {'grad_scale_before': pre_step_scale, 'grad_scale_after': float(self.scaler.get_scale()) if hasattr(self.scaler, 'get_scale') else None})
                 else:
-                    # ОБЫЧНЫЙ: gradient clipping и optimizer step
+                    # ОБЫЧНЫЙ путь: очистка и клиппинг
+                    self._clean_and_clip_grads(max_norm=getattr(self.config, 'gru_max_gradient_norm', 1.0))
                     if self.config.gradient_clip > 0:
                         torch_module.nn.utils.clip_grad_norm_(
                             self.optimizer.param_groups[0]['params'],
                             self.config.gradient_clip
                         )
-                    
+                    if getattr(self.config, 'enable_detailed_gradient_monitoring', False):
+                        self._monitor_gradients(self.flow_processor)
                     self.optimizer.step()
                     self._snapshot_memory('post_optimizer_step')
                 
@@ -998,6 +1003,56 @@ class EnergyTrainer:
                 'batch_size': batch_size,
                 'error': str(e)
             }
+
+    def _clean_and_clip_grads(self, max_norm: float = 1.0) -> None:
+        """Обнуляет NaN/Inf градиенты и мягко клиппит per-param для численной стабильности."""
+        try:
+            for group in self.optimizer.param_groups:
+                for p in group['params']:
+                    if p.grad is None:
+                        continue
+                    g = p.grad
+                    # Sanitize non-finite grads
+                    if not torch_module.isfinite(g).all():
+                        logger.warning("🧯 Non-finite gradient detected; zeroing it")
+                        p.grad = torch_module.zeros_like(g)
+                        continue
+                    # Per-param gentle clip
+                    if max_norm and max_norm > 0:
+                        gn = g.norm()
+                        if gn > max_norm:
+                            scale = (max_norm / (gn + 1e-6)).to(g.dtype)
+                            p.grad.mul_(scale)
+        except Exception:
+            pass
+
+    def _monitor_gradients(self, model: torch_module.nn.Module) -> None:
+        """Подробный мониторинг градиентов по параметрам (включаем по флагу)."""
+        try:
+            total = 0; nan_cnt = 0; inf_cnt = 0; large_cnt = 0
+            for name, p in model.named_parameters():
+                if p.grad is None:
+                    continue
+                total += 1
+                g = p.grad
+                if torch_module.isnan(g).any():
+                    nan_cnt += 1
+                    logger.error(f"NaN gradient in {name}")
+                    continue
+                if torch_module.isinf(g).any():
+                    inf_cnt += 1
+                    logger.error(f"Inf gradient in {name}")
+                    continue
+                n = g.norm().item()
+                if n > 100.0:
+                    large_cnt += 1
+                    logger.warning(f"Large gradient ({n:.2f}) in {name}")
+            if nan_cnt or inf_cnt:
+                logger.error(f"Gradient health: {nan_cnt} NaN, {inf_cnt} Inf, {large_cnt} large out of {total}")
+            elif large_cnt:
+                logger.warning(f"Gradient health: {large_cnt} large out of {total}")
+        except Exception:
+            pass
     
     def train_epoch(self, dataloader: DataLoader, teacher_embeddings_loader) -> Dict[str, float]:
         """

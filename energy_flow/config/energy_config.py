@@ -131,6 +131,17 @@ class EnergyConfig:
     collection_dtype: torch.dtype = torch.bfloat16
     cache_surface_indices_enabled: bool = True  # Кэшировать quantized surface_idx в TensorizedFlowStorage
     
+    # Параметры стабильности GRU и мониторинга
+    gru_max_gradient_norm: float = 1.0
+    gru_input_clip_value: float = 10.0
+    gru_output_clip_value: float = 10.0
+    enable_gru_nan_protection: bool = True
+    gru_initialization_method: str = "orthogonal"  # или "xavier"
+
+    enable_detailed_gradient_monitoring: bool = False
+    log_extreme_values: bool = True
+    extreme_value_threshold: float = 100.0
+    
     def __post_init__(self):
         """Валидация и вычисление производных параметров"""
         # Проверка размеров
