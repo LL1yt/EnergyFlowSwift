@@ -77,6 +77,14 @@ def load_experiment_dataset(dataset_path: str):
 def create_dataloader_from_experiment_dataset(dataset, batch_size: int = 16, shuffle: bool = True):
     """Создание DataLoader из experiment датасета"""
     from torch.utils.data import DataLoader
+
+    def experiment_collate_fn(batch):
+        return {
+            'input_embedding': torch.stack([item['input_embedding'].cpu() for item in batch]),
+            'target_embedding': torch.stack([item['target_embedding'].cpu() for item in batch]),
+            'input_text': [item['input_text'] for item in batch],
+            'target_text': [item['target_text'] for item in batch]
+        }
     
     class ExperimentDatasetWrapper:
         def __init__(self, dataset):
@@ -102,12 +110,9 @@ def create_dataloader_from_experiment_dataset(dataset, batch_size: int = 16, shu
         shuffle=shuffle,
         generator=torch.Generator(device='cpu') if shuffle else None,
         pin_memory=True,
-        collate_fn=lambda batch: {
-            'input_embedding': torch.stack([item['input_embedding'].cpu() for item in batch]),
-            'target_embedding': torch.stack([item['target_embedding'].cpu() for item in batch]),
-            'input_text': [item['input_text'] for item in batch],
-            'target_text': [item['target_text'] for item in batch]
-        }
+        num_workers=2,
+        persistent_workers=True,
+        collate_fn=experiment_collate_fn,
     )
     
     return dataloader
@@ -123,7 +128,7 @@ def setup_experiment_trainer(resume_from: str = None):
 
     if torch.cuda.is_available():
         torch.cuda.set_device(0)
-        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = True
     
     logger.info(f"📐 Experiment config loaded:")
     logger.info(f"   🔲 Lattice: {config.lattice_width}x{config.lattice_height}x{config.lattice_depth}")

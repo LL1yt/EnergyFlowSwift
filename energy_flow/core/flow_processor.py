@@ -444,18 +444,20 @@ class FlowProcessor(nn.Module):
             # Lazy consistency logs for first few flows
             try:
                 if logger.isEnabledFor(10):  # DEBUG
-                    # 1) Первые K потоков: сравнение позиций/энергий
                     k = min(3, flow_ids.shape[0])
-                    for i in range(k):
-                        fid = flow_ids[i].item()
-                        pos_s = positions[i].tolist()
-                        eng_s = energies[i].view(-1).item() if energies[i].numel()==1 else energies[i][0].item()
-                        if fid in self.lattice.active_flows:
-                            f = self.lattice.active_flows[fid]
-                            pos_l = [round(v.item(), 6) for v in f.position]
-                            eng_l = f.energy.item() if f.energy.numel()==1 else f.energy[0].item()
-                            logger.debug(f"CONSISTENCY flow_id={fid}: pos_storage={list(map(lambda x: round(x,6), pos_s))} pos_lattice={pos_l}; energy_storage={eng_s:.6f} energy_lattice={eng_l:.6f}")
-                    # 2) Сводка по количеству активных и первые ID
+                    if k > 0:
+                        ids = flow_ids[:k].tolist()
+                        pos_s_list = positions[:k].tolist()
+                        eng_s_list = energies[:k].view(k, -1)[:, 0].tolist()
+                        for fid, pos_s, eng_s in zip(ids, pos_s_list, eng_s_list):
+                            if fid in self.lattice.active_flows:
+                                f = self.lattice.active_flows[fid]
+                                pos_l = [round(v, 6) for v in f.position.tolist()]
+                                eng_l = f.energy.view(-1).tolist()[0]
+                                logger.debug(
+                                    f"CONSISTENCY flow_id={fid}: pos_storage={list(map(lambda x: round(x,6), pos_s))} "
+                                    f"pos_lattice={pos_l}; energy_storage={eng_s:.6f} energy_lattice={eng_l:.6f}"
+                                )
                     active_lattice_ids = [fid for fid, fl in self.lattice.active_flows.items() if fl.is_active]
                     count_lattice = len(active_lattice_ids)
                     count_storage = flow_ids.shape[0]

@@ -295,10 +295,11 @@ class EnergyTrainer:
             pass
         # GPU metrics
         if torch_module.cuda.is_available():
-            try:
-                torch_module.cuda.synchronize()
-            except Exception:
-                pass
+            if logger.isEnabledFor(DEBUG_MEMORY):
+                try:
+                    torch_module.cuda.synchronize()
+                except Exception:
+                    pass
             try:
                 metrics.update({
                     'gpu_alloc_gb': round(torch_module.cuda.memory_allocated() / 1e9, 3),
@@ -978,11 +979,12 @@ class EnergyTrainer:
                 pass
 
             if torch_module.cuda.is_available():
-                # Synchronize to ensure kernels finish before measuring/cleaning
-                try:
-                    torch_module.cuda.synchronize()
-                except Exception:
-                    pass
+                if logger.isEnabledFor(DEBUG_MEMORY):
+                    # Synchronize only when profiling memory usage
+                    try:
+                        torch_module.cuda.synchronize()
+                    except Exception:
+                        pass
 
                 current_alloc_gb = torch_module.cuda.memory_allocated() / 1e9
                 current_reserved_gb = torch_module.cuda.memory_reserved() / 1e9
