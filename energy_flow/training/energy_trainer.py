@@ -295,10 +295,11 @@ class EnergyTrainer:
             pass
         # GPU metrics
         if torch_module.cuda.is_available():
-            try:
-                torch_module.cuda.synchronize()
-            except Exception:
-                pass
+            if logger.isEnabledFor(DEBUG_MEMORY):
+                try:
+                    torch_module.cuda.synchronize()
+                except Exception:
+                    pass
             try:
                 metrics.update({
                     'gpu_alloc_gb': round(torch_module.cuda.memory_allocated() / 1e9, 3),
@@ -441,8 +442,7 @@ class EnergyTrainer:
             Словарь с метриками шага
         """
         # Gradient accumulation: очищаем градиенты только в начале accumulation
-        if torch_module.cuda.is_available():
-            # Начинаем измерение пиков памяти на каждом шаге
+        if torch_module.cuda.is_available() and logger.isEnabledFor(DEBUG_MEMORY):
             try:
                 torch_module.cuda.reset_peak_memory_stats()
             except Exception:
@@ -462,7 +462,12 @@ class EnergyTrainer:
                                   f"accumulation_step={self.current_accumulation_step+1}/{self.config.gradient_accumulation_steps}")
         logger.log(DEBUG_TRAINING, f"📊 Input texts: {len(input_texts)} samples")
         logger.log(DEBUG_TRAINING, f"📊 Teacher embeddings: {teacher_input_embeddings.shape} -> {teacher_target_embeddings.shape}")
-        
+
+        if not torch_module.isfinite(teacher_input_embeddings).all() or not torch_module.isfinite(teacher_target_embeddings).all():
+            logger.warning("Non-finite values detected in teacher embeddings; sanitizing")
+            teacher_input_embeddings = torch_module.nan_to_num(teacher_input_embeddings)
+            teacher_target_embeddings = torch_module.nan_to_num(teacher_target_embeddings)
+
         try:
             # Ensure tensors are on the correct device
             try:
@@ -669,9 +674,7 @@ class EnergyTrainer:
             # 8. Обратное распространение с normalized loss И GRADIENT SCALING
             self._snapshot_memory('pre_backward')
             backward_start = time.time()
-            # Для градиентной аккумуляции: удерживаем граф на промежуточных шагах
-            retain_needed = (self.current_accumulation_step + 1) < self.config.gradient_accumulation_steps
-            
+
             # Включаем anomaly detection на первых шагах для точного источника NaN
             anomaly_prev = None
             try:
@@ -679,7 +682,7 @@ class EnergyTrainer:
                     anomaly_prev = torch_module.autograd.set_detect_anomaly(True)
             except Exception:
                 anomaly_prev = None
-            
+
             if self.scaler is not None:
                 # Снизим init scale для устойчивости на первых шагах
                 try:
@@ -689,10 +692,10 @@ class EnergyTrainer:
                 except Exception:
                     pass
                 # Mixed precision backward pass с gradient scaling
-                self.scaler.scale(normalized_loss).backward(retain_graph=retain_needed)
+                self.scaler.scale(normalized_loss).backward()
             else:
                 # Обычный backward pass
-                normalized_loss.backward(retain_graph=retain_needed)
+                normalized_loss.backward()
             backward_time = (time.time() - backward_start) * 1000.0
             self._snapshot_memory('post_backward', {'backward_time_ms': backward_time, 'threads': getattr(torch_module, 'get_num_threads', lambda: None)()})
             # Отключаем anomaly detection после нескольких шагов
@@ -976,11 +979,12 @@ class EnergyTrainer:
                 pass
 
             if torch_module.cuda.is_available():
-                # Synchronize to ensure kernels finish before measuring/cleaning
-                try:
-                    torch_module.cuda.synchronize()
-                except Exception:
-                    pass
+                if logger.isEnabledFor(DEBUG_MEMORY):
+                    # Synchronize only when profiling memory usage
+                    try:
+                        torch_module.cuda.synchronize()
+                    except Exception:
+                        pass
 
                 current_alloc_gb = torch_module.cuda.memory_allocated() / 1e9
                 current_reserved_gb = torch_module.cuda.memory_reserved() / 1e9
