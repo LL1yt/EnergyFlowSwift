@@ -83,6 +83,9 @@ class EnergyConfig:
     text_generation_max_length: int = 64      # Максимальная длина генерируемого текста
     text_generation_num_beams: int = 4        # Количество beams для beam search
     text_generation_temperature: float = 1.0  # Температура для генерации текста
+    # Дорогостоящий decoder: интервал и подбатч для подсчета
+    decoder_step_interval: int = 50           # Каждые N шагов считать decoder loss (0 = никогда)
+    decoder_max_batch: int = 4                # Максимальный размер подбатча для декодера
     
     # Adaptive max_steps (convergence detection)
     convergence_enabled: bool = True         # Включить адаптивное завершение
@@ -105,6 +108,10 @@ class EnergyConfig:
     displacement_scale_decay: float = 0.90 # Коэффициент убывания scale
     displacement_scale_min: float = 1.0    # Минимальный scale (натуральные смещения модели)
     displacement_scale_update_interval: int = 10  # Интервал обновления scale (в шагах)
+    
+    # Настройки очистки памяти CUDA
+    memory_cleanup_interval: int = 50       # Как часто вызывать очистку кэша памяти (в шагах)
+    memory_threshold_gb: float = 24.0       # Порог по памяти (GB) для триггера очистки
 
     # Новая архитектура относительных координат
     relative_coordinates: bool = False  # Включить относительные координаты вместо абсолютных
@@ -139,6 +146,11 @@ class EnergyConfig:
     gru_initialization_method: str = "orthogonal"  # или "xavier"
     enable_cudnn_rnn: bool = True                 # Разрешить CuDNN для GRU
     gru_force_fp32: bool = True                   # Форсировать FP32 для GRU (даже при AMP)
+    
+    # Дополнительные флаги стабильности/мониторинга
+    enable_detailed_gradient_monitoring: bool = False
+    log_extreme_values: bool = True
+    extreme_value_threshold: float = 100.0
 
     enable_detailed_gradient_monitoring: bool = False
     log_extreme_values: bool = True

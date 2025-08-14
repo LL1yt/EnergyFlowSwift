@@ -74,42 +74,52 @@ def load_experiment_dataset(dataset_path: str):
     return dataset
 
 
+# Топ-уровневые определения для совместимости с Windows multiprocessing
+from torch.utils.data import DataLoader
+
+
+def experiment_collate_fn(batch):
+    return {
+        'input_embedding': torch.stack([item['input_embedding'].cpu() for item in batch]),
+        'target_embedding': torch.stack([item['target_embedding'].cpu() for item in batch]),
+        'input_text': [item['input_text'] for item in batch],
+        'target_text': [item['target_text'] for item in batch]
+    }
+
+
+class ExperimentDatasetWrapper:
+    def __init__(self, dataset):
+        self.dataset = dataset
+        self.length = len(dataset['text_pairs'])
+    
+    def __len__(self):
+        return self.length
+    
+    def __getitem__(self, idx):
+        input_text, target_text = self.dataset['text_pairs'][idx]
+        return {
+            'input_embedding': self.dataset['input_embeddings'][idx],
+            'target_embedding': self.dataset['target_embeddings'][idx],
+            'input_text': input_text,
+            'target_text': target_text
+        }
+
+
 def create_dataloader_from_experiment_dataset(dataset, batch_size: int = 16, shuffle: bool = True):
     """Создание DataLoader из experiment датасета"""
-    from torch.utils.data import DataLoader
-
-    def experiment_collate_fn(batch):
-        return {
-            'input_embedding': torch.stack([item['input_embedding'].cpu() for item in batch]),
-            'target_embedding': torch.stack([item['target_embedding'].cpu() for item in batch]),
-            'input_text': [item['input_text'] for item in batch],
-            'target_text': [item['target_text'] for item in batch]
-        }
-    
-    class ExperimentDatasetWrapper:
-        def __init__(self, dataset):
-            self.dataset = dataset
-            self.length = len(dataset['text_pairs'])
-        
-        def __len__(self):
-            return self.length
-        
-        def __getitem__(self, idx):
-            input_text, target_text = self.dataset['text_pairs'][idx]
-            return {
-                'input_embedding': self.dataset['input_embeddings'][idx],
-                'target_embedding': self.dataset['target_embeddings'][idx],
-                'input_text': input_text,
-                'target_text': target_text
-            }
-    
     wrapped_dataset = ExperimentDatasetWrapper(dataset)
+    # Создаем генератор на корректном устройстве:
+    # - Если доступна CUDA и включен shuffle, используем CUDA-генератор
+    # - Иначе без генератора (или CPU при необходимости)
+    cuda_available = torch.cuda.is_available()
+    dl_generator = torch.Generator(device='cuda') if (shuffle and cuda_available) else (torch.Generator(device='cpu') if shuffle else None)
+
     dataloader = DataLoader(
         wrapped_dataset,
         batch_size=batch_size,
         shuffle=shuffle,
-        generator=torch.Generator(device='cpu') if shuffle else None,
-        pin_memory=True,
+        generator=dl_generator,
+        pin_memory=cuda_available,
         num_workers=2,
         persistent_workers=True,
         collate_fn=experiment_collate_fn,

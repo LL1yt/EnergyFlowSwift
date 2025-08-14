@@ -137,8 +137,9 @@ class EnergyTrainer:
         
         # Smart memory management для устранения empty_cache() overhead
         self.step_counter = 0
-        self.memory_cleanup_interval = 10  # Cleanup только каждые 10 шагов вместо каждого шага
-        self.memory_threshold_gb = 16.0    # Cleanup при превышении 16GB для RTX 5090
+        # Интервалы и пороги теперь конфигурируемы: по умолчанию реже чистим и с более высоким порогом
+        self.memory_cleanup_interval = int(getattr(self.config, 'memory_cleanup_interval', 50))
+        self.memory_threshold_gb = float(getattr(self.config, 'memory_threshold_gb', 24.0))
         
         # Checkpoint управление
         self.checkpoint_loader = SimpleCheckpointLoader()
@@ -583,49 +584,57 @@ class EnergyTrainer:
                     if logger.isEnabledFor(DEBUG_TRAINING):
                         logger.log(DEBUG_TRAINING, f"📊 Encoder outputs: {encoder_outputs.shape}")
                     
-                    # Encoder loss: text → surface mapping
-                    target_surface_input_grad = target_surface_input.clone().detach().requires_grad_(True)
-                    encoder_loss = nn.functional.mse_loss(encoder_outputs, target_surface_input_grad)
+                    # Encoder loss: text → surface mapping (без градиентов по целям)
+                    target_surface_input_detached = target_surface_input.detach()
+                    encoder_loss = nn.functional.mse_loss(encoder_outputs, target_surface_input_detached)
                     
-                    # ОПТИМИЗАЦИЯ 2: Используем УЖЕ ВЫЧИСЛЕННЫЙ cube_output_surface!
-                    # Вместо повторных forward passes для каждого образца
+                    # ОПТИМИЗАЦИЯ 2: дорогой декодер считаем редко и на подбатче
                     decoder_loss = torch_module.tensor(0.0, device=self.device)
-                    
+                    run_decoder = True
                     try:
-                        # Батчевое декодирование surface → text (градиенты не нужны)
-                        with torch_module.no_grad():
-                            predicted_texts = self.text_decoder.decode_surface(cube_output_surface)
-                        
-                        # Батчевое вычисление text similarity loss
-                        if predicted_texts and len(predicted_texts) == len(target_texts):
-                            similarities = []
-                            for pred_text, target_text in zip(predicted_texts, target_texts):
-                                if pred_text and target_text:
-                                    pred_words = set(pred_text.lower().split())
-                                    target_words = set(target_text.lower().split())
-                                    intersection = len(pred_words & target_words)
-                                    union = len(pred_words | target_words)
-                                    similarity = intersection / max(union, 1)
-                                    similarities.append(similarity)
-                                else:
-                                    similarities.append(0.0)
-                            
-                            # Vectorized similarity loss
-                            similarities_tensor = torch_module.tensor(similarities, device=self.device)
-                            decoder_loss = (1.0 - similarities_tensor).mean()
-                            
-                            if logger.isEnabledFor(DEBUG_TRAINING):
-                                avg_similarity = similarities_tensor.mean().item()
-                                logger.log(DEBUG_TRAINING, f"📝 Avg text similarity: {avg_similarity:.3f}")
-                        else:
-                            decoder_loss = torch_module.tensor(1.0, device=self.device)
-                            if logger.isEnabledFor(DEBUG_TRAINING):
-                                logger.log(DEBUG_TRAINING, f"⚠️ Text decoding mismatch: {len(predicted_texts)} vs {len(target_texts)}")
+                        interval = getattr(self.config, 'decoder_step_interval', 50)
+                        run_decoder = (self.global_step % max(1, interval) == 0)
+                    except Exception:
+                        run_decoder = False
                     
-                    except Exception as decode_error:
-                        if logger.isEnabledFor(DEBUG_TRAINING):
-                            logger.log(DEBUG_TRAINING, f"❌ Batch text decoding failed: {decode_error}")
-                        decoder_loss = torch_module.tensor(1.0, device=self.device)
+                    if run_decoder:
+                        try:
+                            # Подбатч для декодера
+                            max_batch = int(getattr(self.config, 'decoder_max_batch', 4))
+                            sub_bs = min(max_batch, cube_output_surface.shape[0])
+                            with torch_module.no_grad():
+                                predicted_texts = self.text_decoder.decode_surface(cube_output_surface[:sub_bs])
+                            target_subset = target_texts[:sub_bs]
+                            
+                            # Батчевое вычисление text similarity loss
+                            if predicted_texts and len(predicted_texts) == len(target_subset):
+                                similarities = []
+                                for pred_text, target_text in zip(predicted_texts, target_subset):
+                                    if pred_text and target_text:
+                                        pred_words = set(pred_text.lower().split())
+                                        target_words = set(target_text.lower().split())
+                                        intersection = len(pred_words & target_words)
+                                        union = len(pred_words | target_words)
+                                        similarity = intersection / max(union, 1)
+                                        similarities.append(similarity)
+                                    else:
+                                        similarities.append(0.0)
+                                
+                                # Vectorized similarity loss
+                                similarities_tensor = torch_module.tensor(similarities, device=self.device)
+                                decoder_loss = (1.0 - similarities_tensor).mean()
+                                
+                                if logger.isEnabledFor(DEBUG_TRAINING):
+                                    avg_similarity = similarities_tensor.mean().item()
+                                    logger.log(DEBUG_TRAINING, f"📝 Avg text similarity: {avg_similarity:.3f}")
+                            else:
+                                decoder_loss = torch_module.tensor(1.0, device=self.device)
+                                if logger.isEnabledFor(DEBUG_TRAINING):
+                                    logger.log(DEBUG_TRAINING, f"⚠️ Text decoding mismatch: {len(predicted_texts)} vs {len(target_subset)}")
+                        except Exception as decode_error:
+                            if logger.isEnabledFor(DEBUG_TRAINING):
+                                logger.log(DEBUG_TRAINING, f"❌ Batch text decoding failed: {decode_error}")
+                            decoder_loss = torch_module.tensor(1.0, device=self.device)
                     
                     # Combined text loss
                     text_loss = encoder_loss + 0.1 * decoder_loss

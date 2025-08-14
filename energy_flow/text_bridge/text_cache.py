@@ -126,9 +126,8 @@ class TextCache:
             if text_hash in self._text_to_surface_cache:
                 self._text_to_surface_cache.move_to_end(text_hash)
             else:
-                # Добавляем новую запись, обеспечивая правильное устройство
-                cloned_embedding = surface_embedding.clone().detach()
-                # Сохраняем на том же устройстве что и оригинал
+                # Добавляем новую запись, сохраняя ТОЛЬКО на CPU, чтобы не раздувать CUDA память
+                cloned_embedding = surface_embedding.detach().to('cpu', copy=True)
                 self._text_to_surface_cache[text_hash] = cloned_embedding
                 
                 # Проверяем размер кэша
@@ -174,7 +173,7 @@ class TextCache:
                 if logger.isEnabledFor(DEBUG_ENERGY):
                     logger.log(DEBUG_ENERGY, f"Cache HIT text→surface: '{text[:50]}...'")
                 
-                # Возвращаем clone на том же устройстве
+                # Возвращаем клон CPU-тензора; вызывающая сторона решает, на какое устройство его перемещать
                 return surface_embedding.clone()
             else:
                 self.stats['text_to_surface_misses'] += 1
@@ -210,7 +209,8 @@ class TextCache:
             
             # Дублируем в прямой кэш
             text_hash = self._hash_text(text)
-            cloned_embedding = surface_embedding.clone().detach()
+            # Храним только CPU-копию
+            cloned_embedding = surface_embedding.detach().to('cpu', copy=True)
             self._text_to_surface_cache[text_hash] = cloned_embedding
             
             # Логирование
@@ -295,12 +295,10 @@ class TextCache:
                     )
                     return
                 
-                # Восстанавливаем тензоры на правильном устройстве  
-                default_device = torch.get_default_device()
+                # Восстанавливаем тензоры на CPU и оставляем на CPU (перенос на GPU делает вызывающая сторона)
                 for k, v in cache_data.get('text_to_surface', {}).items():
-                    # Тензоры уже загружены torch.load, просто перемещаем на нужное устройство
-                    if default_device.type == 'cuda':
-                        v = v.to(default_device)
+                    if isinstance(v, torch.Tensor):
+                        v = v.to('cpu', copy=False)
                     self._text_to_surface_cache[k] = v
                 
                 self._surface_to_text_cache.update(cache_data.get('surface_to_text', {}))
@@ -311,8 +309,7 @@ class TextCache:
                 
                 logger.info(
                     f"Кэш загружен из {self.cache_file} "
-                    f"({len(self._text_to_surface_cache)} записей), "
-                    f"device={default_device}"
+                    f"({len(self._text_to_surface_cache)} записей), device=cpu"
                 )
                 
         except Exception as e:
@@ -388,6 +385,11 @@ class CachedTextToCubeEncoder:
         for i, text in enumerate(texts):
             cached_embedding = self.cache.get_surface_from_text(text)
             if cached_embedding is not None:
+                # Переносим кэшированный тензор на устройство энкодера по требованию
+                try:
+                    cached_embedding = cached_embedding.to(self.encoder.device, non_blocking=True)
+                except Exception:
+                    cached_embedding = cached_embedding.to(self.encoder.device)
                 results.append((i, cached_embedding))
             else:
                 uncached_texts.append(text)
