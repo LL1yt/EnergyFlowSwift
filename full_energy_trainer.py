@@ -100,10 +100,11 @@ def create_dataloader_from_experiment_dataset(dataset, batch_size: int = 16, shu
         wrapped_dataset,
         batch_size=batch_size,
         shuffle=shuffle,
-        generator=torch.Generator(device=torch.get_default_device()) if shuffle else None,
+        generator=torch.Generator(device='cpu') if shuffle else None,
+        pin_memory=True,
         collate_fn=lambda batch: {
-            'input_embedding': torch.stack([item['input_embedding'] for item in batch]),
-            'target_embedding': torch.stack([item['target_embedding'] for item in batch]),
+            'input_embedding': torch.stack([item['input_embedding'].cpu() for item in batch]),
+            'target_embedding': torch.stack([item['target_embedding'].cpu() for item in batch]),
             'input_text': [item['input_text'] for item in batch],
             'target_text': [item['target_text'] for item in batch]
         }
@@ -119,6 +120,10 @@ def setup_experiment_trainer(resume_from: str = None):
     # Experiment конфигурация
     config = create_experiment_config()
     set_energy_config(config)
+
+    if torch.cuda.is_available():
+        torch.cuda.set_device(0)
+        torch.backends.cudnn.deterministic = True
     
     logger.info(f"📐 Experiment config loaded:")
     logger.info(f"   🔲 Lattice: {config.lattice_width}x{config.lattice_height}x{config.lattice_depth}")
