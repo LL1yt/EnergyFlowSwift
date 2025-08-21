@@ -334,13 +334,12 @@ class FlowProcessor(nn.Module):
         active_at_output = 0
         for flow in active_flows:
             z_pos = flow.position[2].item()
-            if z_pos >= self.config.lattice_depth - 1:
-                # Поток достиг выхода - помечаем как завершенный
+            # Используем нормализованные плоскости Z
+            if z_pos >= self.lattice.norm_zdepth:
                 self.lattice._mark_flow_completed_zdepth_plane(flow.id)
                 active_at_output += 1
-            elif z_pos <= 0:
-                # Поток достиг начала - помечаем как завершенный на Z=0
-                self.lattice._mark_flow_completed_z0_plane(flow.id)  
+            elif z_pos <= self.lattice.norm_z0:
+                self.lattice._mark_flow_completed_z0_plane(flow.id)
                 active_at_output += 1
         
         if active_at_output > 0:
@@ -383,12 +382,11 @@ class FlowProcessor(nn.Module):
         active_at_output = 0
         for flow in active_flows:
             z_pos = flow.position[2].item()
-            if z_pos >= self.config.lattice_depth - 1:
-                # Поток достиг выхода - помечаем как завершенный
+            # Используем нормализованные плоскости Z
+            if z_pos >= self.lattice.norm_zdepth:
                 self.lattice._mark_flow_completed_zdepth_plane(flow.id)
                 active_at_output += 1
-            elif z_pos <= 0:
-                # Поток достиг начала - помечаем как завершенный на Z=0
+            elif z_pos <= self.lattice.norm_z0:
                 self.lattice._mark_flow_completed_z0_plane(flow.id)
                 active_at_output += 1
         
@@ -733,12 +731,13 @@ class FlowProcessor(nn.Module):
                 new_energy = output_energies[i]
                 new_hidden_state = output_hidden[i]
                 
-                # НОВАЯ АРХИТЕКТУРА: Помечаем поток как завершенный без буферизации
-                z_pos = new_position[2].item()
-                if z_pos <= 0:
-                    self.lattice._mark_flow_completed_z0_plane(flow_id_item)
-                elif z_pos >= self.config.lattice_depth:
-                    self.lattice._mark_flow_completed_zdepth_plane(flow_id_item)
+            # НОВАЯ АРХИТЕКТУРА: Помечаем поток как завершенный без буферизации
+            z_pos = new_position[2].item()
+            # Используем нормализованные плоскости вместо сырых значений глубины
+            if abs(z_pos - self.lattice.norm_z0) <= abs(z_pos - self.lattice.norm_zdepth):
+                self.lattice._mark_flow_completed_z0_plane(flow_id_item)
+            else:
+                self.lattice._mark_flow_completed_zdepth_plane(flow_id_item)
                 
                 # Обновляем поток перед буферизацией
                 if flow_id_item in self.lattice.active_flows:
@@ -819,8 +818,8 @@ class FlowProcessor(nn.Module):
         batch_size = positions.shape[0]
         device = positions.device
         
-        # Приводим hidden_states к [layers, batch, hidden]
-        hidden_for_gru = hidden_states.transpose(0, 1).contiguous()
+        # Приводим hidden_states к [layers, batch, hidden] и к fp32 для GRU стабильности
+        hidden_for_gru = hidden_states.transpose(0, 1).contiguous().to(torch.float32)
         
         # 1. SimpleNeuron
         neuron_output = self.neuron(positions, energies)
@@ -867,10 +866,10 @@ class FlowProcessor(nn.Module):
             proj_pos = carrier_output.next_position[projection_mask]
             proj_energy = carrier_output.energy_value[projection_mask]
             proj_hidden = new_hidden_bt[projection_mask]
-            # Decide nearest surface by Z distance in raw space assumption consistent with existing logic
+            # Decide nearest surface by Z distance in NORMALIZED space (consistent with lattice)
             z_curr = proj_pos[:, 2]
-            dist_z0 = (z_curr - 0).abs()
-            dist_zd = (z_curr - self.config.lattice_depth).abs()
+            dist_z0 = (z_curr - self.lattice.norm_z0).abs()
+            dist_zd = (z_curr - self.lattice.norm_zdepth).abs()
             to_z0 = dist_z0 <= dist_zd
             # For logging and marking
             ids_list = proj_ids.detach().cpu().tolist()

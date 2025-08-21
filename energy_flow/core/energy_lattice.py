@@ -330,8 +330,9 @@ class EnergyLattice(nn.Module):
         if mapper is None:
             raise ValueError("EnergyFlowMapper is required! No fallback logic allowed.")
         
-        # Используем маппер для проекции 768D -> surface_dim
-        cell_energies = mapper.map_to_surface(embeddings)
+        # Используем маппер для проекции 768D -> surface_dim (без построения графа)
+        with torch.no_grad():
+            cell_energies = mapper.map_to_surface(embeddings)
         
         # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: стартовая Z-координата в центре куба
         start_z = self.depth // 2  # Z = depth/2 (центр куба)
@@ -420,13 +421,19 @@ class EnergyLattice(nn.Module):
         distances = torch.where(is_closer_to_z0, distances_to_z0, distances_to_zdepth)
         surfaces = ["z0" if is_z0 else "zdepth" for is_z0 in is_closer_to_z0]
         
-        # ОПТИМИЗАЦИЯ: Создаем все hidden states одним тензором
+        # ОПТИМИЗАЦИЯ ПАМЯТИ: создаем hidden по-разному для list/tensorized путей
         num_layers = self.config.carrier_num_layers
         hidden_size = self.config.carrier_hidden_size
-        all_hidden_states = torch.zeros(
-            num_flows, num_layers, hidden_size, 
-            device=self.device
-        )
+        if self.tensor_storage is None:
+            all_hidden_states = torch.zeros(
+                num_flows, num_layers, hidden_size,
+                device=self.device
+            )
+            _shared_hidden = None
+        else:
+            # При tensorized storage не держим per-flow hidden в Python-объектах
+            all_hidden_states = None
+            _shared_hidden = torch.zeros(num_layers, hidden_size, device=self.device)
         
         # Генерируем ID потоков
         flow_ids = list(range(self.next_flow_id, self.next_flow_id + num_flows))
@@ -438,7 +445,7 @@ class EnergyLattice(nn.Module):
                 id=flow_ids[i],
                 position=normalized_positions[i],
                 energy=energies_tensors[i],
-                hidden_state=all_hidden_states[i],
+                hidden_state=(all_hidden_states[i] if all_hidden_states is not None else _shared_hidden),
                 batch_idx=batch_indices[i],
                 parent_id=None,
                 age=0,
@@ -489,7 +496,7 @@ class EnergyLattice(nn.Module):
                 batch_indices_list=batch_indices_tensor.tolist(),
                 parent_ids=None,
                 flow_ids=flow_ids,
-                initial_hidden=all_hidden_states[:num_flows]
+                initial_hidden=None  # storage инициализирует нулями самостоятельно
             )
         
         # Обновляем статистику

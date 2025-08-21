@@ -48,7 +48,9 @@ class TensorizedFlowStorage:
         # Предаллоцированные тензоры для всех данных потоков
         self.positions = torch.zeros(max_flows, 3, device=device)
         self.energies = torch.zeros(max_flows, embedding_dim, device=device)
-        self.hidden_states = torch.zeros(max_flows, hidden_layers, hidden_size, device=device)
+        # Храним скрытые состояния в более экономном dtype (bf16), а перед GRU приводим к fp32
+        hidden_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+        self.hidden_states = torch.zeros(max_flows, hidden_layers, hidden_size, device=device, dtype=hidden_dtype)
         
         # Метаданные потоков (скаляры)
         self.batch_indices = torch.zeros(max_flows, dtype=torch.long, device=device)

@@ -216,8 +216,8 @@ class EnergyOutputCollector(nn.Module):
         Returns:
             embeddings: [batch, 768] - восстановленные эмбеддинги
         """
-        # Создаем пустую поверхность (автоматически на default device - GPU)
-        surface = torch.zeros(batch_size, self.height, self.width)
+        # Создаем пустую поверхность на том же устройстве, что и веса
+        surface = torch.zeros(batch_size, self.height, self.width, device=self.position_weights.device)
         
         # Заполняем энергией из потоков
         for (x, y), energy in surface_energy.items():
