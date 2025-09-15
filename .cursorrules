@@ -1,7 +1,7 @@
 ### Контекст проекта
 
 - Исследовательский проект на одного разработчика
-- Структура: AA/ , AA/new_rebuild/ (легаси), AA/archive/ (старые версии) AA/energy_flow/ (активная разработка)
+- Структура: AA/ , AA/new_rebuild/ (легаси), AA/archive/ (старые версии), AA/energy_flow/ (активная разработка), AA/EnergyFlowSwift/ (Swift-порт)
 - Тесты и трейнеры запускаются из корня AA/
 
 ## Принципы работы
@@ -19,8 +19,8 @@
 - Современные языковые возможности
 - Прямолинейные решения вместо сложных абстракций
 - Проект исследовательский, не продакшн
-- Без fallback - лучше ошибка чем костыли
-- RTX 5090 32GB - используем по максимуму. стараемся не использовать cpu там где это может замедлить gpu
+- Без fallback — лучше ошибка, чем костыли
+- Apple Silicon (M‑серия, M4): используем MPS/Metal по максимуму; избегаем CPU там, где это замедляет GPU
 
 ### Что исключаем
 
@@ -35,84 +35,73 @@
 
 ### 3 режима работы
 
-- **DEBUG** - быстрые тесты (15x15x15 решетка, максимум логов)
-- **EXPERIMENT** - исследования (30x30x30, сбалансировано)
-- **OPTIMIZED** - финальные прогоны (100x100x100, минимум логов)
+- **DEBUG** — быстрые тесты (15×15×15 решётка, максимум логов)
+- **EXPERIMENT** — исследования (30×30×30, сбалансировано)
+- **OPTIMIZED** — финальные прогоны (100×100×100, минимум логов)
 
+Python пример:
 ```python
 from new_rebuild.config import create_debug_config, set_project_config
 config = create_debug_config()
 set_project_config(config)
 ```
 
+Swift пример (порт):
+```swift
+let config = createDebugConfig()
+let encoder = TextToCubeEncoder(config: config)
+let out = encoder.encode(["hello world"]) // [B, surface_dim]
+```
+
 ### Защита от hardcoded
 
-- `@no_hardcoded` - декоратор для функций
-- `strict_no_hardcoded()` - автоматическая замена
-- `HardcodedValueError` - исключение с инструкцией
-- `allow_hardcoded` - временное отключение
+- `@no_hardcoded` — декоратор для функций (Python)
+- `strict_no_hardcoded()` — автоматическая замена
+- `HardcodedValueError` — исключение с инструкцией
+- `allow_hardcoded` — временное отключение
 
 ### Custom Debug Levels
 
-- `DEBUG_VERBOSE` (11) - подробный вывод
-- `DEBUG_CACHE` (12) - кэширование
-- `DEBUG_SPATIAL` (13) - пространственная оптимизация
-- `DEBUG_FORWARD` (14) - forward pass
-- `DEBUG_MEMORY` (15) - управление памятью
-- `DEBUG_TRAINING` (16) - прогресс обучения
-- `DEBUG_INIT` (17) - инициализация
-- `DEBUG_ENERGY` (18) - энергетические потоки (energy_flow)
-- `DEBUG_SPAWN` (19) - создание новых потоков
-- `DEBUG_CONVERGENCE` (20) - статистика достижения выхода
+- `DEBUG_VERBOSE` (11) — подробный вывод
+- `DEBUG_CACHE` (12) — кэширование
+- `DEBUG_SPATIAL` (13) — пространственная оптимизация
+- `DEBUG_FORWARD` (14) — forward pass
+- `DEBUG_MEMORY` (15) — управление памятью
+- `DEBUG_TRAINING` (16) — прогресс обучения
+- `DEBUG_INIT` (17) — инициализация
+- `DEBUG_ENERGY` (18) — энергетические потоки (energy_flow)
+- `DEBUG_SPAWN` (19) — создание новых потоков
+- `DEBUG_CONVERGENCE` (20) — статистика достижения выхода
 
-## Архитектура energy_flow
+## Архитектура energy_flow (Python)
 
 ### Концепция
 
-Энергетическая архитектура, где RNN-модели ("энергия") распространяются через 3D решетку простых нейронов. Ключевое отличие - параллельная обработка независимых потоков вместо последовательной обработки клеток.
+Энергетическая архитектура, где RNN‑модели ("энергия") распространяются через 3D решётку простых нейронов. Ключевое отличие — параллельная обработка независимых потоков вместо последовательной обработки клеток.
 
-### config/ - Конфигурация энергетической системы
+### config/ — Конфигурация энергетической системы
 
-- **`energy_config.py`** - `EnergyConfig` с параметрами решетки и потоков
-- **`base_config.py`** - Адаптированная базовая конфигурация
+- **`energy_config.py`** — `EnergyConfig` с параметрами решётки и потоков
+- **`base_config.py`** — адаптированная базовая конфигурация
 
-### core/ - Ядро энергетической архитектуры
+### core/ — Ядро энергетической архитектуры
 
-#### energy_carrier.py - RNN-based энергетические потоки
+- **energy_carrier.py** — RNN‑based энергетические потоки
+- **simple_neuron.py** — простой нейрон‑автомат
+- **energy_lattice.py** — 3D решётка для потоков
+- **flow_processor.py** — механизм распространения
 
-- LSTM с ~10M параметров (hidden_size=1024, 3 слоя)
-- Может создавать новые потоки при высокой энергии
-- Определяет следующую позицию (только вперед)
+### training/ — Обучение
 
-#### simple_neuron.py - Простой нейрон-автомат
+- **`energy_trainer.py`** — тренировочный цикл через сравнение выходных эмбеддингов
 
-- ~1000 параметров (32→64→16)
-- Общие веса для всех клеток
-- Трансформирует энергию и определяет направление
+### Размеры решётки для energy_flow
 
-#### energy_lattice.py - 3D решетка для потоков
+- **DEBUG**: 20×20×10 (толщина 10 слоёв)
+- **EXPERIMENT**: 50×50×20
+- **OPTIMIZED**: 100×100×50
 
-- Управление активными потоками
-- Размещение входной энергии
-- Сбор выходной энергии
-
-#### flow_processor.py - Механизм распространения
-
-- Параллельная обработка всех потоков
-- Энергия движется только вперед (по Z)
-- Управление бюджетом потоков
-
-### training/ - Обучение
-
-- **`energy_trainer.py`** - Тренировочный цикл через сравнение выходных эмбеддингов
-
-### Размеры решетки для energy_flow
-
-- **DEBUG**: 20x20x10 (толщина 10 слоев)
-- **EXPERIMENT**: 50x50x20
-- **OPTIMIZED**: 100x100x50
-
-### Использование energy_flow
+### Использование energy_flow (Python)
 
 ```python
 from energy_flow.config import create_experiment_config
@@ -127,3 +116,19 @@ processor = FlowProcessor(lattice, neuron, config)
 trainer = EnergyTrainer(processor, config)
 trainer.train(input_embeddings, target_embeddings)
 ```
+
+## Swift‑порт: EnergyFlowSwift
+
+Структура SwiftPM (см. docs/Swift_MPS_Port_Plan.md):
+- `Sources/EFCore/` — Tensor и базовые операции
+- `Sources/PyTorchSwift/` — аналоги PyTorch модулей (Embedding, Linear, LayerNorm, Activations)
+- `Sources/EnergyFlow/` — модули архитектуры, начиная с TextBridge (TextToCubeEncoder)
+- `Tests/` — юнит‑тесты на формы и корректность
+
+### Фаза 1 (пошагово)
+1) База: Tensor (CPU), простые ops; минимальный whitespace‑Tokenizer
+2) PyTorchSwift аналоги: Embedding, Linear, LayerNorm, Activations
+3) TextToCubeEncoder (CPU): embedding → (пока без Transformer) → masked‑avg → MLP → tanh → [B, surface_dim]
+4) Тест: проверка формы и диапазона значений
+
+Полный объединённый план: `docs/Swift_MPS_Port_Plan.md`

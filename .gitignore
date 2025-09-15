@@ -56,3 +56,12 @@ experiments/
 *.pth
 *.pkl
 *.pt
+
+.DS_Store
+EnergyFlowSwift/.build
+EnergyFlowSwift/Packages
+EnergyFlowSwift/xcuserdata/
+EnergyFlowSwift/DerivedData/
+EnergyFlowSwift/.swiftpm/configuration/registries.json
+EnergyFlowSwift/.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
