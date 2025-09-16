@@ -11,7 +11,8 @@ public enum Activations {
             let xi = out[i]
             let x3 = xi * xi * xi
             let t = c * (xi + 0.044715 * x3)
-            out[i] = 0.5 * xi * (1 + Float(tanh(Double(t))))
+            // Disambiguate tanh: use Darwin.tanh(Double)
+            out[i] = 0.5 * xi * (1 + Float(Darwin.tanh(Double(t))))
         }
         return Tensor(shape: x.shape, data: out)
     }

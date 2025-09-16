@@ -3,63 +3,88 @@ import EFCore
 import PyTorchSwift
 
 public final class TextToCubeEncoder {
-    public let config: EnergyConfig
+    public let energyConfig: EnergyConfig
+    public let modelConfig: TextToCubeEncoderConfig
     public let surfaceDim: Int
     private var tokenizer: SimpleTokenizer
-
-    private let hiddenDim: Int = 256
-    private let maxPos: Int = 512
 
     private var embedding: Embedding
     private var proj1: Linear
     private var ln: LayerNorm
     private var proj2: Linear
 
-    // Sinusoidal positional encoding [maxPos, hiddenDim]
+    // Sinusoidal positional encoding [maxPosition, hiddenDim]
     private var positionalEncoding: Tensor
 
-    public init(config: EnergyConfig = createDebugConfig(), vocabSize: Int = 30000) {
-        self.config = config
-        self.surfaceDim = config.surfaceDim
+    public init(energyConfig: EnergyConfig = createDebugConfig(),
+                modelConfig: TextToCubeEncoderConfig = TextToCubeEncoderConfig(),
+                vocabSize: Int = 30000) {
+        self.energyConfig = energyConfig
+        self.modelConfig = modelConfig
+        self.surfaceDim = energyConfig.surfaceDim
         self.tokenizer = SimpleTokenizer()
-        self.embedding = Embedding(vocabSize: vocabSize, embeddingDim: hiddenDim)
-        self.proj1 = Linear(inFeatures: hiddenDim, outFeatures: hiddenDim)
-        self.ln = LayerNorm(dim: hiddenDim)
-        self.proj2 = Linear(inFeatures: hiddenDim, outFeatures: surfaceDim)
-        self.positionalEncoding = TextToCubeEncoder.makePositionalEncoding(maxLen: maxPos, dim: hiddenDim)
+        // Seeds per module
+        let seedEmbed = Seed.derive(modelConfig.baseSeed, label: "embedding")
+        let seedLin1  = Seed.derive(modelConfig.baseSeed, label: "linear1")
+        let seedLin2  = Seed.derive(modelConfig.baseSeed, label: "linear2")
+        self.embedding = Embedding(vocabSize: vocabSize, embeddingDim: modelConfig.hiddenDim, seed: seedEmbed)
+        self.proj1 = Linear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.hiddenDim, seed: seedLin1)
+        self.ln = LayerNorm(dim: modelConfig.hiddenDim)
+        self.proj2 = Linear(inFeatures: modelConfig.hiddenDim, outFeatures: surfaceDim, seed: seedLin2)
+        self.positionalEncoding = TextToCubeEncoder.makePositionalEncoding(maxLen: modelConfig.maxPosition, dim: modelConfig.hiddenDim, seed: Seed.derive(modelConfig.baseSeed, label: "posenc"))
     }
 
-    public func encode(_ texts: [String], maxLength: Int = 128) -> Tensor {
+    public func encode(_ texts: [String]) -> Tensor {
+        let logger = Logger.shared
+        logger.debug("encode() start: batch=\(texts.count) maxLen=\(modelConfig.maxLength) surfaceDim=\(surfaceDim)", category: "TextBridge")
         // 1) Tokenize
         var tok = tokenizer
-        let batch = tok.encodeBatch(texts, maxLength: maxLength)
+        let batch = tok.encodeBatch(texts, maxLength: modelConfig.maxLength)
+        logger.debug("token ids shape: [\(batch.ids.count), \(batch.ids.first?.count ?? 0)] mask shape: [\(batch.attentionMask.count), \(batch.attentionMask.first?.count ?? 0)]", category: "TextBridge")
         // 2) Embedding [B,L,hidden]
         var embs = embedding.forward(ids: batch.ids)
+        logger.debug("embeddings: \(embs.prettyShape)", category: "TextBridge")
         // 3) Add positional encoding (truncate to seqLen)
-        let seqLen = maxLength
-        precondition(seqLen <= maxPos, "seqLen exceeds maxPos in positional encoding")
+        let seqLen = modelConfig.maxLength
+        precondition(seqLen <= modelConfig.maxPosition, "seqLen exceeds maxPosition in positional encoding")
         let pe = positionalSlice(len: seqLen) // [L, hidden]
         // add PE to embeddings
         addPE(to: &embs, pe: pe)
+        logger.debug("embeddings+PE: \(embs.prettyShape)", category: "TextBridge")
         // 4) (Placeholder) Transformer encoder — identity for Phase 1
         let enc = embs
         // 5) Masked-avg over sequence -> [B, hidden]
         let pooled = maskedMean(enc, mask: batch.attentionMask)
+        logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: "TextBridge")
         // 6) Projection MLP: 256 -> 256 -> LN -> surfaceDim -> tanh
         var out = proj1.forward(pooled)
         out = Activations.gelu(out)
         out = ln.forward(out)
         out = proj2.forward(out)
         out = Activations.tanh(out)
+        logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: "TextBridge")
         // shape: [B, surfaceDim]
         return out
+    }
+
+    // Simple stats for debugging
+    private func mean(of t: Tensor) -> Float {
+        var s: Float = 0
+        for v in t.data { s += v }
+        return s / Float(max(t.count, 1))
+    }
+    private func std(of t: Tensor) -> Float {
+        let m = mean(of: t)
+        var acc: Float = 0
+        for v in t.data { let d = v - m; acc += d*d }
+        return sqrt(acc / Float(max(t.count, 1)))
     }
 
     // MARK: - Helpers
 
     private func positionalSlice(len: Int) -> Tensor { // [L, hidden]
-        precondition(len <= maxPos)
-        let hidden = hiddenDim
+        precondition(len <= modelConfig.maxPosition)
+        let hidden = modelConfig.hiddenDim
         var out = Tensor.zeros([len, hidden])
         for l in 0..<len {
             let srcBase = l * hidden
@@ -107,7 +132,9 @@ public final class TextToCubeEncoder {
         return out
     }
 
-    private static func makePositionalEncoding(maxLen: Int, dim: Int) -> Tensor {
+    private static func makePositionalEncoding(maxLen: Int, dim: Int, seed: UInt64) -> Tensor {
+        // seed is not strictly needed for sinusoidal, but we keep signature uniform for future variants
+        _ = seed
         var pe = Tensor.zeros([maxLen, dim])
         let divTermBase = Float(log(10000.0) / Double(dim))
         for pos in 0..<maxLen {
