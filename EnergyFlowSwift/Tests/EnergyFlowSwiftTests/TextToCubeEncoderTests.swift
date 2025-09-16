@@ -3,11 +3,12 @@ import XCTest
 
 final class TextToCubeEncoderTests: XCTestCase {
     func testOutputShapeAndRange() {
-        let config = createDebugConfig() // 20x20x10 -> surfaceDim = 400
-        let encoder = TextToCubeEncoder(config: config)
-        let texts = ["hello world", "swift mps metal"]
-        let out = encoder.encode(texts, maxLength: 16)
-        XCTAssertEqual(out.shape, [2, config.surfaceDim])
+let energy = createDebugConfig() // 20x20x10
+let model = TextToCubeEncoderConfig(hiddenDim: 256, maxLength: 16, maxPosition: 64, outputDim: 768, useTanhOutput: false)
+let encoder = TextToCubeEncoder(energyConfig: energy, modelConfig: model)
+let texts = ["hello world", "swift mps metal"]
+let out = encoder.encode(texts)
+XCTAssertEqual(out.shape, [2, model.outputDim])
         // values should be in [-1, 1] after tanh
         var minVal: Float = Float.greatestFiniteMagnitude
         var maxVal: Float = -Float.greatestFiniteMagnitude

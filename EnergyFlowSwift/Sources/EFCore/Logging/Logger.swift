@@ -13,6 +13,13 @@ public final class Logger: @unchecked Sendable {
     public static let shared = Logger()
     private init() {}
 
+    // Common categories to avoid typos
+    public struct Category {
+        public static let textBridge = "TextBridge"
+        public static let training   = "Training"
+        public static let dataset    = "Dataset"
+    }
+
     // Toggle and level gate for runtime control in research/dev
     public var enabled: Bool = true
     public var level: LogLevel = .info

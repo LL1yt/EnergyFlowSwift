@@ -13,7 +13,7 @@ public struct EnergyConfig {
 }
 
 public func createDebugConfig() -> EnergyConfig {
-    EnergyConfig(width: 20, height: 20, depth: 10)
+    EnergyConfig(width: 16, height: 16, depth: 10)
 }
 
 public func createExperimentConfig() -> EnergyConfig {

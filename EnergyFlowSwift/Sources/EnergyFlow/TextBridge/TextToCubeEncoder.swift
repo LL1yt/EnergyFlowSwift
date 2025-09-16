@@ -30,40 +30,40 @@ public final class TextToCubeEncoder {
         self.embedding = Embedding(vocabSize: vocabSize, embeddingDim: modelConfig.hiddenDim, seed: seedEmbed)
         self.proj1 = Linear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.hiddenDim, seed: seedLin1)
         self.ln = LayerNorm(dim: modelConfig.hiddenDim)
-        self.proj2 = Linear(inFeatures: modelConfig.hiddenDim, outFeatures: surfaceDim, seed: seedLin2)
+        self.proj2 = Linear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.outputDim, seed: seedLin2)
         self.positionalEncoding = TextToCubeEncoder.makePositionalEncoding(maxLen: modelConfig.maxPosition, dim: modelConfig.hiddenDim, seed: Seed.derive(modelConfig.baseSeed, label: "posenc"))
     }
 
     public func encode(_ texts: [String]) -> Tensor {
         let logger = Logger.shared
-        logger.debug("encode() start: batch=\(texts.count) maxLen=\(modelConfig.maxLength) surfaceDim=\(surfaceDim)", category: "TextBridge")
+        logger.debug("encode() start: batch=\(texts.count) maxLen=\(modelConfig.maxLength) outputDim=\(modelConfig.outputDim)", category: Logger.Category.textBridge)
         // 1) Tokenize
         var tok = tokenizer
         let batch = tok.encodeBatch(texts, maxLength: modelConfig.maxLength)
-        logger.debug("token ids shape: [\(batch.ids.count), \(batch.ids.first?.count ?? 0)] mask shape: [\(batch.attentionMask.count), \(batch.attentionMask.first?.count ?? 0)]", category: "TextBridge")
+        logger.debug("token ids shape: [\(batch.ids.count), \(batch.ids.first?.count ?? 0)] mask shape: [\(batch.attentionMask.count), \(batch.attentionMask.first?.count ?? 0)]", category: Logger.Category.textBridge)
         // 2) Embedding [B,L,hidden]
         var embs = embedding.forward(ids: batch.ids)
-        logger.debug("embeddings: \(embs.prettyShape)", category: "TextBridge")
+        logger.debug("embeddings: \(embs.prettyShape)", category: Logger.Category.textBridge)
         // 3) Add positional encoding (truncate to seqLen)
         let seqLen = modelConfig.maxLength
         precondition(seqLen <= modelConfig.maxPosition, "seqLen exceeds maxPosition in positional encoding")
         let pe = positionalSlice(len: seqLen) // [L, hidden]
         // add PE to embeddings
         addPE(to: &embs, pe: pe)
-        logger.debug("embeddings+PE: \(embs.prettyShape)", category: "TextBridge")
+        logger.debug("embeddings+PE: \(embs.prettyShape)", category: Logger.Category.textBridge)
         // 4) (Placeholder) Transformer encoder — identity for Phase 1
         let enc = embs
         // 5) Masked-avg over sequence -> [B, hidden]
         let pooled = maskedMean(enc, mask: batch.attentionMask)
-        logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: "TextBridge")
+        logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
         // 6) Projection MLP: 256 -> 256 -> LN -> surfaceDim -> tanh
         var out = proj1.forward(pooled)
         out = Activations.gelu(out)
         out = ln.forward(out)
         out = proj2.forward(out)
-        out = Activations.tanh(out)
-        logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: "TextBridge")
-        // shape: [B, surfaceDim]
+        if modelConfig.useTanhOutput { out = Activations.tanh(out) }
+        logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: Logger.Category.textBridge)
+        // shape: [B, outputDim]
         return out
     }
 
