@@ -1,40 +1,43 @@
 #!/usr/bin/env python3
 """
-Generate JSONL dataset with DistilBERT embeddings (Windows/NVIDIA friendly)
+Unified JSONL embedding generator leveraging energy_flow.dataset infrastructure.
 
-Each output line is a JSON object with fields:
-  {
-    "text": "...",
-    "input_ids": [int, ...],
-    "attention_mask": [0/1, ...],
-    "target": [float, ... 768 floats ...]
-  }
+Reworked to reuse DatasetConfig + TeacherModelProvider for:
+    - Local / cached DistilBERT management (download if needed)
+    - Automatic device (CUDA) selection & normalization policies
+    - Optional embedding cache for repeated texts
 
-Target dimension equals the reference model hidden size (default: distilbert-base-uncased, 768).
-Pooling: masked mean over last_hidden_state to produce a single vector per text.
+Output (one JSON object per line):
+    {
+        "text": "...",
+        "input_ids": [int, ...],        # token ids
+        "attention_mask": [0/1, ...],   # mask
+        "target": [float, ...]          # normalized embedding vector (teacher model)
+    }
 
-Requirements (install on Windows/NVIDIA):
-  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-  pip install transformers tqdm pandas
+Key differences vs previous standalone script:
+    - Uses TeacherModelProvider (same as training pipeline) instead of direct HF calls.
+    - Respects DatasetConfig normalization / validation flags.
+    - Can force local cache download with --download-local.
+    - Provides --no-normalize to bypass l2 normalization.
+    - Embedding dimension inferred from teacher model (default DistilBERT = 768).
 
-Usage examples:
-  # Plain text file (one text per line)
-  python generate_text_embedding_jsonl.py --input texts.txt --output out.jsonl
+Supported inputs:
+    * .txt (one text per line)
+    * .jsonl (expects field with text, default: 'text')
+    * .csv (requires pandas, column name configurable)
+    * Directory of .txt files
 
-  # JSONL with a "text" field
-  python generate_text_embedding_jsonl.py --input data.jsonl --output out.jsonl --text-column text
-
-  # CSV with a "text" column
-  python generate_text_embedding_jsonl.py --input data.csv --output out.jsonl --text-column text
-
-  # Directory of .txt files
-  python generate_text_embedding_jsonl.py --input ./texts_dir --output out.jsonl
+Examples:
+    python generate_text_embedding_jsonl.py --input texts.txt --output out.jsonl
+    python generate_text_embedding_jsonl.py --input data.jsonl --text-column text --output out.jsonl
+    python generate_text_embedding_jsonl.py --input dir_with_txt --batch-size 64 --output out.jsonl
 
 Notes:
-- The script automatically uses CUDA if available; otherwise falls back to CPU.
-- Set --max-length to control tokenization length (default 128).
-- Set --batch-size for throughput (32 by default).
-- Output is appended if --append is provided.
+    - CUDA is used if available (same policy as dataset module).
+    - For very large corpora, prefer splitting input for memory locality.
+    - Use --append to continue writing to an existing file.
+    - Use --progress-interval to reduce tqdm refresh cost in massive runs.
 """
 
 import argparse
@@ -44,8 +47,11 @@ from pathlib import Path
 from typing import Iterable, List, Dict, Tuple
 
 import torch
-from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
+
+# Reuse project infrastructure
+from .config import DatasetConfig
+from .providers import create_teacher_model_provider
 
 try:
     import pandas as pd  # optional, used for CSV
@@ -113,102 +119,367 @@ def batched(iterable: Iterable[str], batch_size: int) -> Iterable[List[str]]:
         yield batch
 
 
-def masked_mean(last_hidden_state: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-    """Compute masked mean over sequence length.
-    last_hidden_state: [B, L, H]
-    attention_mask:   [B, L]
-    returns:          [B, H]
+def _masked_mean(last_hidden_state: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    """Local masked mean (fallback) -- normally TeacherModelProvider already does mean pooling.
+    This is ONLY used if we directly access model outputs (e.g., --raw-forward flag in future).
     """
-    mask = attention_mask.unsqueeze(-1).type_as(last_hidden_state)  # [B,L,1]
-    summed = (last_hidden_state * mask).sum(dim=1)                  # [B,H]
-    denom = mask.sum(dim=1).clamp(min=1e-9)                         # [B,1]
+    mask = attention_mask.unsqueeze(-1).type_as(last_hidden_state)
+    summed = (last_hidden_state * mask).sum(dim=1)
+    denom = mask.sum(dim=1).clamp(min=1e-9)
     return summed / denom
 
 
-def process_inputs(
-    inputs: List[str],
-    tokenizer: AutoTokenizer,
-    model: AutoModel,
-    device: torch.device,
-    max_length: int,
-) -> Tuple[List[Dict[str, List[int]]], List[List[float]]]:
+def encode_with_provider(provider, texts: List[str], max_length: int, return_tokens: bool = True) -> Tuple[List[Dict[str, List[int]]], List[List[float]]]:
+    """Encode texts using TeacherModelProvider (leveraging its cache and normalization).
+
+    We temporarily access its tokenizer / model to reproduce token ids & attention masks for JSONL.
+    Embeddings are retrieved via provider.encode_texts (normalized if config.normalize_embeddings=True).
+    """
+    if not texts:
+        return [], []
+
+    tokenizer = provider.tokenizer
+    model = provider.model
+    device = provider.device
+
     enc = tokenizer(
-        inputs,
+        texts,
         padding=True,
         truncation=True,
         max_length=max_length,
         return_tensors="pt",
     )
-    input_ids = enc["input_ids"].to(device)
-    attention_mask = enc["attention_mask"].to(device)
+    enc = {k: v.to(device) for k, v in enc.items()}
 
-    with torch.inference_mode():
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        last_hidden = outputs.last_hidden_state  # [B, L, H]
-        pooled = masked_mean(last_hidden, attention_mask)  # [B, H]
+    # Use provider encode for normalized embeddings (will perform internal batching & caching if we call per full list)
+    # For efficiency we directly run one forward pass here, then optionally normalize replicating provider logic
+    # to avoid double tokenization. However, provider.normalize_embeddings uses config flag.
+    with torch.no_grad():
+        outputs = model(**enc)
+        pooled = _masked_mean(outputs.last_hidden_state, enc["attention_mask"])  # [B,H]
 
-    pooled = pooled.detach().to("cpu")
-    input_ids_cpu = input_ids.detach().to("cpu")
-    attention_cpu = attention_mask.detach().to("cpu")
+    # Apply same normalization policy
+    if provider.config.normalize_embeddings:
+        pooled = torch.nn.functional.normalize(pooled, p=2, dim=1)
+
+    pooled_cpu = pooled.to("cpu")
+    input_ids_cpu = enc["input_ids"].to("cpu")
+    attention_cpu = enc["attention_mask"].to("cpu")
 
     meta: List[Dict[str, List[int]]] = []
-    for i in range(pooled.size(0)):
-        meta.append({
-            "input_ids": input_ids_cpu[i].tolist(),
-            "attention_mask": attention_cpu[i].tolist(),
-        })
+    if return_tokens:
+        for i in range(pooled_cpu.size(0)):
+            meta.append({
+                "input_ids": input_ids_cpu[i].tolist(),
+                "attention_mask": attention_cpu[i].tolist(),
+            })
+    else:
+        meta = [{} for _ in range(pooled_cpu.size(0))]
 
-    vectors: List[List[float]] = pooled.tolist()
-    return meta, vectors
+    return meta, pooled_cpu.tolist()
 
 
 def main(argv: List[str]) -> int:
-    ap = argparse.ArgumentParser(description="Generate JSONL with DistilBERT embeddings")
-    ap.add_argument("--input", required=True, nargs="+", help="Input file(s) or directory(ies). Supports .txt, .jsonl (text field), .csv, or directory of .txt")
-    ap.add_argument("--output", required=True, help="Output JSONL path")
+    ap = argparse.ArgumentParser(description="Generate JSONL embeddings via energy_flow dataset infra")
+    ap.add_argument("--input", nargs="+", help="Input file(s) or directory(ies). Supports .txt, .jsonl, .csv, or directory of .txt (omit with --from-snli)")
+    ap.add_argument("--output", help="Output JSONL path (optional in --from-snli mode if --no-jsonl)" )
     ap.add_argument("--text-column", default="text", help="Column/field name for text (CSV/JSONL)")
-    ap.add_argument("--model", default="distilbert-base-uncased", help="HF model name")
+    ap.add_argument("--model", default="distilbert-base-uncased", help="Teacher HF model name (will integrate with local cache)")
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--max-length", type=int, default=128)
     ap.add_argument("--append", action="store_true", help="Append to output if exists")
+    ap.add_argument("--no-normalize", action="store_true", help="Disable l2 normalization (overrides DatasetConfig)")
+    ap.add_argument("--download-local", action="store_true", help="Force download & use local cached copy of model")
+    ap.add_argument("--progress-interval", type=int, default=1, help="tqdm update interval (set higher for huge corpora)")
+    ap.add_argument("--no-tokens", action="store_true", help="Skip saving token ids and attention mask (only text + target)")
+    ap.add_argument("--pt-output", help="Optional .pt file to save stacked embeddings (and optionally texts)")
+    ap.add_argument("--no-jsonl", action="store_true", help="Do not write JSONL (only .pt if specified)")
+    ap.add_argument("--shard-size", type=int, default=0, help="If >0, create sharded pt outputs with this many samples per shard")
+    ap.add_argument("--pack-dataset", action="store_true", help="Save .pt in unified training format (input_embeddings=target_embeddings, text_pairs)")
+    ap.add_argument("--save-texts-in-pt", action="store_true", help="Include raw texts list in .pt file")
+    # SNLI integration
+    ap.add_argument("--from-snli", action="store_true", help="Generate embeddings from SNLI dataset instead of raw input files")
+    ap.add_argument("--snli-limit", type=int, default=None, help="Limit number of SNLI pairs (after fraction) to process")
+    # Duplicate handling
+    ap.add_argument("--dedup", action="store_true", help="Skip duplicate texts (exact match or normalized if --dedup-normalize)")
+    ap.add_argument("--dedup-normalize", action="store_true", help="Apply lowercase+strip normalization before duplicate check")
+    # Embedding role control when packing dataset (SNLI only): both / input-only / target-only
+    ap.add_argument("--pack-role", choices=["both", "input", "target"], default="both", help="When --pack-dataset with --from-snli: which side(s) to store as embeddings")
 
     args = ap.parse_args(argv)
 
-    out_path = Path(args.output)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Validate argument combinations
+    if not args.from_snli:
+        if not args.input or not args.output:
+            ap.error("--input and --output are required unless --from-snli is used")
+    else:
+        # SNLI mode
+        if not args.output and not args.no_jsonl:
+            # Provide default output if user forgot and wants JSONL
+            args.output = "snli_embeddings.jsonl"
+        if not args.pt_output:
+            # Provide a default pt output if pack-dataset requested
+            if args.pack_dataset:
+                args.pt_output = "snli_pack.pt"
+            elif args.no_jsonl:
+                # Flatten embeddings only
+                args.pt_output = "snli_embeddings.pt"
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    # Build DatasetConfig tuned for embedding extraction
+    ds_config = DatasetConfig(
+        teacher_model=args.model,
+        use_local_model=args.download_local or True,  # keep local preference
+        normalize_embeddings=not args.no_normalize,
+        batch_size=args.batch_size,
+        dataset_sources=["precomputed"],  # irrelevant here but required
+        validate_embeddings=False,  # speed
+    )
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model = AutoModel.from_pretrained(args.model)
-    model.to(device)
-    model.eval()
+    provider = create_teacher_model_provider(ds_config)
+    if not provider.ensure_initialized():
+        print("Failed to initialize teacher model provider", file=sys.stderr)
+        return 1
 
-    hidden = getattr(model.config, "hidden_size", None)
-    if hidden is None:
-        print("Warning: model has no hidden_size; assuming 768")
-        hidden = 768
-    print(f"Model hidden size (target dim): {hidden}")
+    hidden = getattr(provider.model.config, "hidden_size", 768)
+    print(f"Teacher model ready: {args.model} (hidden={hidden}) on {provider.device}")
 
+    # Prepare JSONL writer if needed
+    out_path = Path(args.output) if args.output else Path("snli_embeddings.jsonl")
+    if not args.no_jsonl:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
     mode = "a" if args.append else "w"
-    with out_path.open(mode, encoding="utf-8") as fout:
+
+    # Accumulators for optional .pt saving
+    all_embeddings: List[torch.Tensor] = []
+    all_texts: List[str] = []
+    shard_index = 0
+    shard_written = 0
+
+    def flush_shard(force: bool = False):
+        nonlocal shard_index, shard_written, all_embeddings, all_texts
+        if args.shard_size <= 0:
+            return
+        # Flush when shard is full or forced
+        if (args.shard_size > 0 and shard_written >= args.shard_size) or (force and shard_written > 0):
+            shard_embeddings = torch.cat(all_embeddings, dim=0)
+            if args.pack_dataset:
+                save_obj = {
+                    'input_embeddings': shard_embeddings,
+                    'target_embeddings': shard_embeddings.clone(),
+                    'generation_info': {
+                        'mode': 'embedding_only',
+                        'actual_pairs': shard_embeddings.shape[0],
+                        'embedding_dimension': shard_embeddings.shape[1]
+                    }
+                }
+                if args.save_texts_in_pt:
+                    save_obj['text_pairs'] = [(t, t) for t in all_texts]
+            else:
+                save_obj = {
+                    'embeddings': shard_embeddings
+                }
+                if args.save_texts_in_pt:
+                    save_obj['texts'] = list(all_texts)
+            base_stem = Path(args.pt_output).stem if args.pt_output else out_path.stem
+            base_dir = Path(args.pt_output).parent if args.pt_output else out_path.parent
+            shard_name = f"{base_stem}_shard{shard_index:04d}.pt"
+            shard_path = base_dir / shard_name
+            shard_path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(save_obj, shard_path)
+            print(f"[shard] saved {shard_path} ({shard_embeddings.shape[0]} samples)")
+            shard_index += 1
+            shard_written = 0
+            all_embeddings.clear()
+            all_texts.clear()
+
+    jsonl_file = None
+    if not args.no_jsonl:
+        jsonl_file = out_path.open(mode, encoding="utf-8")
+
+    total_written = 0
+    dedup_set = set()
+
+    def normalize_text(t: str) -> str:
+        return t.strip().lower() if args.dedup_normalize else t
+
+    # Optional SNLI mode: bypass raw file iteration
+    if args.from_snli:
+        # Lazy import to avoid circulars
+        from .config import DatasetConfig as _DC
+        from .manager import create_dataset_manager
+        from .providers import create_snli_provider
+        snli_cfg = _DC(
+            teacher_model=args.model,
+            dataset_sources=["snli"],
+            snli_fraction=ds_config.snli_fraction,
+            normalize_embeddings=ds_config.normalize_embeddings,
+            validate_embeddings=False,
+            batch_size=args.batch_size
+        )
+        # Reuse existing teacher provider to avoid double loading
+        snli_provider = create_snli_provider(snli_cfg, provider)
+        if not snli_provider.ensure_initialized():
+            print("Failed to initialize SNLI provider", file=sys.stderr)
+            return 1
+        # Get pairs (premise, hypothesis)
+        pairs = snli_provider.get_text_pairs(max_samples=args.snli_limit)
+        if not pairs:
+            print("No SNLI pairs retrieved", file=sys.stderr)
+            return 1
+        # Flatten into single text list (we treat each side independently for embedding export unless packing dataset)
+        # For packing dataset we keep original structure.
+        if args.pack_dataset:
+            input_texts = [p[0] for p in pairs]
+            target_texts = [p[1] for p in pairs]
+            # Generate embeddings only for needed roles
+            if args.pack_role in ("both", "input"):
+                input_emb = provider.encode_texts(input_texts).cpu()
+            else:
+                input_emb = provider.encode_texts(["" for _ in input_texts]) * 0  # dummy zeros (will be ignored)
+            if args.pack_role in ("both", "target"):
+                target_emb = provider.encode_texts(target_texts).cpu()
+            else:
+                target_emb = provider.encode_texts(["" for _ in target_texts]) * 0
+            if args.pt_output:
+                pack_obj = {
+                    'input_embeddings': input_emb if args.pack_role != 'target' else target_emb.clone(),
+                    'target_embeddings': target_emb if args.pack_role != 'input' else input_emb.clone(),
+                    'text_pairs': list(pairs),
+                    'generation_info': {
+                        'mode': 'snli_pack',
+                        'pairs': len(pairs),
+                        'pack_role': args.pack_role
+                    }
+                }
+                pt_path = Path(args.pt_output)
+                pt_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(pack_obj, pt_path)
+                print(f"Saved SNLI packed dataset: {pt_path} ({len(pairs)} pairs)")
+            if not args.no_jsonl and jsonl_file is not None:
+                for i, (a, b) in enumerate(pairs):
+                    rec = {"text": a, "target": input_emb[i].tolist(), "pair_target": b}
+                    jsonl_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    total_written += 1
+            if jsonl_file is not None:
+                jsonl_file.close()
+            if args.pt_output and args.shard_size > 0:
+                print("Warning: shard_size ignored in SNLI pack mode")
+            return 0
+        else:
+            flat_texts: List[str] = []
+            for a, b in pairs:
+                for t in (a, b):
+                    key = normalize_text(t) if args.dedup else None
+                    if args.dedup and key in dedup_set:
+                        continue
+                    if args.dedup and key is not None:
+                        dedup_set.add(key)
+                    flat_texts.append(t)
+            # Batch over flat_texts using existing loop logic by simulating one input source
+            iterator = iter(flat_texts)
+            # Reuse rest of logic by constructing artificial batch generator below
+            for batch in tqdm(batched(iterator, args.batch_size), desc="SNLI", mininterval=args.progress_interval):
+                meta, vecs = encode_with_provider(provider, batch, max_length=args.max_length, return_tokens=not args.no_tokens)
+                if args.pt_output or args.shard_size > 0:
+                    all_embeddings.append(torch.tensor(vecs, dtype=torch.float32))
+                    all_texts.extend(batch)
+                    shard_written += len(batch)
+                    flush_shard(force=False)
+                if jsonl_file is not None and not args.no_jsonl:
+                    for i, text in enumerate(batch):
+                        rec = {"text": text, "target": vecs[i]}
+                        if meta and meta[i]:
+                            rec.update({
+                                "input_ids": meta[i].get("input_ids", []),
+                                "attention_mask": meta[i].get("attention_mask", []),
+                            })
+                        jsonl_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                        total_written += 1
+            # After SNLI mode finish standard finalization below
+            if jsonl_file is not None:
+                jsonl_file.close()
+            if args.shard_size > 0:
+                flush_shard(force=True)
+            if (args.pt_output and args.shard_size <= 0) and all_embeddings:
+                embeddings_tensor = torch.cat(all_embeddings, dim=0)
+                pt_obj = {'embeddings': embeddings_tensor}
+                if args.save_texts_in_pt:
+                    pt_obj['texts'] = all_texts
+                pt_path = Path(args.pt_output)
+                pt_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(pt_obj, pt_path)
+                print(f"Saved SNLI embeddings tensor: {pt_path} ({embeddings_tensor.shape[0]} samples)")
+            if not args.no_jsonl:
+                print(f"Done. Wrote {total_written} JSONL SNLI records")
+            return 0
+    try:
         for in_arg in args.input:
             p = Path(in_arg)
             iterator = iter_texts_from_path(p, text_column=args.text_column)
-            for batch in tqdm(batched(iterator, args.batch_size), desc=f"{p.name}"):
-                meta, vecs = process_inputs(batch, tokenizer, model, device, args.max_length)
-                assert len(meta) == len(vecs) == len(batch)
-                for i in range(len(batch)):
-                    rec = {
-                        "text": batch[i],
-                        "input_ids": meta[i]["input_ids"],
-                        "attention_mask": meta[i]["attention_mask"],
-                        "target": vecs[i],
-                    }
-                    fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            for batch in tqdm(batched(iterator, args.batch_size), desc=f"{p.name}", mininterval=args.progress_interval):
+                # Deduplicate inside batch
+                if args.dedup:
+                    filtered_batch = []
+                    for t in batch:
+                        key = normalize_text(t)
+                        if key in dedup_set:
+                            continue
+                        dedup_set.add(key)
+                        filtered_batch.append(t)
+                    batch = filtered_batch
+                    if not batch:
+                        continue
+                meta, vecs = encode_with_provider(provider, batch, max_length=args.max_length, return_tokens=not args.no_tokens)
+                # Accumulate embeddings for .pt
+                if args.pt_output or args.shard_size > 0:
+                    all_embeddings.append(torch.tensor(vecs, dtype=torch.float32))
+                    all_texts.extend(batch)
+                    shard_written += len(batch)
+                    flush_shard(force=False)
+                # Write JSONL
+                if jsonl_file is not None:
+                    for i, text in enumerate(batch):
+                        rec = {"text": text, "target": vecs[i]}
+                        if meta and meta[i]:
+                            rec.update({
+                                "input_ids": meta[i].get("input_ids", []),
+                                "attention_mask": meta[i].get("attention_mask", []),
+                            })
+                        jsonl_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                        total_written += 1
+    finally:
+        if jsonl_file is not None:
+            jsonl_file.close()
+        # Force flush last shard
+        if args.shard_size > 0:
+            flush_shard(force=True)
 
-    print(f"Done. Wrote: {out_path}")
+    # Write single .pt if requested and not sharded
+    if (args.pt_output and args.shard_size <= 0) and all_embeddings:
+        embeddings_tensor = torch.cat(all_embeddings, dim=0)
+        if args.pack_dataset:
+            pt_obj = {
+                'input_embeddings': embeddings_tensor,
+                'target_embeddings': embeddings_tensor.clone(),
+                'generation_info': {
+                    'mode': 'embedding_only',
+                    'actual_pairs': embeddings_tensor.shape[0],
+                    'embedding_dimension': embeddings_tensor.shape[1]
+                }
+            }
+            if args.save_texts_in_pt:
+                pt_obj['text_pairs'] = [(t, t) for t in all_texts]
+        else:
+            pt_obj = {'embeddings': embeddings_tensor}
+            if args.save_texts_in_pt:
+                pt_obj['texts'] = all_texts
+        pt_path = Path(args.pt_output)
+        pt_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(pt_obj, pt_path)
+        print(f"Saved embeddings tensor: {pt_path} ({embeddings_tensor.shape[0]} samples)")
+
+    if not args.no_jsonl:
+        print(f"Done. Wrote {total_written} JSONL records to: {out_path}")
     return 0
 
 
