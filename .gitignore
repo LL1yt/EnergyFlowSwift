@@ -63,5 +63,5 @@ EnergyFlowSwift/Packages
 EnergyFlowSwift/xcuserdata/
 EnergyFlowSwift/DerivedData/
 EnergyFlowSwift/.swiftpm/configuration/registries.json
-EnergyFlowSwift/.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+EnergyFlowSwift/.swiftpm/xcode
 .netrc
