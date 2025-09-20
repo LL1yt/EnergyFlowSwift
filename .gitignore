@@ -63,7 +63,7 @@ EnergyFlowSwift/Packages
 EnergyFlowSwift/xcuserdata/
 EnergyFlowSwift/DerivedData/
 EnergyFlowSwift/.swiftpm/configuration/registries.json
-EnergyFlowSwift/.swiftpm/xcode
+EnergyFlowSwift/.swiftpm
 .netrc
 *.jsonl
 *.csv

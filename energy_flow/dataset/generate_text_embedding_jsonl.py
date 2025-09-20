@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
 """
-Unified JSONL embedding generator leveraging energy_flow.dataset infrastructure.
+Unified embedding generator leveraging energy_flow.dataset infrastructure.
 
-Reworked to reuse DatasetConfig + TeacherModelProvider for:
-    - Local / cached DistilBERT management (download if needed)
-    - Automatic device (CUDA) selection & normalization policies
-    - Optional embedding cache for repeated texts
+Now supports two output modes:
+1) JSONL (one JSON object per line):
+   {
+       "text": "...",
+       "input_ids": [int, ...],        # token ids (optional)
+       "attention_mask": [0/1, ...],   # mask (optional)
+       "target": [float, ...]          # normalized embedding vector (teacher model)
+   }
 
-Output (one JSON object per line):
-    {
-        "text": "...",
-        "input_ids": [int, ...],        # token ids
-        "attention_mask": [0/1, ...],   # mask
-        "target": [float, ...]          # normalized embedding vector (teacher model)
-    }
+2) Compact binary EFB (.efb) format (Swift-friendly, macOS-friendly):
+   - Little-endian layout, no external deps needed in Swift
+   - File layout:
+       magic: 4 bytes = b"EFB1"
+       num_samples: uint32
+       embedding_dim: uint32
+       repeat num_samples times:
+           L: uint32                       # token length
+           input_ids: L x uint32
+           attention_mask: L x uint8
+           target: embedding_dim x float32
+   - Contains tokens + masks + target embeddings only (no raw text)
 
 Key differences vs previous standalone script:
     - Uses TeacherModelProvider (same as training pipeline) instead of direct HF calls.
@@ -29,14 +38,17 @@ Supported inputs:
     * Directory of .txt files
 
 Examples:
+    # JSONL only
     python generate_text_embedding_jsonl.py --input texts.txt --output out.jsonl
-    python generate_text_embedding_jsonl.py --input data.jsonl --text-column text --output out.jsonl
-    python generate_text_embedding_jsonl.py --input dir_with_txt --batch-size 64 --output out.jsonl
+    # JSONL disabled, EFB only
+    python generate_text_embedding_jsonl.py --input data.jsonl --text-column text --no-jsonl --efb-output out.efb
+    # Both JSONL and EFB
+    python generate_text_embedding_jsonl.py --input dir_with_txt --batch-size 64 --output out.jsonl --efb-output out.efb
 
 Notes:
     - CUDA is used if available (same policy as dataset module).
     - For very large corpora, prefer splitting input for memory locality.
-    - Use --append to continue writing to an existing file.
+    - Use --append to continue writing to an existing JSONL file.
     - Use --progress-interval to reduce tqdm refresh cost in massive runs.
 """
 
@@ -44,7 +56,9 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Iterable, List, Dict, Tuple
+from typing import Iterable, List, Dict, Tuple, Optional
+import struct
+import array
 
 import torch
 from tqdm import tqdm
@@ -132,7 +146,7 @@ def _masked_mean(last_hidden_state: torch.Tensor, attention_mask: torch.Tensor) 
 def encode_with_provider(provider, texts: List[str], max_length: int, return_tokens: bool = True) -> Tuple[List[Dict[str, List[int]]], List[List[float]]]:
     """Encode texts using TeacherModelProvider (leveraging its cache and normalization).
 
-    We temporarily access its tokenizer / model to reproduce token ids & attention masks for JSONL.
+    We temporarily access its tokenizer / model to reproduce token ids & attention masks for JSONL/EFB.
     Embeddings are retrieved via provider.encode_texts (normalized if config.normalize_embeddings=True).
     """
     if not texts:
@@ -151,14 +165,10 @@ def encode_with_provider(provider, texts: List[str], max_length: int, return_tok
     )
     enc = {k: v.to(device) for k, v in enc.items()}
 
-    # Use provider encode for normalized embeddings (will perform internal batching & caching if we call per full list)
-    # For efficiency we directly run one forward pass here, then optionally normalize replicating provider logic
-    # to avoid double tokenization. However, provider.normalize_embeddings uses config flag.
     with torch.no_grad():
         outputs = model(**enc)
         pooled = _masked_mean(outputs.last_hidden_state, enc["attention_mask"])  # [B,H]
 
-    # Apply same normalization policy
     if provider.config.normalize_embeddings:
         pooled = torch.nn.functional.normalize(pooled, p=2, dim=1)
 
@@ -180,20 +190,21 @@ def encode_with_provider(provider, texts: List[str], max_length: int, return_tok
 
 
 def main(argv: List[str]) -> int:
-    ap = argparse.ArgumentParser(description="Generate JSONL embeddings via energy_flow dataset infra")
+    ap = argparse.ArgumentParser(description="Generate embeddings via energy_flow dataset infra (JSONL and/or EFB)")
     ap.add_argument("--input", nargs="+", help="Input file(s) or directory(ies). Supports .txt, .jsonl, .csv, or directory of .txt (omit with --from-snli)")
-    ap.add_argument("--output", help="Output JSONL path (optional in --from-snli mode if --no-jsonl)" )
+    ap.add_argument("--output", help="Output JSONL path (optional if --no-jsonl or when only --efb-output is used)")
     ap.add_argument("--text-column", default="text", help="Column/field name for text (CSV/JSONL)")
     ap.add_argument("--model", default="distilbert-base-uncased", help="Teacher HF model name (will integrate with local cache)")
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--max-length", type=int, default=128)
-    ap.add_argument("--append", action="store_true", help="Append to output if exists")
+    ap.add_argument("--append", action="store_true", help="Append to output if exists (JSONL only)")
     ap.add_argument("--no-normalize", action="store_true", help="Disable l2 normalization (overrides DatasetConfig)")
     ap.add_argument("--download-local", action="store_true", help="Force download & use local cached copy of model")
     ap.add_argument("--progress-interval", type=int, default=1, help="tqdm update interval (set higher for huge corpora)")
     ap.add_argument("--no-tokens", action="store_true", help="Skip saving token ids and attention mask (only text + target)")
     ap.add_argument("--pt-output", help="Optional .pt file to save stacked embeddings (and optionally texts)")
-    ap.add_argument("--no-jsonl", action="store_true", help="Do not write JSONL (only .pt if specified)")
+    ap.add_argument("--no-jsonl", action="store_true", help="Do not write JSONL (use with --efb-output or --pt-output)")
+    ap.add_argument("--efb-output", help="Optional path to write compact binary EFB dataset (.efb). Requires tokens.")
     ap.add_argument("--shard-size", type=int, default=0, help="If >0, create sharded pt outputs with this many samples per shard")
     ap.add_argument("--pack-dataset", action="store_true", help="Save .pt in unified training format (input_embeddings=target_embeddings, text_pairs)")
     ap.add_argument("--save-texts-in-pt", action="store_true", help="Include raw texts list in .pt file")
@@ -210,8 +221,13 @@ def main(argv: List[str]) -> int:
 
     # Validate argument combinations
     if not args.from_snli:
-        if not args.input or not args.output:
-            ap.error("--input and --output are required unless --from-snli is used")
+        if not args.input:
+            ap.error("--input is required unless --from-snli is used")
+        # Ensure at least one output is selected
+        if (not args.output and not args.pt_output and not args.efb_output) or (not args.output and not args.no_jsonl and not args.efb_output and not args.pt_output):
+            # If user didn't disable JSONL and didn't provide output anywhere
+            if not args.no_jsonl and not args.output and not args.efb_output and not args.pt_output:
+                ap.error("Provide --output for JSONL or use --no-jsonl with --efb-output/--pt-output")
     else:
         # SNLI mode
         if not args.output and not args.no_jsonl:
@@ -224,6 +240,11 @@ def main(argv: List[str]) -> int:
             elif args.no_jsonl:
                 # Flatten embeddings only
                 args.pt_output = "snli_embeddings.pt"
+
+    if args.efb_output and args.no_tokens:
+        ap.error("--efb-output requires tokens. Do not pass --no-tokens.")
+    if args.efb_output and args.from_snli and args.pack_dataset:
+        ap.error("--efb-output is not supported with --from-snli --pack-dataset (no tokens in that fast path). Use SNLI flat mode or disable efb.")
 
     # Build DatasetConfig tuned for embedding extraction
     ds_config = DatasetConfig(
@@ -242,6 +263,13 @@ def main(argv: List[str]) -> int:
 
     hidden = getattr(provider.model.config, "hidden_size", 768)
     print(f"Teacher model ready: {args.model} (hidden={hidden}) on {provider.device}")
+
+    # EFB writer (compact binary)
+    efb_writer: Optional[EFBBinaryWriter] = None
+    if args.efb_output:
+        efb_path = Path(args.efb_output)
+        efb_path.parent.mkdir(parents=True, exist_ok=True)
+        efb_writer = EFBBinaryWriter(str(efb_path), embed_dim=hidden)
 
     # Prepare JSONL writer if needed
     out_path = Path(args.output) if args.output else Path("snli_embeddings.jsonl")
@@ -364,6 +392,8 @@ def main(argv: List[str]) -> int:
                 jsonl_file.close()
             if args.pt_output and args.shard_size > 0:
                 print("Warning: shard_size ignored in SNLI pack mode")
+            if efb_writer is not None:
+                efb_writer.close()
             return 0
         else:
             flat_texts: List[str] = []
@@ -379,7 +409,13 @@ def main(argv: List[str]) -> int:
             iterator = iter(flat_texts)
             # Reuse rest of logic by constructing artificial batch generator below
             for batch in tqdm(batched(iterator, args.batch_size), desc="SNLI", mininterval=args.progress_interval):
-                meta, vecs = encode_with_provider(provider, batch, max_length=args.max_length, return_tokens=not args.no_tokens)
+                meta, vecs = encode_with_provider(provider, batch, max_length=args.max_length, return_tokens=(not args.no_tokens) or (efb_writer is not None))
+                if efb_writer is not None:
+                    for i in range(len(batch)):
+                        if not meta or not meta[i]:
+                            print("EFB writer requires tokens; got none", file=sys.stderr)
+                            return 1
+                        efb_writer.write_sample(meta[i]["input_ids"], meta[i]["attention_mask"], vecs[i])
                 if args.pt_output or args.shard_size > 0:
                     all_embeddings.append(torch.tensor(vecs, dtype=torch.float32))
                     all_texts.extend(batch)
@@ -411,6 +447,8 @@ def main(argv: List[str]) -> int:
                 print(f"Saved SNLI embeddings tensor: {pt_path} ({embeddings_tensor.shape[0]} samples)")
             if not args.no_jsonl:
                 print(f"Done. Wrote {total_written} JSONL SNLI records")
+            if efb_writer is not None:
+                efb_writer.close()
             return 0
     try:
         for in_arg in args.input:
@@ -429,7 +467,14 @@ def main(argv: List[str]) -> int:
                     batch = filtered_batch
                     if not batch:
                         continue
-                meta, vecs = encode_with_provider(provider, batch, max_length=args.max_length, return_tokens=not args.no_tokens)
+                meta, vecs = encode_with_provider(provider, batch, max_length=args.max_length, return_tokens=(not args.no_tokens) or (efb_writer is not None))
+                # EFB write
+                if efb_writer is not None:
+                    for i in range(len(batch)):
+                        if not meta or not meta[i]:
+                            print("EFB writer requires tokens; got none", file=sys.stderr)
+                            return 1
+                        efb_writer.write_sample(meta[i]["input_ids"], meta[i]["attention_mask"], vecs[i])
                 # Accumulate embeddings for .pt
                 if args.pt_output or args.shard_size > 0:
                     all_embeddings.append(torch.tensor(vecs, dtype=torch.float32))
@@ -453,6 +498,8 @@ def main(argv: List[str]) -> int:
         # Force flush last shard
         if args.shard_size > 0:
             flush_shard(force=True)
+        if efb_writer is not None:
+            efb_writer.close()
 
     # Write single .pt if requested and not sharded
     if (args.pt_output and args.shard_size <= 0) and all_embeddings:
@@ -481,6 +528,48 @@ def main(argv: List[str]) -> int:
     if not args.no_jsonl:
         print(f"Done. Wrote {total_written} JSONL records to: {out_path}")
     return 0
+
+
+class EFBBinaryWriter:
+    def __init__(self, path: str, embed_dim: int):
+        self.path = path
+        self.embed_dim = int(embed_dim)
+        self.f = open(path, 'wb+')
+        # Write header with placeholder for num_samples
+        self.f.write(b'EFB1')
+        self.f.write(struct.pack('<I', 0))  # num_samples placeholder
+        self.f.write(struct.pack('<I', self.embed_dim))
+        self.count = 0
+
+    def write_sample(self, input_ids: List[int], attention_mask: List[int], target: List[float]):
+        L = int(len(input_ids))
+        if len(attention_mask) != L:
+            raise ValueError('attention_mask length != input_ids length')
+        if len(target) != self.embed_dim:
+            raise ValueError('target embedding dimension mismatch')
+        # token length
+        self.f.write(struct.pack('<I', L))
+        # input_ids as uint32
+        ids_arr = array.array('I', (int(x) for x in input_ids))
+        self.f.write(ids_arr.tobytes())
+        # attention_mask as uint8
+        mask_arr = array.array('B', (1 if int(x) != 0 else 0 for x in attention_mask))
+        self.f.write(mask_arr.tobytes())
+        # target as float32
+        tgt_arr = array.array('f', (float(x) for x in target))
+        self.f.write(tgt_arr.tobytes())
+        self.count += 1
+
+    def close(self):
+        if self.f is None:
+            return
+        # Patch num_samples in header
+        self.f.flush()
+        self.f.seek(4)
+        self.f.write(struct.pack('<I', self.count))
+        self.f.flush()
+        self.f.close()
+        self.f = None
 
 
 if __name__ == "__main__":
