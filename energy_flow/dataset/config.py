@@ -52,6 +52,8 @@ class DatasetConfig:
     # Параметры SNLI
     snli_fraction: float = 0.2  # Какую часть SNLI использовать (0.2 = 20%)
     snli_min_text_length: int = 10  # Минимальная длина текста
+    # Детерминированность выборки SNLI (None -> случайно каждый запуск)
+    snli_seed: Optional[int] = 42
     # Локальное кэширование предварительно отфильтрованных SNLI пар
     snli_cache_enabled: bool = True
     snli_cache_dir: str = "cache/snli"

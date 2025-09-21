@@ -28,6 +28,16 @@ class SNLIProvider(BaseDataProvider):
     
     Генерирует пары premise-hypothesis в формате question-answer
     для обучения energy_flow архитектуры
+
+        Семантика snli_fraction / max_samples (--snli-limit):
+        - snli_fraction определяет РАЗМЕР БАЗОВОГО ПОДМНОЖЕСТВА (детерминированное при snli_seed)
+            которое строится один раз и кэшируется в JSONL (cache/snli/...)
+        - max_samples (или --snli-limit в CLI generate_text_embedding_jsonl.py) ТОЛЬКО
+            делает срез сверху уже загруженного/кэшированного базового набора, не создаёт новый.
+        - При первом обращении даже с limit кэш всё равно формируется для полного размера fraction,
+            затем результат режется. Повторные вызовы быстрые.
+        - Изменение fraction требует очистки соответствующего cache-файла или изменения snli_seed.
+        - Это устраняет двусмысленность пересекающихся ограничений и делает выборку воспроизводимой.
     """
     
     def __init__(self, config, teacher_provider: Optional[TeacherModelProvider] = None):
@@ -36,6 +46,7 @@ class SNLIProvider(BaseDataProvider):
         self.teacher_provider = teacher_provider
         self.snli_fraction = config.snli_fraction
         self.min_text_length = getattr(config, 'snli_min_text_length', 10)
+        self.snli_seed = getattr(config, 'snli_seed', None)
         # Кэш загруженных данных (в памяти)
         self._snli_pairs = None
         self._embeddings_cache = None
@@ -86,71 +97,98 @@ class SNLIProvider(BaseDataProvider):
             return False
     
     def _load_snli_data(self, max_samples: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Загрузка и фильтрация SNLI данных"""
-        if self._snli_pairs is not None and max_samples is None:
-            return self._snli_pairs  # Используем кэш если нет ограничений
-        
-        logger.info(f"📥 Loading SNLI dataset (fraction={self.snli_fraction})")
-        # Попытка чтения из локального кэша (только когда нет max_samples ограничения)
-        if self._cache_enabled and max_samples is None and self._cache_file.exists():
-            try:
-                logger.info(f"🗄️  Loading SNLI pairs from local cache: {self._cache_file}")
-                with self._cache_file.open('r', encoding='utf-8') as f:
-                    pairs = [json.loads(line) for line in f]
-                self._snli_pairs = pairs
-                logger.info(f"✅ Loaded {len(pairs):,} SNLI pairs from cache")
-                return pairs
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to load SNLI cache ({e}), rebuilding ...")
+        """Загрузка и фильтрация SNLI данных.
 
+        НОВАЯ ЛОГИКА:
+        1. Всегда формируем и кэшируем "базовый" набор размера int(total*snli_fraction)
+           (детерминированный при snli_seed) один раз.
+        2. Аргумент max_samples (или --snli-limit) применяется ТОЛЬКО как обрезка сверху
+           уже подготовленного базового набора без повторной выборки.
+        3. Если кэш существует – читаем полный базовый набор и лишь затем режем.
+        4. Это устраняет неоднозначность пересечения snli_fraction и лимита.
+        """
+
+        # Если базовый набор уже в памяти – просто возвращаем возможно усеченную версию
+        if self._snli_pairs is not None:
+            if max_samples is not None:
+                return self._snli_pairs[:max_samples]
+            return self._snli_pairs
+
+        # Пытаемся загрузить полный базовый набор из кэша
+        if self._cache_enabled and self._cache_file.exists():
+            try:
+                logger.info(f"🗄️  Loading SNLI base subset from cache: {self._cache_file}")
+                with self._cache_file.open('r', encoding='utf-8') as f:
+                    cached = [json.loads(line) for line in f]
+                self._snli_pairs = cached
+                logger.info(f"✅ Loaded cached SNLI base subset: {len(cached):,} pairs")
+                if max_samples is not None:
+                    return cached[:max_samples]
+                return cached
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to read SNLI cache ({e}), rebuilding ...")
+
+        # Построение базового набора
+        logger.info(f"📥 Building SNLI base subset (fraction={self.snli_fraction}, seed={self.snli_seed})")
         try:
             dataset = load_dataset("snli")
             train_data = dataset["train"]
             total_size = len(train_data)
-            target_size = int(total_size * self.snli_fraction)
-            if max_samples:
-                target_size = min(target_size, max_samples)
-            logger.info(f"📊 SNLI total size: {total_size:,}, will use: {target_size:,}")
+            base_size = int(total_size * self.snli_fraction)
+            logger.info(f"📊 SNLI total size: {total_size:,}; base subset size: {base_size:,}")
 
-            indices = random.sample(range(total_size), target_size)
-            pairs = []
+            rng = random.Random(self.snli_seed) if self.snli_seed is not None else random
+            indices = rng.sample(range(total_size), base_size)
+
+            pairs: List[Dict[str, Any]] = []
             valid_labels = {0, 1, 2}
+            append = pairs.append
             for idx in indices:
                 example = train_data[idx]
+                premise = example.get("premise")
+                hypothesis = example.get("hypothesis")
                 if (
-                    example["label"] in valid_labels and
-                    example["premise"] and example["hypothesis"] and
-                    len(example["premise"].strip()) >= self.min_text_length and
-                    len(example["hypothesis"].strip()) >= self.min_text_length
+                    example.get("label") in valid_labels and
+                    premise and hypothesis and
+                    len(premise.strip()) >= self.min_text_length and
+                    len(hypothesis.strip()) >= self.min_text_length
                 ):
-                    pairs.append({
-                        "input_text": example["premise"],
-                        "target_text": example["hypothesis"],
-                        "label": example["label"],
+                    append({
+                        "input_text": premise,
+                        "target_text": hypothesis,
+                        "label": example.get("label"),
                         "snli_id": idx,
                         "source": "snli"
                     })
 
             # Лог статистики
-            label_counts = {}
+            total_pairs = len(pairs)
+            if total_pairs == 0:
+                logger.error("❌ SNLI produced zero valid pairs after filtering")
+                return []
+            label_counts: Dict[int, int] = {}
             for pair in pairs:
-                label_counts[pair['label']] = label_counts.get(pair['label'], 0) + 1
-            logger.info(f"✅ SNLI data loaded: {len(pairs):,} valid pairs")
+                lbl = pair['label']
+                label_counts[lbl] = label_counts.get(lbl, 0) + 1
             label_names = {0: "entailment", 1: "neutral", 2: "contradiction"}
+            logger.info(f"✅ Built SNLI base subset: {total_pairs:,} pairs")
             for lid, cnt in label_counts.items():
-                logger.info(f"   {label_names.get(lid,'unknown')}: {cnt:,} ({cnt/len(pairs)*100:.1f}%)")
+                logger.info(f"   {label_names.get(lid,'unknown')}: {cnt:,} ({cnt/total_pairs*100:.1f}%)")
 
-            # Сохраняем в локальный кэш (только полный набор без max_samples)
-            if self._cache_enabled and max_samples is None:
+            # Сохраняем полный базовый набор (всегда, даже если был запрошен лимит)
+            if self._cache_enabled:
                 try:
                     self._cache_dir.mkdir(parents=True, exist_ok=True)
                     with self._cache_file.open('w', encoding='utf-8') as f:
                         for rec in pairs:
                             f.write(json.dumps(rec, ensure_ascii=False) + '\n')
-                    logger.info(f"💾 Cached SNLI pairs to {self._cache_file}")
+                    logger.info(f"💾 Cached SNLI base subset to {self._cache_file}")
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to write SNLI cache: {e}")
-                self._snli_pairs = pairs
+
+            self._snli_pairs = pairs
+            if max_samples is not None:
+                return pairs[:max_samples]
             return pairs
         except Exception as e:
             logger.error(f"❌ SNLI data loading failed: {e}")
@@ -170,7 +208,7 @@ class SNLIProvider(BaseDataProvider):
         # Применяем ограничение из конфигурации
         effective_max = max_samples
         if self.config.max_samples_per_source:
-            if effective_max:
+            if effective_max is not None:
                 effective_max = min(effective_max, self.config.max_samples_per_source)
             else:
                 effective_max = self.config.max_samples_per_source
