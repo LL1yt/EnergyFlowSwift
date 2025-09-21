@@ -170,21 +170,13 @@ public final class SimpleJSONLDataset: @unchecked Sendable {
 
     // MARK: - EFB loader
     private static func tryLoadEFB(url: URL) throws -> (samples: [JSONLSample], embeddingDim: Int)? {
-        let fh = try FileHandle(forReadingFrom: url)
-        defer { try? fh.close() }
-        // Peek magic
-        let headerSize = 12
-        guard let header = try fh.read(upToCount: headerSize), header.count == headerSize else {
-            return nil // too small to be EFB, fall back to JSONL
-        }
-        if header[0] != 0x45 || header[1] != 0x46 || header[2] != 0x42 || header[3] != 0x31 { // 'E''F''B''1'
+        // Read whole file into memory for simplicity and robust header detection
+        let data = try Data(contentsOf: url)
+        guard data.count >= 12 else { return nil } // too small
+        // Check magic "EFB1"
+        if data[0] != 0x45 || data[1] != 0x46 || data[2] != 0x42 || data[3] != 0x31 {
             return nil
         }
-        // Read rest of file into memory (for simplicity)
-        let remaining = try fh.readToEnd() ?? Data()
-        var data = Data()
-        data.append(header)
-        data.append(remaining)
         var offset = 4 // after magic
         let numSamples = Int(readUInt32LE(data, &offset))
         let embedDim = Int(readUInt32LE(data, &offset))
