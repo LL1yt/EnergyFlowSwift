@@ -142,14 +142,9 @@ Given your note, I recommend Option B for now: precompute a dataset with (text, 
    - Reads N lines, each with {text, target: [Float]} (and optionally input_ids, attention_mask)
    - Returns batches of (texts or ids/mask, targets)
 
-   Building for debugging...
-   /Users/id/Documents/GitHub/AA/EnergyFlowSwift/Tests/EnergyFlowSwiftTests/DatasetEFBTests.swift:25:13: warning: variable 'it' was never mutated; consider changing to 'let' constant
-   23 | XCTAssertGreaterThan(ds.count(), 0)
-   24 |
-   25 | var it = ds.batches(batchSize: 32, dropLast: false, padTokens: true, padTokenID: 0)
-   | `- warning: variable 'it' was never mutated; consider changing to 'let' constant
-   26 | guard let batch = it.next() else {
-   27 | XCTFail("No batch produced")
+   Убедимся, что файл действительно начинается с ASCII 'EFB1'. Это можно проверить быстро:
+   ◦ В Python: print(open('data/embeddings/15k_out.efb','rb').read(4))
+   ◦ Ожидается: b'EFB1'
 
 3. Wire a stub training loop (CPU)
 
