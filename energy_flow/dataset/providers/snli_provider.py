@@ -12,6 +12,8 @@ import torch
 from typing import List, Tuple, Optional, Dict, Any
 import random
 from datasets import load_dataset
+from pathlib import Path
+import json
 
 from .base_provider import BaseDataProvider
 from .teacher_model import TeacherModelProvider
@@ -34,13 +36,17 @@ class SNLIProvider(BaseDataProvider):
         self.teacher_provider = teacher_provider
         self.snli_fraction = config.snli_fraction
         self.min_text_length = getattr(config, 'snli_min_text_length', 10)
-        
-        # Кэш загруженных данных
+        # Кэш загруженных данных (в памяти)
         self._snli_pairs = None
         self._embeddings_cache = None
-        
+
+        # Локальный файловый кэш
+        self._cache_dir = Path(getattr(config, 'snli_cache_dir', 'cache/snli'))
+        self._cache_enabled = getattr(config, 'snli_cache_enabled', True)
+        self._cache_file = self._cache_dir / self._build_cache_filename()
+
         logger.log(DEBUG_INIT, f"SNLIProvider: fraction={self.snli_fraction}, "
-                              f"min_length={self.min_text_length}")
+                               f"min_length={self.min_text_length}")
     
     def is_available(self) -> bool:
         """Проверка доступности SNLI датасета"""
@@ -85,69 +91,76 @@ class SNLIProvider(BaseDataProvider):
             return self._snli_pairs  # Используем кэш если нет ограничений
         
         logger.info(f"📥 Loading SNLI dataset (fraction={self.snli_fraction})")
-        
+        # Попытка чтения из локального кэша (только когда нет max_samples ограничения)
+        if self._cache_enabled and max_samples is None and self._cache_file.exists():
+            try:
+                logger.info(f"🗄️  Loading SNLI pairs from local cache: {self._cache_file}")
+                with self._cache_file.open('r', encoding='utf-8') as f:
+                    pairs = [json.loads(line) for line in f]
+                self._snli_pairs = pairs
+                logger.info(f"✅ Loaded {len(pairs):,} SNLI pairs from cache")
+                return pairs
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load SNLI cache ({e}), rebuilding ...")
+
         try:
-            # Загружаем SNLI датасет
             dataset = load_dataset("snli")
             train_data = dataset["train"]
             total_size = len(train_data)
-            
-            # Вычисляем размер выборки
             target_size = int(total_size * self.snli_fraction)
             if max_samples:
                 target_size = min(target_size, max_samples)
-            
             logger.info(f"📊 SNLI total size: {total_size:,}, will use: {target_size:,}")
-            
-            # Случайная выборка для разнообразия
+
             indices = random.sample(range(total_size), target_size)
-            
-            # Извлекаем и фильтруем данные
             pairs = []
-            valid_labels = {0, 1, 2}  # entailment, neutral, contradiction
-            
+            valid_labels = {0, 1, 2}
             for idx in indices:
                 example = train_data[idx]
-                
-                # Фильтрация по качеству данных
                 if (
-                    example["label"] in valid_labels  # Валидный label
-                    and example["premise"]  # Не пустой premise
-                    and example["hypothesis"]  # Не пустой hypothesis
-                    and len(example["premise"].strip()) >= self.min_text_length
-                    and len(example["hypothesis"].strip()) >= self.min_text_length
+                    example["label"] in valid_labels and
+                    example["premise"] and example["hypothesis"] and
+                    len(example["premise"].strip()) >= self.min_text_length and
+                    len(example["hypothesis"].strip()) >= self.min_text_length
                 ):
-                    # Создаем пару в формате question-answer
-                    pair = {
-                        "input_text": example["premise"],  # premise как input
-                        "target_text": example["hypothesis"],  # hypothesis как target
+                    pairs.append({
+                        "input_text": example["premise"],
+                        "target_text": example["hypothesis"],
                         "label": example["label"],
                         "snli_id": idx,
                         "source": "snli"
-                    }
-                    pairs.append(pair)
-            
-            # Статистика по labels
+                    })
+
+            # Лог статистики
             label_counts = {}
             for pair in pairs:
-                label = pair["label"]
-                label_counts[label] = label_counts.get(label, 0) + 1
-            
+                label_counts[pair['label']] = label_counts.get(pair['label'], 0) + 1
             logger.info(f"✅ SNLI data loaded: {len(pairs):,} valid pairs")
             label_names = {0: "entailment", 1: "neutral", 2: "contradiction"}
-            for label_id, count in label_counts.items():
-                label_name = label_names.get(label_id, "unknown")
-                logger.info(f"   {label_name}: {count:,} ({count/len(pairs)*100:.1f}%)")
-            
-            # Кэшируем если загружаем без ограничений
-            if max_samples is None:
+            for lid, cnt in label_counts.items():
+                logger.info(f"   {label_names.get(lid,'unknown')}: {cnt:,} ({cnt/len(pairs)*100:.1f}%)")
+
+            # Сохраняем в локальный кэш (только полный набор без max_samples)
+            if self._cache_enabled and max_samples is None:
+                try:
+                    self._cache_dir.mkdir(parents=True, exist_ok=True)
+                    with self._cache_file.open('w', encoding='utf-8') as f:
+                        for rec in pairs:
+                            f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+                    logger.info(f"💾 Cached SNLI pairs to {self._cache_file}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to write SNLI cache: {e}")
                 self._snli_pairs = pairs
-            
             return pairs
-            
         except Exception as e:
             logger.error(f"❌ SNLI data loading failed: {e}")
             return []
+
+    def _build_cache_filename(self) -> str:
+        """Имя файла кэша зависит от ключевых параметров фильтрации"""
+        # Пример: snli_frac0.2_min10.jsonl
+        frac = f"{self.snli_fraction}".replace('.', 'p')
+        return f"snli_frac{frac}_min{self.min_text_length}.jsonl"
     
     def get_text_pairs(self, max_samples: Optional[int] = None) -> List[Tuple[str, str]]:
         """Получить пары текстов из SNLI"""

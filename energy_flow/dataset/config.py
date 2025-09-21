@@ -52,6 +52,10 @@ class DatasetConfig:
     # Параметры SNLI
     snli_fraction: float = 0.2  # Какую часть SNLI использовать (0.2 = 20%)
     snli_min_text_length: int = 10  # Минимальная длина текста
+    # Локальное кэширование предварительно отфильтрованных SNLI пар
+    snli_cache_enabled: bool = True
+    snli_cache_dir: str = "cache/snli"
+    snli_cache_compress: bool = False  # На будущее: сжатие (пока не используется)
     
     # Кэширование эмбеддингов
     embedding_cache_enabled: bool = True
@@ -92,6 +96,9 @@ class DatasetConfig:
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)
         Path(self.embeddings_dir).mkdir(parents=True, exist_ok=True) 
         Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
+        # Директория кэша SNLI
+        if self.snli_cache_enabled:
+            Path(self.snli_cache_dir).mkdir(parents=True, exist_ok=True)
         
         # Лог инициализации
         logger.info(f"DatasetConfig initialized: sources={self.dataset_sources}, "
