@@ -44,34 +44,43 @@ public final class TextToCubeEncoder {
 
     public func encode(_ texts: [String]) -> Tensor {
         let logger = Logger.shared
-        logger.debug("encode() start: batch=\(texts.count) maxLen=\(modelConfig.maxLength) outputDim=\(modelConfig.outputDim)", category: Logger.Category.textBridge)
+        logger.debug("encode(texts) start: batch=\(texts.count) maxLen=\(modelConfig.maxLength) outputDim=\(modelConfig.outputDim)", category: Logger.Category.textBridge)
         // 1) Tokenize
         var tok = tokenizer
         let batch = tok.encodeBatch(texts, maxLength: modelConfig.maxLength)
-        logger.debug("token ids shape: [\(batch.ids.count), \(batch.ids.first?.count ?? 0)] mask shape: [\(batch.attentionMask.count), \(batch.attentionMask.first?.count ?? 0)]", category: Logger.Category.textBridge)
-        // 2) Embedding [B,L,hidden]
-        var embs = embedding.forward(ids: batch.ids)
+        return encodeTokens(inputIDs: batch.ids, attentionMask: batch.attentionMask)
+    }
+
+    // Public API: allow pre-tokenized inputs
+    public func encodeTokens(inputIDs: [[Int]], attentionMask: [[Int]]) -> Tensor {
+        let logger = Logger.shared
+        let b = inputIDs.count
+        let l = inputIDs.first?.count ?? 0
+        logger.debug("encode(tokens) start: batch=\(b) L=\(l) maxLen=\(modelConfig.maxLength) outputDim=\(modelConfig.outputDim)", category: Logger.Category.textBridge)
+        // 0) Pad/truncate to maxLength for fixed shapes
+        let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
+        logger.debug("token ids shape: [\(idsFixed.count), \(idsFixed.first?.count ?? 0)] mask shape: [\(maskFixed.count), \(maskFixed.first?.count ?? 0)]", category: Logger.Category.textBridge)
+        // 1) Embedding [B,L,hidden]
+        var embs = embedding.forward(ids: idsFixed)
         logger.debug("embeddings: \(embs.prettyShape)", category: Logger.Category.textBridge)
-        // 3) Add positional encoding (truncate to seqLen)
+        // 2) Add positional encoding (truncate to seqLen)
         let seqLen = modelConfig.maxLength
         precondition(seqLen <= modelConfig.maxPosition, "seqLen exceeds maxPosition in positional encoding")
         let pe = positionalSlice(len: seqLen) // [L, hidden]
-        // add PE to embeddings
         addPE(to: &embs, pe: pe)
         logger.debug("embeddings+PE: \(embs.prettyShape)", category: Logger.Category.textBridge)
-        // 4) Minimal Transformer encoder (CPU, single-head)
-        let enc = encoder.forward(embs, mask: batch.attentionMask)
-        // 5) Masked-avg over sequence -> [B, hidden]
-        let pooled = maskedMean(enc, mask: batch.attentionMask)
+        // 3) Transformer encoder
+        let enc = encoder.forward(embs, mask: maskFixed)
+        // 4) Masked-avg over sequence -> [B, hidden]
+        let pooled = maskedMean(enc, mask: maskFixed)
         logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
-        // 6) Projection MLP: hiddenDim -> hiddenDim -> LN -> outputDim -> (optional) tanh
+        // 5) Projection MLP
         var out = proj1.forward(pooled)
         out = Activations.gelu(out)
         out = ln.forward(out)
         out = proj2.forward(out)
         if modelConfig.useTanhOutput { out = Activations.tanh(out) }
         logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: Logger.Category.textBridge)
-        // shape: [B, outputDim]
         return out
     }
 
@@ -89,6 +98,29 @@ public final class TextToCubeEncoder {
     }
 
     // MARK: - Helpers
+
+    private func padOrTruncate(inputIDs: [[Int]], attentionMask: [[Int]], to maxLen: Int) -> ([[Int]], [[Int]]) {
+        precondition(inputIDs.count == attentionMask.count)
+        var idsOut: [[Int]] = []
+        var maskOut: [[Int]] = []
+        idsOut.reserveCapacity(inputIDs.count)
+        maskOut.reserveCapacity(attentionMask.count)
+        for i in 0..<inputIDs.count {
+            var ids = inputIDs[i]
+            var m = attentionMask[i]
+            if ids.count > maxLen {
+                ids = Array(ids.prefix(maxLen))
+                m = Array(m.prefix(maxLen))
+            } else if ids.count < maxLen {
+                let pad = maxLen - ids.count
+                ids.append(contentsOf: Array(repeating: 0, count: pad))
+                m.append(contentsOf: Array(repeating: 0, count: pad))
+            }
+            idsOut.append(ids)
+            maskOut.append(m)
+        }
+        return (idsOut, maskOut)
+    }
 
     private func positionalSlice(len: Int) -> Tensor { // [L, hidden]
         precondition(len <= modelConfig.maxPosition)
