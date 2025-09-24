@@ -67,3 +67,4 @@ EnergyFlowSwift/.swiftpm
 .netrc
 *.jsonl
 *.csv
+*.xcuserstate

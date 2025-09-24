@@ -37,6 +37,7 @@ public final class TextToCubeEncoder {
         self.encoder = TransformerEncoder(numLayers: modelConfig.numLayers,
                                           hidden: modelConfig.hiddenDim,
                                           ffDim: modelConfig.ffDim,
+                                          numHeads: modelConfig.numHeads,
                                           seed: Seed.derive(modelConfig.baseSeed, label: "encoder"))
         self.positionalEncoding = TextToCubeEncoder.makePositionalEncoding(maxLen: modelConfig.maxPosition, dim: modelConfig.hiddenDim, seed: Seed.derive(modelConfig.baseSeed, label: "posenc"))
     }
@@ -63,7 +64,7 @@ public final class TextToCubeEncoder {
         // 5) Masked-avg over sequence -> [B, hidden]
         let pooled = maskedMean(enc, mask: batch.attentionMask)
         logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
-        // 6) Projection MLP: 256 -> 256 -> LN -> surfaceDim -> tanh
+        // 6) Projection MLP: hiddenDim -> hiddenDim -> LN -> outputDim -> (optional) tanh
         var out = proj1.forward(pooled)
         out = Activations.gelu(out)
         out = ln.forward(out)

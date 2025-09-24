@@ -6,16 +6,16 @@ import EFCore
 public struct TransformerEncoderLayer {
     public let hidden: Int
     public let ffDim: Int
-    public var attn: SingleHeadSelfAttention
+    public var attn: MultiHeadSelfAttention
     public var ln1: LayerNorm
     public var ln2: LayerNorm
     public var ffn1: Linear
     public var ffn2: Linear
 
-    public init(hidden: Int, ffDim: Int, seed: UInt64) {
+    public init(hidden: Int, ffDim: Int, numHeads: Int, seed: UInt64) {
         self.hidden = hidden
         self.ffDim = ffDim
-        self.attn = SingleHeadSelfAttention(hidden: hidden, seed: Seed.derive(seed, label: "attn"))
+        self.attn = MultiHeadSelfAttention(hidden: hidden, numHeads: numHeads, seed: Seed.derive(seed, label: "attn"))
         self.ln1 = LayerNorm(dim: hidden)
         self.ln2 = LayerNorm(dim: hidden)
         self.ffn1 = Linear(inFeatures: hidden, outFeatures: ffDim, seed: Seed.derive(seed, label: "ff1"))
@@ -47,12 +47,12 @@ public struct TransformerEncoderLayer {
 public struct TransformerEncoder {
     public var layers: [TransformerEncoderLayer]
 
-    public init(numLayers: Int, hidden: Int, ffDim: Int, seed: UInt64) {
+    public init(numLayers: Int, hidden: Int, ffDim: Int, numHeads: Int, seed: UInt64) {
         self.layers = []
         self.layers.reserveCapacity(numLayers)
         for i in 0..<numLayers {
             let layerSeed = Seed.derive(seed, label: "layer_\(i)")
-            layers.append(TransformerEncoderLayer(hidden: hidden, ffDim: ffDim, seed: layerSeed))
+            layers.append(TransformerEncoderLayer(hidden: hidden, ffDim: ffDim, numHeads: numHeads, seed: layerSeed))
         }
     }
 
