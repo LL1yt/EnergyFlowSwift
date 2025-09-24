@@ -28,6 +28,8 @@ public struct SingleHeadSelfAttention {
         let h = x.shape[2]
         precondition(mask.count == b && mask.allSatisfy { $0.count == l }, "mask shape mismatch")
 
+        Logger.shared.debug("SingleHeadSelfAttention.forward b=\(b) l=\(l) h=\(h)", category: Logger.Category.textBridge)
+
         // Flatten to [B*L, H] for linear projections
         let flat = x.reshaped([b * l, h])
         let q = qProj.forward(flat).reshaped([b, l, h])
@@ -40,6 +42,10 @@ public struct SingleHeadSelfAttention {
         // For each batch and each query position compute attention over keys
         for bi in 0..<b {
             for qi in 0..<l {
+                if mask[bi][qi] == 0 {
+                    // Zero out outputs for padded query positions (strict invariant)
+                    continue
+                }
                 // Compute scores[q, k]
                 var maxScore: Float = -Float.greatestFiniteMagnitude
                 var scores = [Float](repeating: 0, count: l)
@@ -117,6 +123,8 @@ public struct MultiHeadSelfAttention {
         let h = x.shape[2]
         precondition(mask.count == b && mask.allSatisfy { $0.count == l }, "mask shape mismatch")
 
+        Logger.shared.debug("MultiHeadSelfAttention.forward b=\(b) l=\(l) h=\(h) heads=\(numHeads)", category: Logger.Category.textBridge)
+
         // Projections
         let flat = x.reshaped([b * l, h])
         let q = qProj.forward(flat).reshaped([b, l, h])
@@ -127,6 +135,10 @@ public struct MultiHeadSelfAttention {
 
         for bi in 0..<b {
             for qi in 0..<l {
+                if mask[bi][qi] == 0 {
+                    // keep combined zeros for padded queries
+                    continue
+                }
                 for head in 0..<numHeads {
                     let offset = head * headDim
                     let scale: Float = 1.0 / sqrtf(Float(headDim))

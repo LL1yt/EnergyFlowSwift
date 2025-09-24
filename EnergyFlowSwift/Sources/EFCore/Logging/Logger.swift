@@ -11,7 +11,19 @@ public enum LogLevel: Int {
 
 public final class Logger: @unchecked Sendable {
     public static let shared = Logger()
-    private init() {}
+    private init() {
+        // Read environment for default behavior in CLI/testing
+        let env = ProcessInfo.processInfo.environment
+        if let s = env["EF_LOG_LEVEL"] {
+            self.level = Logger.parseLevel(s)
+        }
+        if let s = env["EF_LOG_ENABLED"] {
+            self.enabled = (s == "1" || s.lowercased() == "true" || s.lowercased() == "yes")
+        }
+        if let s = env["EF_LOG_STDOUT"] {
+            self.mirrorToStdout = (s == "1" || s.lowercased() == "true" || s.lowercased() == "yes")
+        }
+    }
 
     // Common categories to avoid typos
     public struct Category {
@@ -23,11 +35,22 @@ public final class Logger: @unchecked Sendable {
     // Toggle and level gate for runtime control in research/dev
     public var enabled: Bool = true
     public var level: LogLevel = .info
+    public var mirrorToStdout: Bool = false // also print to stdout for CLI/testing
 
     // Subsystem/category allow grouping logs in Console.app
     private let subsystem = "com.aa.energyflowswift"
     private let defaultLogger = os.Logger(subsystem: "com.aa.energyflowswift", category: "default")
     private var categoryLoggers: [String: os.Logger] = [:]
+
+    private static func parseLevel(_ s: String) -> LogLevel {
+        switch s.lowercased() {
+        case "error": return .error
+        case "warn", "warning": return .warn
+        case "info": return .info
+        case "debug": return .debug
+        default: return .info
+        }
+    }
 
     private func logger(category: String?) -> os.Logger {
         guard let category = category else { return defaultLogger }
@@ -53,6 +76,17 @@ public final class Logger: @unchecked Sendable {
             l.info("\(text, privacy: .public)")
         case .debug:
             l.debug("\(text, privacy: .public)")
+        }
+        if mirrorToStdout {
+            let lvl: String
+            switch level {
+            case .error: lvl = "ERROR"
+            case .warn:  lvl = "WARN"
+            case .info:  lvl = "INFO"
+            case .debug: lvl = "DEBUG"
+            }
+            let cat = category ?? "default"
+            Swift.print("[\(lvl)][\(cat)] \(text)")
         }
     }
 

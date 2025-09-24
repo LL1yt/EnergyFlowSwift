@@ -32,7 +32,7 @@ let package = Package(
         ),
         .testTarget(
             name: "EnergyFlowSwiftTests",
-            dependencies: ["EnergyFlow"]
+            dependencies: ["EnergyFlow", "PyTorchSwift"]
         ),
     ]
 )

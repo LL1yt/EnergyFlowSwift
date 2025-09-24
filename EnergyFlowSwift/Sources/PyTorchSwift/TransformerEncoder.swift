@@ -26,12 +26,18 @@ public struct TransformerEncoderLayer {
     public func forward(_ x: Tensor, mask: [[Int]]) -> Tensor {
         let b = x.shape[0], l = x.shape[1], h = x.shape[2]
         precondition(h == hidden)
+        Logger.shared.debug("TransformerEncoderLayer.forward b=\(b) l=\(l) h=\(h)", category: Logger.Category.textBridge)
         // Pre-LN
         let xFlat1 = x.reshaped([b * l, h])
         let norm1 = ln1.forward(xFlat1).reshaped([b, l, h])
         let a = attn.forward(norm1, mask: mask)          // [B,L,H]
         var y = Tensor.zeros([b, l, h])
         for i in 0..<(b*l*h) { y.data[i] = x.data[i] + a.data[i] } // residual 1
+        // Zero masked queries after residual
+        for bi in 0..<b { for qi in 0..<l { if mask[bi][qi] == 0 {
+            let base = (bi * l + qi) * h
+            for d in 0..<h { y.data[base + d] = 0 }
+        } } }
 
         let yFlat = y.reshaped([b * l, h])
         let norm2 = ln2.forward(yFlat)                    // [B*L,H]
@@ -40,6 +46,11 @@ public struct TransformerEncoderLayer {
         f = ffn2.forward(f)                               // [B*L, H]
         var z = Tensor.zeros([b * l, h])
         for i in 0..<(b*l*h) { z.data[i] = yFlat.data[i] + f.data[i] } // residual 2
+        // Zero masked queries after second residual
+        for bi in 0..<b { for qi in 0..<l { if mask[bi][qi] == 0 {
+            let base = (bi * l + qi) * h
+            for d in 0..<h { z.data[base + d] = 0 }
+        } } }
         return z.reshaped([b, l, h])
     }
 }
