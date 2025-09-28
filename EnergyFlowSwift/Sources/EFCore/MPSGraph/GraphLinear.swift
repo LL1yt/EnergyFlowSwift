@@ -35,6 +35,11 @@ public struct GraphLinear {
         self.bBufFP16 = nil
     }
 
+    // Backwards-compatible initializer without precision parameter
+    public init(inFeatures: Int, outFeatures: Int, bias: Bool = true, seed: UInt64 = 42) {
+        self.init(inFeatures: inFeatures, outFeatures: outFeatures, bias: bias, seed: seed, precision: .fp32)
+    }
+
     // Forward pass on GPU
     public mutating func forward(_ x: Tensor) throws -> Tensor {
         let logger = Logger.shared
