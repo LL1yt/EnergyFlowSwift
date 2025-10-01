@@ -23,7 +23,7 @@ public struct GraphLinear {
     private var wBufFP16: MTLBuffer?
     private var bBufFP16: MTLBuffer?
 
-    public init(inFeatures: Int, outFeatures: Int, bias: Bool = true, seed: UInt64 = 42, precision: Precision = .fp32) {
+    public init(inFeatures: Int, outFeatures: Int, bias: Bool = true, seed: UInt64 = 42, precision: Precision = .fp16) {
         self.inFeatures = inFeatures
         self.outFeatures = outFeatures
         self.weight = Tensor.randomUniform([outFeatures, inFeatures], min: -1.0/Float(inFeatures), max: 1.0/Float(inFeatures), seed: seed)
