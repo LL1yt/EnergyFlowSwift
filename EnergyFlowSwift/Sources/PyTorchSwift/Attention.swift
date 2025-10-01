@@ -1,5 +1,4 @@
-import Foundation
-import EFCore
+// Removed legacy attention per roadmap simplification
 
 // Minimal single-head self-attention for [B, L, H]
 // - Projections: Q, K, V, O via Linear

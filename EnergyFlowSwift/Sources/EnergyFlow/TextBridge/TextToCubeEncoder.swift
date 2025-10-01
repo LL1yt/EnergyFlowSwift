@@ -9,19 +9,12 @@ public final class TextToCubeEncoder {
     private var tokenizer: SimpleTokenizer
 
     private var embedding: Embedding
-    private var proj1: Linear
-    private var ln: LayerNorm
-    private var proj2: Linear
 
-    // Transformer encoder (legacy) or TCN encoder (roadmap)
-    private var encoder: TransformerEncoder
-    private var tcnEncoder: TCNEncoder?
-
-    // Sinusoidal positional encoding [maxPosition, hiddenDim]
-    private var positionalEncoding: Tensor
+    // TCN encoder (roadmap)
+    private var tcnEncoder: TCNEncoder
 
     // GPU projection (FP16)
-    private var gpuProj: GraphLinear?
+    private var gpuProj: GraphLinear
 
     public init(energyConfig: EnergyConfig = createDebugConfig(),
                 modelConfig: TextToCubeEncoderConfig = TextToCubeEncoderConfig(),
@@ -32,33 +25,14 @@ public final class TextToCubeEncoder {
         self.tokenizer = SimpleTokenizer()
         // Seeds per module
         let seedEmbed = Seed.derive(modelConfig.baseSeed, label: "embedding")
-        let seedLin1  = Seed.derive(modelConfig.baseSeed, label: "linear1")
-        let seedLin2  = Seed.derive(modelConfig.baseSeed, label: "linear2")
         self.embedding = Embedding(vocabSize: vocabSize, embeddingDim: modelConfig.hiddenDim, seed: seedEmbed)
-        self.proj1 = Linear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.hiddenDim, seed: seedLin1)
-        self.ln = LayerNorm(dim: modelConfig.hiddenDim)
-        self.proj2 = Linear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.outputDim, seed: seedLin2)
-        self.encoder = TransformerEncoder(numLayers: modelConfig.numLayers,
-                                          hidden: modelConfig.hiddenDim,
-                                          ffDim: modelConfig.ffDim,
-                                          numHeads: modelConfig.numHeads,
-                                          seed: Seed.derive(modelConfig.baseSeed, label: "encoder"))
-        if modelConfig.useTCN {
-            self.tcnEncoder = TCNEncoder(numBlocks: modelConfig.tcnBlocks,
-                                         dim: modelConfig.hiddenDim,
-                                         hidden: modelConfig.ffDim,
-                                         kernelSize: modelConfig.kernelSize,
-                                         dilationSchedule: modelConfig.dilationSchedule,
-                                         seed: Seed.derive(modelConfig.baseSeed, label: "tcn"))
-        } else {
-            self.tcnEncoder = nil
-        }
-        self.positionalEncoding = TextToCubeEncoder.makePositionalEncoding(maxLen: modelConfig.maxPosition, dim: modelConfig.hiddenDim, seed: Seed.derive(modelConfig.baseSeed, label: "posenc"))
-        if modelConfig.useGPUProjection {
-            self.gpuProj = GraphLinear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.outputDim, bias: true, seed: Seed.derive(modelConfig.baseSeed, label: "gpu_proj"))
-        } else {
-            self.gpuProj = nil
-        }
+        self.tcnEncoder = TCNEncoder(numBlocks: modelConfig.tcnBlocks,
+                                     dim: modelConfig.hiddenDim,
+                                     hidden: modelConfig.ffDim,
+                                     kernelSize: modelConfig.kernelSize,
+                                     dilationSchedule: modelConfig.dilationSchedule,
+                                     seed: Seed.derive(modelConfig.baseSeed, label: "tcn"))
+        self.gpuProj = GraphLinear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.outputDim, bias: true, seed: Seed.derive(modelConfig.baseSeed, label: "gpu_proj"))
     }
 
     public func encode(_ texts: [String]) -> Tensor {
@@ -82,42 +56,26 @@ public final class TextToCubeEncoder {
         // 1) Embedding [B,L,hidden]
         var embs = embedding.forward(ids: idsFixed)
         logger.debug("embeddings: \(embs.prettyShape)", category: Logger.Category.textBridge)
-        // 2) If using TCN, skip positional encoding (TCN captures local order). Otherwise, add PE for transformer.
-        let seqLen = modelConfig.maxLength
-        precondition(seqLen <= modelConfig.maxPosition, "seqLen exceeds maxPosition in positional encoding")
-        var seqRepr = embs
-        if !modelConfig.useTCN {
-            let pe = positionalSlice(len: seqLen) // [L, hidden]
-            addPE(to: &seqRepr, pe: pe)
-            logger.debug("embeddings+PE: \(seqRepr.prettyShape)", category: Logger.Category.textBridge)
-        }
-        // 3) Encoder
-        let enc: Tensor
-        if let tcn = tcnEncoder, modelConfig.useTCN {
-            enc = tcn.forward(seqRepr, mask: maskFixed)
-        } else {
-            enc = encoder.forward(seqRepr, mask: maskFixed)
-        }
-        // 4) Masked-avg over sequence -> [B, hidden]
+        // 2) TCN encoder
+        let enc = tcnEncoder.forward(embs, mask: maskFixed)
+        // 3) Masked-avg over sequence -> [B, hidden]
         let pooled = maskedMean(enc, mask: maskFixed)
         logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
-        // 5) Projection to output
-        var out: Tensor
-        if let gp = gpuProj, modelConfig.useGPUProjection {
-            do {
-                var gpMut = gp
-                out = try gpMut.forward(pooled)
-                self.gpuProj = gpMut // persist cached buffers
-            } catch {
-                logger.warn("GPU projection failed, falling back to CPU Linear: \(error)", category: Logger.Category.textBridge)
-                out = proj2.forward(ln.forward(Activations.gelu(proj1.forward(pooled))))
-            }
-        } else {
-            out = proj2.forward(ln.forward(Activations.gelu(proj1.forward(pooled))))
+        // 4) Projection to output via GPU
+        var proj = gpuProj
+        do {
+            var gpMut = proj
+            precondition(gpMut != nil, "GPU projection must be initialized")
+            var gp = gpMut!
+            let outGPU = try gp.forward(pooled)
+            self.gpuProj = gp
+            var out = outGPU
+            if modelConfig.useTanhOutput { out = Activations.tanh(out) }
+            logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: Logger.Category.textBridge)
+            return out
+        } catch {
+            fatalError("GPU projection failed: \(error)")
         }
-        if modelConfig.useTanhOutput { out = Activations.tanh(out) }
-        logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: Logger.Category.textBridge)
-        return out
     }
 
     // Simple stats for debugging
@@ -158,33 +116,6 @@ public final class TextToCubeEncoder {
         return (idsOut, maskOut)
     }
 
-    private func positionalSlice(len: Int) -> Tensor { // [L, hidden]
-        precondition(len <= modelConfig.maxPosition)
-        let hidden = modelConfig.hiddenDim
-        var out = Tensor.zeros([len, hidden])
-        for l in 0..<len {
-            let srcBase = l * hidden
-            for d in 0..<hidden { out.data[srcBase + d] = positionalEncoding.data[srcBase + d] }
-        }
-        return out
-    }
-
-    private func addPE(to embs: inout Tensor, pe: Tensor) {
-        // embs: [B,L,H]; pe: [L,H]
-        let b = embs.shape[0]
-        let l = embs.shape[1]
-        let h = embs.shape[2]
-        precondition(pe.shape == [l, h])
-        for bi in 0..<b {
-            for li in 0..<l {
-                let eBase = (bi * l + li) * h
-                let pBase = li * h
-                for di in 0..<h {
-                    embs.data[eBase + di] += pe.data[pBase + di]
-                }
-            }
-        }
-    }
 
     private func maskedMean(_ x: Tensor, mask: [[Int]]) -> Tensor {
         // x: [B,L,H], mask: [B][L] -> [B,H]
@@ -208,7 +139,6 @@ public final class TextToCubeEncoder {
         return out
     }
 
-    private static func makePositionalEncoding(maxLen: Int, dim: Int, seed: UInt64) -> Tensor {
         // seed is not strictly needed for sinusoidal, but we keep signature uniform for future variants
         _ = seed
         var pe = Tensor.zeros([maxLen, dim])

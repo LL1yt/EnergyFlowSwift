@@ -1,18 +1,4 @@
-import Foundation
-import EFCore
-
-// Minimal TransformerEncoder (CPU, pre-LN, single-head attention)
-// Shapes: x is [B, L, H]
-public struct TransformerEncoderLayer {
-    public let hidden: Int
-    public let ffDim: Int
-    public var attn: MultiHeadSelfAttention
-    public var ln1: LayerNorm
-    public var ln2: LayerNorm
-    public var ffn1: Linear
-    public var ffn2: Linear
-
-    public init(hidden: Int, ffDim: Int, numHeads: Int, seed: UInt64) {
+// Removed legacy Transformer encoder per roadmap simplification
         self.hidden = hidden
         self.ffDim = ffDim
         self.attn = MultiHeadSelfAttention(hidden: hidden, numHeads: numHeads, seed: Seed.derive(seed, label: "attn"))

@@ -8,8 +8,6 @@ import EFCore
 struct Args {
     var dataPath: String
     var batchSize: Int = 16
-    var layers: Int = 2
-    var heads: Int = 8
     var maxLength: Int = 128   // 0 means auto from dataset
     var lengthCap: Int = 256   // cap for auto length (keeps eval fast); 0 means no cap
     var maxBatches: Int = 0    // 0 means all batches
@@ -25,10 +23,6 @@ func parseArgs() -> Args? {
             if let v = it.next() { a.dataPath = v }
         case "--batch-size":
             if let v = it.next(), let n = Int(v) { a.batchSize = n }
-        case "--layers":
-            if let v = it.next(), let n = Int(v) { a.layers = n }
-        case "--heads":
-            if let v = it.next(), let n = Int(v) { a.heads = n }
         case "--max-length":
             if let v = it.next(), let n = Int(v) { a.maxLength = n }
         case "--length-cap":
@@ -69,7 +63,7 @@ func batchMSE(_ y: [[Float]], _ t: [[Float]]) -> Float {
 func run() throws {
     guard let args = parseArgs() else { usage(); return }
     let logger = Logger.shared
-    logger.info("EFTextEval start: data=\(args.dataPath) batchSize=\(args.batchSize) layers=\(args.layers) heads=\(args.heads) maxLen=\(args.maxLength)", category: Logger.Category.dataset)
+    logger.info("EFTextEval start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength)", category: Logger.Category.dataset)
 
     let ds = try SimpleJSONLDataset(path: args.dataPath)
     logger.info("dataset: count=\(ds.count()) targetDim=\(ds.embeddingDim) hasTokens=\(ds.hasTokens)", category: Logger.Category.dataset)
@@ -109,15 +103,15 @@ func run() throws {
 
     // Configure encoder to output same dim as targets
     let cfg = TextToCubeEncoderConfig(
-        hiddenDim: 768,
+        hiddenDim: 256,
         maxLength: maxLen,
-        maxPosition: max(512, maxLen),
         outputDim: ds.embeddingDim,
         useTanhOutput: false,
-        numLayers: args.layers,
-        numHeads: args.heads,
+        tcnBlocks: 4,
+        kernelSize: 5,
+        dilationSchedule: [1,2,4,8],
         ffDim: 512,
-        dropout: 0.0,
+        useGPUProjection: true,
         baseSeed: 42
     )
     let enc = TextToCubeEncoder(modelConfig: cfg)
@@ -152,7 +146,7 @@ func run() throws {
             let B = inputIDs.count
             let micro = args.microBatch > 0 ? args.microBatch : B
             let numChunks = (B + micro - 1) / micro
-            logger.info("batch #\(batchIdx) tokens: B=\(B) chunks=\(numChunks) maxLen=\(cfg.maxLength) layers=\(cfg.numLayers) heads=\(cfg.numHeads)", category: Logger.Category.dataset)
+            logger.info("batch #\(batchIdx) tokens: B=\(B) chunks=\(numChunks) maxLen=\(cfg.maxLength)", category: Logger.Category.dataset)
             var offset = 0
             for c in 0..<numChunks {
                 let take = min(micro, B - offset)
@@ -174,7 +168,7 @@ logger.info("  chunk #\(c+1)/\(numChunks): b=\(b) d=\(d) MSE=\(String(format: "%
             let B = texts.count
             let micro = args.microBatch > 0 ? args.microBatch : B
             let numChunks = (B + micro - 1) / micro
-            logger.info("batch #\(batchIdx) text: B=\(B) chunks=\(numChunks) maxLen=\(cfg.maxLength) layers=\(cfg.numLayers) heads=\(cfg.numHeads)", category: Logger.Category.dataset)
+            logger.info("batch #\(batchIdx) text: B=\(B) chunks=\(numChunks) maxLen=\(cfg.maxLength)", category: Logger.Category.dataset)
             var offset = 0
             for c in 0..<numChunks {
                 let take = min(micro, B - offset)
