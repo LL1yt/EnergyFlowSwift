@@ -13,11 +13,15 @@ public final class TextToCubeEncoder {
     private var ln: LayerNorm
     private var proj2: Linear
 
-    // Transformer encoder (CPU reference, starts with single-head)
+    // Transformer encoder (legacy) or TCN encoder (roadmap)
     private var encoder: TransformerEncoder
+    private var tcnEncoder: TCNEncoder?
 
     // Sinusoidal positional encoding [maxPosition, hiddenDim]
     private var positionalEncoding: Tensor
+
+    // GPU projection (FP16)
+    private var gpuProj: GraphLinear?
 
     public init(energyConfig: EnergyConfig = createDebugConfig(),
                 modelConfig: TextToCubeEncoderConfig = TextToCubeEncoderConfig(),
@@ -39,7 +43,22 @@ public final class TextToCubeEncoder {
                                           ffDim: modelConfig.ffDim,
                                           numHeads: modelConfig.numHeads,
                                           seed: Seed.derive(modelConfig.baseSeed, label: "encoder"))
+        if modelConfig.useTCN {
+            self.tcnEncoder = TCNEncoder(numBlocks: modelConfig.tcnBlocks,
+                                         dim: modelConfig.hiddenDim,
+                                         hidden: modelConfig.ffDim,
+                                         kernelSize: modelConfig.kernelSize,
+                                         dilationSchedule: modelConfig.dilationSchedule,
+                                         seed: Seed.derive(modelConfig.baseSeed, label: "tcn"))
+        } else {
+            self.tcnEncoder = nil
+        }
         self.positionalEncoding = TextToCubeEncoder.makePositionalEncoding(maxLen: modelConfig.maxPosition, dim: modelConfig.hiddenDim, seed: Seed.derive(modelConfig.baseSeed, label: "posenc"))
+        if modelConfig.useGPUProjection {
+            self.gpuProj = GraphLinear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.outputDim, bias: true, seed: Seed.derive(modelConfig.baseSeed, label: "gpu_proj"))
+        } else {
+            self.gpuProj = nil
+        }
     }
 
     public func encode(_ texts: [String]) -> Tensor {
@@ -63,22 +82,39 @@ public final class TextToCubeEncoder {
         // 1) Embedding [B,L,hidden]
         var embs = embedding.forward(ids: idsFixed)
         logger.debug("embeddings: \(embs.prettyShape)", category: Logger.Category.textBridge)
-        // 2) Add positional encoding (truncate to seqLen)
+        // 2) If using TCN, skip positional encoding (TCN captures local order). Otherwise, add PE for transformer.
         let seqLen = modelConfig.maxLength
         precondition(seqLen <= modelConfig.maxPosition, "seqLen exceeds maxPosition in positional encoding")
-        let pe = positionalSlice(len: seqLen) // [L, hidden]
-        addPE(to: &embs, pe: pe)
-        logger.debug("embeddings+PE: \(embs.prettyShape)", category: Logger.Category.textBridge)
-        // 3) Transformer encoder
-        let enc = encoder.forward(embs, mask: maskFixed)
+        var seqRepr = embs
+        if !modelConfig.useTCN {
+            let pe = positionalSlice(len: seqLen) // [L, hidden]
+            addPE(to: &seqRepr, pe: pe)
+            logger.debug("embeddings+PE: \(seqRepr.prettyShape)", category: Logger.Category.textBridge)
+        }
+        // 3) Encoder
+        let enc: Tensor
+        if let tcn = tcnEncoder, modelConfig.useTCN {
+            enc = tcn.forward(seqRepr, mask: maskFixed)
+        } else {
+            enc = encoder.forward(seqRepr, mask: maskFixed)
+        }
         // 4) Masked-avg over sequence -> [B, hidden]
         let pooled = maskedMean(enc, mask: maskFixed)
         logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
-        // 5) Projection MLP
-        var out = proj1.forward(pooled)
-        out = Activations.gelu(out)
-        out = ln.forward(out)
-        out = proj2.forward(out)
+        // 5) Projection to output
+        var out: Tensor
+        if let gp = gpuProj, modelConfig.useGPUProjection {
+            do {
+                var gpMut = gp
+                out = try gpMut.forward(pooled)
+                self.gpuProj = gpMut // persist cached buffers
+            } catch {
+                logger.warn("GPU projection failed, falling back to CPU Linear: \(error)", category: Logger.Category.textBridge)
+                out = proj2.forward(ln.forward(Activations.gelu(proj1.forward(pooled))))
+            }
+        } else {
+            out = proj2.forward(ln.forward(Activations.gelu(proj1.forward(pooled))))
+        }
         if modelConfig.useTanhOutput { out = Activations.tanh(out) }
         logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: Logger.Category.textBridge)
         return out
