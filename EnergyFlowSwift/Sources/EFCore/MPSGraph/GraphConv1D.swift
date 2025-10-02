@@ -143,4 +143,9 @@ public func forward(_ x: Tensor) -> Tensor {
         }
         return Tensor(shape: [B, L, colsY], data: yHost)
     }
+
+    // Invalidate GPU cached weight matrix (call after weight updates)
+    public func invalidateCache() {
+        self.wcolFP16 = nil
+    }
 }

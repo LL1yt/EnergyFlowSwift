@@ -24,6 +24,12 @@ public struct GraphLinear {
         self.bBufFP16 = nil
     }
 
+    // Invalidate GPU caches (call after weight updates)
+    public mutating func invalidateCache() {
+        self.wBufFP16 = nil
+        self.bBufFP16 = nil
+    }
+
     // Forward pass on GPU
     public mutating func forward(_ x: Tensor) throws -> Tensor {
         let logger = Logger.shared

@@ -60,6 +60,23 @@ func batchMSE(_ y: [[Float]], _ t: [[Float]]) -> Float {
     return acc / Float(max(y.count, 1))
 }
 
+func cosine(_ a: [Float], _ b: [Float]) -> Float {
+    precondition(a.count == b.count)
+    var dot: Float = 0
+    var na: Float = 0
+    var nb: Float = 0
+    for i in 0..<a.count { dot += a[i] * b[i]; na += a[i]*a[i]; nb += b[i]*b[i] }
+    let denom = sqrt(max(na, 1e-12)) * sqrt(max(nb, 1e-12))
+    return denom > 0 ? dot / denom : 0
+}
+
+func batchCosine(_ y: [[Float]], _ t: [[Float]]) -> Float {
+    precondition(y.count == t.count)
+    var acc: Float = 0
+    for i in 0..<y.count { acc += cosine(y[i], t[i]) }
+    return acc / Float(max(y.count, 1))
+}
+
 func run() throws {
     guard let args = parseArgs() else { usage(); return }
     let logger = Logger.shared
@@ -158,9 +175,10 @@ func run() throws {
                 var pred: [[Float]] = Array(repeating: Array(repeating: 0, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
                 let m = batchMSE(pred, tgtChunk)
+                let cmean = batchCosine(pred, tgtChunk)
                 totalMSE += Double(m) * Double(b)
                 seen += b
-logger.info("  chunk #\(c+1)/\(numChunks): b=\(b) d=\(d) MSE=\(String(format: "%.6f", m))", category: Logger.Category.dataset)
+                logger.info("  chunk #\(c+1)/\(numChunks): b=\(b) d=\(d) MSE=\(String(format: "%.6f", m)) Cos=\(String(format: "%.6f", cmean))", category: Logger.Category.dataset)
                 logProgress()
                 offset += take
             }
@@ -179,9 +197,10 @@ logger.info("  chunk #\(c+1)/\(numChunks): b=\(b) d=\(d) MSE=\(String(format: "%
                 var pred: [[Float]] = Array(repeating: Array(repeating: 0, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
                 let m = batchMSE(pred, tgtChunk)
+                let cmean = batchCosine(pred, tgtChunk)
                 totalMSE += Double(m) * Double(b)
                 seen += b
-logger.info("  chunk #\(c+1)/\(numChunks): b=\(b) d=\(d) MSE=\(String(format: "%.6f", m))", category: Logger.Category.dataset)
+                logger.info("  chunk #\(c+1)/\(numChunks): b=\(b) d=\(d) MSE=\(String(format: "%.6f", m)) Cos=\(String(format: "%.6f", cmean))", category: Logger.Category.dataset)
                 logProgress()
                 offset += take
             }
@@ -189,7 +208,8 @@ logger.info("  chunk #\(c+1)/\(numChunks): b=\(b) d=\(d) MSE=\(String(format: "%
     }
 
     let finalMSE = seen > 0 ? (totalMSE / Double(seen)) : 0
-logger.info("FINAL: samples=\(seen) avgMSE=\(String(format: "%.6f", finalMSE))", category: Logger.Category.dataset)
+    // We don't track a running cosine across all chunks without storing all preds; compute per-chunk only.
+    logger.info("FINAL: samples=\(seen) avgMSE=\(String(format: "%.6f", finalMSE))", category: Logger.Category.dataset)
 }
 do {
     try run()
