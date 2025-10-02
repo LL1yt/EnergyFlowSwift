@@ -43,7 +43,7 @@ func parseArgs() -> Args? {
 }
 
 func usage() {
-    print("Usage: EFTextEval --data /path/to/data.jsonl|.efb [--batch-size 16] [--layers 2] [--heads 8] [--max-length 128|0(auto)] [--length-cap 256] [--max-batches 0(all)] [--micro-batch 8]")
+    print("Usage: EFTextEval --data /path/to/data.jsonl|.efb [--batch-size 16] [--max-length 128|0(auto)] [--length-cap 256] [--max-batches 0(all)] [--micro-batch 8]")
 }
 
 func mse(_ y: [Float], _ t: [Float]) -> Float {

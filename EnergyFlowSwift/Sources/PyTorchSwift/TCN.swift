@@ -6,8 +6,8 @@ public struct TCNBlock {
     public let hidden: Int        // bottleneck channels
     public let kernelSize: Int
     public let dilation: Int
-    public var conv1: Conv1D      // dim -> hidden, kernel=k, dilation=d
-    public var conv2: Conv1D      // hidden -> dim, kernel=1
+    public var conv1: GraphConv1D      // dim -> hidden, kernel=k, dilation=d
+    public var conv2: GraphConv1D      // hidden -> dim, kernel=1
     public var ln: LayerNorm
 
     public init(dim: Int, hidden: Int, kernelSize: Int, dilation: Int, seed: UInt64) {
@@ -15,8 +15,8 @@ public struct TCNBlock {
         self.hidden = hidden
         self.kernelSize = kernelSize
         self.dilation = dilation
-        self.conv1 = Conv1D(inChannels: dim, outChannels: hidden, kernelSize: kernelSize, dilation: dilation, bias: true, seed: Seed.derive(seed, label: "conv1"))
-        self.conv2 = Conv1D(inChannels: hidden, outChannels: dim, kernelSize: 1, dilation: 1, bias: true, seed: Seed.derive(seed, label: "conv2"))
+        self.conv1 = GraphConv1D(inChannels: dim, outChannels: hidden, kernelSize: kernelSize, dilation: dilation, bias: true, seed: Seed.derive(seed, label: "conv1"))
+        self.conv2 = GraphConv1D(inChannels: hidden, outChannels: dim, kernelSize: 1, dilation: 1, bias: true, seed: Seed.derive(seed, label: "conv2"))
         self.ln = LayerNorm(dim: dim)
     }
 

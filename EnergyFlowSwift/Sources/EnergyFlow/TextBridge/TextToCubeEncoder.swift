@@ -54,7 +54,7 @@ public final class TextToCubeEncoder {
         let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
         logger.debug("token ids shape: [\(idsFixed.count), \(idsFixed.first?.count ?? 0)] mask shape: [\(maskFixed.count), \(maskFixed.first?.count ?? 0)]", category: Logger.Category.textBridge)
         // 1) Embedding [B,L,hidden]
-        var embs = embedding.forward(ids: idsFixed)
+        let embs = embedding.forward(ids: idsFixed)
         logger.debug("embeddings: \(embs.prettyShape)", category: Logger.Category.textBridge)
         // 2) TCN encoder
         let enc = tcnEncoder.forward(embs, mask: maskFixed)
@@ -64,11 +64,8 @@ public final class TextToCubeEncoder {
         // 4) Projection to output via GPU
         var proj = gpuProj
         do {
-            var gpMut = proj
-            precondition(gpMut != nil, "GPU projection must be initialized")
-            var gp = gpMut!
-            let outGPU = try gp.forward(pooled)
-            self.gpuProj = gp
+            let outGPU = try proj.forward(pooled)
+            self.gpuProj = proj
             var out = outGPU
             if modelConfig.useTanhOutput { out = Activations.tanh(out) }
             logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: Logger.Category.textBridge)
@@ -139,19 +136,4 @@ public final class TextToCubeEncoder {
         return out
     }
 
-        // seed is not strictly needed for sinusoidal, but we keep signature uniform for future variants
-        _ = seed
-        var pe = Tensor.zeros([maxLen, dim])
-        let divTermBase = Float(log(10000.0) / Double(dim))
-        for pos in 0..<maxLen {
-            for i in stride(from: 0, to: dim, by: 2) {
-                let div = expf(-Float(i) * divTermBase)
-                pe.data[pos * dim + i] = sinf(Float(pos) * div)
-                if i + 1 < dim {
-                    pe.data[pos * dim + i + 1] = cosf(Float(pos) * div)
-                }
-            }
-        }
-        return pe
-    }
 }

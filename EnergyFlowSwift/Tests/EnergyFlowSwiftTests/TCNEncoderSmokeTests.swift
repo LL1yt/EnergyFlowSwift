@@ -8,17 +8,12 @@ final class TCNEncoderSmokeTests: XCTestCase {
         let cfg = TextToCubeEncoderConfig(
             hiddenDim: 64,
             maxLength: 16,
-            maxPosition: 32,
             outputDim: 32,
             useTanhOutput: false,
-            useTCN: true,
             tcnBlocks: 2,
             kernelSize: 3,
             dilationSchedule: [1,2],
-            numLayers: 1,
-            numHeads: 1,
             ffDim: 64,
-            dropout: 0.0,
             useGPUProjection: false,
             baseSeed: 7
         )
