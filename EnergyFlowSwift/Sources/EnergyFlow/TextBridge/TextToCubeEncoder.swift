@@ -75,6 +75,34 @@ public final class TextToCubeEncoder {
         }
     }
 
+    // Training forward: returns pooled and output before optional tanh
+    public func forwardForTraining(inputIDs: [[Int]], attentionMask: [[Int]]) -> (pooled: Tensor, out: Tensor) {
+        let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
+        let embs = embedding.forward(ids: idsFixed)
+        let enc = tcnEncoder.forward(embs, mask: maskFixed)
+        let pooled = maskedMean(enc, mask: maskFixed)
+        var proj = gpuProj
+        do {
+            let outGPU = try proj.forward(pooled)
+            self.gpuProj = proj
+            return (pooled, outGPU)
+        } catch {
+            fatalError("GPU projection failed: \(error)")
+        }
+    }
+
+    // Projection param accessors for training
+    public func getProjParams() -> (weight: Tensor, bias: Tensor?) {
+        return (gpuProj.weight, gpuProj.bias)
+    }
+    public func setProjParams(weight: Tensor, bias: Tensor?) {
+        gpuProj.weight = weight
+        gpuProj.bias = bias
+    }
+    public func invalidateProjectionCache() {
+        gpuProj.invalidateCache()
+    }
+
     // Simple stats for debugging
     private func mean(of t: Tensor) -> Float {
         var s: Float = 0

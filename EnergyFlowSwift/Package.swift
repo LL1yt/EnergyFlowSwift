@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "PyTorchSwift", targets: ["PyTorchSwift"]),
         .library(name: "EnergyFlow", targets: ["EnergyFlow"]),
         .executable(name: "EFTextEval", targets: ["EFTextEval"]),
+        .executable(name: "EFTrain", targets: ["EFTrain"]),
     ],
     targets: [
         .target(
@@ -39,6 +40,11 @@ let package = Package(
             name: "EFTextEval",
             dependencies: ["EnergyFlow", "EFCore"],
             path: "Sources/EFTextEval"
+        ),
+        .executableTarget(
+            name: "EFTrain",
+            dependencies: ["EnergyFlow", "EFCore"],
+            path: "Sources/EFTrain"
         ),
     ]
 )
