@@ -50,6 +50,20 @@ Notes:
     - For very large corpora, prefer splitting input for memory locality.
     - Use --append to continue writing to an existing JSONL file.
     - Use --progress-interval to reduce tqdm refresh cost in massive runs.
+
+
+Option A — text-only JSONL (preferred long-term; Swift tokenizes)
+•  Command:
+◦  python energy_flow/dataset/generate_text_embedding_jsonl.py --from-snli --snli-limit 2000 --output snli.jsonl --no-normalize --no-tokens
+•  Produces lines like: {"text": "...", "target": [768 floats]}
+•  Works best after we enable EFTrain text-mode. EFTextEval already supports text-mode.
+
+Option B — tokens + embeddings (works with current EFTrain)
+•  Command (JSONL):
+◦  python energy_flow/dataset/generate_text_embedding_jsonl.py --from-snli --snli-limit 2000 --output snli_tokens.jsonl --no-normalize
+•  Or compact binary for faster Swift loading:
+◦  python energy_flow/dataset/generate_text_embedding_jsonl.py --from-snli --snli-limit 2000 --no-normalize --efb-output snli_tokens.efb
+•  Produces: {"text": "...", "input_ids": [...], "attention_mask": [...], "target": [...]}
 """
 
 import argparse
