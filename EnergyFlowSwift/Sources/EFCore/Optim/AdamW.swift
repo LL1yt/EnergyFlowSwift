@@ -25,9 +25,10 @@ public final class AdamW {
     }
 
     private func ensureStates(paramCount: Int) {
-        if mStates.count == paramCount { return }
-        mStates = mStates.count == paramCount ? mStates : Array(repeating: [], count: paramCount)
-        vStates = vStates.count == paramCount ? vStates : Array(repeating: [], count: paramCount)
+        if mStates.count != paramCount {
+            mStates = Array(repeating: [], count: paramCount)
+            vStates = Array(repeating: [], count: paramCount)
+        }
     }
 
     // Step over parameter list. Each param has matching grad shape.
@@ -59,5 +60,77 @@ public final class AdamW {
             }
             params[i] = p
         }
+    }
+
+    // MARK: - State serialization (optimizer m/v, step t)
+    // Binary format: "EFOP1" magic, u32 t, u32 paramCount, then per-param: u32 count, count*f32 m, count*f32 v
+    public func exportState(paramCounts: [Int]) -> Data {
+        var data = Data()
+        // magic
+        data.append(contentsOf: [0x45, 0x46, 0x4F, 0x50, 0x31]) // "EFOP1"
+        func putU32(_ v: UInt32) { var le = v.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
+        func putF32(_ v: Float) { var le = v.bitPattern.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
+        putU32(UInt32(max(t, 0)))
+        putU32(UInt32(paramCounts.count))
+        // ensure states sized
+        ensureStates(paramCount: paramCounts.count)
+        for i in 0..<paramCounts.count {
+            let cnt = max(0, paramCounts[i])
+            putU32(UInt32(cnt))
+            if mStates[i].count != cnt { mStates[i] = [Float](repeating: 0, count: cnt) }
+            if vStates[i].count != cnt { vStates[i] = [Float](repeating: 0, count: cnt) }
+            for j in 0..<cnt { putF32(mStates[i][j]) }
+            for j in 0..<cnt { putF32(vStates[i][j]) }
+        }
+        return data
+    }
+
+    @discardableResult
+    public func importState(_ data: Data, expectedParamCounts: [Int]) -> Bool {
+        var idx = 0
+        func getU8() -> UInt8 { defer { idx += 1 }; return data[idx] }
+        guard idx + 5 <= data.count else { return false }
+        // magic EFOP1
+        if getU8() != 0x45 || getU8() != 0x46 || getU8() != 0x4F || getU8() != 0x50 || getU8() != 0x31 { return false }
+        func getU32() -> UInt32 { defer { idx += 4 }; return data[idx..<(idx+4)].withUnsafeBytes { $0.load(as: UInt32.self) }.littleEndian }
+        func getF32() -> Float { defer { idx += 4 }; let u = data[idx..<(idx+4)].withUnsafeBytes { $0.load(as: UInt32.self) }.littleEndian; return Float(bitPattern: u) }
+        let tVal = Int(getU32())
+        let pCount = Int(getU32())
+        guard pCount == expectedParamCounts.count else { return false }
+        ensureStates(paramCount: pCount)
+        for i in 0..<pCount {
+            let cnt = Int(getU32())
+            guard cnt == expectedParamCounts[i] else { return false }
+            if idx + 4*cnt*2 > data.count { return false }
+            var m = [Float](repeating: 0, count: cnt)
+            var v = [Float](repeating: 0, count: cnt)
+            for j in 0..<cnt { m[j] = getF32() }
+            for j in 0..<cnt { v[j] = getF32() }
+            mStates[i] = m
+            vStates[i] = v
+        }
+        self.t = tVal
+        return true
+    }
+
+    @discardableResult
+    public func saveState(path: String, paramCounts: [Int]) -> Bool {
+        let url = URL(fileURLWithPath: path)
+        do {
+            let dir = url.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let data = exportState(paramCounts: paramCounts)
+            try data.write(to: url)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    public func loadState(path: String, expectedParamCounts: [Int]) -> Bool {
+        let url = URL(fileURLWithPath: path)
+        guard let data = try? Data(contentsOf: url) else { return false }
+        return importState(data, expectedParamCounts: expectedParamCounts)
     }
 }

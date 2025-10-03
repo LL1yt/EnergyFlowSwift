@@ -17,6 +17,13 @@ struct TrainArgs {
     var saveCheckpoint: String = ""   // path to save best checkpoint
     var loadCheckpoint: String = ""   // path to load checkpoint
     var accumSteps: Int = 1
+    // New training controls
+    var warmupSteps: Int = 0
+    var cosineDecaySteps: Int = 0
+    var minLR: Float = 0.0
+    var clipNorm: Float = 0.0
+    var saveOptState: String = ""
+    var loadOptState: String = ""
 }
 
 func parseTrainArgs() -> TrainArgs? {
@@ -38,6 +45,12 @@ func parseTrainArgs() -> TrainArgs? {
         case "--accum-steps": if let v = it.next(), let n = Int(v) { a.accumSteps = max(1, n) }
         case "--alpha-cos": if let v = it.next(), let f = Float(v) { a.alphaCos = f }
         case "--beta-mse": if let v = it.next(), let f = Float(v) { a.betaMSE = f }
+        case "--warmup-steps": if let v = it.next(), let n = Int(v) { a.warmupSteps = max(0, n) }
+        case "--cosine-decay-steps": if let v = it.next(), let n = Int(v) { a.cosineDecaySteps = max(0, n) }
+        case "--min-lr": if let v = it.next(), let f = Float(v) { a.minLR = max(0, f) }
+        case "--clip-norm": if let v = it.next(), let f = Float(v) { a.clipNorm = max(0, f) }
+        case "--save-opt-state": if let v = it.next() { a.saveOptState = v }
+        case "--load-opt-state": if let v = it.next() { a.loadOptState = v }
         case "-h", "--help": return nil
         default: continue
         }
@@ -47,7 +60,7 @@ func parseTrainArgs() -> TrainArgs? {
 }
 
 func usage() {
-    print("Usage: EFTrain --data /path/to/data.jsonl|.efb [--batch-size 16] [--max-length 128] [--max-batches 100] [--epochs 1] [--lr 3e-4] [--weight-decay 0.01] [--micro-batch 32] [--alpha-cos 1.0] [--beta-mse 1.0] [--val-fraction 0.1] [--save-checkpoint ckpt.bin] [--load-checkpoint ckpt.bin] [--accum-steps 1]")
+    print("Usage: EFTrain --data /path/to/data.jsonl|.efb [--batch-size N] [--max-length N] [--max-batches N] [--epochs N] [--lr F] [--weight-decay F] [--micro-batch N] [--alpha-cos F] [--beta-mse F] [--val-fraction F] [--save-checkpoint path] [--load-checkpoint path] [--accum-steps N] [--warmup-steps N] [--cosine-decay-steps N] [--min-lr F] [--clip-norm F] [--save-opt-state path] [--load-opt-state path]")
 }
 
 func run() throws {
@@ -84,6 +97,16 @@ func run() throws {
     
     // Optimizer: we update only projector weights/bias for now
     let opt = AdamW(lr: args.lr, beta1: 0.9, beta2: 0.999, eps: 1e-8, weightDecay: args.weightDecay)
+    // Optionally load optimizer state (projection-only)
+    do {
+        let (w0, b0) = enc.getProjParams()
+        var counts: [Int] = [w0.count]
+        if let b0t = b0 { counts.append(b0t.count) }
+        if !args.loadOptState.isEmpty {
+            let ok = opt.loadState(path: args.loadOptState, expectedParamCounts: counts)
+            logger.info("load opt state: \(ok) from=\(args.loadOptState)", category: Logger.Category.training)
+        }
+    }
     
     // Split train/val
     let total = ds.count()
@@ -100,6 +123,7 @@ func run() throws {
     
     var bestValCos: Double = -Double.greatestFiniteMagnitude
     
+    var globalStep = 0
     for epoch in 0..<args.epochs {
         logger.info("epoch=\(epoch+1)/\(args.epochs)", category: Logger.Category.dataset)
         var batchIdx = 0
@@ -179,12 +203,26 @@ func run() throws {
                         var gB = accB!
                         for i in 0..<gW.count { gW.data[i] *= scale }
                         for i in 0..<gB.count { gB.data[i] *= scale }
+                        // Gradient clipping (global L2)
+                        if args.clipNorm > 0 {
+                            var gradList: [Tensor] = [gW]
+                            if gB.count > 0 { gradList.append(gB) }
+                            _ = GradClip.clipGlobalL2Norm(tensors: &gradList, maxNorm: args.clipNorm, eps: 1e-6)
+                            gW = gradList[0]
+                            if gradList.count > 1 { gB = gradList[1] }
+                        }
+                        // Param list and LR scheduling
                         let (projW, projB) = enc.getProjParams()
                         var params: [Tensor] = [projW]
                         var grads: [Tensor] = [gW]
                         if let bT = projB { params.append(bT); grads.append(gB) }
+                        // LR schedule (warmup + cosine)
+                        let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
+                        if lrNow != opt.lr { opt.lr = lrNow }
+                        logger.info(String(format: "opt step=%d lr=%.6g", globalStep, opt.lr), category: Logger.Category.training)
                         var paramsCopy = params
                         opt.step(params: &paramsCopy, grads: grads)
+                        globalStep += 1
                         let newW = paramsCopy[0]
                         let newB = (projB != nil) ? paramsCopy[1] : nil
                         enc.setProjParams(weight: newW, bias: newB)
@@ -246,12 +284,25 @@ func run() throws {
                         var gB = accB!
                         for i in 0..<gW.count { gW.data[i] *= scale }
                         for i in 0..<gB.count { gB.data[i] *= scale }
+                        // Gradient clipping (global L2)
+                        if args.clipNorm > 0 {
+                            var gradList: [Tensor] = [gW]
+                            if gB.count > 0 { gradList.append(gB) }
+                            _ = GradClip.clipGlobalL2Norm(tensors: &gradList, maxNorm: args.clipNorm, eps: 1e-6)
+                            gW = gradList[0]
+                            if gradList.count > 1 { gB = gradList[1] }
+                        }
                         let (projW, projB) = enc.getProjParams()
                         var params: [Tensor] = [projW]
                         var grads: [Tensor] = [gW]
                         if let bT = projB { params.append(bT); grads.append(gB) }
+                        // LR schedule (warmup + cosine)
+                        let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
+                        if lrNow != opt.lr { opt.lr = lrNow }
+                        logger.info(String(format: "opt step=%d lr=%.6g", globalStep, opt.lr), category: Logger.Category.training)
                         var paramsCopy = params
                         opt.step(params: &paramsCopy, grads: grads)
+                        globalStep += 1
                         let newW = paramsCopy[0]
                         let newB = (projB != nil) ? paramsCopy[1] : nil
                         enc.setProjParams(weight: newW, bias: newB)
@@ -277,8 +328,16 @@ func run() throws {
                 if valCos > bestValCos {
                     bestValCos = valCos
                     if !args.saveCheckpoint.isEmpty {
-                        saveProjectionCheckpoint(path: args.saveCheckpoint, weight: enc.getProjParams().weight, bias: enc.getProjParams().bias)
+                        let p = enc.getProjParams()
+                        saveProjectionCheckpoint(path: args.saveCheckpoint, weight: p.weight, bias: p.bias)
                         logger.info("saved checkpoint: \(args.saveCheckpoint) (best cos=\(String(format: "%.6f", bestValCos)))", category: Logger.Category.dataset)
+                    }
+                    if !args.saveOptState.isEmpty {
+                        let (projW, projB) = enc.getProjParams()
+                        var counts: [Int] = [projW.count]
+                        if let bT = projB { counts.append(bT.count) }
+                        let ok = opt.saveState(path: args.saveOptState, paramCounts: counts)
+                        logger.info("saved opt state: \(ok) -> \(args.saveOptState)", category: Logger.Category.training)
                     }
                 }
             }
@@ -423,9 +482,11 @@ func run() throws {
         }
         return (weight, bias)
     }
-    
-    do { try run() } catch {
-        Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
-        exit(1)
-    }
+}
+
+do {
+    try run()
+} catch {
+    Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
+    exit(1)
 }
