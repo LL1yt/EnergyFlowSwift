@@ -129,11 +129,62 @@ func run() throws {
                     let newB = (projB != nil) ? paramsCopy[1] : nil
                     enc.setProjParams(weight: newW, bias: newB)
                     enc.invalidateProjectionCache()
+                    // Post-update metrics using project-only on same pooled
+                    let outPost = enc.projectOnly(pooled)
+                    let msePost = Losses.mseRowwise(outPost, t)
+                    let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
+                    logger.info(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
                     offset += take
                 }
-            case .text:
-                logger.warn("EFTrain: dataset has raw text entries; please pre-tokenize to use training path.", category: Logger.Category.dataset)
-                continue
+            case let .text(texts, targets):
+                let B = texts.count
+                let micro = args.microBatch > 0 ? args.microBatch : B
+                let numChunks = (B + micro - 1) / micro
+                var offset = 0
+                for _ in 0..<numChunks {
+                    let take = min(micro, B - offset)
+                    let txtChunk = Array(texts[offset..<(offset+take)])
+                    let tgtChunk = Array(targets[offset..<(offset+take)])
+                    let (pooled, out) = enc.forwardForTraining(texts: txtChunk)
+                    let b = out.shape[0]; let d = out.shape[1]
+                    var tHost = [Float](repeating: 0, count: b*d)
+                    for bi in 0..<b { for di in 0..<d { tHost[bi*d + di] = tgtChunk[bi][di] } }
+                    let t = Tensor(shape: [b, d], data: tHost)
+                    // Pre-update metrics
+                    let mse = Losses.mseRowwise(out, t)
+                    let cos = Losses.cosineSimilarityRowwise(out, t)
+                    totalMSE += Double(mse.mean) * Double(b)
+                    totalCos += Double(cos.mean) * Double(b)
+                    seen += b
+                    logger.info(String(format: "train chunk (text): b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
+                    // Backward combine
+                    var dY = dY_MSEMean(y: out, target: t)
+                    if args.alphaCos != 0 {
+                        let dYcos = dY_CosineMeanLoss(y: out, target: t)
+                        let B = dY.shape[0]; let D = dY.shape[1]
+                        for idx in 0..<(B*D) { dY.data[idx] = args.betaMSE * dY.data[idx] + args.alphaCos * dYcos.data[idx] }
+                    } else {
+                        let scale = args.betaMSE
+                        if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
+                    }
+                    let (projW, projB) = enc.getProjParams()
+                    let (dW, dB) = gradsGraphLinear(X: pooled, dY: dY, outFeatures: d, inFeatures: pooled.shape[1])
+                    var params: [Tensor] = [projW]
+                    var grads: [Tensor] = [dW]
+                    if let bT = projB { params.append(bT); grads.append(dB) }
+                    var paramsCopy = params
+                    opt.step(params: &paramsCopy, grads: grads)
+                    let newW = paramsCopy[0]
+                    let newB = (projB != nil) ? paramsCopy[1] : nil
+                    enc.setProjParams(weight: newW, bias: newB)
+                    enc.invalidateProjectionCache()
+                    // Post-update metrics using project-only on same pooled
+                    let outPost = enc.projectOnly(pooled)
+                    let msePost = Losses.mseRowwise(outPost, t)
+                    let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
+                    logger.info(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
+                    offset += take
+                }
             }
         }
         if seen > 0 {

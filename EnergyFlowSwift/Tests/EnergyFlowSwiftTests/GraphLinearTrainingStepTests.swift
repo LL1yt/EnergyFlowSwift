@@ -27,7 +27,7 @@ final class GraphLinearTrainingStepTests: XCTestCase {
         // Backward (MSE-only) and one AdamW step
         let dY = dY_MSEMean(y: Y0, target: T)
         let (dW, dB) = gradsGraphLinear(X: X, dY: dY, outFeatures: Out, inFeatures: In)
-        var opt = AdamW(lr: 1e-1, beta1: 0.0, beta2: 0.0, eps: 1e-8, weightDecay: 0.0) // strong LR for quick drop
+var opt = AdamW(lr: 1e-2, beta1: 0.0, beta2: 0.0, eps: 1e-8, weightDecay: 0.0) // moderate LR for stable decrease
         var params: [Tensor] = [gl.weight, gl.bias ?? Tensor.zeros([Out])]
         let grads: [Tensor] = [dW, dB]
         opt.step(params: &params, grads: grads)

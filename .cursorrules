@@ -1,8 +1,8 @@
 ### Контекст проекта
 
 - Исследовательский проект на одного разработчика
-- Структура: AA/ , AA/new_rebuild/ (легаси), AA/archive/ (старые версии), AA/energy_flow/ (активная разработка), AA/EnergyFlowSwift/ (Swift-порт)
-- Тесты и трейнеры запускаются из корня AA/
+- Структура: EnergyFlowSwift/ , EnergyFlowSwift/new_rebuild/, EnergyFlowSwift/energy_flow/ (легаси), EnergyFlowSwift/archive/ (старые версии), EnergyFlowSwift/EnergyFlowSwift/ (Swift-порт, активная разработка)
+
 
 ## Принципы работы
 

@@ -39,8 +39,7 @@ public final class TextToCubeEncoder {
         let logger = Logger.shared
         logger.debug("encode(texts) start: batch=\(texts.count) maxLen=\(modelConfig.maxLength) outputDim=\(modelConfig.outputDim)", category: Logger.Category.textBridge)
         // 1) Tokenize
-        var tok = tokenizer
-        let batch = tok.encodeBatch(texts, maxLength: modelConfig.maxLength)
+        let batch = tokenizer.encodeBatch(texts, maxLength: modelConfig.maxLength)
         return encodeTokens(inputIDs: batch.ids, attentionMask: batch.attentionMask)
     }
 
@@ -91,6 +90,12 @@ public final class TextToCubeEncoder {
         }
     }
 
+    // Training forward (text-mode): tokenize inside and return pooled/out
+    public func forwardForTraining(texts: [String]) -> (pooled: Tensor, out: Tensor) {
+        let batch = tokenizer.encodeBatch(texts, maxLength: modelConfig.maxLength)
+        return forwardForTraining(inputIDs: batch.ids, attentionMask: batch.attentionMask)
+    }
+
     // Projection param accessors for training
     public func getProjParams() -> (weight: Tensor, bias: Tensor?) {
         return (gpuProj.weight, gpuProj.bias)
@@ -101,6 +106,18 @@ public final class TextToCubeEncoder {
     }
     public func invalidateProjectionCache() {
         gpuProj.invalidateCache()
+    }
+
+    // Project-only using current GPU projection (to evaluate post-update metrics without recomputing TCN)
+    public func projectOnly(_ pooled: Tensor) -> Tensor {
+        var proj = gpuProj
+        do {
+            let outGPU = try proj.forward(pooled)
+            self.gpuProj = proj
+            return outGPU
+        } catch {
+            fatalError("GPU projection failed: \(error)")
+        }
     }
 
     // Simple stats for debugging
