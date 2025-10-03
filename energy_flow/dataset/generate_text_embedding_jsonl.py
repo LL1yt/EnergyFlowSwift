@@ -62,7 +62,7 @@ Option B — tokens + embeddings (works with current EFTrain)
 •  Command (JSONL):
 ◦  python energy_flow/dataset/generate_text_embedding_jsonl.py --from-snli --snli-limit 2000 --output snli_tokens.jsonl --no-normalize
 •  Or compact binary for faster Swift loading:
-◦  python energy_flow/dataset/generate_text_embedding_jsonl.py --from-snli --snli-limit 2000 --no-normalize --efb-output snli_tokens.efb
+◦  python energy_flow/dataset/generate_text_embedding_jsonl.py --from-snli --snli-limit 2000 --no-normalize --efb-output 2k_snli_tokens.efb
 •  Produces: {"text": "...", "input_ids": [...], "attention_mask": [...], "target": [...]}
 """
 
@@ -76,6 +76,13 @@ import array
 
 import torch
 from tqdm import tqdm
+
+# Allow running as a standalone script without -m by fixing sys.path for relative imports
+if __package__ in (None, ""):
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    __package__ = "energy_flow.dataset"
 
 # Reuse project infrastructure
 from .config import DatasetConfig
