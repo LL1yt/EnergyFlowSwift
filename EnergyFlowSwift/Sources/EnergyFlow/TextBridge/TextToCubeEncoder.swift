@@ -120,6 +120,11 @@ public final class TextToCubeEncoder {
         }
     }
 
+    // Projection gradients via GPU matmul wrapper
+    public func projectionGradientsGPU(X: Tensor, dY: Tensor) throws -> (Tensor, Tensor) {
+        return try gpuProj.gradientsGPU(X: X, dY: dY)
+    }
+
     // Simple stats for debugging
     private func mean(of t: Tensor) -> Float {
         var s: Float = 0

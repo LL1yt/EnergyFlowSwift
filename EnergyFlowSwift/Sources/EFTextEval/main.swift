@@ -11,7 +11,7 @@ struct Args {
     var maxLength: Int = 128   // 0 means auto from dataset
     var lengthCap: Int = 256   // cap for auto length (keeps eval fast); 0 means no cap
     var maxBatches: Int = 0    // 0 means all batches
-    var microBatch: Int = 8    // internal split for progress and latency; 0 => same as batchSize
+    var microBatch: Int = 32   // internal split for progress and latency; 0 => same as batchSize
 }
 
 func parseArgs() -> Args? {
@@ -43,7 +43,7 @@ func parseArgs() -> Args? {
 }
 
 func usage() {
-    print("Usage: EFTextEval --data /path/to/data.jsonl|.efb [--batch-size 16] [--max-length 128|0(auto)] [--length-cap 256] [--max-batches 0(all)] [--micro-batch 8]")
+    print("Usage: EFTextEval --data /path/to/data.jsonl|.efb [--batch-size 16] [--max-length 128|0(auto)] [--length-cap 256] [--max-batches 0(all)] [--micro-batch 32]")
 }
 
 func mse(_ y: [Float], _ t: [Float]) -> Float {

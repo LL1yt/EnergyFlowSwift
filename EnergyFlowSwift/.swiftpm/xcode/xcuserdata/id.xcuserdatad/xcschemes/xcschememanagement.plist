@@ -47,6 +47,11 @@
 			<key>primary</key>
 			<true/>
 		</dict>
+		<key>EFTrain</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
 		<key>EnergyFlow</key>
 		<dict>
 			<key>primary</key>

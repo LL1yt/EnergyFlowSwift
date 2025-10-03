@@ -30,6 +30,76 @@ public struct GraphLinear {
         self.bBufFP16 = nil
     }
 
+    // Compute gradients on GPU for dW using matmul: dW = dY^T · X. dB on CPU by sum rows of dY.
+    public func gradientsGPU(X: Tensor, dY: Tensor) throws -> (dW: Tensor, dB: Tensor) {
+        precondition(X.shape.count == 2 && dY.shape.count == 2, "gradientsGPU expects 2D tensors")
+        let B = X.shape[0]
+        precondition(X.shape[1] == inFeatures && dY.shape[1] == outFeatures && dY.shape[0] == B, "shape mismatch: X [B,In], dY [B,Out]")
+        let ctx = MPSGContext.shared
+        let device = ctx.device
+        let elemH = MemoryLayout<Float16>.size
+        // Allocate FP16 buffers for dY^T and X
+        let rowsL = outFeatures    // dY^T rows
+        let colsL = B              // dY^T cols
+        let rowsR = B              // X rows
+        let colsR = inFeatures     // X cols
+        let rowsY = outFeatures
+        let colsY = inFeatures
+        guard let lBuf = device.makeBuffer(length: rowsL * colsL * elemH, options: .storageModeShared),
+              let rBuf = device.makeBuffer(length: rowsR * colsR * elemH, options: .storageModeShared),
+              let yBuf = device.makeBuffer(length: rowsY * colsY * elemH, options: .storageModeShared)
+        else { throw MPSGError.commandBufferFailed }
+        // Pack dY^T (Out x B) and X (B x In) into Float16
+        var lHalf = [Float16](repeating: 0, count: rowsL * colsL)
+        for b in 0..<B {
+            for o in 0..<outFeatures {
+                // l[o, b] = dY[b, o]
+                lHalf[o * colsL + b] = Float16(dY.data[b * outFeatures + o])
+            }
+        }
+        lHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(lBuf.contents(), base, rowsL * colsL * elemH) } }
+        var rHalf = [Float16](repeating: 0, count: rowsR * colsR)
+        for b in 0..<B {
+            let xBase = b * inFeatures
+            let rBase = b * colsR
+            for i in 0..<inFeatures { rHalf[rBase + i] = Float16(X.data[xBase + i]) }
+        }
+        rHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(rBuf.contents(), base, rowsR * colsR * elemH) } }
+        memset(yBuf.contents(), 0, rowsY * colsY * elemH)
+        // Descriptors
+        let lDesc = MPSMatrixDescriptor(rows: rowsL, columns: colsL, rowBytes: colsL * elemH, dataType: .float16)
+        let rDesc = MPSMatrixDescriptor(rows: rowsR, columns: colsR, rowBytes: colsR * elemH, dataType: .float16)
+        let yDesc = MPSMatrixDescriptor(rows: rowsY, columns: colsY, rowBytes: colsY * elemH, dataType: .float16)
+        let lMat = MPSMatrix(buffer: lBuf, descriptor: lDesc)
+        let rMat = MPSMatrix(buffer: rBuf, descriptor: rDesc)
+        let yMat = MPSMatrix(buffer: yBuf, descriptor: yDesc)
+        // Y = L * R (no transpose flags here because we packed L as dY^T)
+        let mm = MPSMatrixMultiplication(device: device,
+                                         transposeLeft: false,
+                                         transposeRight: false,
+                                         resultRows: rowsY,
+                                         resultColumns: colsY,
+                                         interiorColumns: colsL,
+                                         alpha: 1.0,
+                                         beta: 0.0)
+        guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw MPSGError.commandBufferFailed }
+        mm.encode(commandBuffer: cmd, leftMatrix: lMat, rightMatrix: rMat, resultMatrix: yMat)
+        cmd.commit(); cmd.waitUntilCompleted()
+        // Read back dW as Float
+        var yHalf = [Float16](repeating: 0, count: rowsY * colsY)
+        memcpy(&yHalf, yBuf.contents(), rowsY * colsY * elemH)
+        var dWHost = [Float](repeating: 0, count: rowsY * colsY)
+        for i in 0..<(rowsY * colsY) { dWHost[i] = Float(yHalf[i]) }
+        let dW = Tensor(shape: [rowsY, colsY], data: dWHost)
+        // Bias gradient on CPU
+        var dB = Tensor.zeros([outFeatures])
+        for b in 0..<B {
+            let base = b * outFeatures
+            for o in 0..<outFeatures { dB.data[o] += dY.data[base + o] }
+        }
+        return (dW, dB)
+    }
+
     // Forward pass on GPU
     public mutating func forward(_ x: Tensor) throws -> Tensor {
         let logger = Logger.shared
