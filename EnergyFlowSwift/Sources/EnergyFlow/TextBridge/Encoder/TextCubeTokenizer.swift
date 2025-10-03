@@ -25,7 +25,7 @@ public struct TextCubeTokenizer: TextTokenizer {
         if ids.count < 256 { ids.append(contentsOf: Array(repeating: Vocab.PAD.rawValue, count: 256 - ids.count)) }
         // 6) mask: header protected
         var mask = Array(repeating: UInt8(0), count: 256)
-        var pos = 0
+        let pos = 0
         for i in 0..<header.count { if pos + i < 256 { mask[pos + i] = 1 } }
         // Return
         let out = TokenSequence(ids: ids.map { Int32($0) }, mask: mask, len: realLen)

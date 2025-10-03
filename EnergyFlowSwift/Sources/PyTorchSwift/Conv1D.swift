@@ -18,7 +18,6 @@ public struct Conv1D {
         self.outChannels = outChannels
         self.kernelSize = kernelSize
         self.dilation = max(1, dilation)
-        let wCount = outChannels * inChannels * kernelSize
         self.weight = Tensor.randomUniform([outChannels, inChannels, kernelSize], min: -1.0/Float(inChannels*kernelSize), max: 1.0/Float(inChannels*kernelSize), seed: seed)
         self.bias = bias ? Tensor.randomUniform([outChannels], min: -0.001, max: 0.001, seed: seed &+ 1) : nil
     }

@@ -54,7 +54,7 @@ func run() throws {
     guard let args = parseTrainArgs() else { usage(); return }
     let logger = Logger.shared
     logger.info("EFTrain start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength) epochs=\(args.epochs) alphaCos=\(args.alphaCos) betaMSE=\(args.betaMSE)", category: Logger.Category.dataset)
-
+    
     let ds = try SimpleJSONLDataset(path: args.dataPath)
     // Configure encoder; outputDim must match teacher dim
     let cfg = TextToCubeEncoderConfig(
@@ -70,7 +70,7 @@ func run() throws {
         baseSeed: 42
     )
     let enc = TextToCubeEncoder(modelConfig: cfg)
-
+    
     // Load checkpoint if provided
     if !args.loadCheckpoint.isEmpty, let (wLoaded, bLoaded) = loadProjectionCheckpoint(path: args.loadCheckpoint) {
         if wLoaded.shape == [cfg.outputDim, cfg.hiddenDim] {
@@ -81,10 +81,10 @@ func run() throws {
             logger.warn("checkpoint shape mismatch: expected [\(cfg.outputDim), \(cfg.hiddenDim)] got \(wLoaded.prettyShape) — skipping load", category: Logger.Category.dataset)
         }
     }
-
+    
     // Optimizer: we update only projector weights/bias for now
     let opt = AdamW(lr: args.lr, beta1: 0.9, beta2: 0.999, eps: 1e-8, weightDecay: args.weightDecay)
-
+    
     // Split train/val
     let total = ds.count()
     let valCount = args.valFraction > 0 ? max(1, Int(Float(total) * args.valFraction)) : 0
@@ -97,9 +97,9 @@ func run() throws {
     func samplesByIndex(_ idx: [Int]) -> [JSONLSample] { idx.map { ds.samples[$0] } }
     let trainSamples = samplesByIndex(trainIdx)
     let valSamples = samplesByIndex(valIdx)
-
+    
     var bestValCos: Double = -Double.greatestFiniteMagnitude
-
+    
     for epoch in 0..<args.epochs {
         logger.info("epoch=\(epoch+1)/\(args.epochs)", category: Logger.Category.dataset)
         var batchIdx = 0
@@ -265,166 +265,167 @@ func run() throws {
                     offset += take
                 }
             }
-        if seen > 0 {
-            let avgMSE = totalMSE / Double(seen)
-            let avgCos = totalCos / Double(seen)
-            logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f", epoch+1, seen, avgMSE, avgCos), category: Logger.Category.dataset)
-        }
-        // Validation
-        if !valSamples.isEmpty {
-            let (valMSE, valCos) = evaluate(enc: enc, samples: valSamples, batchSize: args.batchSize, microBatch: args.microBatch, maxLen: args.maxLength)
-            logger.info(String(format: "epoch %d VAL: mse=%.6f cos=%.6f", epoch+1, valMSE, valCos), category: Logger.Category.dataset)
-            if valCos > bestValCos {
-                bestValCos = valCos
-                if !args.saveCheckpoint.isEmpty {
-                    saveProjectionCheckpoint(path: args.saveCheckpoint, weight: enc.getProjParams().weight, bias: enc.getProjParams().bias)
-                    logger.info("saved checkpoint: \(args.saveCheckpoint) (best cos=\(String(format: "%.6f", bestValCos)))", category: Logger.Category.dataset)
+            if seen > 0 {
+                let avgMSE = totalMSE / Double(seen)
+                let avgCos = totalCos / Double(seen)
+                logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f", epoch+1, seen, avgMSE, avgCos), category: Logger.Category.dataset)
+            }
+            // Validation
+            if !valSamples.isEmpty {
+                let (valMSE, valCos) = evaluate(enc: enc, samples: valSamples, batchSize: args.batchSize, microBatch: args.microBatch, maxLen: args.maxLength)
+                logger.info(String(format: "epoch %d VAL: mse=%.6f cos=%.6f", epoch+1, valMSE, valCos), category: Logger.Category.dataset)
+                if valCos > bestValCos {
+                    bestValCos = valCos
+                    if !args.saveCheckpoint.isEmpty {
+                        saveProjectionCheckpoint(path: args.saveCheckpoint, weight: enc.getProjParams().weight, bias: enc.getProjParams().bias)
+                        logger.info("saved checkpoint: \(args.saveCheckpoint) (best cos=\(String(format: "%.6f", bestValCos)))", category: Logger.Category.dataset)
+                    }
                 }
             }
         }
     }
-}
-
-// MARK: - Evaluation helper
-func evaluate(enc: TextToCubeEncoder, samples: [JSONLSample], batchSize: Int, microBatch: Int, maxLen: Int) -> (Double, Double) {
-    var ptr = 0
-    var totalMSE: Double = 0
-    var totalCos: Double = 0
-    var seen = 0
-    while ptr < samples.count {
-        let end = min(ptr + batchSize, samples.count)
-        let slice = Array(samples[ptr..<end])
-        ptr = end
-        let hasTokens = slice.allSatisfy { $0.inputIDs != nil && $0.attentionMask != nil }
-        if hasTokens {
-            var ids: [[Int]] = []
-            var mask: [[Int]] = []
-            var tgts: [[Float]] = []
-            for s in slice { ids.append(s.inputIDs!); mask.append(s.attentionMask!); tgts.append(s.target) }
-            let B = ids.count
-            let micro = microBatch > 0 ? microBatch : B
-            var offset = 0
-            let numChunks = (B + micro - 1) / micro
-            for _ in 0..<numChunks {
-                let take = min(micro, B - offset)
-                let idsChunk = Array(ids[offset..<(offset+take)])
-                let maskChunk = Array(mask[offset..<(offset+take)])
-                let tgtChunk = Array(tgts[offset..<(offset+take)])
-                let out = enc.encodeTokens(inputIDs: idsChunk, attentionMask: maskChunk)
-                let b = out.shape[0]; let d = out.shape[1]
-                var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
-                for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
-                let m = batchMSE(pred.map{ $0.map(Double.init) }.map { $0.map{ Float($0) } }, tgtChunk)
-                let c = batchCosine(pred, tgtChunk)
-                totalMSE += Double(m) * Double(b)
-                totalCos += Double(c) * Double(b)
-                seen += b
-                offset += take
-            }
-        } else {
-            let texts = slice.map { $0.text ?? "" }
-            let tgts = slice.map { $0.target }
-            let B = texts.count
-            let micro = microBatch > 0 ? microBatch : B
-            var offset = 0
-            let numChunks = (B + micro - 1) / micro
-            for _ in 0..<numChunks {
-                let take = min(micro, B - offset)
-                let txtChunk = Array(texts[offset..<(offset+take)])
-                let tgtChunk = Array(tgts[offset..<(offset+take)])
-                let out = enc.encode(txtChunk)
-                let b = out.shape[0]; let d = out.shape[1]
-                var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
-                for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
-                let m = batchMSE(pred.map{ $0.map(Double.init) }.map { $0.map{ Float($0) } }, tgtChunk)
-                let c = batchCosine(pred, tgtChunk)
-                totalMSE += Double(m) * Double(b)
-                totalCos += Double(c) * Double(b)
-                seen += b
-                offset += take
+    
+    // MARK: - Evaluation helper
+    func evaluate(enc: TextToCubeEncoder, samples: [JSONLSample], batchSize: Int, microBatch: Int, maxLen: Int) -> (Double, Double) {
+        var ptr = 0
+        var totalMSE: Double = 0
+        var totalCos: Double = 0
+        var seen = 0
+        while ptr < samples.count {
+            let end = min(ptr + batchSize, samples.count)
+            let slice = Array(samples[ptr..<end])
+            ptr = end
+            let hasTokens = slice.allSatisfy { $0.inputIDs != nil && $0.attentionMask != nil }
+            if hasTokens {
+                var ids: [[Int]] = []
+                var mask: [[Int]] = []
+                var tgts: [[Float]] = []
+                for s in slice { ids.append(s.inputIDs!); mask.append(s.attentionMask!); tgts.append(s.target) }
+                let B = ids.count
+                let micro = microBatch > 0 ? microBatch : B
+                var offset = 0
+                let numChunks = (B + micro - 1) / micro
+                for _ in 0..<numChunks {
+                    let take = min(micro, B - offset)
+                    let idsChunk = Array(ids[offset..<(offset+take)])
+                    let maskChunk = Array(mask[offset..<(offset+take)])
+                    let tgtChunk = Array(tgts[offset..<(offset+take)])
+                    let out = enc.encodeTokens(inputIDs: idsChunk, attentionMask: maskChunk)
+                    let b = out.shape[0]; let d = out.shape[1]
+                    var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
+                    for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
+                    let m = batchMSE(pred, tgtChunk)
+                    let c = batchCosine(pred, tgtChunk)
+                    totalMSE += Double(m) * Double(b)
+                    totalCos += Double(c) * Double(b)
+                    seen += b
+                    offset += take
+                }
+            } else {
+                let texts = slice.map { $0.text ?? "" }
+                let tgts = slice.map { $0.target }
+                let B = texts.count
+                let micro = microBatch > 0 ? microBatch : B
+                var offset = 0
+                let numChunks = (B + micro - 1) / micro
+                for _ in 0..<numChunks {
+                    let take = min(micro, B - offset)
+                    let txtChunk = Array(texts[offset..<(offset+take)])
+                    let tgtChunk = Array(tgts[offset..<(offset+take)])
+                    let out = enc.encode(txtChunk)
+                    let b = out.shape[0]; let d = out.shape[1]
+                    var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
+                    for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
+                    let m = batchMSE(pred, tgtChunk)
+                    let c = batchCosine(pred, tgtChunk)
+                    totalMSE += Double(m) * Double(b)
+                    totalCos += Double(c) * Double(b)
+                    seen += b
+                    offset += take
+                }
             }
         }
+        let avgMSE = seen > 0 ? totalMSE / Double(seen) : 0
+        let avgCos = seen > 0 ? totalCos / Double(seen) : 0
+        return (avgMSE, avgCos)
     }
-    let avgMSE = seen > 0 ? totalMSE / Double(seen) : 0
-    let avgCos = seen > 0 ? totalCos / Double(seen) : 0
-    return (avgMSE, avgCos)
-}
-
-// reuse utilities from EFTextEval
-func batchMSE(_ y: [[Float]], _ t: [[Float]]) -> Float {
-    precondition(y.count == t.count)
-    var acc: Float = 0
-    for i in 0..<y.count { acc += mse(y[i], t[i]) }
-    return acc / Float(max(y.count, 1))
-}
-func mse(_ y: [Float], _ t: [Float]) -> Float {
-    precondition(y.count == t.count)
-    var acc: Float = 0
-    for i in 0..<y.count { let d = y[i] - t[i]; acc += d*d }
-    return acc / Float(y.count)
-}
-func cosine(_ a: [Float], _ b: [Float]) -> Float {
-    precondition(a.count == b.count)
-    var dot: Float = 0
-    var na: Float = 0
-    var nb: Float = 0
-    for i in 0..<a.count { dot += a[i] * b[i]; na += a[i]*a[i]; nb += b[i]*b[i] }
-    let denom = sqrt(max(na, 1e-12)) * sqrt(max(nb, 1e-12))
-    return denom > 0 ? dot / denom : 0
-}
-func batchCosine(_ y: [[Float]], _ t: [[Float]]) -> Float {
-    precondition(y.count == t.count)
-    var acc: Float = 0
-    for i in 0..<y.count { acc += cosine(y[i], t[i]) }
-    return acc / Float(max(y.count, 1))
-}
-
-// MARK: - Checkpoint I/O (projection-only)
-func saveProjectionCheckpoint(path: String, weight: Tensor, bias: Tensor?) {
-    let url = URL(fileURLWithPath: path)
-    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    var data = Data()
-    // magic
-    data.append(contentsOf: [0x45, 0x46, 0x43, 0x4B, 0x31]) // "EFCK1"
-    func putU32(_ v: UInt32) { var le = v.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
-    func putF32(_ v: Float) { var le = v.bitPattern.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
-    putU32(UInt32(weight.shape[0]))
-    putU32(UInt32(weight.shape[1]))
-    putU32(UInt32(bias != nil ? 1 : 0))
-    for v in weight.data { putF32(v) }
-    if let b = bias { for v in b.data { putF32(v) } }
-    try? data.write(to: url)
-}
-
-func loadProjectionCheckpoint(path: String) -> (Tensor, Tensor?)? {
-    let url = URL(fileURLWithPath: path)
-    guard let data = try? Data(contentsOf: url) else { return nil }
-    var idx = 0
-    func getU8() -> UInt8 { defer { idx += 1 }; return data[idx] }
-    guard idx + 5 <= data.count else { return nil }
-    // magic "EFCK1"
-    if getU8() != 0x45 || getU8() != 0x46 || getU8() != 0x43 || getU8() != 0x4B || getU8() != 0x31 { return nil }
-    func getU32() -> UInt32 { defer { idx += 4 }; return data[idx..<(idx+4)].withUnsafeBytes { $0.load(as: UInt32.self) }.littleEndian }
-    func getF32() -> Float { defer { idx += 4 }; let u = data[idx..<(idx+4)].withUnsafeBytes { $0.load(as: UInt32.self) }.littleEndian; return Float(bitPattern: u) }
-    let out = Int(getU32())
-    let inf = Int(getU32())
-    let hasB = getU32() != 0
-    let wCount = out * inf
-    if idx + 4 * wCount > data.count { return nil }
-    var wHost = [Float](repeating: 0, count: wCount)
-    for i in 0..<wCount { wHost[i] = getF32() }
-    let weight = Tensor(shape: [out, inf], data: wHost)
-    var bias: Tensor? = nil
-    if hasB {
-        if idx + 4 * out > data.count { return nil }
-        var bHost = [Float](repeating: 0, count: out)
-        for i in 0..<out { bHost[i] = getF32() }
-        bias = Tensor(shape: [out], data: bHost)
+    
+    // reuse utilities from EFTextEval
+    func batchMSE(_ y: [[Float]], _ t: [[Float]]) -> Float {
+        precondition(y.count == t.count)
+        var acc: Float = 0
+        for i in 0..<y.count { acc += mse(y[i], t[i]) }
+        return acc / Float(max(y.count, 1))
     }
-    return (weight, bias)
-}
-
-do { try run() } catch {
-    Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
-    exit(1)
+    func mse(_ y: [Float], _ t: [Float]) -> Float {
+        precondition(y.count == t.count)
+        var acc: Float = 0
+        for i in 0..<y.count { let d = y[i] - t[i]; acc += d*d }
+        return acc / Float(y.count)
+    }
+    func cosine(_ a: [Float], _ b: [Float]) -> Float {
+        precondition(a.count == b.count)
+        var dot: Float = 0
+        var na: Float = 0
+        var nb: Float = 0
+        for i in 0..<a.count { dot += a[i] * b[i]; na += a[i]*a[i]; nb += b[i]*b[i] }
+        let denom = sqrt(max(na, 1e-12)) * sqrt(max(nb, 1e-12))
+        return denom > 0 ? dot / denom : 0
+    }
+    func batchCosine(_ y: [[Float]], _ t: [[Float]]) -> Float {
+        precondition(y.count == t.count)
+        var acc: Float = 0
+        for i in 0..<y.count { acc += cosine(y[i], t[i]) }
+        return acc / Float(max(y.count, 1))
+    }
+    
+    // MARK: - Checkpoint I/O (projection-only)
+    func saveProjectionCheckpoint(path: String, weight: Tensor, bias: Tensor?) {
+        let url = URL(fileURLWithPath: path)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var data = Data()
+        // magic
+        data.append(contentsOf: [0x45, 0x46, 0x43, 0x4B, 0x31]) // "EFCK1"
+        func putU32(_ v: UInt32) { var le = v.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
+        func putF32(_ v: Float) { var le = v.bitPattern.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
+        putU32(UInt32(weight.shape[0]))
+        putU32(UInt32(weight.shape[1]))
+        putU32(UInt32(bias != nil ? 1 : 0))
+        for v in weight.data { putF32(v) }
+        if let b = bias { for v in b.data { putF32(v) } }
+        try? data.write(to: url)
+    }
+    
+    func loadProjectionCheckpoint(path: String) -> (Tensor, Tensor?)? {
+        let url = URL(fileURLWithPath: path)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        var idx = 0
+        func getU8() -> UInt8 { defer { idx += 1 }; return data[idx] }
+        guard idx + 5 <= data.count else { return nil }
+        // magic "EFCK1"
+        if getU8() != 0x45 || getU8() != 0x46 || getU8() != 0x43 || getU8() != 0x4B || getU8() != 0x31 { return nil }
+        func getU32() -> UInt32 { defer { idx += 4 }; return data[idx..<(idx+4)].withUnsafeBytes { $0.load(as: UInt32.self) }.littleEndian }
+        func getF32() -> Float { defer { idx += 4 }; let u = data[idx..<(idx+4)].withUnsafeBytes { $0.load(as: UInt32.self) }.littleEndian; return Float(bitPattern: u) }
+        let out = Int(getU32())
+        let inf = Int(getU32())
+        let hasB = getU32() != 0
+        let wCount = out * inf
+        if idx + 4 * wCount > data.count { return nil }
+        var wHost = [Float](repeating: 0, count: wCount)
+        for i in 0..<wCount { wHost[i] = getF32() }
+        let weight = Tensor(shape: [out, inf], data: wHost)
+        var bias: Tensor? = nil
+        if hasB {
+            if idx + 4 * out > data.count { return nil }
+            var bHost = [Float](repeating: 0, count: out)
+            for i in 0..<out { bHost[i] = getF32() }
+            bias = Tensor(shape: [out], data: bHost)
+        }
+        return (weight, bias)
+    }
+    
+    do { try run() } catch {
+        Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
+        exit(1)
+    }
 }

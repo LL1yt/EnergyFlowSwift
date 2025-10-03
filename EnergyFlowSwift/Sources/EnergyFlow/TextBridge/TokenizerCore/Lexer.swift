@@ -53,8 +53,7 @@ struct Lexer {
             // Number: [+-]?[0-9]+
             if u == "+" || u == "-" || CharacterSet.decimalDigits.contains(u) {
                 var j = i
-                var hasSign = false
-                if u == "+" || u == "-" { hasSign = true; j += 1 }
+                if u == "+" || u == "-" { j += 1 }
                 var k = j
                 var hadDigit = false
                 while let d = (k < scalars.count ? scalars[k] : nil), CharacterSet.decimalDigits.contains(d) {

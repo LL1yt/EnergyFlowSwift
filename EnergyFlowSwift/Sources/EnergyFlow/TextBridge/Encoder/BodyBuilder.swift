@@ -39,7 +39,7 @@ struct BodyBuilder {
             return [VocabRanges.IDX_BOS, VocabUtil.idxID(idx), VocabRanges.IDX_END]
         case .number(let s):
             var out: [Int] = [Vocab.NUM_BOS.rawValue]
-            var chars = Array(s)
+            let chars = Array(s)
             var pos = 0
             if pos < chars.count && (chars[pos] == "+" || chars[pos] == "-") {
                 out.append(chars[pos] == "+" ? Vocab.SIGN_PLUS.rawValue : Vocab.SIGN_MINUS.rawValue)
