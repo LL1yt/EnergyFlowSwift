@@ -10,8 +10,8 @@ struct TrainArgs {
     var epochs: Int = 1
     var lr: Float = 3e-4
     var weightDecay: Float = 0.01
-    var alphaCos: Float = 1.0   // planned, not used in grad yet
-    var betaMSE: Float = 1.0    // we train with MSE-only grad for now
+    var alphaCos: Float = 1.0   // weight for (1 - cosine)
+    var betaMSE: Float = 1.0    // weight for MSE
     var microBatch: Int = 8
 }
 
@@ -28,6 +28,8 @@ func parseTrainArgs() -> TrainArgs? {
         case "--lr": if let v = it.next(), let f = Float(v) { a.lr = f }
         case "--weight-decay": if let v = it.next(), let f = Float(v) { a.weightDecay = f }
         case "--micro-batch": if let v = it.next(), let n = Int(v) { a.microBatch = n }
+        case "--alpha-cos": if let v = it.next(), let f = Float(v) { a.alphaCos = f }
+        case "--beta-mse": if let v = it.next(), let f = Float(v) { a.betaMSE = f }
         case "-h", "--help": return nil
         default: continue
         }
@@ -37,13 +39,13 @@ func parseTrainArgs() -> TrainArgs? {
 }
 
 func usage() {
-    print("Usage: EFTrain --data /path/to/data.jsonl [--batch-size 16] [--max-length 128] [--max-batches 100] [--epochs 1] [--lr 3e-4] [--weight-decay 0.01] [--micro-batch 8]")
+    print("Usage: EFTrain --data /path/to/data.jsonl [--batch-size 16] [--max-length 128] [--max-batches 100] [--epochs 1] [--lr 3e-4] [--weight-decay 0.01] [--micro-batch 8] [--alpha-cos 1.0] [--beta-mse 1.0]")
 }
 
 func run() throws {
     guard let args = parseTrainArgs() else { usage(); return }
     let logger = Logger.shared
-    logger.info("EFTrain start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength) epochs=\(args.epochs)", category: Logger.Category.dataset)
+    logger.info("EFTrain start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength) epochs=\(args.epochs) alphaCos=\(args.alphaCos) betaMSE=\(args.betaMSE)", category: Logger.Category.dataset)
 
     let ds = try SimpleJSONLDataset(path: args.dataPath)
     // Configure encoder; outputDim must match teacher dim
@@ -97,8 +99,23 @@ func run() throws {
                     totalCos += Double(cos.mean) * Double(b)
                     seen += b
                     logger.info(String(format: "train chunk: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
-                    // Backward (MSE-only) and step for projector
-                    let dY = dY_MSEMean(y: out, target: t)  // [b, d]
+                    // Backward: combine MSE and cosine components
+                    var dY = dY_MSEMean(y: out, target: t)  // [b, d]
+                    if args.alphaCos != 0 {
+                        let dYcos = dY_CosineMeanLoss(y: out, target: t) // for (1 - mean cosine)
+                        // total grad: beta*MSE + alpha*Cos
+                        let B = dY.shape[0]; let D = dY.shape[1]
+                        for idx in 0..<(B*D) {
+                            dY.data[idx] = args.betaMSE * dY.data[idx] + args.alphaCos * dYcos.data[idx]
+                        }
+                    } else {
+                        // pure MSE
+                        let scale = args.betaMSE
+                        if scale != 1.0 {
+                            let n = dY.count
+                            for i in 0..<n { dY.data[i] *= scale }
+                        }
+                    }
                     let (projW, projB) = enc.getProjParams()
                     let (dW, dB) = gradsGraphLinear(X: pooled, dY: dY, outFeatures: d, inFeatures: pooled.shape[1])
                     // Optimizer step
