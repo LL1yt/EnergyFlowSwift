@@ -103,3 +103,14 @@ Stretch goals (post-GPU col2im/im2col):
 ---
 
 This summary captures the main changes and the immediate next step. We’ll start the next session by implementing GPU im2col/col2im for the last TCN block’s backward pass and validating speed/accuracy.
+
+Update (post-implementation):
+- Implemented GPU im2col/col2im for Conv1 backward via Metal compute kernels (float32) with CPU fallback.
+- Integrated into LastTCNBackward with a config toggle: TextToCubeEncoderConfig.useGPUIm2ColCol2Im (default: true).
+- Added parity tests Im2ColCol2ImParityTests verifying GPU/CPU equivalence on small shapes.
+- All unit tests pass.
+
+Next steps:
+- Micro-benchmark backward step time before/after to quantify speedup.
+- Optionally expose useGPUIm2ColCol2Im in EFTrain JSON to toggle at runtime.
+- Explore caching and reusing GPU pipeline objects and buffer pools to reduce overhead.

@@ -70,19 +70,25 @@ public func lastTCNBackward(cache: TextToCubeEncoder.LastTCNCache,
     // Build Xcol [B*L, Cin*K]
     let rows = B * L
     let colsX = Cin1 * K1
-    var xcol = Tensor.zeros([rows, colsX])
-    for b in 0..<B {
-        for t in 0..<L {
-            let r = b * L + t
-            let rowBase = r * colsX
-            for i in 0..<Cin1 {
-                for k in 0..<K1 {
-                    let ti = t - k * dil
-                    let dst = rowBase + i * K1 + k
-                    if ti < 0 { xcol.data[dst] = 0 } else { xcol.data[dst] = cache.norm.data[(b * L + ti) * Cin1 + i] }
+    let xcol: Tensor
+    if modelCfg.useGPUIm2ColCol2Im {
+        xcol = try Im2ColCol2ImGPU.im2col(X: cache.norm, B: B, L: L, Cin: Cin1, K: K1, dilation: dil)
+    } else {
+        var tmp = Tensor.zeros([rows, colsX])
+        for b in 0..<B {
+            for t in 0..<L {
+                let r = b * L + t
+                let rowBase = r * colsX
+                for i in 0..<Cin1 {
+                    for k in 0..<K1 {
+                        let ti = t - k * dil
+                        let dst = rowBase + i * K1 + k
+                        if ti < 0 { tmp.data[dst] = 0 } else { tmp.data[dst] = cache.norm.data[(b * L + ti) * Cin1 + i] }
+                    }
                 }
             }
         }
+        xcol = tmp
     }
     // Repack W1 -> Wcol [Cout, Cin*K]
     var wcol = Tensor.zeros([Cout1, Cin1 * K1])
@@ -114,20 +120,26 @@ public func lastTCNBackward(cache: TextToCubeEncoder.LastTCNCache,
         }
     }
     // col2im: dXcol [rows, Cin*K] -> dX [B, L, Cin]
-    var dX1 = Tensor.zeros([B, L, Cin1])
-    for b in 0..<B {
-        for t in 0..<L {
-            let r = b * L + t
-            let rowBase = r * colsX
-            for i in 0..<Cin1 {
-                for k in 0..<K1 {
-                    let ti = t - k * dil
-                    if ti < 0 { continue }
-                    let val = dXcol.data[rowBase + i * K1 + k]
-                    dX1.data[(b * L + ti) * Cin1 + i] += val
+    let dX1: Tensor
+    if modelCfg.useGPUIm2ColCol2Im {
+        dX1 = try Im2ColCol2ImGPU.col2im(dXcol: dXcol, B: B, L: L, Cin: Cin1, K: K1, dilation: dil)
+    } else {
+        var tmp = Tensor.zeros([B, L, Cin1])
+        for b in 0..<B {
+            for t in 0..<L {
+                let r = b * L + t
+                let rowBase = r * colsX
+                for i in 0..<Cin1 {
+                    for k in 0..<K1 {
+                        let ti = t - k * dil
+                        if ti < 0 { continue }
+                        let val = dXcol.data[rowBase + i * K1 + k]
+                        tmp.data[(b * L + ti) * Cin1 + i] += val
+                    }
                 }
             }
         }
+        dX1 = tmp
     }
     // LN backward (row-wise on [B*L, D]) using dX1
     let xFlat = cache.xIn.reshaped([B * L, D])
