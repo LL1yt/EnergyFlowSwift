@@ -1,6 +1,6 @@
 {
-  "dataPath": "data/2k_snli_tokens.efb",
-  "epochs": 2,
+  "dataPath": "/Users/id/Documents/GitHub/EnergyFlowSwift/EnergyFlowSwift/data/2k_snli_tokens.efb",
+  "epochs": 3,
   "batchSize": 32,
   "maxLength": 128,
   "lr": 0.0003,

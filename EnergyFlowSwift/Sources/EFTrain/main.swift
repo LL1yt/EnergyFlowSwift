@@ -163,10 +163,24 @@ func run() throws {
     let trainSamples = samplesByIndex(trainIdx)
     let valSamples = samplesByIndex(valIdx)
     
+    // Helper: pad or truncate mask to fixed length (aligns with encoder's pad/truncate)
+    func padOrTruncateMask(_ mask: [[Int]], _ len: Int) -> [[Int]] {
+        var out: [[Int]] = []
+        out.reserveCapacity(mask.count)
+        for var row in mask {
+            if row.count > len {
+                row = Array(row.prefix(len))
+            } else if row.count < len {
+                row.append(contentsOf: Array(repeating: 0, count: len - row.count))
+            }
+            out.append(row)
+        }
+        return out
+    }
+    
     var bestValCos: Double = -Double.greatestFiniteMagnitude
     
-    var globalStep = 0
-    for epoch in 0..<args.epochs {
+for epoch in 0..<args.epochs {
         logger.info("epoch=\(epoch+1)/\(args.epochs)", category: Logger.Category.dataset)
         var batchIdx = 0
         var seen = 0
@@ -231,6 +245,19 @@ func run() throws {
                     }
                     // Gradients for projector on GPU
                     let (dW, dB) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
+                    // Optional: upstream to encoder for future unfreeze (token-mode only)
+                    do {
+                        let dXin = try enc.projectionInputGradientsGPU(dY: dY)
+                        let maskFixed = padOrTruncateMask(maskChunk, cfg.maxLength)
+                        let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixed, seqLen: cfg.maxLength)
+                        // Log gradient norms for sanity
+                        var norm2: Float = 0
+                        for v in dEnc.data { norm2 += v*v }
+                        let gnorm = sqrt(norm2)
+                        logger.debug(String(format: "dEnc L2=%.6f", gnorm), category: Logger.Category.training)
+                    } catch {
+                        logger.warn("projection input gradients failed: \(error)", category: Logger.Category.training)
+                    }
                     // Accumulate
                     if accW == nil { accW = Tensor.zeros(dW.shape) }
                     for i in 0..<dW.count { accW!.data[i] += dW.data[i] }

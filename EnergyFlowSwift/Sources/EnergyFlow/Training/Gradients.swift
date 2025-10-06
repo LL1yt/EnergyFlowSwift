@@ -82,3 +82,70 @@ public func gradsGraphLinear(X: Tensor, dY: Tensor, outFeatures: Int, inFeatures
     }
     return (dW, dB)
 }
+
+// MARK: - GELU backward (approx derivative matching Activations.gelu)
+// Inputs: x (same shape as upstream), upstream gradient g -> returns dx
+public func dGELU(x: Tensor, upstream g: Tensor) -> Tensor {
+    precondition(x.shape == g.shape)
+    var out = Tensor.zeros(x.shape)
+    let c: Float = 0.7978845608028654 // sqrt(2/pi)
+    for i in 0..<x.count {
+        let xi = x.data[i]
+        let x3 = xi * xi * xi
+        let u = c * (xi + 0.044715 * x3)
+        let tanh_u = Float(Darwin.tanh(Double(u)))
+        let sech2 = 1 - tanh_u * tanh_u
+        // d gelu / dx
+        let d1 = 0.5 * (1 + tanh_u)
+        let d2 = 0.5 * xi * sech2 * c * (1 + 3 * 0.044715 * xi * xi)
+        let dgelu_dx = d1 + d2
+        out.data[i] = g.data[i] * dgelu_dx
+    }
+    return out
+}
+
+// MARK: - LayerNorm backward (row-wise LN used in TCN)
+// x: [N, D], upstream g: [N, D], gamma: [D]
+// returns (dx [N,D], dGamma [D], dBeta [D])
+public func layerNormBackward(x: Tensor, upstream g: Tensor, gamma: Tensor, eps: Float = 1e-5) -> (Tensor, Tensor, Tensor) {
+    precondition(x.shape.count == 2 && g.shape == x.shape)
+    let N = x.shape[0]
+    let D = x.shape[1]
+    precondition(gamma.shape.count == 1 && gamma.shape[0] == D)
+    var dx = Tensor.zeros([N, D])
+    var dGamma = Tensor.zeros([D])
+    var dBeta = Tensor.zeros([D])
+    for n in 0..<N {
+        let base = n * D
+        // mean
+        var mean: Float = 0
+        for j in 0..<D { mean += x.data[base + j] }
+        mean /= Float(D)
+        // variance
+        var varAcc: Float = 0
+        for j in 0..<D { let d = x.data[base + j] - mean; varAcc += d*d }
+        let varVal = varAcc / Float(D)
+        let invStd = 1.0 / Float(sqrt(Double(varVal + eps)))
+        // xhat and sums
+        var sumG: Float = 0
+        var sumGXhat: Float = 0
+        var xhat = [Float](repeating: 0, count: D)
+        for j in 0..<D {
+            let xh = (x.data[base + j] - mean) * invStd
+            xhat[j] = xh
+            let gj = g.data[base + j]
+            sumG += gj * gamma.data[j]
+            sumGXhat += (gj * gamma.data[j]) * xh
+        }
+        for j in 0..<D {
+            // dx formula aggregated
+            let gj = g.data[base + j]
+            let ghat = gj * gamma.data[j]
+            let term = Float(D) * ghat - sumG - xhat[j] * sumGXhat
+            dx.data[base + j] = (invStd / Float(D)) * term
+            dGamma.data[j] += gj * xhat[j]
+            dBeta.data[j] += gj
+        }
+    }
+    return (dx, dGamma, dBeta)
+}

@@ -107,6 +107,10 @@ public final class TextToCubeEncoder {
     public func invalidateProjectionCache() {
         gpuProj.invalidateCache()
     }
+    // Input gradients of projection: dX = dY @ W
+    public func projectionInputGradientsGPU(dY: Tensor) throws -> Tensor {
+        return try gpuProj.inputGradientsGPU(dY: dY)
+    }
 
     // Project-only using current GPU projection (to evaluate post-update metrics without recomputing TCN)
     public func projectOnly(_ pooled: Tensor) -> Tensor {
