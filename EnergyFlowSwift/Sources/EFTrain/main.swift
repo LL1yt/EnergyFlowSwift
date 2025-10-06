@@ -31,11 +31,29 @@ struct ResolvedTrainConfig {
 }
 
 func loadResolvedConfig() -> ResolvedTrainConfig? {
-    // Config path: first positional arg or default
+    // Accept either: EFTrain [path.json] or EFTrain --config path.json; fallback to default path
     let argv = Array(CommandLine.arguments.dropFirst())
-    let configPath = argv.first ?? "Configs/train_debug.json"
-    guard let c = try? TrainConfig.load(path: configPath) else {
-        print("EFTrain error: cannot load config file at \(configPath). Please create and fill it (see EnergyFlowSwift/Configs/train_debug.json).")
+    var configPath: String? = nil
+    var i = 0
+    while i < argv.count {
+        let tok = argv[i]
+        if tok == "--config" {
+            if i + 1 < argv.count { configPath = argv[i + 1] }
+            break
+        } else if tok.hasPrefix("--") {
+            // unknown flag, skip its possible value conservatively
+            i += 1
+            continue
+        } else {
+            // first positional considered as config path
+            configPath = tok
+            break
+        }
+    }
+    let path = configPath ?? "Configs/train_debug.json"
+    guard let c = try? TrainConfig.load(path: path) else {
+        let msg = "EFTrain error: cannot load config file at \(path). Please create and fill it (see EnergyFlowSwift/Configs/train_debug.json).\n"
+        FileHandle.standardError.write(Data(msg.utf8))
         return nil
     }
     // Strict validation: require all fields in the config
@@ -60,11 +78,11 @@ func loadResolvedConfig() -> ResolvedTrainConfig? {
         let loadOptState = c.loadOptState,
         let unfreezeLastTCN = c.unfreezeLastTCN
     else {
-        print("EFTrain error: invalid config structure. Ensure all required fields are present. See sample: EnergyFlowSwift/Configs/train_debug.json")
+        FileHandle.standardError.write(Data("EFTrain error: invalid config structure. Ensure all required fields are present. See sample: EnergyFlowSwift/Configs/train_debug.json\n".utf8))
         return nil
     }
     if dataPath.isEmpty {
-        print("EFTrain error: dataPath is empty in config file \(configPath).")
+        FileHandle.standardError.write(Data("EFTrain error: dataPath is empty in config file \(path).\n".utf8))
         return nil
     }
     return ResolvedTrainConfig(
@@ -89,7 +107,7 @@ func loadResolvedConfig() -> ResolvedTrainConfig? {
         saveOptState: saveOptState,
         loadOptState: loadOptState,
         unfreezeLastTCN: unfreezeLastTCN,
-        configPath: configPath
+        configPath: path
     )
 }
 
@@ -274,48 +292,20 @@ guard let args = loadResolvedConfig() else { usage(); return }
                                     }
                                 }
                             }
-                            // Conv2 backward (GPU via GraphLinear on flattened [B*L, H])
                             let params = enc.getLastBlockParams()
-                            let Bc = cache.h1a.shape[0], Lc = cache.h1a.shape[1], Hc = cache.h1a.shape[2]
-                            let Dc = dOut.shape[2]
-                            let Xf = cache.h1a.reshaped([Bc * Lc, Hc])
-                            let dYf = dOut.reshaped([Bc * Lc, Dc])
-                            var gl = GraphLinear(inFeatures: Hc, outFeatures: Dc, bias: params.b2 != nil, seed: 0)
-                            // Set weights/bias to conv2 params
-                            gl.weight = params.w2.reshaped([Dc, Hc])
-                            gl.bias = params.b2
-                            // Ensure GPU weight buffer exists (run cheap dummy forward)
-                            _ = try? gl.forward(Tensor.zeros([1, Hc]))
-                            // Gradients and input gradient
-                            let (dW2lin, dB2) = try gl.gradientsGPU(X: Xf, dY: dYf)
-                            let dX2f = try gl.inputGradientsGPU(dY: dYf)
-                            let dX2 = dX2f.reshaped([Bc, Lc, Hc])
-                            // GELU backward
-                            let dH1 = dGELU(x: cache.h1, upstream: dX2)
-                            // Conv1 backward
-                            let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: modelCfg.kernelSize == 1 ? 1 : (modelCfg.dilationSchedule.last ?? 1))
-                            // LN backward
-                            let Bf = cache.xIn.shape[0]; let Lf = cache.xIn.shape[1]; let Df = cache.xIn.shape[2]
-                            let gNormFlat = conv1.dX.reshaped([Bf * Lf, Df])
-                            let xFlat = cache.xIn.reshaped([Bf * Lf, Df])
-                            let (dxFlat, dGamma, dBeta) = layerNormBackward(x: xFlat, upstream: gNormFlat, gamma: params.gamma)
-                            _ = dxFlat // upstream to earlier blocks (ignored)
-                            // Accumulate grads for last block (initialize accumulators lazily)
-                            if accW == nil { /* projection acc created earlier */ }
-                            // Use separate accumulators for last block
+                            let grads = try lastTCNBackward(cache: cache, mask: maskFixed, dOut: dOut, modelCfg: modelCfg, params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
                             if accLastW1 == nil { accLastW1 = Tensor.zeros(params.w1.shape) }
                             if accLastB1 == nil { accLastB1 = params.b1 != nil ? Tensor.zeros([params.b1!.count]) : Tensor.zeros([0]) }
                             if accLastW2 == nil { accLastW2 = Tensor.zeros(params.w2.shape) }
                             if accLastB2 == nil { accLastB2 = params.b2 != nil ? Tensor.zeros([params.b2!.count]) : Tensor.zeros([0]) }
                             if accGamma == nil { accGamma = Tensor.zeros([params.gamma.count]) }
                             if accBeta == nil { accBeta = Tensor.zeros([params.beta.count]) }
-                            for i2 in 0..<conv1.dW.count { accLastW1!.data[i2] += conv1.dW.data[i2] }
-                            if params.b1 != nil { for i2 in 0..<conv1.dB.count { accLastB1!.data[i2] += conv1.dB.data[i2] } }
-                            let dW2 = dW2lin.reshaped([Dc, Hc, 1])
-                            for i2 in 0..<dW2.count { accLastW2!.data[i2] += dW2.data[i2] }
-                            if params.b2 != nil { for i2 in 0..<dB2.count { accLastB2!.data[i2] += dB2.data[i2] } }
-                            for i2 in 0..<dGamma.count { accGamma!.data[i2] += dGamma.data[i2] }
-                            for i2 in 0..<dBeta.count { accBeta!.data[i2] += dBeta.data[i2] }
+                            for i2 in 0..<grads.dW1.count { accLastW1!.data[i2] += grads.dW1.data[i2] }
+                            if let db1 = grads.dB1 { for i2 in 0..<db1.count { accLastB1!.data[i2] += db1.data[i2] } }
+                            for i2 in 0..<grads.dW2.count { accLastW2!.data[i2] += grads.dW2.data[i2] }
+                            if let db2 = grads.dB2 { for i2 in 0..<db2.count { accLastB2!.data[i2] += db2.data[i2] } }
+                            for i2 in 0..<grads.dGamma.count { accGamma!.data[i2] += grads.dGamma.data[i2] }
+                            for i2 in 0..<grads.dBeta.count { accBeta!.data[i2] += grads.dBeta.data[i2] }
                         }
                     } catch {
                         logger.warn("projection input gradients failed: \(error)", category: Logger.Category.training)
@@ -477,40 +467,20 @@ guard let args = loadResolvedConfig() else { usage(); return }
                                     }
                                 }
                             }
-                            // Conv2 backward (GPU)
                             let params = enc.getLastBlockParams()
-                            let Bc = cache.h1a.shape[0], Lc = cache.h1a.shape[1], Hc = cache.h1a.shape[2]
-                            let Dc = dOut.shape[2]
-                            let Xf = cache.h1a.reshaped([Bc * Lc, Hc])
-                            let dYf = dOut.reshaped([Bc * Lc, Dc])
-                            var gl = GraphLinear(inFeatures: Hc, outFeatures: Dc, bias: params.b2 != nil, seed: 0)
-                            gl.weight = params.w2.reshaped([Dc, Hc])
-                            gl.bias = params.b2
-                            _ = try? gl.forward(Tensor.zeros([1, Hc]))
-                            let (dW2lin, dB2t) = try gl.gradientsGPU(X: Xf, dY: dYf)
-                            let dX2f = try gl.inputGradientsGPU(dY: dYf)
-                            let dX2 = dX2f.reshaped([Bc, Lc, Hc])
-                            let dH1 = dGELU(x: cache.h1, upstream: dX2)
-                            let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: modelCfg.kernelSize == 1 ? 1 : (modelCfg.dilationSchedule.last ?? 1))
-                            let Bf = cache.xIn.shape[0]; let Lf = cache.xIn.shape[1]; let Df = cache.xIn.shape[2]
-                            let gNormFlat = conv1.dX.reshaped([Bf * Lf, Df])
-                            let xFlat = cache.xIn.reshaped([Bf * Lf, Df])
-                            let (dxFlat, dGammaT, dBetaT) = layerNormBackward(x: xFlat, upstream: gNormFlat, gamma: params.gamma)
-                            _ = dxFlat
-                            // Accumulate (text mode uses same accumulators as token mode)
+                            let grads = try lastTCNBackward(cache: cache, mask: maskFixedText, dOut: dOut, modelCfg: modelCfg, params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
                             if accLastW1 == nil { accLastW1 = Tensor.zeros(params.w1.shape) }
                             if accLastB1 == nil { accLastB1 = params.b1 != nil ? Tensor.zeros([params.b1!.count]) : Tensor.zeros([0]) }
                             if accLastW2 == nil { accLastW2 = Tensor.zeros(params.w2.shape) }
                             if accLastB2 == nil { accLastB2 = params.b2 != nil ? Tensor.zeros([params.b2!.count]) : Tensor.zeros([0]) }
                             if accGamma == nil { accGamma = Tensor.zeros([params.gamma.count]) }
                             if accBeta == nil { accBeta = Tensor.zeros([params.beta.count]) }
-                            for i2 in 0..<conv1.dW.count { accLastW1!.data[i2] += conv1.dW.data[i2] }
-                            if params.b1 != nil { for i2 in 0..<conv1.dB.count { accLastB1!.data[i2] += conv1.dB.data[i2] } }
-                            let dW2t = dW2lin.reshaped([Dc, Hc, 1])
-                            for i2 in 0..<dW2t.count { accLastW2!.data[i2] += dW2t.data[i2] }
-                            if params.b2 != nil { for i2 in 0..<dB2t.count { accLastB2!.data[i2] += dB2t.data[i2] } }
-                            for i2 in 0..<dGammaT.count { accGamma!.data[i2] += dGammaT.data[i2] }
-                            for i2 in 0..<dBetaT.count { accBeta!.data[i2] += dBetaT.data[i2] }
+                            for i2 in 0..<grads.dW1.count { accLastW1!.data[i2] += grads.dW1.data[i2] }
+                            if let db1 = grads.dB1 { for i2 in 0..<db1.count { accLastB1!.data[i2] += db1.data[i2] } }
+                            for i2 in 0..<grads.dW2.count { accLastW2!.data[i2] += grads.dW2.data[i2] }
+                            if let db2 = grads.dB2 { for i2 in 0..<db2.count { accLastB2!.data[i2] += db2.data[i2] } }
+                            for i2 in 0..<grads.dGamma.count { accGamma!.data[i2] += grads.dGamma.data[i2] }
+                            for i2 in 0..<grads.dBeta.count { accBeta!.data[i2] += grads.dBeta.data[i2] }
                         } catch {
                             logger.warn("text-mode TCN backward failed: \(error)", category: Logger.Category.training)
                         }
@@ -619,4 +589,12 @@ guard let args = loadResolvedConfig() else { usage(); return }
         }
     }
     
+}
+
+// Entry point
+do {
+    try run()
+} catch {
+    Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
+    exit(1)
 }
