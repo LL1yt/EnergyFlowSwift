@@ -169,6 +169,12 @@ public final class TextToCubeEncoder {
         return forwardForTraining(inputIDs: batch.ids, attentionMask: batch.attentionMask)
     }
 
+    // Training forward (text-mode) with last-block cache and fixed mask
+    public func forwardForTrainingWithLastBlockCache(texts: [String]) -> (pooled: Tensor, out: Tensor, cache: LastTCNCache, maskFixed: [[Int]]) {
+        let batch = tokenizer.encodeBatch(texts, maxLength: modelConfig.maxLength)
+        return forwardForTrainingWithLastBlockCache(inputIDs: batch.ids, attentionMask: batch.attentionMask)
+    }
+
     // Projection param accessors for training
     public func getProjParams() -> (weight: Tensor, bias: Tensor?) {
         return (gpuProj.weight, gpuProj.bias)

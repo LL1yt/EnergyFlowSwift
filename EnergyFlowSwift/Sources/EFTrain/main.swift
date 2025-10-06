@@ -413,7 +413,21 @@ func run() throws {
                     let take = min(micro, B - offset)
                     let txtChunk = Array(texts[offset..<(offset+take)])
                     let tgtChunk = Array(tgts[offset..<(offset+take)])
-                    let (pooled, out) = enc.forwardForTraining(texts: txtChunk)
+                    let pooled: Tensor
+                    let out: Tensor
+                    var lastCacheText: TextToCubeEncoder.LastTCNCache? = nil
+                    var maskFixedText: [[Int]] = []
+                    if args.unfreezeLastTCN {
+                        let res = enc.forwardForTrainingWithLastBlockCache(texts: txtChunk)
+                        pooled = res.pooled
+                        out = res.out
+                        lastCacheText = res.cache
+                        maskFixedText = res.maskFixed
+                    } else {
+                        let r = enc.forwardForTraining(texts: txtChunk)
+                        pooled = r.pooled
+                        out = r.out
+                    }
                     let b = out.shape[0]; let d = out.shape[1]
                     var tHost = [Float](repeating: 0, count: b*d)
                     for bi in 0..<b { for di in 0..<d { tHost[bi*d + di] = tgtChunk[bi][di] } }
@@ -434,6 +448,64 @@ func run() throws {
                         if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
                     }
                     let (dW, dB) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
+                    // Upstream to encoder (text-mode)
+                    if args.unfreezeLastTCN, let cache = lastCacheText {
+                        do {
+                            let dXin = try enc.projectionInputGradientsGPU(dY: dY)
+                            let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixedText, seqLen: cfg.maxLength)
+                            var norm2: Float = 0
+                            for v in dEnc.data { norm2 += v*v }
+                            let gnorm = sqrt(norm2)
+                            logger.debug(String(format: "dEnc L2=%.6f (text)", gnorm), category: Logger.Category.training)
+                            // TCN block backward (same as token-mode)
+                            var dOut = dEnc
+                            let Bm = cache.xIn.shape[0]; let Lm = cache.xIn.shape[1]; let Dm = cache.xIn.shape[2]
+                            for b2 in 0..<Bm {
+                                for t2 in 0..<Lm {
+                                    if maskFixedText[b2][t2] == 0 {
+                                        let base = (b2 * Lm + t2) * Dm
+                                        for di2 in 0..<Dm { dOut.data[base + di2] = 0 }
+                                    }
+                                }
+                            }
+                            // Conv2 backward (GPU)
+                            let params = enc.getLastBlockParams()
+                            let Bc = cache.h1a.shape[0], Lc = cache.h1a.shape[1], Hc = cache.h1a.shape[2]
+                            let Dc = dOut.shape[2]
+                            let Xf = cache.h1a.reshaped([Bc * Lc, Hc])
+                            let dYf = dOut.reshaped([Bc * Lc, Dc])
+                            var gl = GraphLinear(inFeatures: Hc, outFeatures: Dc, bias: params.b2 != nil, seed: 0)
+                            gl.weight = params.w2.reshaped([Dc, Hc])
+                            gl.bias = params.b2
+                            _ = try? gl.forward(Tensor.zeros([1, Hc]))
+                            let (dW2lin, dB2t) = try gl.gradientsGPU(X: Xf, dY: dYf)
+                            let dX2f = try gl.inputGradientsGPU(dY: dYf)
+                            let dX2 = dX2f.reshaped([Bc, Lc, Hc])
+                            let dH1 = dGELU(x: cache.h1, upstream: dX2)
+                            let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: cfg.kernelSize == 1 ? 1 : (cfg.dilationSchedule.last ?? 1))
+                            let Bf = cache.xIn.shape[0]; let Lf = cache.xIn.shape[1]; let Df = cache.xIn.shape[2]
+                            let gNormFlat = conv1.dX.reshaped([Bf * Lf, Df])
+                            let xFlat = cache.xIn.reshaped([Bf * Lf, Df])
+                            let (dxFlat, dGammaT, dBetaT) = layerNormBackward(x: xFlat, upstream: gNormFlat, gamma: params.gamma)
+                            _ = dxFlat
+                            // Accumulate (text mode uses same accumulators as token mode)
+                            if accLastW1 == nil { accLastW1 = Tensor.zeros(params.w1.shape) }
+                            if accLastB1 == nil { accLastB1 = params.b1 != nil ? Tensor.zeros([params.b1!.count]) : Tensor.zeros([0]) }
+                            if accLastW2 == nil { accLastW2 = Tensor.zeros(params.w2.shape) }
+                            if accLastB2 == nil { accLastB2 = params.b2 != nil ? Tensor.zeros([params.b2!.count]) : Tensor.zeros([0]) }
+                            if accGamma == nil { accGamma = Tensor.zeros([params.gamma.count]) }
+                            if accBeta == nil { accBeta = Tensor.zeros([params.beta.count]) }
+                            for i2 in 0..<conv1.dW.count { accLastW1!.data[i2] += conv1.dW.data[i2] }
+                            if params.b1 != nil { for i2 in 0..<conv1.dB.count { accLastB1!.data[i2] += conv1.dB.data[i2] } }
+                            let dW2t = dW2lin.reshaped([Dc, Hc, 1])
+                            for i2 in 0..<dW2t.count { accLastW2!.data[i2] += dW2t.data[i2] }
+                            if params.b2 != nil { for i2 in 0..<dB2t.count { accLastB2!.data[i2] += dB2t.data[i2] } }
+                            for i2 in 0..<dGammaT.count { accGamma!.data[i2] += dGammaT.data[i2] }
+                            for i2 in 0..<dBetaT.count { accBeta!.data[i2] += dBetaT.data[i2] }
+                        } catch {
+                            logger.warn("text-mode TCN backward failed: \(error)", category: Logger.Category.training)
+                        }
+                    }
                     if accW == nil { accW = Tensor.zeros(dW.shape) }
                     for i in 0..<dW.count { accW!.data[i] += dW.data[i] }
                     if accB == nil { accB = Tensor.zeros([dB.count]) }
