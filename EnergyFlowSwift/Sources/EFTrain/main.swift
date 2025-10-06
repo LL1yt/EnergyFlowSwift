@@ -24,15 +24,28 @@ struct TrainArgs {
     var clipNorm: Float = 0.0
     var saveOptState: String = ""
     var loadOptState: String = ""
+    // Central config
+    var configPath: String = ""
 }
 
 func parseTrainArgs() -> TrainArgs? {
-    // Defaults may be overridden by environment EFTRAIN_* and then by CLI flags
+    // Defaults may be overridden by config file, then environment EFTRAIN_*, then CLI flags
     var a = TrainArgs(dataPath: "")
     let env = ProcessInfo.processInfo.environment
     func envInt(_ key: String, _ def: Int) -> Int { if let s = env[key], let v = Int(s) { return v } else { return def } }
     func envFloat(_ key: String, _ def: Float) -> Float { if let s = env[key], let v = Float(s) { return v } else { return def } }
     func envString(_ key: String, _ def: String = "") -> String { env[key] ?? def }
+    // Pre-scan CLI for --config path (so we can load file before parsing overrides)
+    let argv = Array(CommandLine.arguments.dropFirst())
+    if let idx = argv.firstIndex(of: "--config"), idx + 1 < argv.count {
+        let cpath = argv[idx + 1]
+        a.configPath = cpath
+        if let cfg = try? TrainConfig.load(path: cpath) {
+            var tmp = cfg
+            tmp.apply(to: &a)
+        }
+    }
+
     // Apply environment defaults
     a.dataPath = envString("EFTRAIN_DATA", a.dataPath)
     a.batchSize = envInt("EFTRAIN_BATCH_SIZE", a.batchSize)
@@ -59,6 +72,7 @@ func parseTrainArgs() -> TrainArgs? {
     var it = CommandLine.arguments.dropFirst().makeIterator()
     while let key = it.next() {
         switch key {
+        case "--config": _ = it.next().map { a.configPath = $0 }
         case "--data": if let v = it.next() { a.dataPath = v }
         case "--batch-size": if let v = it.next(), let n = Int(v) { a.batchSize = n }
         case "--max-length": if let v = it.next(), let n = Int(v) { a.maxLength = n }
@@ -88,7 +102,7 @@ func parseTrainArgs() -> TrainArgs? {
 }
 
 func usage() {
-    print("Usage: EFTrain --data /path/to/data.jsonl|.efb [--batch-size N] [--max-length N] [--max-batches N] [--epochs N] [--lr F] [--weight-decay F] [--micro-batch N] [--alpha-cos F] [--beta-mse F] [--val-fraction F] [--save-checkpoint path] [--load-checkpoint path] [--accum-steps N] [--warmup-steps N] [--cosine-decay-steps N] [--min-lr F] [--clip-norm F] [--save-opt-state path] [--load-opt-state path]\nEnv defaults: set EFTRAIN_* variables (e.g., EFTRAIN_DATA, EFTRAIN_LR, EFTRAIN_WARMUP_STEPS) to avoid passing flags each run.")
+    print("Usage: EFTrain [--config path.json] --data /path/to/data.jsonl|.efb [--batch-size N] [--max-length N] [--max-batches N] [--epochs N] [--lr F] [--weight-decay F] [--micro-batch N] [--alpha-cos F] [--beta-mse F] [--val-fraction F] [--save-checkpoint path] [--load-checkpoint path] [--accum-steps N] [--warmup-steps N] [--cosine-decay-steps N] [--min-lr F] [--clip-norm F] [--save-opt-state path] [--load-opt-state path]\nPrecedence: config file < environment EFTRAIN_* < CLI flags. Set EFTRAIN_* to avoid typing flags.")
 }
 
 func run() throws {
