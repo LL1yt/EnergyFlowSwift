@@ -62,18 +62,82 @@ public func lastTCNBackward(cache: TextToCubeEncoder.LastTCNCache,
     let dX2 = dX2f.reshaped([B, L, H])
     // GELU backward on h1
     let dH1 = dGELU(x: cache.h1, upstream: dX2)
-    // Conv1 backward (CPU ref with dilation)
+    // Conv1 backward (GPU GEMM with CPU im2col/col2im)
     let dil = modelCfg.kernelSize == 1 ? 1 : (modelCfg.dilationSchedule.last ?? 1)
-    let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: dil)
-    // LN backward (row-wise on [B*L, D])
+    let K1 = modelCfg.kernelSize
+    let Cin1 = cache.norm.shape[2]
+    let Cout1 = params.w1.shape[0]
+    // Build Xcol [B*L, Cin*K]
+    let rows = B * L
+    let colsX = Cin1 * K1
+    var xcol = Tensor.zeros([rows, colsX])
+    for b in 0..<B {
+        for t in 0..<L {
+            let r = b * L + t
+            let rowBase = r * colsX
+            for i in 0..<Cin1 {
+                for k in 0..<K1 {
+                    let ti = t - k * dil
+                    let dst = rowBase + i * K1 + k
+                    if ti < 0 { xcol.data[dst] = 0 } else { xcol.data[dst] = cache.norm.data[(b * L + ti) * Cin1 + i] }
+                }
+            }
+        }
+    }
+    // Repack W1 -> Wcol [Cout, Cin*K]
+    var wcol = Tensor.zeros([Cout1, Cin1 * K1])
+    for o in 0..<Cout1 {
+        for i in 0..<Cin1 {
+            for k in 0..<K1 {
+                let src = (o * Cin1 + i) * K1 + k
+                let dst = o * (Cin1 * K1) + (i * K1 + k)
+                wcol.data[dst] = params.w1.data[src]
+            }
+        }
+    }
+    // Use GraphLinear on [rows, Cin*K] -> [rows, Cout]
+    var gl1 = GraphLinear(inFeatures: Cin1 * K1, outFeatures: Cout1, bias: params.b1 != nil, seed: 0)
+    gl1.weight = wcol
+    gl1.bias = params.b1
+    _ = try? gl1.forward(Tensor.zeros([1, Cin1 * K1]))
+    let dY1 = dH1.reshaped([rows, Cout1])
+    let (dW1col, dB1gpu) = try gl1.gradientsGPU(X: xcol, dY: dY1)
+    let dXcol = try gl1.inputGradientsGPU(dY: dY1)
+    // Map dW1col -> dW1 [Cout, Cin, K]
+    var dW1 = Tensor.zeros([Cout1, Cin1, K1])
+    for o in 0..<Cout1 {
+        for i in 0..<Cin1 {
+            for k in 0..<K1 {
+                let src = o * (Cin1 * K1) + (i * K1 + k)
+                dW1.data[(o * Cin1 + i) * K1 + k] = dW1col.data[src]
+            }
+        }
+    }
+    // col2im: dXcol [rows, Cin*K] -> dX [B, L, Cin]
+    var dX1 = Tensor.zeros([B, L, Cin1])
+    for b in 0..<B {
+        for t in 0..<L {
+            let r = b * L + t
+            let rowBase = r * colsX
+            for i in 0..<Cin1 {
+                for k in 0..<K1 {
+                    let ti = t - k * dil
+                    if ti < 0 { continue }
+                    let val = dXcol.data[rowBase + i * K1 + k]
+                    dX1.data[(b * L + ti) * Cin1 + i] += val
+                }
+            }
+        }
+    }
+    // LN backward (row-wise on [B*L, D]) using dX1
     let xFlat = cache.xIn.reshaped([B * L, D])
-    let gNormFlat = conv1.dX.reshaped([B * L, D])
+    let gNormFlat = dX1.reshaped([B * L, D])
     let (dxFlat, dGamma, dBeta) = layerNormBackward(x: xFlat, upstream: gNormFlat, gamma: params.gamma)
-    _ = dxFlat // not propagated further here
+    _ = dxFlat
     // Shape dW2 back to [D,H,1]
     let dW2 = dW2lin.reshaped([D, H, 1])
-    return LastTCNGrads(dW1: conv1.dW,
-                        dB1: params.b1 != nil ? conv1.dB : nil,
+    return LastTCNGrads(dW1: dW1,
+                        dB1: params.b1 != nil ? dB1gpu : nil,
                         dW2: dW2,
                         dB2: params.b2 != nil ? dB2 : nil,
                         dGamma: dGamma,

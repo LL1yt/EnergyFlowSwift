@@ -20,8 +20,8 @@ final class LastTCNBackwardMiniStepTests: XCTestCase {
         let enc = TextToCubeEncoder(modelConfig: modelCfg, vocabSize: 200)
         // Tiny token batch
         let B = 2, L = 8, D = modelCfg.outputDim
-        var ids: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
-        var mask: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
+        let ids: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
+        let mask: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
         // Create random-ish targets
         var targets: [[Float]] = []
         for _ in 0..<B {

@@ -320,8 +320,8 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     if stepCount % args.accumSteps == 0 || offset + take >= B {
                         // Average grads
                         let scale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
-                        var gW = accW!
-                        var gB = accB!
+                        let gW = accW!
+                        let gB = accB!
                         // LR schedule (warmup + cosine)
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
                         logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)
@@ -448,8 +448,8 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     stepCount += 1
                     if stepCount % args.accumSteps == 0 || offset + take >= B {
                         let scale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
-                        var gW = accW!
-                        var gB = accB!
+                        let gW = accW!
+                        let gB = accB!
                         // LR schedule (warmup + cosine)
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
                         logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)

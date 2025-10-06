@@ -1,6 +1,5 @@
 import Foundation
 import EFCore
-import EnergyFlow
 
 // Scales a tensor in-place
 private func scaleTensor(_ t: inout Tensor, by s: Float) {
@@ -15,6 +14,14 @@ public struct OptimStepInputs {
     public var lrNow: Float
     public var scale: Float
     public var clipNorm: Float
+    public init(projGradW: Tensor, projGradB: Tensor?, lastGrads: LastTCNGrads?, lrNow: Float, scale: Float, clipNorm: Float) {
+        self.projGradW = projGradW
+        self.projGradB = projGradB
+        self.lastGrads = lastGrads
+        self.lrNow = lrNow
+        self.scale = scale
+        self.clipNorm = clipNorm
+    }
 }
 
 // Perform one optimizer step over projection params and optionally last TCN block params.
