@@ -25,5 +25,6 @@ extension TrainConfig {
         if let v = loadCheckpoint { args.loadCheckpoint = v }
         if let v = saveOptState { args.saveOptState = v }
         if let v = loadOptState { args.loadOptState = v }
+        if let v = unfreezeLastTCN { args.unfreezeLastTCN = v }
     }
 }

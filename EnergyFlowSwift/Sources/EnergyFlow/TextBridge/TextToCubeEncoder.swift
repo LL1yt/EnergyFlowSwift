@@ -90,6 +90,79 @@ public final class TextToCubeEncoder {
         }
     }
 
+    public struct LastTCNCache {
+        public let xIn: Tensor   // [B,L,D]
+        public let norm: Tensor  // [B,L,D]
+        public let h1: Tensor    // [B,L,H]
+        public let h1a: Tensor   // [B,L,H]
+    }
+
+    // Forward for training with cache for the last TCN block
+    public func forwardForTrainingWithLastBlockCache(inputIDs: [[Int]], attentionMask: [[Int]]) -> (pooled: Tensor, out: Tensor, cache: LastTCNCache, maskFixed: [[Int]]) {
+        let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
+        let embs = embedding.forward(ids: idsFixed)
+        let B = embs.shape[0]; let L = embs.shape[1]; let D = embs.shape[2]
+        var x = embs
+        // Run all but last block
+        let nb = tcnEncoder.blocks.count
+        precondition(nb > 0)
+        if nb > 1 {
+            for i in 0..<(nb - 1) {
+                x = tcnEncoder.blocks[i].forward(x, mask: maskFixed)
+            }
+        }
+        // Last block with caches
+        var last = tcnEncoder.blocks[nb - 1]
+        // LN on [B*L, D]
+        let xFlat = x.reshaped([B * L, D])
+        let normFlat = last.ln.forward(xFlat)
+        let norm = normFlat.reshaped([B, L, D])
+        var h1 = last.conv1.forward(norm)
+        let h1a = Activations.gelu(h1)
+        var y = last.conv2.forward(h1a)
+        // Residual
+        for idx in 0..<(B*L*D) { y.data[idx] += x.data[idx] }
+        // Zero masked positions
+        for b in 0..<B { for t in 0..<L { if maskFixed[b][t] == 0 {
+            let base = (b * L + t) * D
+            for d in 0..<D { y.data[base + d] = 0 }
+        } } }
+        let pooled = maskedMean(y, mask: maskFixed)
+        var proj = gpuProj
+        do {
+            let outGPU = try proj.forward(pooled)
+            self.gpuProj = proj
+            let cache = LastTCNCache(xIn: x, norm: norm, h1: h1, h1a: h1a)
+            return (pooled, outGPU, cache, maskFixed)
+        } catch {
+            fatalError("GPU projection failed: \(error)")
+        }
+    }
+
+    // Accessors for last TCN block params
+    public func getLastBlockParams() -> (w1: Tensor, b1: Tensor?, w2: Tensor, b2: Tensor?, gamma: Tensor, beta: Tensor) {
+        let nb = tcnEncoder.blocks.count
+        precondition(nb > 0)
+        let last = tcnEncoder.blocks[nb - 1]
+        return (last.conv1.weight, last.conv1.bias ?? Tensor.zeros([0]), last.conv2.weight, last.conv2.bias ?? Tensor.zeros([0]), last.ln.gamma, last.ln.beta)
+    }
+    public func setLastBlockParams(w1: Tensor, b1: Tensor?, w2: Tensor, b2: Tensor?, gamma: Tensor, beta: Tensor) {
+        let nb = tcnEncoder.blocks.count
+        precondition(nb > 0)
+        tcnEncoder.blocks[nb - 1].conv1.weight = w1
+        tcnEncoder.blocks[nb - 1].conv1.bias = b1
+        tcnEncoder.blocks[nb - 1].conv2.weight = w2
+        tcnEncoder.blocks[nb - 1].conv2.bias = b2
+        tcnEncoder.blocks[nb - 1].ln.gamma = gamma
+        tcnEncoder.blocks[nb - 1].ln.beta = beta
+    }
+    public func invalidateLastBlockCaches() {
+        let nb = tcnEncoder.blocks.count
+        precondition(nb > 0)
+        tcnEncoder.blocks[nb - 1].conv1.invalidateCache()
+        tcnEncoder.blocks[nb - 1].conv2.invalidateCache()
+    }
+
     // Training forward (text-mode): tokenize inside and return pooled/out
     public func forwardForTraining(texts: [String]) -> (pooled: Tensor, out: Tensor) {
         let batch = tokenizer.encodeBatch(texts, maxLength: modelConfig.maxLength)

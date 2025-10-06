@@ -24,6 +24,8 @@ struct TrainArgs {
     var clipNorm: Float = 0.0
     var saveOptState: String = ""
     var loadOptState: String = ""
+    // Unfreeze controls
+    var unfreezeLastTCN: Bool = false
     // Central config
     var configPath: String = ""
 }
@@ -46,6 +48,8 @@ func parseTrainArgs() -> TrainArgs? {
         }
     }
 
+    // Environment overrides (selected keys)
+    if let s = env["EFTRAIN_UNFREEZE_LAST_TCN"] { a.unfreezeLastTCN = (s == "1" || s.lowercased() == "true" || s.lowercased() == "yes") }
 
     // Then override by CLI flags
     var it = CommandLine.arguments.dropFirst().makeIterator()
@@ -66,6 +70,7 @@ func parseTrainArgs() -> TrainArgs? {
         case "--accum-steps": if let v = it.next(), let n = Int(v) { a.accumSteps = max(1, n) }
         case "--alpha-cos": if let v = it.next(), let f = Float(v) { a.alphaCos = f }
         case "--beta-mse": if let v = it.next(), let f = Float(v) { a.betaMSE = f }
+        case "--unfreeze-last-tcn": a.unfreezeLastTCN = true
         case "--warmup-steps": if let v = it.next(), let n = Int(v) { a.warmupSteps = max(0, n) }
         case "--cosine-decay-steps": if let v = it.next(), let n = Int(v) { a.cosineDecaySteps = max(0, n) }
         case "--min-lr": if let v = it.next(), let f = Float(v) { a.minLR = max(0, f) }
@@ -81,7 +86,7 @@ func parseTrainArgs() -> TrainArgs? {
 }
 
 func usage() {
-    print("Usage: EFTrain [--config path.json] --data /path/to/data.jsonl|.efb [--batch-size N] [--max-length N] [--max-batches N] [--epochs N] [--lr F] [--weight-decay F] [--micro-batch N] [--alpha-cos F] [--beta-mse F] [--val-fraction F] [--save-checkpoint path] [--load-checkpoint path] [--accum-steps N] [--warmup-steps N] [--cosine-decay-steps N] [--min-lr F] [--clip-norm F] [--save-opt-state path] [--load-opt-state path]\nPrecedence: config file < environment EFTRAIN_* < CLI flags. Set EFTRAIN_* to avoid typing flags.")
+    print("Usage: EFTrain [--config path.json] --data /path/to/data.jsonl|.efb [--batch-size N] [--max-length N] [--max-batches N] [--epochs N] [--lr F] [--weight-decay F] [--micro-batch N] [--alpha-cos F] [--beta-mse F] [--val-fraction F] [--save-checkpoint path] [--load-checkpoint path] [--accum-steps N] [--warmup-steps N] [--cosine-decay-steps N] [--min-lr F] [--clip-norm F] [--save-opt-state path] [--load-opt-state path] [--unfreeze-last-tcn]\nPrecedence: config file < environment EFTRAIN_* < CLI flags. Set EFTRAIN_* to avoid typing flags.")
 }
 
 func run() throws {
@@ -196,12 +201,33 @@ func run() throws {
                 var stepCount = 0
                 var accW: Tensor? = nil
                 var accB: Tensor? = nil
+                // Last TCN block accumulators
+                var accLastW1: Tensor? = nil
+                var accLastB1: Tensor? = nil
+                var accLastW2: Tensor? = nil
+                var accLastB2: Tensor? = nil
+                var accGamma: Tensor? = nil
+                var accBeta: Tensor? = nil
                 for _ in 0..<numChunks {
                     let take = min(micro, B - offset)
                     let idsChunk = Array(ids[offset..<(offset+take)])
                     let maskChunk = Array(mask[offset..<(offset+take)])
                     let tgtChunk = Array(tgts[offset..<(offset+take)])
-                    let (pooled, out) = enc.forwardForTraining(inputIDs: idsChunk, attentionMask: maskChunk)
+                    let pooled: Tensor
+                    let out: Tensor
+                    var lastCache: TextToCubeEncoder.LastTCNCache? = nil
+                    var maskFixedLocal: [[Int]] = []
+                    if args.unfreezeLastTCN {
+                        let res = enc.forwardForTrainingWithLastBlockCache(inputIDs: idsChunk, attentionMask: maskChunk)
+                        pooled = res.pooled
+                        out = res.out
+                        lastCache = res.cache
+                        maskFixedLocal = res.maskFixed
+                    } else {
+                        let r = enc.forwardForTraining(inputIDs: idsChunk, attentionMask: maskChunk)
+                        pooled = r.pooled
+                        out = r.out
+                    }
                     let b = out.shape[0]; let d = out.shape[1]
                     var tHost = [Float](repeating: 0, count: b*d)
                     for bi in 0..<b { for di in 0..<d { tHost[bi*d + di] = tgtChunk[bi][di] } }
@@ -228,13 +254,69 @@ func run() throws {
                     // Optional: upstream to encoder for future unfreeze (token-mode only)
                     do {
                         let dXin = try enc.projectionInputGradientsGPU(dY: dY)
-                        let maskFixed = padOrTruncateMask(maskChunk, cfg.maxLength)
+                        let maskFixed = args.unfreezeLastTCN ? maskFixedLocal : padOrTruncateMask(maskChunk, cfg.maxLength)
                         let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixed, seqLen: cfg.maxLength)
                         // Log gradient norms for sanity
                         var norm2: Float = 0
                         for v in dEnc.data { norm2 += v*v }
                         let gnorm = sqrt(norm2)
                         logger.debug(String(format: "dEnc L2=%.6f", gnorm), category: Logger.Category.training)
+                        // If unfreezing last TCN, compute grads for that block
+                        if args.unfreezeLastTCN, let cache = lastCache {
+                            // Apply mask to dEnc (zero masked positions)
+                            var dOut = dEnc
+                            let Bm = cache.xIn.shape[0]; let Lm = cache.xIn.shape[1]; let Dm = cache.xIn.shape[2]
+                            for b2 in 0..<Bm {
+                                for t2 in 0..<Lm {
+                                    if maskFixed[b2][t2] == 0 {
+                                        let base = (b2 * Lm + t2) * Dm
+                                        for di2 in 0..<Dm { dOut.data[base + di2] = 0 }
+                                    }
+                                }
+                            }
+                            // Conv2 backward (GPU via GraphLinear on flattened [B*L, H])
+                            let params = enc.getLastBlockParams()
+                            let Bc = cache.h1a.shape[0], Lc = cache.h1a.shape[1], Hc = cache.h1a.shape[2]
+                            let Dc = dOut.shape[2]
+                            let Xf = cache.h1a.reshaped([Bc * Lc, Hc])
+                            let dYf = dOut.reshaped([Bc * Lc, Dc])
+                            var gl = GraphLinear(inFeatures: Hc, outFeatures: Dc, bias: params.b2 != nil, seed: 0)
+                            // Set weights/bias to conv2 params
+                            gl.weight = params.w2.reshaped([Dc, Hc])
+                            gl.bias = params.b2
+                            // Ensure GPU weight buffer exists (run cheap dummy forward)
+                            _ = try? gl.forward(Tensor.zeros([1, Hc]))
+                            // Gradients and input gradient
+                            let (dW2lin, dB2) = try gl.gradientsGPU(X: Xf, dY: dYf)
+                            let dX2f = try gl.inputGradientsGPU(dY: dYf)
+                            let dX2 = dX2f.reshaped([Bc, Lc, Hc])
+                            // GELU backward
+                            let dH1 = dGELU(x: cache.h1, upstream: dX2)
+                            // Conv1 backward
+                            let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: cfg.kernelSize == 1 ? 1 : (cfg.dilationSchedule.last ?? 1))
+                            // LN backward
+                            let Bf = cache.xIn.shape[0]; let Lf = cache.xIn.shape[1]; let Df = cache.xIn.shape[2]
+                            let gNormFlat = conv1.dX.reshaped([Bf * Lf, Df])
+                            let xFlat = cache.xIn.reshaped([Bf * Lf, Df])
+                            let (dxFlat, dGamma, dBeta) = layerNormBackward(x: xFlat, upstream: gNormFlat, gamma: params.gamma)
+                            _ = dxFlat // upstream to earlier blocks (ignored)
+                            // Accumulate grads for last block (initialize accumulators lazily)
+                            if accW == nil { /* projection acc created earlier */ }
+                            // Use separate accumulators for last block
+                            if accLastW1 == nil { accLastW1 = Tensor.zeros(params.w1.shape) }
+                            if accLastB1 == nil { accLastB1 = params.b1 != nil ? Tensor.zeros([params.b1!.count]) : Tensor.zeros([0]) }
+                            if accLastW2 == nil { accLastW2 = Tensor.zeros(params.w2.shape) }
+                            if accLastB2 == nil { accLastB2 = params.b2 != nil ? Tensor.zeros([params.b2!.count]) : Tensor.zeros([0]) }
+                            if accGamma == nil { accGamma = Tensor.zeros([params.gamma.count]) }
+                            if accBeta == nil { accBeta = Tensor.zeros([params.beta.count]) }
+                            for i2 in 0..<conv1.dW.count { accLastW1!.data[i2] += conv1.dW.data[i2] }
+                            if params.b1 != nil { for i2 in 0..<conv1.dB.count { accLastB1!.data[i2] += conv1.dB.data[i2] } }
+                            let dW2 = dW2lin.reshaped([Dc, Hc, 1])
+                            for i2 in 0..<dW2.count { accLastW2!.data[i2] += dW2.data[i2] }
+                            if params.b2 != nil { for i2 in 0..<dB2.count { accLastB2!.data[i2] += dB2.data[i2] } }
+                            for i2 in 0..<dGamma.count { accGamma!.data[i2] += dGamma.data[i2] }
+                            for i2 in 0..<dBeta.count { accBeta!.data[i2] += dBeta.data[i2] }
+                        }
                     } catch {
                         logger.warn("projection input gradients failed: \(error)", category: Logger.Category.training)
                     }
@@ -265,6 +347,20 @@ func run() throws {
                         var params: [Tensor] = [projW]
                         var grads: [Tensor] = [gW]
                         if let bT = projB { params.append(bT); grads.append(gB) }
+                        if args.unfreezeLastTCN {
+                            // Average last-block grads and optionally clip
+                            if let aW1 = accLastW1 { var g = aW1; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().w1); grads.append(g) }
+                            if let aB1 = accLastB1, aB1.count > 0 { var g = aB1; for i in 0..<g.count { g.data[i] *= scale }; if let b1p = enc.getLastBlockParams().b1 { params.append(b1p); grads.append(g) } }
+                            if let aW2 = accLastW2 { var g = aW2; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().w2); grads.append(g) }
+                            if let aB2 = accLastB2, aB2.count > 0 { var g = aB2; for i in 0..<g.count { g.data[i] *= scale }; if let b2p = enc.getLastBlockParams().b2 { params.append(b2p); grads.append(g) } }
+                            if let aG = accGamma { var g = aG; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().gamma); grads.append(g) }
+                            if let aBt = accBeta { var g = aBt; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().beta); grads.append(g) }
+                            if args.clipNorm > 0 {
+                                var list = grads
+                                _ = GradClip.clipGlobalL2Norm(tensors: &list, maxNorm: args.clipNorm, eps: 1e-6)
+                                grads = list
+                            }
+                        }
                         // LR schedule (warmup + cosine)
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
                         if lrNow != opt.lr { opt.lr = lrNow }
@@ -276,6 +372,22 @@ func run() throws {
                         let newB = (projB != nil) ? paramsCopy[1] : nil
                         enc.setProjParams(weight: newW, bias: newB)
                         enc.invalidateProjectionCache()
+                        if args.unfreezeLastTCN {
+                            // After step, reload last block params from paramsCopy tail in same order as added
+                            var idxTail = 1 + (projB != nil ? 1 : 0)
+                            if let _ = accLastW1 {
+                                let w1New = paramsCopy[idxTail]; idxTail += 1
+                                var b1New: Tensor? = nil
+                                if let aB1 = accLastB1, aB1.count > 0 { b1New = paramsCopy[idxTail]; idxTail += 1 }
+                                let w2New = paramsCopy[idxTail]; idxTail += 1
+                                var b2New: Tensor? = nil
+                                if let aB2 = accLastB2, aB2.count > 0 { b2New = paramsCopy[idxTail]; idxTail += 1 }
+                                let gammaNew = paramsCopy[idxTail]; idxTail += 1
+                                let betaNew = paramsCopy[idxTail]; idxTail += 1
+                                enc.setLastBlockParams(w1: w1New, b1: b1New, w2: w2New, b2: b2New, gamma: gammaNew, beta: betaNew)
+                                enc.invalidateLastBlockCaches()
+                            }
+                        }
                         // Post-update metrics using project-only
                         let outPost = enc.projectOnly(pooled)
                         let msePost = Losses.mseRowwise(outPost, t)

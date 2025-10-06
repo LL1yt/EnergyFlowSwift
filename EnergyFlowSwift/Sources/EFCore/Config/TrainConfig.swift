@@ -37,6 +37,9 @@ public struct TrainConfig: Codable {
     public var saveOptState: String?
     public var loadOptState: String?
 
+    // Unfreeze controls
+    public var unfreezeLastTCN: Bool?
+
     public init() {}
 
     public static func load(path: String) throws -> TrainConfig {
@@ -76,6 +79,7 @@ public extension TrainConfig {
         if let v = loadCheckpoint { out.loadCheckpoint = v }
         if let v = saveOptState { out.saveOptState = v }
         if let v = loadOptState { out.loadOptState = v }
+        if let v = unfreezeLastTCN { out.unfreezeLastTCN = v }
         return out
     }
 }
