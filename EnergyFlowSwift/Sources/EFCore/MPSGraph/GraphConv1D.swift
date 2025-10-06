@@ -17,6 +17,8 @@ public final class GraphConv1D {
 
     // Cached FP16 weight matrix Wcol [Cout, Cin*K] on GPU
     private var wcolFP16: MTLBuffer?
+    // Cached 2D weight for pointwise (K=1) path, host-side [Cout, Cin]
+    private var w2DCache: Tensor? = nil
 
     public init(inChannels: Int, outChannels: Int, kernelSize: Int, dilation: Int = 1, bias: Bool = true, seed: UInt64 = 42) {
         self.inChannels = inChannels
@@ -147,5 +149,22 @@ public func forward(_ x: Tensor) -> Tensor {
     // Invalidate GPU cached weight matrix (call after weight updates)
     public func invalidateCache() {
         self.wcolFP16 = nil
+        self.w2DCache = nil
+    }
+
+    // Return repacked 2D weight for pointwise conv (K must be 1). Cached until invalidateCache is called.
+    public func weight2DPointwise() -> Tensor {
+        precondition(kernelSize == 1, "weight2DPointwise requires kernelSize == 1")
+        if let w = w2DCache { return w }
+        let Cin = inChannels
+        let Cout = outChannels
+        var w = Tensor.zeros([Cout, Cin])
+        for o in 0..<Cout {
+            for i in 0..<Cin {
+                w.data[o * Cin + i] = weight.data[(o * Cin + i) * 1 + 0]
+            }
+        }
+        self.w2DCache = w
+        return w
     }
 }

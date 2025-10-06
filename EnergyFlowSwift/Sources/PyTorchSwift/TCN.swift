@@ -26,10 +26,21 @@ public struct TCNBlock {
         precondition(D == dim)
         // Path: LN -> Conv1D -> GELU -> Conv1D -> Residual
         let xFlat = x.reshaped([B * L, D])
-        let norm = ln.forward(xFlat).reshaped([B, L, D])
-        var h = conv1.forward(norm)         // [B,L,hidden]
-        h = Activations.gelu(h)
-        var y = conv2.forward(h)            // [B,L,dim]
+        let normFlat = LNExecCache.shared.runForward(x: xFlat, gamma: ln.gamma, beta: ln.beta, eps: ln.eps)
+        let norm = normFlat.reshaped([B, L, D])
+var h = conv1.forward(norm)         // [B,L,hidden]
+        // Try fused GELU+MatMul (conv2 1x1) via MPSGraph executable cache
+        let N = B * L
+        let hFlat = h.reshaped([N, hidden])
+        let w2 = conv2.weight2DPointwise() // [dim, hidden], cached
+        let b2 = conv2.bias
+        let yFlat: Tensor
+        if let b = b2 {
+            yFlat = GeLUGemmCache.shared.runForward(x: hFlat, W: w2, bias: b)
+        } else {
+            yFlat = GeLUGemmCache.shared.runForward(x: hFlat, W: w2, bias: nil)
+        }
+        var y = yFlat.reshaped([B, L, dim])
         // Residual
         for idx in 0..<(B*L*D) { y.data[idx] += x.data[idx] }
         // Zero masked positions
