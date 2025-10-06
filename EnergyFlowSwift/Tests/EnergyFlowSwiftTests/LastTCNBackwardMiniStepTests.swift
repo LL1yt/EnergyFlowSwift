@@ -46,8 +46,8 @@ final class LastTCNBackwardMiniStepTests: XCTestCase {
         let (pooled, _) = (res.pooled, res.out)
         let (dWproj, dBproj) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
         let dXin = try enc.projectionInputGradientsGPU(dY: dY)
-        // Back through masked mean
-        let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: mask, seqLen: modelCfg.maxLength)
+// Back through masked mean (use fixed-length mask from forward cache)
+        let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: res.maskFixed, seqLen: modelCfg.maxLength)
         // Last block grads
         let params = enc.getLastBlockParams()
         let grads = try lastTCNBackward(cache: res.cache, mask: res.maskFixed, dOut: dEnc, modelCfg: modelCfg, params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))

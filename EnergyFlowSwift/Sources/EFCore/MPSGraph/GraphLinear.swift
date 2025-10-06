@@ -106,7 +106,7 @@ public struct GraphLinear {
         let ctx = MPSGContext.shared
         precondition(x.shape.count == 2 && x.shape[1] == inFeatures, "GraphLinear.forward expects [B, inFeatures]")
         let b = x.shape[0]
-        logger.info("GraphLinear.forward start B=\(b) In=\(inFeatures) Out=\(outFeatures)", category: Logger.Category.textBridge)
+        logger.debug("GraphLinear.forward start B=\(b) In=\(inFeatures) Out=\(outFeatures)", category: Logger.Category.textBridge)
 
         // FP16 path: convert x and cached W/b to Float16, run matmul, read back and convert to Float
         let elemSizeH = MemoryLayout<Float16>.size
@@ -159,11 +159,11 @@ public struct GraphLinear {
                                          interiorColumns: inFeatures,
                                          alpha: 1.0,
                                          beta: 0.0)
-        logger.info("GraphLinear.forward run() begin [fp16]", category: Logger.Category.textBridge)
+        logger.debug("GraphLinear.forward run() begin [fp16]", category: Logger.Category.textBridge)
         guard let cmdBuf = ctx.commandQueue.makeCommandBuffer() else { throw MPSGError.commandBufferFailed }
         mm.encode(commandBuffer: cmdBuf, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
         cmdBuf.commit(); cmdBuf.waitUntilCompleted()
-        logger.info("GraphLinear.forward run() end [fp16]", category: Logger.Category.textBridge)
+        logger.debug("GraphLinear.forward run() end [fp16]", category: Logger.Category.textBridge)
 
         // Read back as Float16 then convert to Float
         var yHalf = [Float16](repeating: 0, count: yCount)
@@ -178,7 +178,7 @@ public struct GraphLinear {
         }
         let outShapeInts = [b, outFeatures]
         let result = Tensor(shape: outShapeInts, data: outHost)
-        logger.info("GraphLinear.forward done out=\(result.prettyShape) [fp16]", category: Logger.Category.textBridge)
+        logger.debug("GraphLinear.forward done out=\(result.prettyShape) [fp16]", category: Logger.Category.textBridge)
         return result
     }
 

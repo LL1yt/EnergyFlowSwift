@@ -256,7 +256,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     totalMSE += Double(mse.mean) * Double(b)
                     totalCos += Double(cos.mean) * Double(b)
                     seen += b
-                    logger.info(String(format: "train chunk: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
+                    logger.debug(String(format: "train chunk: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
                     // Backward combine
                     var dY = dY_MSEMean(y: out, target: t)
                     if args.alphaCos != 0 {
@@ -354,7 +354,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         // LR schedule (warmup + cosine)
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
                         if lrNow != opt.lr { opt.lr = lrNow }
-                        logger.info(String(format: "opt step=%d lr=%.6g", globalStep, opt.lr), category: Logger.Category.training)
+                        logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, opt.lr), category: Logger.Category.training)
                         var paramsCopy = params
                         opt.step(params: &paramsCopy, grads: grads)
                         globalStep += 1
@@ -384,7 +384,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         let outPost = enc.projectOnly(pooled)
                         let msePost = Losses.mseRowwise(outPost, t)
                         let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
-                        logger.info(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
+                        logger.debug(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
                         // Reset accumulators
                         accW = nil; accB = nil; stepCount = 0
                     }
@@ -436,7 +436,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     totalMSE += Double(mse.mean) * Double(b)
                     totalCos += Double(cos.mean) * Double(b)
                     seen += b
-                    logger.info(String(format: "train chunk (text): b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
+                    logger.debug(String(format: "train chunk (text): b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
                     var dY = dY_MSEMean(y: out, target: t)
                     if args.alphaCos != 0 {
                         let dYcos = dY_CosineMeanLoss(y: out, target: t)
