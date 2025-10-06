@@ -29,4 +29,32 @@ public enum CrossEntropyLoss {
         }
         return total / Float(max(count, 1))
     }
+
+    // Gradient of mean CE w.r.t logits: softmax(logits) - onehot(target)
+    // Returns [B*L, V] to match GraphLinear backward usage.
+    public static func gradLogits(logits: Tensor, targets: [[Int]]) -> Tensor {
+        precondition(logits.shape.count == 3, "logits must be [B,L,V]")
+        let B = logits.shape[0]
+        let L = logits.shape[1]
+        let V = logits.shape[2]
+        precondition(targets.count == B && targets.allSatisfy { $0.count == L }, "targets shape mismatch")
+        var out = Tensor.zeros([B * L, V])
+        let scale: Float = 1.0 / Float(max(B * L, 1))
+        for b in 0..<B {
+            for t in 0..<L {
+                let base = (b * L + t) * V
+                var maxLogit: Float = -Float.greatestFiniteMagnitude
+                for v in 0..<V { let lv = logits.data[base + v]; if lv > maxLogit { maxLogit = lv } }
+                var sumExp: Float = 0
+                for v in 0..<V { sumExp += expf(logits.data[base + v] - maxLogit) }
+                let y = targets[b][t]
+                for v in 0..<V {
+                    let p = expf(logits.data[base + v] - maxLogit) / sumExp
+                    let onehot: Float = (v == y) ? 1.0 : 0.0
+                    out.data[(b * L + t) * V + v] = scale * (p - onehot)
+                }
+            }
+        }
+        return out
+    }
 }

@@ -53,4 +53,33 @@ public final class TextDecoder {
         let logits = logitsFlat.reshaped([B, L, config.vocabSize])
         return logits
     }
+
+    // Training helper: returns (flatFeatures [B*L, dim], logits [B,L,V])
+    public func forwardForTraining(ids: [[Int]], z: Tensor) -> (flatFeatures: Tensor, logits: Tensor) {
+        let B = ids.count
+        let L = ids.first?.count ?? 0
+        precondition(L == config.maxLength)
+        precondition(z.shape == [B, config.dim])
+        var x = embedding.forward(ids: ids)
+        var cproj = condProj
+        let cond = try! cproj.forward(z)
+        self.condProj = cproj
+        for b in 0..<B { for t in 0..<L {
+            let baseX = (b * L + t) * config.dim
+            let baseC = b * config.dim
+            for d in 0..<config.dim { x.data[baseX + d] += cond.data[baseC + d] }
+        } }
+        let maskFull: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
+        let y = stack.forward(x, mask: maskFull)
+        let flat = y.reshaped([B * L, config.dim])
+        var oproj = outProj
+        let logitsFlat = try! oproj.forward(flat)
+        self.outProj = oproj
+        let logits = logitsFlat.reshaped([B, L, config.vocabSize])
+        return (flat, logits)
+    }
+    // Accessors for out projection (for training)
+    public func getOutProjParams() -> (weight: Tensor, bias: Tensor?) { (outProj.weight, outProj.bias) }
+    public func setOutProjParams(weight: Tensor, bias: Tensor?) { outProj.weight = weight; outProj.bias = bias }
+    public func invalidateOutProjCache() { outProj.invalidateCache() }
 }
