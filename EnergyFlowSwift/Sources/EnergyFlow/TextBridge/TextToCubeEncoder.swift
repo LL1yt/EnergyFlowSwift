@@ -125,6 +125,30 @@ public final class TextToCubeEncoder {
         return try gpuProj.gradientsGPU(X: X, dY: dY)
     }
 
+    // Backward for masked mean: given upstream dPooled [B,H] and mask [B][L],
+    // distribute gradient equally across masked positions per example.
+    public func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) -> Tensor {
+        let B = dPooled.shape[0]
+        let H = dPooled.shape[1]
+        precondition(mask.count == B)
+        let L = seqLen
+        var dEnc = Tensor.zeros([B, L, H])
+        for b in 0..<B {
+            precondition(mask[b].count == L)
+            var denom: Float = 0
+            for t in 0..<L { denom += Float(mask[b][t]) }
+            denom = max(denom, 1e-9)
+            for t in 0..<L {
+                let m = Float(mask[b][t])
+                if m == 0 { continue }
+                let outBase = (b * L + t) * H
+                let inBase = b * H
+                for h in 0..<H { dEnc.data[outBase + h] = dPooled.data[inBase + h] * (m / denom) }
+            }
+        }
+        return dEnc
+    }
+
     // Simple stats for debugging
     private func mean(of t: Tensor) -> Float {
         var s: Float = 0

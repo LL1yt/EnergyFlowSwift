@@ -181,4 +181,56 @@ public struct GraphLinear {
         logger.info("GraphLinear.forward done out=\(result.prettyShape) [fp16]", category: Logger.Category.textBridge)
         return result
     }
+
+    // MARK: - Backward: input gradients dX = dY @ W
+    public func inputGradientsGPU(dY: Tensor) throws -> Tensor {
+        precondition(dY.shape.count == 2 && dY.shape[1] == outFeatures, "dY must be [B, Out]")
+        let B = dY.shape[0]
+        let ctx = MPSGContext.shared
+        let device = ctx.device
+        let elemH = MemoryLayout<Float16>.size
+        // Ensure weight buffer cached in FP16
+        if wBufFP16 == nil {
+            // We need a mutable copy to call invalidateCache/forward, but here only ensure buffer exists.
+            var tmp = self
+            tmp.invalidateCache()
+            // Rebuild forward once to populate caches cheaply with a dummy x of zeros [1,inFeatures]
+            let dummy = Tensor.zeros([1, inFeatures])
+            _ = try? tmp.forward(dummy)
+        }
+        guard let wBuf = wBufFP16 else { throw MPSGError.commandBufferFailed }
+        // Allocate buffers for dY and dX (FP16)
+        let dyCount = B * outFeatures
+        let dxCount = B * inFeatures
+        guard let dyBuf = device.makeBuffer(length: dyCount * elemH, options: .storageModeShared),
+              let dxBuf = device.makeBuffer(length: dxCount * elemH, options: .storageModeShared)
+        else { throw MPSGError.commandBufferFailed }
+        var dyHalf = [Float16](repeating: 0, count: dyCount)
+        for i in 0..<dyCount { dyHalf[i] = Float16(dY.data[i]) }
+        dyHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(dyBuf.contents(), base, dyCount * elemH) } }
+        memset(dxBuf.contents(), 0, dxCount * elemH)
+        // Descriptors: dY [B, Out], W [Out, In], dX [B, In]
+        let dyDesc = MPSMatrixDescriptor(rows: B, columns: outFeatures, rowBytes: outFeatures * elemH, dataType: .float16)
+        let wDesc = MPSMatrixDescriptor(rows: outFeatures, columns: inFeatures, rowBytes: inFeatures * elemH, dataType: .float16)
+        let dxDesc = MPSMatrixDescriptor(rows: B, columns: inFeatures, rowBytes: inFeatures * elemH, dataType: .float16)
+        let dyMat = MPSMatrix(buffer: dyBuf, descriptor: dyDesc)
+        let wMat = MPSMatrix(buffer: wBuf, descriptor: wDesc)
+        let dxMat = MPSMatrix(buffer: dxBuf, descriptor: dxDesc)
+        let mm = MPSMatrixMultiplication(device: device,
+                                         transposeLeft: false,
+                                         transposeRight: false,
+                                         resultRows: B,
+                                         resultColumns: inFeatures,
+                                         interiorColumns: outFeatures,
+                                         alpha: 1.0,
+                                         beta: 0.0)
+        guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw MPSGError.commandBufferFailed }
+        mm.encode(commandBuffer: cmd, leftMatrix: dyMat, rightMatrix: wMat, resultMatrix: dxMat)
+        cmd.commit(); cmd.waitUntilCompleted()
+        var dxHalf = [Float16](repeating: 0, count: dxCount)
+        memcpy(&dxHalf, dxBuf.contents(), dxCount * elemH)
+        var dxHost = [Float](repeating: 0, count: dxCount)
+        for i in 0..<dxCount { dxHost[i] = Float(dxHalf[i]) }
+        return Tensor(shape: [B, inFeatures], data: dxHost)
+    }
 }

@@ -27,7 +27,35 @@ struct TrainArgs {
 }
 
 func parseTrainArgs() -> TrainArgs? {
+    // Defaults may be overridden by environment EFTRAIN_* and then by CLI flags
     var a = TrainArgs(dataPath: "")
+    let env = ProcessInfo.processInfo.environment
+    func envInt(_ key: String, _ def: Int) -> Int { if let s = env[key], let v = Int(s) { return v } else { return def } }
+    func envFloat(_ key: String, _ def: Float) -> Float { if let s = env[key], let v = Float(s) { return v } else { return def } }
+    func envString(_ key: String, _ def: String = "") -> String { env[key] ?? def }
+    // Apply environment defaults
+    a.dataPath = envString("EFTRAIN_DATA", a.dataPath)
+    a.batchSize = envInt("EFTRAIN_BATCH_SIZE", a.batchSize)
+    a.maxLength = envInt("EFTRAIN_MAX_LENGTH", a.maxLength)
+    a.maxBatches = envInt("EFTRAIN_MAX_BATCHES", a.maxBatches)
+    a.epochs = envInt("EFTRAIN_EPOCHS", a.epochs)
+    a.lr = envFloat("EFTRAIN_LR", a.lr)
+    a.weightDecay = envFloat("EFTRAIN_WEIGHT_DECAY", a.weightDecay)
+    a.alphaCos = envFloat("EFTRAIN_ALPHA_COS", a.alphaCos)
+    a.betaMSE = envFloat("EFTRAIN_BETA_MSE", a.betaMSE)
+    a.microBatch = envInt("EFTRAIN_MICRO_BATCH", a.microBatch)
+    a.valFraction = envFloat("EFTRAIN_VAL_FRACTION", a.valFraction)
+    a.saveCheckpoint = envString("EFTRAIN_SAVE_CHECKPOINT", a.saveCheckpoint)
+    a.loadCheckpoint = envString("EFTRAIN_LOAD_CHECKPOINT", a.loadCheckpoint)
+    a.accumSteps = max(1, envInt("EFTRAIN_ACCUM_STEPS", a.accumSteps))
+    a.warmupSteps = max(0, envInt("EFTRAIN_WARMUP_STEPS", a.warmupSteps))
+    a.cosineDecaySteps = max(0, envInt("EFTRAIN_COSINE_DECAY_STEPS", a.cosineDecaySteps))
+    a.minLR = max(0, envFloat("EFTRAIN_MIN_LR", a.minLR))
+    a.clipNorm = max(0, envFloat("EFTRAIN_CLIP_NORM", a.clipNorm))
+    a.saveOptState = envString("EFTRAIN_SAVE_OPT_STATE", a.saveOptState)
+    a.loadOptState = envString("EFTRAIN_LOAD_OPT_STATE", a.loadOptState)
+
+    // Then override by CLI flags
     var it = CommandLine.arguments.dropFirst().makeIterator()
     while let key = it.next() {
         switch key {
@@ -60,7 +88,7 @@ func parseTrainArgs() -> TrainArgs? {
 }
 
 func usage() {
-    print("Usage: EFTrain --data /path/to/data.jsonl|.efb [--batch-size N] [--max-length N] [--max-batches N] [--epochs N] [--lr F] [--weight-decay F] [--micro-batch N] [--alpha-cos F] [--beta-mse F] [--val-fraction F] [--save-checkpoint path] [--load-checkpoint path] [--accum-steps N] [--warmup-steps N] [--cosine-decay-steps N] [--min-lr F] [--clip-norm F] [--save-opt-state path] [--load-opt-state path]")
+    print("Usage: EFTrain --data /path/to/data.jsonl|.efb [--batch-size N] [--max-length N] [--max-batches N] [--epochs N] [--lr F] [--weight-decay F] [--micro-batch N] [--alpha-cos F] [--beta-mse F] [--val-fraction F] [--save-checkpoint path] [--load-checkpoint path] [--accum-steps N] [--warmup-steps N] [--cosine-decay-steps N] [--min-lr F] [--clip-norm F] [--save-opt-state path] [--load-opt-state path]\nEnv defaults: set EFTRAIN_* variables (e.g., EFTRAIN_DATA, EFTRAIN_LR, EFTRAIN_WARMUP_STEPS) to avoid passing flags each run.")
 }
 
 func run() throws {
