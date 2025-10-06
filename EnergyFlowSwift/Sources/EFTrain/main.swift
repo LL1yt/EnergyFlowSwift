@@ -46,27 +46,6 @@ func parseTrainArgs() -> TrainArgs? {
         }
     }
 
-    // Apply environment defaults
-    a.dataPath = envString("EFTRAIN_DATA", a.dataPath)
-    a.batchSize = envInt("EFTRAIN_BATCH_SIZE", a.batchSize)
-    a.maxLength = envInt("EFTRAIN_MAX_LENGTH", a.maxLength)
-    a.maxBatches = envInt("EFTRAIN_MAX_BATCHES", a.maxBatches)
-    a.epochs = envInt("EFTRAIN_EPOCHS", a.epochs)
-    a.lr = envFloat("EFTRAIN_LR", a.lr)
-    a.weightDecay = envFloat("EFTRAIN_WEIGHT_DECAY", a.weightDecay)
-    a.alphaCos = envFloat("EFTRAIN_ALPHA_COS", a.alphaCos)
-    a.betaMSE = envFloat("EFTRAIN_BETA_MSE", a.betaMSE)
-    a.microBatch = envInt("EFTRAIN_MICRO_BATCH", a.microBatch)
-    a.valFraction = envFloat("EFTRAIN_VAL_FRACTION", a.valFraction)
-    a.saveCheckpoint = envString("EFTRAIN_SAVE_CHECKPOINT", a.saveCheckpoint)
-    a.loadCheckpoint = envString("EFTRAIN_LOAD_CHECKPOINT", a.loadCheckpoint)
-    a.accumSteps = max(1, envInt("EFTRAIN_ACCUM_STEPS", a.accumSteps))
-    a.warmupSteps = max(0, envInt("EFTRAIN_WARMUP_STEPS", a.warmupSteps))
-    a.cosineDecaySteps = max(0, envInt("EFTRAIN_COSINE_DECAY_STEPS", a.cosineDecaySteps))
-    a.minLR = max(0, envFloat("EFTRAIN_MIN_LR", a.minLR))
-    a.clipNorm = max(0, envFloat("EFTRAIN_CLIP_NORM", a.clipNorm))
-    a.saveOptState = envString("EFTRAIN_SAVE_OPT_STATE", a.saveOptState)
-    a.loadOptState = envString("EFTRAIN_LOAD_OPT_STATE", a.loadOptState)
 
     // Then override by CLI flags
     var it = CommandLine.arguments.dropFirst().makeIterator()
@@ -107,6 +86,7 @@ func usage() {
 
 func run() throws {
     guard let args = parseTrainArgs() else { usage(); return }
+    var globalStep = 0
     let logger = Logger.shared
     logger.info("EFTrain start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength) epochs=\(args.epochs) alphaCos=\(args.alphaCos) betaMSE=\(args.betaMSE)", category: Logger.Category.dataset)
     
@@ -180,7 +160,7 @@ func run() throws {
     
     var bestValCos: Double = -Double.greatestFiniteMagnitude
     
-for epoch in 0..<args.epochs {
+    for epoch in 0..<args.epochs {
         logger.info("epoch=\(epoch+1)/\(args.epochs)", category: Logger.Category.dataset)
         var batchIdx = 0
         var seen = 0
