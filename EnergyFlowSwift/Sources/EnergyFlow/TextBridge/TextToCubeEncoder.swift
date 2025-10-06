@@ -113,9 +113,9 @@ public final class TextToCubeEncoder {
         }
         // Last block with caches
         let last = tcnEncoder.blocks[nb - 1]
-        // LN on [B*L, D]
+        // LN on [B*L, D] via MPSGraph executable cache
         let xFlat = x.reshaped([B * L, D])
-        let normFlat = last.ln.forward(xFlat)
+        let normFlat = LNExecCache.shared.runForward(x: xFlat, gamma: last.ln.gamma, beta: last.ln.beta, eps: last.ln.eps)
         let norm = normFlat.reshaped([B, L, D])
         let h1 = last.conv1.forward(norm)
         let h1a = Activations.gelu(h1)

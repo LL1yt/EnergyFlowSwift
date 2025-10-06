@@ -46,6 +46,8 @@ public final class LNGeLUGemmCache {
         let betaData: MPSGraphTensorData
         let wData: MPSGraphTensorData
         let bData: MPSGraphTensorData?
+        var pinnedGammaBeta: Bool
+        var pinnedWB: Bool
     }
 
     nonisolated(unsafe) public static let shared = LNGeLUGemmCache()
@@ -135,7 +137,8 @@ public final class LNGeLUGemmCache {
             executable: executable,
             xPH: xPH, gammaPH: gammaPH, betaPH: betaPH, wPH: wPH, bPH: bPH, yT: y,
             xArr: xArr, gammaArr: gammaArr, betaArr: betaArr, wArr: wArr, bArr: bArr, yArr: yArr,
-            xData: MPSGraphTensorData(xArr), gammaData: MPSGraphTensorData(gammaArr), betaData: MPSGraphTensorData(betaArr), wData: MPSGraphTensorData(wArr), bData: bArr != nil ? MPSGraphTensorData(bArr!) : nil
+            xData: MPSGraphTensorData(xArr), gammaData: MPSGraphTensorData(gammaArr), betaData: MPSGraphTensorData(betaArr), wData: MPSGraphTensorData(wArr), bData: bArr != nil ? MPSGraphTensorData(bArr!) : nil,
+            pinnedGammaBeta: false, pinnedWB: false
         )
         cache[key] = rec
         return rec
@@ -152,10 +155,14 @@ public final class LNGeLUGemmCache {
         let rec = try buildIfNeeded(key: key)
         // Write inputs
         x.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.xArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
-        gamma.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.gammaArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
-        beta.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.betaArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
-        W.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.wArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
-        if let b = bias, let bArr = rec.bArr { b.data.withUnsafeBytes { raw in if let base = raw.baseAddress { bArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
+        if !rec.pinnedGammaBeta {
+            gamma.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.gammaArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
+            beta.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.betaArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
+        }
+        if !rec.pinnedWB {
+            W.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.wArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
+            if let b = bias, let bArr = rec.bArr { b.data.withUnsafeBytes { raw in if let base = raw.baseAddress { bArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
+        }
         // Execute
         // Inputs array must follow the same order as feeds in compile
         var inputsArray: [MPSGraphTensorData] = [rec.xData, rec.gammaData, rec.betaData, rec.wData]
@@ -165,6 +172,24 @@ public final class LNGeLUGemmCache {
         var host = [Float](repeating: 0, count: N * Out)
         host.withUnsafeMutableBytes { raw in if let base = raw.baseAddress { yTD.mpsndarray().readBytes(base, strideBytes: nil) } }
         return Tensor(shape: [N, Out], data: host)
+    }
+
+    // Pin weights for this specific key (N,D,Out,hasBias) to avoid re-upload in subsequent calls
+    public func pinForKey(N: Int, D: Int, Out: Int, hasBias: Bool, eps: Float, gamma: Tensor, beta: Tensor, W: Tensor, bias: Tensor?) {
+        let key = Key(N: N, D: D, Out: Out, hasBias: hasBias, eps: eps)
+        guard var rec = try? buildIfNeeded(key: key) else { return }
+        gamma.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.gammaArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
+        beta.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.betaArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
+        W.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.wArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
+        if let b = bias, let bArr = rec.bArr { b.data.withUnsafeBytes { raw in if let base = raw.baseAddress { bArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
+        rec.pinnedGammaBeta = true
+        rec.pinnedWB = true
+        cache[key] = rec
+    }
+
+    // Unpin all records (e.g., after optimizer step weights update)
+    public func unpinAll() {
+        for (k, var rec) in cache { rec.pinnedGammaBeta = false; rec.pinnedWB = false; cache[k] = rec }
     }
 }
 
@@ -275,6 +300,8 @@ public final class GeLUGemmCache {
         let xData: MPSGraphTensorData
         let wData: MPSGraphTensorData
         let bData: MPSGraphTensorData?
+        var pinnedW: Bool
+        var pinnedB: Bool
     }
 
     nonisolated(unsafe) public static let shared = GeLUGemmCache()
@@ -331,7 +358,8 @@ public final class GeLUGemmCache {
             graph: graph, executable: executable,
             xPH: xPH, wPH: wPH, bPH: bPH, yT: y,
             xArr: xArr, wArr: wArr, bArr: bArr,
-            xData: MPSGraphTensorData(xArr), wData: MPSGraphTensorData(wArr), bData: bArr != nil ? MPSGraphTensorData(bArr!) : nil
+            xData: MPSGraphTensorData(xArr), wData: MPSGraphTensorData(wArr), bData: bArr != nil ? MPSGraphTensorData(bArr!) : nil,
+            pinnedW: false, pinnedB: false
         )
         cache[key] = rec
         return rec
@@ -344,8 +372,8 @@ public final class GeLUGemmCache {
         let key = Key(N: x.shape[0], H: x.shape[1], Out: W.shape[0], hasBias: bias != nil)
         let rec = buildIfNeeded(key: key)
         x.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.xArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
-        W.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.wArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
-        if let b = bias, let bArr = rec.bArr { b.data.withUnsafeBytes { raw in if let base = raw.baseAddress { bArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
+        if !rec.pinnedW { W.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.wArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
+        if let b = bias, let bArr = rec.bArr, !rec.pinnedB { b.data.withUnsafeBytes { raw in if let base = raw.baseAddress { bArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
         var inputs: [MPSGraphTensorData] = [rec.xData, rec.wData]
         if let bData = rec.bData { inputs.append(bData) }
         let results = rec.executable.run(with: MPSGContext.shared.commandQueue, inputs: inputs, results: nil, executionDescriptor: nil)
@@ -354,5 +382,20 @@ public final class GeLUGemmCache {
         var host = [Float](repeating: 0, count: N * Out)
         host.withUnsafeMutableBytes { raw in if let base = raw.baseAddress { yTD.mpsndarray().readBytes(base, strideBytes: nil) } }
         return Tensor(shape: [N, Out], data: host)
+    }
+
+    public func pinForKey(N: Int, H: Int, Out: Int, W: Tensor, bias: Tensor?) {
+        let key = Key(N: N, H: H, Out: Out, hasBias: bias != nil)
+        let rec = buildIfNeeded(key: key)
+        var rec2 = rec
+        W.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec2.wArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
+        if let b = bias, let bArr = rec2.bArr { b.data.withUnsafeBytes { raw in if let base = raw.baseAddress { bArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
+        rec2.pinnedW = true
+        rec2.pinnedB = bias != nil
+        cache[key] = rec2
+    }
+
+    public func unpinAll() {
+        for (k, var rec) in cache { rec.pinnedW = false; rec.pinnedB = false; cache[k] = rec }
     }
 }

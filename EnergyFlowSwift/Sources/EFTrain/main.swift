@@ -236,6 +236,17 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     var lastCache: TextToCubeEncoder.LastTCNCache? = nil
                     var maskFixedLocal: [[Int]] = []
                     if args.unfreezeLastTCN {
+                        // Pin LN and conv2 weights in MPSGraph caches for this micro-batch (static shapes)
+                        let Nflat = (take) * modelCfg.maxLength
+                        let Denc = modelCfg.hiddenDim
+                        let Hhid = modelCfg.ffDim
+                        let Dout = modelCfg.hiddenDim
+                        let params = enc.getLastBlockParams()
+                        // Repack W2 [D,H,1] -> [D,H]
+                        var W2 = Tensor.zeros([Dout, Hhid])
+                        for o in 0..<Dout { for i2 in 0..<Hhid { W2.data[o * Hhid + i2] = params.w2.data[(o * Hhid + i2) * 1 + 0] } }
+                        LNGeLUGemmCache.shared.pinForKey(N: Nflat, D: Denc, Out: Dout, hasBias: params.b2 != nil, eps: 1e-5, gamma: params.gamma, beta: params.beta, W: W2, bias: params.b2)
+                        GeLUGemmCache.shared.pinForKey(N: Nflat, H: Hhid, Out: Dout, W: W2, bias: params.b2)
                         let res = enc.forwardForTrainingWithLastBlockCache(inputIDs: idsChunk, attentionMask: maskChunk)
                         pooled = res.pooled
                         out = res.out
@@ -332,6 +343,9 @@ guard let args = loadResolvedConfig() else { usage(); return }
                             lastPack = LastTCNGrads(dW1: aW1, dB1: dB1, dW2: aW2, dB2: dB2, dGamma: aG, dBeta: aBt)
                         }
                         optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: lastPack, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
+                        // Unpin graph caches after weights update
+                        LNGeLUGemmCache.shared.unpinAll()
+                        GeLUGemmCache.shared.unpinAll()
                         globalStep += 1
                         // Reset accumulators
                         accW = nil; accB = nil; stepCount = 0
@@ -403,6 +417,18 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
                     }
                     let (dW, dB) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
+                    // Pin LN and conv2 weights for this text micro-batch
+                    if args.unfreezeLastTCN {
+                        let Nflat = (take) * modelCfg.maxLength
+                        let Denc = modelCfg.hiddenDim
+                        let Hhid = modelCfg.ffDim
+                        let Dout = modelCfg.hiddenDim
+                        let params = enc.getLastBlockParams()
+                        var W2 = Tensor.zeros([Dout, Hhid])
+                        for o in 0..<Dout { for i2 in 0..<Hhid { W2.data[o * Hhid + i2] = params.w2.data[(o * Hhid + i2) * 1 + 0] } }
+                        LNGeLUGemmCache.shared.pinForKey(N: Nflat, D: Denc, Out: Dout, hasBias: params.b2 != nil, eps: 1e-5, gamma: params.gamma, beta: params.beta, W: W2, bias: params.b2)
+                        GeLUGemmCache.shared.pinForKey(N: Nflat, H: Hhid, Out: Dout, W: W2, bias: params.b2)
+                    }
                     // Upstream to encoder (text-mode)
                     if args.unfreezeLastTCN, let cache = lastCacheText {
                         do {
@@ -454,6 +480,9 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
                         logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)
                         optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: nil, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
+                        // Unpin caches post-update
+                        LNGeLUGemmCache.shared.unpinAll()
+                        GeLUGemmCache.shared.unpinAll()
                         globalStep += 1
                         let outPost = enc.projectOnly(pooled)
                         let msePost = Losses.mseRowwise(outPost, t)
