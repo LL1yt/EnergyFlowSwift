@@ -1,6 +1,5 @@
 import Foundation
 import EFCore
-import EnergyFlow
 
 // MARK: - KD Weights and Batch/Metric types
 

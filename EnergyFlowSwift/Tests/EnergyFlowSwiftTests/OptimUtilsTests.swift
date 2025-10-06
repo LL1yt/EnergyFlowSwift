@@ -20,8 +20,8 @@ final class OptimUtilsTests: XCTestCase {
     }
 
     func testGradClipGlobalL2() throws {
-        var t1 = Tensor(shape: [2], data: [3, 4]) // norm 5
-        var t2 = Tensor(shape: [1], data: [0])
+        let t1 = Tensor(shape: [2], data: [3, 4]) // norm 5
+        let t2 = Tensor(shape: [1], data: [0])
         var list = [t1, t2]
         let scale = GradClip.clipGlobalL2Norm(tensors: &list, maxNorm: 1)
         XCTAssertLessThan(scale, 1.0)

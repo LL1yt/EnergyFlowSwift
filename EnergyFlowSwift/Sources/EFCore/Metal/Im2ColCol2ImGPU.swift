@@ -1,6 +1,5 @@
 import Foundation
 import Metal
-import EFCore
 
 // GPU helpers for 1D causal dilated im2col/col2im using Metal compute shaders (float32)
 // Shapes:

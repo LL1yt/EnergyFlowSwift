@@ -28,7 +28,7 @@ public struct TCNBlock {
         let xFlat = x.reshaped([B * L, D])
         let normFlat = LNExecCache.shared.runForward(x: xFlat, gamma: ln.gamma, beta: ln.beta, eps: ln.eps)
         let norm = normFlat.reshaped([B, L, D])
-var h = conv1.forward(norm)         // [B,L,hidden]
+        let h = conv1.forward(norm)         // [B,L,hidden]
         // Try fused GELU+MatMul (conv2 1x1) via MPSGraph executable cache
         let N = B * L
         let hFlat = h.reshaped([N, hidden])
