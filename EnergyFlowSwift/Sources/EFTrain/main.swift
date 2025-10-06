@@ -2,123 +2,123 @@ import Foundation
 import EnergyFlow
 import EFCore
 
-struct TrainArgs {
+struct ResolvedTrainConfig {
     var dataPath: String
-    var batchSize: Int = 16
-    var maxLength: Int = 128
-    var maxBatches: Int = 100
-    var epochs: Int = 1
-    var lr: Float = 3e-4
-    var weightDecay: Float = 0.01
-    var alphaCos: Float = 1.0   // weight for (1 - cosine)
-    var betaMSE: Float = 1.0    // weight for MSE
-    var microBatch: Int = 32
-    var valFraction: Float = 0.1
-    var saveCheckpoint: String = ""   // path to save best checkpoint
-    var loadCheckpoint: String = ""   // path to load checkpoint
-    var accumSteps: Int = 1
+    var batchSize: Int
+    var maxLength: Int
+    var maxBatches: Int
+    var epochs: Int
+    var lr: Float
+    var weightDecay: Float
+    var alphaCos: Float   // weight for (1 - cosine)
+    var betaMSE: Float    // weight for MSE
+    var microBatch: Int
+    var valFraction: Float
+    var saveCheckpoint: String   // path to save best checkpoint
+    var loadCheckpoint: String   // path to load checkpoint
+    var accumSteps: Int
     // New training controls
-    var warmupSteps: Int = 0
-    var cosineDecaySteps: Int = 0
-    var minLR: Float = 0.0
-    var clipNorm: Float = 0.0
-    var saveOptState: String = ""
-    var loadOptState: String = ""
+    var warmupSteps: Int
+    var cosineDecaySteps: Int
+    var minLR: Float
+    var clipNorm: Float
+    var saveOptState: String
+    var loadOptState: String
     // Unfreeze controls
-    var unfreezeLastTCN: Bool = false
+    var unfreezeLastTCN: Bool
     // Central config
-    var configPath: String = ""
+    var configPath: String
 }
 
-func parseTrainArgs() -> TrainArgs? {
-    // Defaults may be overridden by config file, then environment EFTRAIN_*, then CLI flags
-    var a = TrainArgs(dataPath: "")
-    let env = ProcessInfo.processInfo.environment
-    func envInt(_ key: String, _ def: Int) -> Int { if let s = env[key], let v = Int(s) { return v } else { return def } }
-    func envFloat(_ key: String, _ def: Float) -> Float { if let s = env[key], let v = Float(s) { return v } else { return def } }
-    func envString(_ key: String, _ def: String = "") -> String { env[key] ?? def }
-    // Pre-scan CLI for --config path (so we can load file before parsing overrides)
+func loadResolvedConfig() -> ResolvedTrainConfig? {
+    // Config path: first positional arg or default
     let argv = Array(CommandLine.arguments.dropFirst())
-    if let idx = argv.firstIndex(of: "--config"), idx + 1 < argv.count {
-        let cpath = argv[idx + 1]
-        a.configPath = cpath
-        if let cfg = try? TrainConfig.load(path: cpath) {
-            var tmp = cfg
-            tmp.apply(to: &a)
-        }
+    let configPath = argv.first ?? "Configs/train_debug.json"
+    guard let c = try? TrainConfig.load(path: configPath) else {
+        print("EFTrain error: cannot load config file at \(configPath). Please create and fill it (see EnergyFlowSwift/Configs/train_debug.json).")
+        return nil
     }
-
-    // Environment overrides (selected keys)
-    if let s = env["EFTRAIN_UNFREEZE_LAST_TCN"] { a.unfreezeLastTCN = (s == "1" || s.lowercased() == "true" || s.lowercased() == "yes") }
-
-    // Then override by CLI flags
-    var it = CommandLine.arguments.dropFirst().makeIterator()
-    while let key = it.next() {
-        switch key {
-        case "--config": _ = it.next().map { a.configPath = $0 }
-        case "--data": if let v = it.next() { a.dataPath = v }
-        case "--batch-size": if let v = it.next(), let n = Int(v) { a.batchSize = n }
-        case "--max-length": if let v = it.next(), let n = Int(v) { a.maxLength = n }
-        case "--max-batches": if let v = it.next(), let n = Int(v) { a.maxBatches = n }
-        case "--epochs": if let v = it.next(), let n = Int(v) { a.epochs = n }
-        case "--lr": if let v = it.next(), let f = Float(v) { a.lr = f }
-        case "--weight-decay": if let v = it.next(), let f = Float(v) { a.weightDecay = f }
-        case "--micro-batch": if let v = it.next(), let n = Int(v) { a.microBatch = n }
-        case "--val-fraction": if let v = it.next(), let f = Float(v) { a.valFraction = f }
-        case "--save-checkpoint": if let v = it.next() { a.saveCheckpoint = v }
-        case "--load-checkpoint": if let v = it.next() { a.loadCheckpoint = v }
-        case "--accum-steps": if let v = it.next(), let n = Int(v) { a.accumSteps = max(1, n) }
-        case "--alpha-cos": if let v = it.next(), let f = Float(v) { a.alphaCos = f }
-        case "--beta-mse": if let v = it.next(), let f = Float(v) { a.betaMSE = f }
-        case "--unfreeze-last-tcn": a.unfreezeLastTCN = true
-        case "--warmup-steps": if let v = it.next(), let n = Int(v) { a.warmupSteps = max(0, n) }
-        case "--cosine-decay-steps": if let v = it.next(), let n = Int(v) { a.cosineDecaySteps = max(0, n) }
-        case "--min-lr": if let v = it.next(), let f = Float(v) { a.minLR = max(0, f) }
-        case "--clip-norm": if let v = it.next(), let f = Float(v) { a.clipNorm = max(0, f) }
-        case "--save-opt-state": if let v = it.next() { a.saveOptState = v }
-        case "--load-opt-state": if let v = it.next() { a.loadOptState = v }
-        case "-h", "--help": return nil
-        default: continue
-        }
+    // Strict validation: require all fields in the config
+    guard
+        let dataPath = c.dataPath,
+        let batchSize = c.batchSize,
+        let maxLength = c.maxLength,
+        let maxBatches = c.maxBatches,
+        let epochs = c.epochs,
+        let lr = c.lr,
+        let weightDecay = c.weightDecay,
+        let alphaCos = c.alphaCos,
+        let betaMSE = c.betaMSE,
+        let microBatch = c.microBatch,
+        let valFraction = c.valFraction,
+        let accumSteps = c.accumSteps,
+        let warmupSteps = c.warmupSteps,
+        let cosineDecaySteps = c.cosineDecaySteps,
+        let minLR = c.minLR,
+        let clipNorm = c.clipNorm,
+        let saveOptState = c.saveOptState,
+        let loadOptState = c.loadOptState,
+        let unfreezeLastTCN = c.unfreezeLastTCN
+    else {
+        print("EFTrain error: invalid config structure. Ensure all required fields are present. See sample: EnergyFlowSwift/Configs/train_debug.json")
+        return nil
     }
-    if a.dataPath.isEmpty { return nil }
-    return a
+    if dataPath.isEmpty {
+        print("EFTrain error: dataPath is empty in config file \(configPath).")
+        return nil
+    }
+    return ResolvedTrainConfig(
+        dataPath: dataPath,
+        batchSize: batchSize,
+        maxLength: maxLength,
+        maxBatches: maxBatches,
+        epochs: epochs,
+        lr: lr,
+        weightDecay: weightDecay,
+        alphaCos: alphaCos,
+        betaMSE: betaMSE,
+        microBatch: microBatch,
+        valFraction: valFraction,
+        saveCheckpoint: c.saveCheckpoint ?? "",
+        loadCheckpoint: c.loadCheckpoint ?? "",
+        accumSteps: accumSteps,
+        warmupSteps: warmupSteps,
+        cosineDecaySteps: cosineDecaySteps,
+        minLR: minLR,
+        clipNorm: clipNorm,
+        saveOptState: saveOptState,
+        loadOptState: loadOptState,
+        unfreezeLastTCN: unfreezeLastTCN,
+        configPath: configPath
+    )
 }
 
 func usage() {
-    print("Usage: EFTrain [--config path.json] --data /path/to/data.jsonl|.efb [--batch-size N] [--max-length N] [--max-batches N] [--epochs N] [--lr F] [--weight-decay F] [--micro-batch N] [--alpha-cos F] [--beta-mse F] [--val-fraction F] [--save-checkpoint path] [--load-checkpoint path] [--accum-steps N] [--warmup-steps N] [--cosine-decay-steps N] [--min-lr F] [--clip-norm F] [--save-opt-state path] [--load-opt-state path] [--unfreeze-last-tcn]\nPrecedence: config file < environment EFTRAIN_* < CLI flags. Set EFTRAIN_* to avoid typing flags.")
+    print("Usage: EFTrain [path/to/config.json]  (default: Configs/train_debug.json)")
 }
 
 func run() throws {
-    guard let args = parseTrainArgs() else { usage(); return }
+guard let args = loadResolvedConfig() else { usage(); return }
     var globalStep = 0
     let logger = Logger.shared
     logger.info("EFTrain start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength) epochs=\(args.epochs) alphaCos=\(args.alphaCos) betaMSE=\(args.betaMSE)", category: Logger.Category.dataset)
     
     let ds = try SimpleJSONLDataset(path: args.dataPath)
-    // Configure encoder; outputDim must match teacher dim
-    let cfg = TextToCubeEncoderConfig(
-        hiddenDim: 256,
+// Configure encoder; set only what differs from defaults
+    let modelCfg = TextToCubeEncoderConfig(
         maxLength: args.maxLength,
-        outputDim: ds.embeddingDim,
-        useTanhOutput: false,
-        tcnBlocks: 4,
-        kernelSize: 5,
-        dilationSchedule: [1,2,4,8],
-        ffDim: 512,
-        useGPUProjection: true,
-        baseSeed: 42
+        outputDim: ds.embeddingDim
     )
-    let enc = TextToCubeEncoder(modelConfig: cfg)
+    let enc = TextToCubeEncoder(modelConfig: modelCfg)
     
     // Load checkpoint if provided
     if !args.loadCheckpoint.isEmpty, let (wLoaded, bLoaded) = loadProjectionCheckpoint(path: args.loadCheckpoint) {
-        if wLoaded.shape == [cfg.outputDim, cfg.hiddenDim] {
+        if wLoaded.shape == [modelCfg.outputDim, modelCfg.hiddenDim] {
             enc.setProjParams(weight: wLoaded, bias: bLoaded)
             enc.invalidateProjectionCache()
             logger.info("loaded checkpoint: \(args.loadCheckpoint) W=\(wLoaded.prettyShape) B=\(bLoaded != nil)", category: Logger.Category.dataset)
         } else {
-            logger.warn("checkpoint shape mismatch: expected [\(cfg.outputDim), \(cfg.hiddenDim)] got \(wLoaded.prettyShape) — skipping load", category: Logger.Category.dataset)
+            logger.warn("checkpoint shape mismatch: expected [\(modelCfg.outputDim), \(modelCfg.hiddenDim)] got \(wLoaded.prettyShape) — skipping load", category: Logger.Category.dataset)
         }
     }
     
@@ -167,7 +167,7 @@ func run() throws {
     
     for epoch in 0..<args.epochs {
         logger.info("epoch=\(epoch+1)/\(args.epochs)", category: Logger.Category.dataset)
-        var batchIdx = 0
+        
         var seen = 0
         var totalMSE: Double = 0
         var totalCos: Double = 0
@@ -254,8 +254,8 @@ func run() throws {
                     // Optional: upstream to encoder for future unfreeze (token-mode only)
                     do {
                         let dXin = try enc.projectionInputGradientsGPU(dY: dY)
-                        let maskFixed = args.unfreezeLastTCN ? maskFixedLocal : padOrTruncateMask(maskChunk, cfg.maxLength)
-                        let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixed, seqLen: cfg.maxLength)
+                        let maskFixed = args.unfreezeLastTCN ? maskFixedLocal : padOrTruncateMask(maskChunk, modelCfg.maxLength)
+                        let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixed, seqLen: modelCfg.maxLength)
                         // Log gradient norms for sanity
                         var norm2: Float = 0
                         for v in dEnc.data { norm2 += v*v }
@@ -293,7 +293,7 @@ func run() throws {
                             // GELU backward
                             let dH1 = dGELU(x: cache.h1, upstream: dX2)
                             // Conv1 backward
-                            let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: cfg.kernelSize == 1 ? 1 : (cfg.dilationSchedule.last ?? 1))
+                            let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: modelCfg.kernelSize == 1 ? 1 : (modelCfg.dilationSchedule.last ?? 1))
                             // LN backward
                             let Bf = cache.xIn.shape[0]; let Lf = cache.xIn.shape[1]; let Df = cache.xIn.shape[2]
                             let gNormFlat = conv1.dX.reshaped([Bf * Lf, Df])
@@ -386,6 +386,8 @@ func run() throws {
                                 let betaNew = paramsCopy[idxTail]; idxTail += 1
                                 enc.setLastBlockParams(w1: w1New, b1: b1New, w2: w2New, b2: b2New, gamma: gammaNew, beta: betaNew)
                                 enc.invalidateLastBlockCaches()
+                                // Reset last-block accumulators after step (token-mode)
+                                accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil
                             }
                         }
                         // Post-update metrics using project-only
@@ -409,6 +411,13 @@ func run() throws {
                 var stepCount = 0
                 var accW: Tensor? = nil
                 var accB: Tensor? = nil
+                // Last TCN block accumulators (mirror token-mode)
+                var accLastW1: Tensor? = nil
+                var accLastB1: Tensor? = nil
+                var accLastW2: Tensor? = nil
+                var accLastB2: Tensor? = nil
+                var accGamma: Tensor? = nil
+                var accBeta: Tensor? = nil
                 for _ in 0..<numChunks {
                     let take = min(micro, B - offset)
                     let txtChunk = Array(texts[offset..<(offset+take)])
@@ -452,7 +461,7 @@ func run() throws {
                     if args.unfreezeLastTCN, let cache = lastCacheText {
                         do {
                             let dXin = try enc.projectionInputGradientsGPU(dY: dY)
-                            let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixedText, seqLen: cfg.maxLength)
+                            let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixedText, seqLen: modelCfg.maxLength)
                             var norm2: Float = 0
                             for v in dEnc.data { norm2 += v*v }
                             let gnorm = sqrt(norm2)
@@ -482,7 +491,7 @@ func run() throws {
                             let dX2f = try gl.inputGradientsGPU(dY: dYf)
                             let dX2 = dX2f.reshaped([Bc, Lc, Hc])
                             let dH1 = dGELU(x: cache.h1, upstream: dX2)
-                            let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: cfg.kernelSize == 1 ? 1 : (cfg.dilationSchedule.last ?? 1))
+                            let conv1 = Conv1DGrad.backward(X: cache.norm, W: params.w1, dY: dH1, dilation: modelCfg.kernelSize == 1 ? 1 : (modelCfg.dilationSchedule.last ?? 1))
                             let Bf = cache.xIn.shape[0]; let Lf = cache.xIn.shape[1]; let Df = cache.xIn.shape[2]
                             let gNormFlat = conv1.dX.reshaped([Bf * Lf, Df])
                             let xFlat = cache.xIn.reshaped([Bf * Lf, Df])
@@ -529,6 +538,20 @@ func run() throws {
                         var params: [Tensor] = [projW]
                         var grads: [Tensor] = [gW]
                         if let bT = projB { params.append(bT); grads.append(gB) }
+                        // If unfreezing last TCN, include its grads in update (mirror token-mode)
+                        if args.unfreezeLastTCN {
+                            if let aW1 = accLastW1 { var g = aW1; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().w1); grads.append(g) }
+                            if let aB1 = accLastB1, aB1.count > 0 { var g = aB1; for i in 0..<g.count { g.data[i] *= scale }; if let b1p = enc.getLastBlockParams().b1 { params.append(b1p); grads.append(g) } }
+                            if let aW2 = accLastW2 { var g = aW2; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().w2); grads.append(g) }
+                            if let aB2 = accLastB2, aB2.count > 0 { var g = aB2; for i in 0..<g.count { g.data[i] *= scale }; if let b2p = enc.getLastBlockParams().b2 { params.append(b2p); grads.append(g) } }
+                            if let aG = accGamma { var g = aG; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().gamma); grads.append(g) }
+                            if let aBt = accBeta { var g = aBt; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().beta); grads.append(g) }
+                            if args.clipNorm > 0 {
+                                var list = grads
+                                _ = GradClip.clipGlobalL2Norm(tensors: &list, maxNorm: args.clipNorm, eps: 1e-6)
+                                grads = list
+                            }
+                        }
                         // LR schedule (warmup + cosine)
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
                         if lrNow != opt.lr { opt.lr = lrNow }
@@ -540,11 +563,30 @@ func run() throws {
                         let newB = (projB != nil) ? paramsCopy[1] : nil
                         enc.setProjParams(weight: newW, bias: newB)
                         enc.invalidateProjectionCache()
+                        if args.unfreezeLastTCN {
+                            // After step, reload last block params from paramsCopy tail in same order as added
+                            var idxTail = 1 + (projB != nil ? 1 : 0)
+                            if let _ = accLastW1 {
+                                let w1New = paramsCopy[idxTail]; idxTail += 1
+                                var b1New: Tensor? = nil
+                                if let aB1 = accLastB1, aB1.count > 0 { b1New = paramsCopy[idxTail]; idxTail += 1 }
+                                let w2New = paramsCopy[idxTail]; idxTail += 1
+                                var b2New: Tensor? = nil
+                                if let aB2 = accLastB2, aB2.count > 0 { b2New = paramsCopy[idxTail]; idxTail += 1 }
+                                let gammaNew = paramsCopy[idxTail]; idxTail += 1
+                                let betaNew = paramsCopy[idxTail]; idxTail += 1
+                                enc.setLastBlockParams(w1: w1New, b1: b1New, w2: w2New, b2: b2New, gamma: gammaNew, beta: betaNew)
+                                enc.invalidateLastBlockCaches()
+                            }
+                        }
                         let outPost = enc.projectOnly(pooled)
                         let msePost = Losses.mseRowwise(outPost, t)
                         let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
                         logger.info(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
                         accW = nil; accB = nil; stepCount = 0
+                        if args.unfreezeLastTCN {
+                            accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil
+                        }
                     }
                     offset += take
                 }
@@ -577,149 +619,4 @@ func run() throws {
         }
     }
     
-    // MARK: - Evaluation helper
-    func evaluate(enc: TextToCubeEncoder, samples: [JSONLSample], batchSize: Int, microBatch: Int, maxLen: Int) -> (Double, Double) {
-        var ptr = 0
-        var totalMSE: Double = 0
-        var totalCos: Double = 0
-        var seen = 0
-        while ptr < samples.count {
-            let end = min(ptr + batchSize, samples.count)
-            let slice = Array(samples[ptr..<end])
-            ptr = end
-            let hasTokens = slice.allSatisfy { $0.inputIDs != nil && $0.attentionMask != nil }
-            if hasTokens {
-                var ids: [[Int]] = []
-                var mask: [[Int]] = []
-                var tgts: [[Float]] = []
-                for s in slice { ids.append(s.inputIDs!); mask.append(s.attentionMask!); tgts.append(s.target) }
-                let B = ids.count
-                let micro = microBatch > 0 ? microBatch : B
-                var offset = 0
-                let numChunks = (B + micro - 1) / micro
-                for _ in 0..<numChunks {
-                    let take = min(micro, B - offset)
-                    let idsChunk = Array(ids[offset..<(offset+take)])
-                    let maskChunk = Array(mask[offset..<(offset+take)])
-                    let tgtChunk = Array(tgts[offset..<(offset+take)])
-                    let out = enc.encodeTokens(inputIDs: idsChunk, attentionMask: maskChunk)
-                    let b = out.shape[0]; let d = out.shape[1]
-                    var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
-                    for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
-                    let m = batchMSE(pred, tgtChunk)
-                    let c = batchCosine(pred, tgtChunk)
-                    totalMSE += Double(m) * Double(b)
-                    totalCos += Double(c) * Double(b)
-                    seen += b
-                    offset += take
-                }
-            } else {
-                let texts = slice.map { $0.text ?? "" }
-                let tgts = slice.map { $0.target }
-                let B = texts.count
-                let micro = microBatch > 0 ? microBatch : B
-                var offset = 0
-                let numChunks = (B + micro - 1) / micro
-                for _ in 0..<numChunks {
-                    let take = min(micro, B - offset)
-                    let txtChunk = Array(texts[offset..<(offset+take)])
-                    let tgtChunk = Array(tgts[offset..<(offset+take)])
-                    let out = enc.encode(txtChunk)
-                    let b = out.shape[0]; let d = out.shape[1]
-                    var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
-                    for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
-                    let m = batchMSE(pred, tgtChunk)
-                    let c = batchCosine(pred, tgtChunk)
-                    totalMSE += Double(m) * Double(b)
-                    totalCos += Double(c) * Double(b)
-                    seen += b
-                    offset += take
-                }
-            }
-        }
-        let avgMSE = seen > 0 ? totalMSE / Double(seen) : 0
-        let avgCos = seen > 0 ? totalCos / Double(seen) : 0
-        return (avgMSE, avgCos)
-    }
-    
-    // reuse utilities from EFTextEval
-    func batchMSE(_ y: [[Float]], _ t: [[Float]]) -> Float {
-        precondition(y.count == t.count)
-        var acc: Float = 0
-        for i in 0..<y.count { acc += mse(y[i], t[i]) }
-        return acc / Float(max(y.count, 1))
-    }
-    func mse(_ y: [Float], _ t: [Float]) -> Float {
-        precondition(y.count == t.count)
-        var acc: Float = 0
-        for i in 0..<y.count { let d = y[i] - t[i]; acc += d*d }
-        return acc / Float(y.count)
-    }
-    func cosine(_ a: [Float], _ b: [Float]) -> Float {
-        precondition(a.count == b.count)
-        var dot: Float = 0
-        var na: Float = 0
-        var nb: Float = 0
-        for i in 0..<a.count { dot += a[i] * b[i]; na += a[i]*a[i]; nb += b[i]*b[i] }
-        let denom = sqrt(max(na, 1e-12)) * sqrt(max(nb, 1e-12))
-        return denom > 0 ? dot / denom : 0
-    }
-    func batchCosine(_ y: [[Float]], _ t: [[Float]]) -> Float {
-        precondition(y.count == t.count)
-        var acc: Float = 0
-        for i in 0..<y.count { acc += cosine(y[i], t[i]) }
-        return acc / Float(max(y.count, 1))
-    }
-    
-    // MARK: - Checkpoint I/O (projection-only)
-    func saveProjectionCheckpoint(path: String, weight: Tensor, bias: Tensor?) {
-        let url = URL(fileURLWithPath: path)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        var data = Data()
-        // magic
-        data.append(contentsOf: [0x45, 0x46, 0x43, 0x4B, 0x31]) // "EFCK1"
-        func putU32(_ v: UInt32) { var le = v.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
-        func putF32(_ v: Float) { var le = v.bitPattern.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
-        putU32(UInt32(weight.shape[0]))
-        putU32(UInt32(weight.shape[1]))
-        putU32(UInt32(bias != nil ? 1 : 0))
-        for v in weight.data { putF32(v) }
-        if let b = bias { for v in b.data { putF32(v) } }
-        try? data.write(to: url)
-    }
-    
-    func loadProjectionCheckpoint(path: String) -> (Tensor, Tensor?)? {
-        let url = URL(fileURLWithPath: path)
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        var idx = 0
-        func getU8() -> UInt8 { defer { idx += 1 }; return data[idx] }
-        guard idx + 5 <= data.count else { return nil }
-        // magic "EFCK1"
-        if getU8() != 0x45 || getU8() != 0x46 || getU8() != 0x43 || getU8() != 0x4B || getU8() != 0x31 { return nil }
-        func getU32() -> UInt32 { defer { idx += 4 }; return data[idx..<(idx+4)].withUnsafeBytes { $0.load(as: UInt32.self) }.littleEndian }
-        func getF32() -> Float { defer { idx += 4 }; let u = data[idx..<(idx+4)].withUnsafeBytes { $0.load(as: UInt32.self) }.littleEndian; return Float(bitPattern: u) }
-        let out = Int(getU32())
-        let inf = Int(getU32())
-        let hasB = getU32() != 0
-        let wCount = out * inf
-        if idx + 4 * wCount > data.count { return nil }
-        var wHost = [Float](repeating: 0, count: wCount)
-        for i in 0..<wCount { wHost[i] = getF32() }
-        let weight = Tensor(shape: [out, inf], data: wHost)
-        var bias: Tensor? = nil
-        if hasB {
-            if idx + 4 * out > data.count { return nil }
-            var bHost = [Float](repeating: 0, count: out)
-            for i in 0..<out { bHost[i] = getF32() }
-            bias = Tensor(shape: [out], data: bHost)
-        }
-        return (weight, bias)
-    }
-}
-
-do {
-    try run()
-} catch {
-    Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
-    exit(1)
 }

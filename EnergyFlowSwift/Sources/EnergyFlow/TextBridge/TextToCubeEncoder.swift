@@ -112,12 +112,12 @@ public final class TextToCubeEncoder {
             }
         }
         // Last block with caches
-        var last = tcnEncoder.blocks[nb - 1]
+        let last = tcnEncoder.blocks[nb - 1]
         // LN on [B*L, D]
         let xFlat = x.reshaped([B * L, D])
         let normFlat = last.ln.forward(xFlat)
         let norm = normFlat.reshaped([B, L, D])
-        var h1 = last.conv1.forward(norm)
+        let h1 = last.conv1.forward(norm)
         let h1a = Activations.gelu(h1)
         var y = last.conv2.forward(h1a)
         // Residual
