@@ -42,9 +42,8 @@ public enum Im2ColCol2ImGPU {
         let outCount = rows * colsX
         let inCount = B * L * Cin
         let elem = MemoryLayout<Float>.size
-        guard let inBuf = ctx.device.makeBuffer(length: inCount * elem, options: .storageModeShared),
-              let outBuf = ctx.device.makeBuffer(length: outCount * elem, options: .storageModeShared)
-        else { throw MPSGError.commandBufferFailed }
+        let inBuf = BufferPool.buffer(device: ctx.device, length: inCount * elem, label: "im2col.in")
+        let outBuf = BufferPool.buffer(device: ctx.device, length: outCount * elem, label: "im2col.out")
         // Copy X to GPU
         X.data.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(inBuf.contents(), base, inCount * elem) } }
         memset(outBuf.contents(), 0, outCount * elem)
@@ -81,9 +80,8 @@ public enum Im2ColCol2ImGPU {
         let inCount = rows * colsX
         let outCount = B * L * Cin
         let elem = MemoryLayout<Float>.size
-        guard let inBuf = ctx.device.makeBuffer(length: inCount * elem, options: .storageModeShared),
-              let outBuf = ctx.device.makeBuffer(length: outCount * elem, options: .storageModeShared)
-        else { throw MPSGError.commandBufferFailed }
+        let inBuf = BufferPool.buffer(device: ctx.device, length: inCount * elem, label: "col2im.in")
+        let outBuf = BufferPool.buffer(device: ctx.device, length: outCount * elem, label: "col2im.out")
         dXcol.data.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(inBuf.contents(), base, inCount * elem) } }
         memset(outBuf.contents(), 0, outCount * elem)
         guard let enc = cmd.makeComputeCommandEncoder() else { throw MPSGError.commandBufferFailed }

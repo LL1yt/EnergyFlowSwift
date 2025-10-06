@@ -45,10 +45,9 @@ public struct GraphLinear {
         let colsR = inFeatures     // X cols
         let rowsY = outFeatures
         let colsY = inFeatures
-        guard let lBuf = device.makeBuffer(length: rowsL * colsL * elemH, options: .storageModeShared),
-              let rBuf = device.makeBuffer(length: rowsR * colsR * elemH, options: .storageModeShared),
-              let yBuf = device.makeBuffer(length: rowsY * colsY * elemH, options: .storageModeShared)
-        else { throw MPSGError.commandBufferFailed }
+        let lBuf = BufferPool.buffer(device: device, length: rowsL * colsL * elemH, label: "GraphLinear.grad.L")
+        let rBuf = BufferPool.buffer(device: device, length: rowsR * colsR * elemH, label: "GraphLinear.grad.R")
+        let yBuf = BufferPool.buffer(device: device, length: rowsY * colsY * elemH, label: "GraphLinear.grad.Y")
         // Pack dY^T (Out x B) and X (B x In) into Float16
         var lHalf = [Float16](repeating: 0, count: rowsL * colsL)
         for b in 0..<B {
@@ -134,9 +133,8 @@ public struct GraphLinear {
         guard let wBuf = wBufFP16 else { throw MPSGError.commandBufferFailed }
 
         // Allocate and fill x in FP16
-        guard let xBuf = ctx.device.makeBuffer(length: xCount * elemSizeH, options: .storageModeShared),
-              let yBuf = ctx.device.makeBuffer(length: yCount * elemSizeH, options: .storageModeShared)
-        else { throw MPSGError.commandBufferFailed }
+        let xBuf = BufferPool.buffer(device: ctx.device, length: xCount * elemSizeH, label: "GraphLinear.fwd.X")
+        let yBuf = BufferPool.buffer(device: ctx.device, length: yCount * elemSizeH, label: "GraphLinear.fwd.Y")
         var xHalf = [Float16](repeating: 0, count: xCount)
         for i in 0..<xCount { xHalf[i] = Float16(x.data[i]) }
         xHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(xBuf.contents(), base, xCount * elemSizeH) } }
@@ -202,9 +200,8 @@ public struct GraphLinear {
         // Allocate buffers for dY and dX (FP16)
         let dyCount = B * outFeatures
         let dxCount = B * inFeatures
-        guard let dyBuf = device.makeBuffer(length: dyCount * elemH, options: .storageModeShared),
-              let dxBuf = device.makeBuffer(length: dxCount * elemH, options: .storageModeShared)
-        else { throw MPSGError.commandBufferFailed }
+        let dyBuf = BufferPool.buffer(device: device, length: dyCount * elemH, label: "GraphLinear.dX.DY")
+        let dxBuf = BufferPool.buffer(device: device, length: dxCount * elemH, label: "GraphLinear.dX.DX")
         var dyHalf = [Float16](repeating: 0, count: dyCount)
         for i in 0..<dyCount { dyHalf[i] = Float16(dY.data[i]) }
         dyHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(dyBuf.contents(), base, dyCount * elemH) } }
