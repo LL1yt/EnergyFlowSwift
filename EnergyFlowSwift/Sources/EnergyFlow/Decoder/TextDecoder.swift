@@ -7,21 +7,20 @@ import PyTorchSwift
 public final class TextDecoder {
     public let config: TextDecoderConfig
     private var embedding: Embedding
-    private var blocks: [TCNBlock]
+    private var stack: TCNStack
     private var condProj: GraphLinear   // z -> [dim]
     private var outProj: GraphLinear    // dim -> [vocab]
 
     public init(config: TextDecoderConfig, seed: UInt64 = 1234) {
         self.config = config
         self.embedding = Embedding(vocabSize: config.vocabSize, embeddingDim: config.dim, seed: Seed.derive(seed, label: "dec.embed"))
-        // Build causal TCN blocks
-        self.blocks = []
-        self.blocks.reserveCapacity(config.nBlocks)
-        for i in 0..<config.nBlocks {
-            let dil = i < config.dilationSchedule.count ? config.dilationSchedule[i] : 1
-            let blkSeed = Seed.derive(seed, label: "dec.tcn.\(i)")
-            blocks.append(TCNBlock(dim: config.dim, hidden: config.hidden, kernelSize: config.kernelSize, dilation: dil, seed: blkSeed))
-        }
+        // Build causal TCN stack (shared-type blocks)
+        self.stack = TCNStack(numBlocks: config.nBlocks,
+                              dim: config.dim,
+                              hidden: config.hidden,
+                              kernelSize: config.kernelSize,
+                              dilationSchedule: config.dilationSchedule,
+                              seed: seed)
         self.condProj = GraphLinear(inFeatures: config.dim, outFeatures: config.dim, bias: true, seed: Seed.derive(seed, label: "dec.cond"))
         self.outProj = GraphLinear(inFeatures: config.dim, outFeatures: config.vocabSize, bias: true, seed: Seed.derive(seed, label: "dec.out"))
     }
@@ -44,9 +43,8 @@ public final class TextDecoder {
             for d in 0..<config.dim { x.data[baseX + d] += cond.data[baseC + d] }
         } }
         // 3) Causal TCN blocks
-        var y = x
         let maskFull: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
-        for blk in blocks { y = blk.forward(y, mask: maskFull) }
+        let y = stack.forward(x, mask: maskFull)
         // 4) Vocab projection per time-step: reshape to [B*L, dim] -> [B*L, V]
         let flat = y.reshaped([B * L, config.dim])
         var oproj = outProj
