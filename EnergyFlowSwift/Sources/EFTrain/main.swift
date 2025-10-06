@@ -322,64 +322,20 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         let scale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
                         var gW = accW!
                         var gB = accB!
-                        for i in 0..<gW.count { gW.data[i] *= scale }
-                        for i in 0..<gB.count { gB.data[i] *= scale }
-                        // Gradient clipping (global L2)
-                        if args.clipNorm > 0 {
-                            var gradList: [Tensor] = [gW]
-                            if gB.count > 0 { gradList.append(gB) }
-                            _ = GradClip.clipGlobalL2Norm(tensors: &gradList, maxNorm: args.clipNorm, eps: 1e-6)
-                            gW = gradList[0]
-                            if gradList.count > 1 { gB = gradList[1] }
-                        }
-                        // Param list and LR scheduling
-                        let (projW, projB) = enc.getProjParams()
-                        var params: [Tensor] = [projW]
-                        var grads: [Tensor] = [gW]
-                        if let bT = projB { params.append(bT); grads.append(gB) }
-                        if args.unfreezeLastTCN {
-                            // Average last-block grads and optionally clip
-                            if let aW1 = accLastW1 { var g = aW1; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().w1); grads.append(g) }
-                            if let aB1 = accLastB1, aB1.count > 0 { var g = aB1; for i in 0..<g.count { g.data[i] *= scale }; if let b1p = enc.getLastBlockParams().b1 { params.append(b1p); grads.append(g) } }
-                            if let aW2 = accLastW2 { var g = aW2; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().w2); grads.append(g) }
-                            if let aB2 = accLastB2, aB2.count > 0 { var g = aB2; for i in 0..<g.count { g.data[i] *= scale }; if let b2p = enc.getLastBlockParams().b2 { params.append(b2p); grads.append(g) } }
-                            if let aG = accGamma { var g = aG; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().gamma); grads.append(g) }
-                            if let aBt = accBeta { var g = aBt; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().beta); grads.append(g) }
-                            if args.clipNorm > 0 {
-                                var list = grads
-                                _ = GradClip.clipGlobalL2Norm(tensors: &list, maxNorm: args.clipNorm, eps: 1e-6)
-                                grads = list
-                            }
-                        }
                         // LR schedule (warmup + cosine)
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
-                        if lrNow != opt.lr { opt.lr = lrNow }
-                        logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, opt.lr), category: Logger.Category.training)
-                        var paramsCopy = params
-                        opt.step(params: &paramsCopy, grads: grads)
-                        globalStep += 1
-                        let newW = paramsCopy[0]
-                        let newB = (projB != nil) ? paramsCopy[1] : nil
-                        enc.setProjParams(weight: newW, bias: newB)
-                        enc.invalidateProjectionCache()
-                        if args.unfreezeLastTCN {
-                            // After step, reload last block params from paramsCopy tail in same order as added
-                            var idxTail = 1 + (projB != nil ? 1 : 0)
-                            if let _ = accLastW1 {
-                                let w1New = paramsCopy[idxTail]; idxTail += 1
-                                var b1New: Tensor? = nil
-                                if let aB1 = accLastB1, aB1.count > 0 { b1New = paramsCopy[idxTail]; idxTail += 1 }
-                                let w2New = paramsCopy[idxTail]; idxTail += 1
-                                var b2New: Tensor? = nil
-                                if let aB2 = accLastB2, aB2.count > 0 { b2New = paramsCopy[idxTail]; idxTail += 1 }
-                                let gammaNew = paramsCopy[idxTail]; idxTail += 1
-                                let betaNew = paramsCopy[idxTail]; idxTail += 1
-                                enc.setLastBlockParams(w1: w1New, b1: b1New, w2: w2New, b2: b2New, gamma: gammaNew, beta: betaNew)
-                                enc.invalidateLastBlockCaches()
-                                // Reset last-block accumulators after step (token-mode)
-                                accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil
-                            }
+                        logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)
+                        var lastPack: LastTCNGrads? = nil
+                        if args.unfreezeLastTCN, let aW1 = accLastW1, let aW2 = accLastW2, let aG = accGamma, let aBt = accBeta {
+                            let dB1 = (accLastB1 != nil && accLastB1!.count > 0) ? accLastB1 : nil
+                            let dB2 = (accLastB2 != nil && accLastB2!.count > 0) ? accLastB2 : nil
+                            lastPack = LastTCNGrads(dW1: aW1, dB1: dB1, dW2: aW2, dB2: dB2, dGamma: aG, dBeta: aBt)
                         }
+                        optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: lastPack, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
+                        globalStep += 1
+                        // Reset accumulators
+                        accW = nil; accB = nil; stepCount = 0
+                        if args.unfreezeLastTCN { accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil }
                         // Post-update metrics using project-only
                         let outPost = enc.projectOnly(pooled)
                         let msePost = Losses.mseRowwise(outPost, t)
@@ -494,69 +450,16 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         let scale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
                         var gW = accW!
                         var gB = accB!
-                        for i in 0..<gW.count { gW.data[i] *= scale }
-                        for i in 0..<gB.count { gB.data[i] *= scale }
-                        // Gradient clipping (global L2)
-                        if args.clipNorm > 0 {
-                            var gradList: [Tensor] = [gW]
-                            if gB.count > 0 { gradList.append(gB) }
-                            _ = GradClip.clipGlobalL2Norm(tensors: &gradList, maxNorm: args.clipNorm, eps: 1e-6)
-                            gW = gradList[0]
-                            if gradList.count > 1 { gB = gradList[1] }
-                        }
-                        let (projW, projB) = enc.getProjParams()
-                        var params: [Tensor] = [projW]
-                        var grads: [Tensor] = [gW]
-                        if let bT = projB { params.append(bT); grads.append(gB) }
-                        // If unfreezing last TCN, include its grads in update (mirror token-mode)
-                        if args.unfreezeLastTCN {
-                            if let aW1 = accLastW1 { var g = aW1; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().w1); grads.append(g) }
-                            if let aB1 = accLastB1, aB1.count > 0 { var g = aB1; for i in 0..<g.count { g.data[i] *= scale }; if let b1p = enc.getLastBlockParams().b1 { params.append(b1p); grads.append(g) } }
-                            if let aW2 = accLastW2 { var g = aW2; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().w2); grads.append(g) }
-                            if let aB2 = accLastB2, aB2.count > 0 { var g = aB2; for i in 0..<g.count { g.data[i] *= scale }; if let b2p = enc.getLastBlockParams().b2 { params.append(b2p); grads.append(g) } }
-                            if let aG = accGamma { var g = aG; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().gamma); grads.append(g) }
-                            if let aBt = accBeta { var g = aBt; for i in 0..<g.count { g.data[i] *= scale }; params.append(enc.getLastBlockParams().beta); grads.append(g) }
-                            if args.clipNorm > 0 {
-                                var list = grads
-                                _ = GradClip.clipGlobalL2Norm(tensors: &list, maxNorm: args.clipNorm, eps: 1e-6)
-                                grads = list
-                            }
-                        }
                         // LR schedule (warmup + cosine)
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
-                        if lrNow != opt.lr { opt.lr = lrNow }
-                        logger.info(String(format: "opt step=%d lr=%.6g", globalStep, opt.lr), category: Logger.Category.training)
-                        var paramsCopy = params
-                        opt.step(params: &paramsCopy, grads: grads)
+                        logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)
+                        optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: nil, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
                         globalStep += 1
-                        let newW = paramsCopy[0]
-                        let newB = (projB != nil) ? paramsCopy[1] : nil
-                        enc.setProjParams(weight: newW, bias: newB)
-                        enc.invalidateProjectionCache()
-                        if args.unfreezeLastTCN {
-                            // After step, reload last block params from paramsCopy tail in same order as added
-                            var idxTail = 1 + (projB != nil ? 1 : 0)
-                            if let _ = accLastW1 {
-                                let w1New = paramsCopy[idxTail]; idxTail += 1
-                                var b1New: Tensor? = nil
-                                if let aB1 = accLastB1, aB1.count > 0 { b1New = paramsCopy[idxTail]; idxTail += 1 }
-                                let w2New = paramsCopy[idxTail]; idxTail += 1
-                                var b2New: Tensor? = nil
-                                if let aB2 = accLastB2, aB2.count > 0 { b2New = paramsCopy[idxTail]; idxTail += 1 }
-                                let gammaNew = paramsCopy[idxTail]; idxTail += 1
-                                let betaNew = paramsCopy[idxTail]; idxTail += 1
-                                enc.setLastBlockParams(w1: w1New, b1: b1New, w2: w2New, b2: b2New, gamma: gammaNew, beta: betaNew)
-                                enc.invalidateLastBlockCaches()
-                            }
-                        }
                         let outPost = enc.projectOnly(pooled)
                         let msePost = Losses.mseRowwise(outPost, t)
                         let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
-                        logger.info(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
+                        logger.debug(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
                         accW = nil; accB = nil; stepCount = 0
-                        if args.unfreezeLastTCN {
-                            accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil
-                        }
                     }
                     offset += take
                 }

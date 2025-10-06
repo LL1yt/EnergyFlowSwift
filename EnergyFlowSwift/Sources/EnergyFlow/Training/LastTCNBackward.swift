@@ -20,6 +20,9 @@ public struct LastTCNGrads {
     public var dB2: Tensor?
     public var dGamma: Tensor
     public var dBeta: Tensor
+    public init(dW1: Tensor, dB1: Tensor?, dW2: Tensor, dB2: Tensor?, dGamma: Tensor, dBeta: Tensor) {
+        self.dW1 = dW1; self.dB1 = dB1; self.dW2 = dW2; self.dB2 = dB2; self.dGamma = dGamma; self.dBeta = dBeta
+    }
 }
 
 // Backward for last TCN block.
