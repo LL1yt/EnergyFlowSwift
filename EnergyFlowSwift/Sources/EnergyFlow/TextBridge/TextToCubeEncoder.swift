@@ -10,8 +10,8 @@ public final class TextToCubeEncoder {
 
     private var embedding: Embedding
 
-    // TCN encoder (roadmap)
-    private var tcnEncoder: TCNEncoder
+    // Shared TCN stack (encoder/decoder trunk)
+    private var tcnStack: TCNStack
 
     // GPU projection (FP16)
     private var gpuProj: GraphLinear
@@ -26,12 +26,12 @@ public final class TextToCubeEncoder {
         // Seeds per module
         let seedEmbed = Seed.derive(modelConfig.baseSeed, label: "embedding")
         self.embedding = Embedding(vocabSize: vocabSize, embeddingDim: modelConfig.hiddenDim, seed: seedEmbed)
-        self.tcnEncoder = TCNEncoder(numBlocks: modelConfig.tcnBlocks,
-                                     dim: modelConfig.hiddenDim,
-                                     hidden: modelConfig.ffDim,
-                                     kernelSize: modelConfig.kernelSize,
-                                     dilationSchedule: modelConfig.dilationSchedule,
-                                     seed: Seed.derive(modelConfig.baseSeed, label: "tcn"))
+        self.tcnStack = TCNStack(numBlocks: modelConfig.tcnBlocks,
+                                  dim: modelConfig.hiddenDim,
+                                  hidden: modelConfig.ffDim,
+                                  kernelSize: modelConfig.kernelSize,
+                                  dilationSchedule: modelConfig.dilationSchedule,
+                                  seed: Seed.derive(modelConfig.baseSeed, label: "tcn"))
         self.gpuProj = GraphLinear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.outputDim, bias: true, seed: Seed.derive(modelConfig.baseSeed, label: "gpu_proj"))
     }
 
@@ -55,8 +55,8 @@ public final class TextToCubeEncoder {
         // 1) Embedding [B,L,hidden]
         let embs = embedding.forward(ids: idsFixed)
         logger.debug("embeddings: \(embs.prettyShape)", category: Logger.Category.textBridge)
-        // 2) TCN encoder
-        let enc = tcnEncoder.forward(embs, mask: maskFixed)
+        // 2) TCN encoder (shared stack)
+        let enc = tcnStack.forward(embs, mask: maskFixed)
         // 3) Masked-avg over sequence -> [B, hidden]
         let pooled = maskedMean(enc, mask: maskFixed)
         logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
@@ -78,7 +78,7 @@ public final class TextToCubeEncoder {
     public func forwardForTraining(inputIDs: [[Int]], attentionMask: [[Int]]) -> (pooled: Tensor, out: Tensor) {
         let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
         let embs = embedding.forward(ids: idsFixed)
-        let enc = tcnEncoder.forward(embs, mask: maskFixed)
+        let enc = tcnStack.forward(embs, mask: maskFixed)
         let pooled = maskedMean(enc, mask: maskFixed)
         var proj = gpuProj
         do {
@@ -104,15 +104,15 @@ public final class TextToCubeEncoder {
         let B = embs.shape[0]; let L = embs.shape[1]; let D = embs.shape[2]
         var x = embs
         // Run all but last block
-        let nb = tcnEncoder.blocks.count
+        let nb = tcnStack.blocks.count
         precondition(nb > 0)
         if nb > 1 {
             for i in 0..<(nb - 1) {
-                x = tcnEncoder.blocks[i].forward(x, mask: maskFixed)
+                x = tcnStack.blocks[i].forward(x, mask: maskFixed)
             }
         }
         // Last block with caches
-        let last = tcnEncoder.blocks[nb - 1]
+        let last = tcnStack.blocks[nb - 1]
         // LN on [B*L, D] via MPSGraph executable cache
         let xFlat = x.reshaped([B * L, D])
         let normFlat = LNExecCache.shared.runForward(x: xFlat, gamma: last.ln.gamma, beta: last.ln.beta, eps: last.ln.eps)
@@ -141,26 +141,26 @@ public final class TextToCubeEncoder {
 
     // Accessors for last TCN block params
     public func getLastBlockParams() -> (w1: Tensor, b1: Tensor?, w2: Tensor, b2: Tensor?, gamma: Tensor, beta: Tensor) {
-        let nb = tcnEncoder.blocks.count
+        let nb = tcnStack.blocks.count
         precondition(nb > 0)
-        let last = tcnEncoder.blocks[nb - 1]
+        let last = tcnStack.blocks[nb - 1]
         return (last.conv1.weight, last.conv1.bias ?? Tensor.zeros([0]), last.conv2.weight, last.conv2.bias ?? Tensor.zeros([0]), last.ln.gamma, last.ln.beta)
     }
     public func setLastBlockParams(w1: Tensor, b1: Tensor?, w2: Tensor, b2: Tensor?, gamma: Tensor, beta: Tensor) {
-        let nb = tcnEncoder.blocks.count
+        let nb = tcnStack.blocks.count
         precondition(nb > 0)
-        tcnEncoder.blocks[nb - 1].conv1.weight = w1
-        tcnEncoder.blocks[nb - 1].conv1.bias = b1
-        tcnEncoder.blocks[nb - 1].conv2.weight = w2
-        tcnEncoder.blocks[nb - 1].conv2.bias = b2
-        tcnEncoder.blocks[nb - 1].ln.gamma = gamma
-        tcnEncoder.blocks[nb - 1].ln.beta = beta
+        tcnStack.blocks[nb - 1].conv1.weight = w1
+        tcnStack.blocks[nb - 1].conv1.bias = b1
+        tcnStack.blocks[nb - 1].conv2.weight = w2
+        tcnStack.blocks[nb - 1].conv2.bias = b2
+        tcnStack.blocks[nb - 1].ln.gamma = gamma
+        tcnStack.blocks[nb - 1].ln.beta = beta
     }
     public func invalidateLastBlockCaches() {
-        let nb = tcnEncoder.blocks.count
+        let nb = tcnStack.blocks.count
         precondition(nb > 0)
-        tcnEncoder.blocks[nb - 1].conv1.invalidateCache()
-        tcnEncoder.blocks[nb - 1].conv2.invalidateCache()
+        tcnStack.blocks[nb - 1].conv1.invalidateCache()
+        tcnStack.blocks[nb - 1].conv2.invalidateCache()
     }
 
     // Training forward (text-mode): tokenize inside and return pooled/out
