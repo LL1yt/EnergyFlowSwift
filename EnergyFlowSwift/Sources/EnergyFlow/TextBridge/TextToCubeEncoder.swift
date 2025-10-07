@@ -80,6 +80,7 @@ public final class TextToCubeEncoder {
         let embs = embedding.forward(ids: idsFixed)
         let enc = tcnStack.forward(embs, mask: maskFixed)
         let pooled = ElementwiseGPU.maskedMean(x: enc, mask: maskFixed)
+        var proj = gpuProj
         do {
             let outGPU = try proj.forward(pooled)
             self.gpuProj = proj
