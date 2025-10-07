@@ -118,7 +118,7 @@ public final class TextToCubeEncoder {
         let normFlat = LayerNormGPU.forward(x: xFlat, gamma: last.ln.gamma, beta: last.ln.beta, eps: last.ln.eps)
         let norm = normFlat.reshaped([B, L, D])
         let h1 = last.conv1.forward(norm)
-        let h1a = Activations.gelu(h1)
+        let h1a = GELUGPU.forward(h1)
         var y = last.conv2.forward(h1a)
         // Residual
         for idx in 0..<(B*L*D) { y.data[idx] += x.data[idx] }

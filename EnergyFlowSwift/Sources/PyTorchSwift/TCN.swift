@@ -31,7 +31,7 @@ public struct TCNBlock {
         let norm = normFlat.reshaped([B, L, D])
         // Conv1D -> GELU -> Conv1D(1x1) using MPSMatrix path
         let h = conv1.forward(norm)         // [B,L,hidden]
-        let h1a = Activations.gelu(h)
+        let h1a = GELUGPU.forward(h)
         var y = conv2.forward(h1a)
         // Residual
         for idx in 0..<(B*L*D) { y.data[idx] += x.data[idx] }
