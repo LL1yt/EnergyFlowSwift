@@ -120,13 +120,9 @@ public final class TextToCubeEncoder {
         let h1 = last.conv1.forward(norm)
         let h1a = GELUGPU.forward(h1)
         var y = last.conv2.forward(h1a)
-        // Residual
-        for idx in 0..<(B*L*D) { y.data[idx] += x.data[idx] }
-        // Zero masked positions
-        for b in 0..<B { for t in 0..<L { if maskFixed[b][t] == 0 {
-            let base = (b * L + t) * D
-            for d in 0..<D { y.data[base + d] = 0 }
-        } } }
+        // Residual and mask on GPU
+        y = ElementwiseGPU.residualAdd(y: y, x: x)
+        y = ElementwiseGPU.maskZero(y: y, mask: maskFixed)
         let pooled = maskedMean(y, mask: maskFixed)
         var proj = gpuProj
         do {

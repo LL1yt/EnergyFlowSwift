@@ -144,7 +144,7 @@ public func lastTCNBackward(cache: TextToCubeEncoder.LastTCNCache,
     // LN backward (row-wise on [B*L, D]) using dX1
     let xFlat = cache.xIn.reshaped([B * L, D])
     let gNormFlat = dX1.reshaped([B * L, D])
-    let (dxFlat, dGamma, dBeta) = layerNormBackward(x: xFlat, upstream: gNormFlat, gamma: params.gamma)
+    let (dxFlat, dGamma, dBeta) = LayerNormGPU.backward(x: xFlat, g: gNormFlat, gamma: params.gamma, eps: 1e-5)
     _ = dxFlat
     // Shape dW2 back to [D,H,1]
     let dW2 = dW2lin.reshaped([D, H, 1])

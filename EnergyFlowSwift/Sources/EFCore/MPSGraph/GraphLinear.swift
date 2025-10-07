@@ -323,7 +323,9 @@ public struct GraphLinear {
         
         let hasBias = (self.bias != nil)
         let inAug = hasBias ? (inFeatures + 1) : inFeatures
-        let wRB = hasBias ? alignedRowBytes(columns: inAug, elem: elemH)
+        // Use 64-byte aligned rowBytes for augmented paths to match MPS tiling expectations on FP16
+        @inline(__always) func alignedRowBytes64(_ cols: Int, _ elem: Int) -> Int { let raw = cols * elem; return ((raw + 63) / 64) * 64 }
+        let wRB = hasBias ? alignedRowBytes64(inAug, elemH)
                           : (self.wRowBytesFP16 > 0 ? self.wRowBytesFP16 : alignedRowBytes(columns: inFeatures, elem: elemH))
         let localWB: MTLBuffer
         if hasBias, let bias = self.bias {
@@ -361,7 +363,7 @@ public struct GraphLinear {
         let dyCount = B * outFeatures
         let dxCount = B * inFeatures
         let dyRowBytes = alignedRowBytes(columns: outFeatures, elem: elemH)
-        let dxRowBytesAug = alignedRowBytes(columns: inAug, elem: elemH)
+        let dxRowBytesAug = hasBias ? alignedRowBytes64(inAug, elemH) : alignedRowBytes(columns: inAug, elem: elemH)
         let dyBuf = BufferPool.buffer(device: device, length: B * dyRowBytes, label: "GraphLinear.dX.DY")
         let dxBuf = BufferPool.buffer(device: device, length: B * dxRowBytesAug, label: "GraphLinear.dX.DX_aug")
         #if DEBUG
