@@ -113,9 +113,9 @@ public final class TextToCubeEncoder {
         }
         // Last block with caches
         let last = tcnStack.blocks[nb - 1]
-        // LN on [B*L, D] using GPU LayerNorm via MPSGraph cache
+        // LN on [B*L, D] using GPU LayerNorm via Metal
         let xFlat = x.reshaped([B * L, D])
-        let normFlat = LNExecCache.shared.runForward(x: xFlat, gamma: last.ln.gamma, beta: last.ln.beta, eps: last.ln.eps)
+        let normFlat = LayerNormGPU.forward(x: xFlat, gamma: last.ln.gamma, beta: last.ln.beta, eps: last.ln.eps)
         let norm = normFlat.reshaped([B, L, D])
         let h1 = last.conv1.forward(norm)
         let h1a = Activations.gelu(h1)

@@ -26,8 +26,8 @@ public struct TCNBlock {
         precondition(D == dim)
         // Path: LN -> Conv1D -> GELU -> Conv1D -> Residual
         let xFlat = x.reshaped([B * L, D])
-        // GPU LayerNorm via MPSGraph executable cache (static shape [B*L, D])
-        let normFlat = LNExecCache.shared.runForward(x: xFlat, gamma: ln.gamma, beta: ln.beta, eps: ln.eps)
+        // GPU LayerNorm via Metal (FP16 IO, FP32 accumulators)
+        let normFlat = LayerNormGPU.forward(x: xFlat, gamma: ln.gamma, beta: ln.beta, eps: ln.eps)
         let norm = normFlat.reshaped([B, L, D])
         // Conv1D -> GELU -> Conv1D(1x1) using MPSMatrix path
         let h = conv1.forward(norm)         // [B,L,hidden]
