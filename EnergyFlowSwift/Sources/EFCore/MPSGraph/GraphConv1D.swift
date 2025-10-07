@@ -129,32 +129,14 @@ public func forward(_ x: Tensor) -> Tensor {
         debugAssertMatrixLayout(name: "Y", rows: rows, cols: colsY, elem: elemH, rowBytes: yRB, buffer: yBuf)
         #endif
 
-        // Build Xcol on CPU as Float16 with causal padding and pack row-wise (append 1 for bias if present)
-        var xcolHalf = [Float16](repeating: 0, count: rows * colsX)
-        for b in 0..<B {
-            for t in 0..<L {
-                let row = b * L + t
-                let rowBase = row * colsX
-                for i in 0..<inChannels {
-                    for k in 0..<kernelSize {
-                        let ti = t - k * dilation
-                        let dst = rowBase + i * kernelSize + k
-                        if ti < 0 { xcolHalf[dst] = Float16(0) }
-                        else {
-                            let xIdx = (b * L + ti) * inChannels + i
-                            xcolHalf[dst] = Float16(x.data[xIdx])
-                        }
-                    }
-                }
-                if hasBias { xcolHalf[rowBase + CinK] = Float16(1) }
+        // Build Xcol on GPU as FP16 with causal padding and aligned row stride
+        do {
+            try Im2ColCol2ImGPU.im2colFP16ToBuffer(X: x, B: B, L: L, Cin: inChannels, K: kernelSize, dilation: dilation, outBuf: xcolBuf, outRowBytes: xRB, outColsTotal: colsX)
+            if hasBias {
+                try Im2ColCol2ImGPU.fillBiasColumnFP16(outBuf: xcolBuf, rows: rows, outRowBytes: xRB, biasIndex: CinK)
             }
-        }
-        memset(xcolBuf.contents(), 0, rows * xRB)
-        xcolHalf.withUnsafeBytes { raw in
-            if let base = raw.baseAddress {
-                let rowSize = colsX * elemH
-                for r in 0..<rows { memcpy(xcolBuf.contents().advanced(by: r * xRB), base.advanced(by: r * rowSize), rowSize) }
-            }
+        } catch {
+            fatalError("GraphConv1D: im2col FP16 failed: \(error)")
         }
         memset(yBuf.contents(), 0, rows * yRB)
 
