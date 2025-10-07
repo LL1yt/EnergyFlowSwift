@@ -2,6 +2,12 @@ import Foundation
 import EnergyFlow
 import EFCore
 
+// Mixed-precision helpers
+@inline(__always) func hasNaNOrInf(_ t: Tensor) -> Bool {
+    for v in t.data { if !v.isFinite { return true } }
+    return false
+}
+
 struct ResolvedTrainConfig {
     var dataPath: String
     var batchSize: Int
@@ -182,6 +188,8 @@ guard let args = loadResolvedConfig() else { usage(); return }
     }
     
     var bestValCos: Double = -Double.greatestFiniteMagnitude
+    // Global dynamic loss scaler shared across token/text paths
+    var lossScaler = LossScaler(initialScale: 1024.0, growthFactor: 2.0, backoffFactor: 0.5, growthInterval: 2000)
     
     for epoch in 0..<args.epochs {
         logger.info("epoch=\(epoch+1)/\(args.epochs)", category: Logger.Category.dataset)
@@ -217,7 +225,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                 let numChunks = (B + micro - 1) / micro
                 var offset = 0
                 var stepCount = 0
-                var accW: Tensor? = nil
+                    var accW: Tensor? = nil
                 var accB: Tensor? = nil
                 // Last TCN block accumulators
                 var accLastW1: Tensor? = nil
@@ -268,9 +276,15 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         let scale = args.betaMSE
                         if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
                     }
+                    // Apply dynamic loss scaling to upstream gradient before GPU backprop
+                    if lossScaler.currentScale != 1.0 {
+                        for i in 0..<dY.count { dY.data[i] *= lossScaler.currentScale }
+                    }
                     // Gradients for projector on GPU
                     let (dW, dB) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
                     // Optional: upstream to encoder for future unfreeze (token-mode only)
+                    // Track potential overflow in last TCN block grads for this micro-batch
+                    var overflowLB = false
                     do {
                         let dXin = try enc.projectionInputGradientsGPU(dY: dY)
                         let maskFixed = args.unfreezeLastTCN ? maskFixedLocal : padOrTruncateMask(maskChunk, modelCfg.maxLength)
@@ -295,6 +309,12 @@ guard let args = loadResolvedConfig() else { usage(); return }
                             }
                             let params = enc.getLastBlockParams()
                             let grads = try lastTCNBackward(cache: cache, mask: maskFixed, dOut: dOut, modelCfg: modelCfg, params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
+                            // Overflow check on last-block grads
+                            if hasNaNOrInf(grads.dW1) { overflowLB = true }
+                            if let db1 = grads.dB1, hasNaNOrInf(db1) { overflowLB = true }
+                            if hasNaNOrInf(grads.dW2) { overflowLB = true }
+                            if let db2 = grads.dB2, hasNaNOrInf(db2) { overflowLB = true }
+                            if hasNaNOrInf(grads.dGamma) || hasNaNOrInf(grads.dBeta) { overflowLB = true }
                             if accLastW1 == nil { accLastW1 = Tensor.zeros(params.w1.shape) }
                             if accLastB1 == nil { accLastB1 = params.b1 != nil ? Tensor.zeros([params.b1!.count]) : Tensor.zeros([0]) }
                             if accLastW2 == nil { accLastW2 = Tensor.zeros(params.w2.shape) }
@@ -311,6 +331,19 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     } catch {
                         logger.warn("projection input gradients failed: \(error)", category: Logger.Category.training)
                     }
+                    // Overflow check for projector grads
+                    var overflow = hasNaNOrInf(dW) || hasNaNOrInf(dB)
+                    if args.unfreezeLastTCN, let _ = lastCache {
+                        // Combine with last-block overflow flag if computed above
+                        overflow = overflow || overflowLB
+                    }
+                    if overflow {
+                        logger.warn("overflow detected — reducing loss scale and skipping this micro-batch", category: Logger.Category.training)
+                        lossScaler.onOverflow()
+                        // skip accumulation for this chunk
+                        offset += take
+                        continue
+                    }
                     // Accumulate
                     if accW == nil { accW = Tensor.zeros(dW.shape) }
                     for i in 0..<dW.count { accW!.data[i] += dW.data[i] }
@@ -320,7 +353,9 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     // Step if reached accumSteps or last chunk
                     if stepCount % args.accumSteps == 0 || offset + take >= B {
                         // Average grads
-                        let scale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
+                        // Combine micro-batch averaging scale with loss unscale
+                        let avgScale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
+                        let scale = avgScale * lossScaler.invScale()
                         let gW = accW!
                         let gB = accB!
                         // LR schedule (warmup + cosine)
@@ -334,6 +369,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         }
                         optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: lastPack, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
                         globalStep += 1
+                        lossScaler.onGoodStep()
                         // Reset accumulators
                         accW = nil; accB = nil; stepCount = 0
                         if args.unfreezeLastTCN { accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil }
@@ -403,6 +439,9 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         let scale = args.betaMSE
                         if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
                     }
+                    if lossScaler.currentScale != 1.0 {
+                        for i in 0..<dY.count { dY.data[i] *= lossScaler.currentScale }
+                    }
                     let (dW, dB) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
                     // Upstream to encoder (text-mode)
                     if args.unfreezeLastTCN, let cache = lastCacheText {
@@ -442,13 +481,21 @@ guard let args = loadResolvedConfig() else { usage(); return }
                             logger.warn("text-mode TCN backward failed: \(error)", category: Logger.Category.training)
                         }
                     }
+                    let overflow = hasNaNOrInf(dW) || hasNaNOrInf(dB)
+                    if overflow {
+                        logger.warn("overflow detected — reducing loss scale and skipping this micro-batch (text)", category: Logger.Category.training)
+                        lossScaler.onOverflow()
+                        offset += take
+                        continue
+                    }
                     if accW == nil { accW = Tensor.zeros(dW.shape) }
                     for i in 0..<dW.count { accW!.data[i] += dW.data[i] }
                     if accB == nil { accB = Tensor.zeros([dB.count]) }
                     for i in 0..<dB.count { accB!.data[i] += dB.data[i] }
                     stepCount += 1
                     if stepCount % args.accumSteps == 0 || offset + take >= B {
-                        let scale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
+                        let avgScale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
+                        let scale = avgScale * lossScaler.invScale()
                         let gW = accW!
                         let gB = accB!
                         // LR schedule (warmup + cosine)
@@ -456,6 +503,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)
                         optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: nil, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
                         globalStep += 1
+                        lossScaler.onGoodStep()
                         let outPost = enc.projectOnly(pooled)
                         let msePost = Losses.mseRowwise(outPost, t)
                         let cosPost = Losses.cosineSimilarityRowwise(outPost, t)

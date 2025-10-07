@@ -5,9 +5,11 @@ public enum ElementwiseGPU {
     nonisolated(unsafe) private static var library: MTLLibrary? = nil
     nonisolated(unsafe) private static var pAdd: MTLComputePipelineState? = nil
     nonisolated(unsafe) private static var pMask: MTLComputePipelineState? = nil
+    nonisolated(unsafe) private static var pMean: MTLComputePipelineState? = nil
+    nonisolated(unsafe) private static var pMeanBwd: MTLComputePipelineState? = nil
 
     private static func ensurePipelines(device: MTLDevice) throws {
-        if let _ = pAdd, let _ = pMask { return }
+        if let _ = pAdd, let _ = pMask, let _ = pMean, let _ = pMeanBwd { return }
         if library == nil {
             library = try device.makeLibrary(source: metalSource, options: nil)
         }
@@ -19,6 +21,14 @@ public enum ElementwiseGPU {
         if pMask == nil {
             let fn = lib.makeFunction(name: "mask_zero_f32")!
             pMask = try device.makeComputePipelineState(function: fn)
+        }
+        if pMean == nil {
+            let fn = lib.makeFunction(name: "masked_mean_f32")!
+            pMean = try device.makeComputePipelineState(function: fn)
+        }
+        if pMeanBwd == nil {
+            let fn = lib.makeFunction(name: "masked_mean_bwd_f32")!
+            pMeanBwd = try device.makeComputePipelineState(function: fn)
         }
     }
 
@@ -91,6 +101,92 @@ public enum ElementwiseGPU {
         return Tensor(shape: y.shape, data: yOut)
     }
 
+    // Masked mean over sequence dimension: x [B,L,H], mask [[B][L]] -> [B,H]
+    public static func maskedMean(x: Tensor, mask: [[Int]]) -> Tensor {
+        precondition(x.shape.count == 3, "maskedMean expects x [B,L,H]")
+        let B = x.shape[0], L = x.shape[1], H = x.shape[2]
+        precondition(mask.count == B && mask.allSatisfy { $0.count == L }, "mask shape mismatch")
+        let ctx = MPSGContext.shared
+        do { try ensurePipelines(device: ctx.device) } catch { fatalError("ElementwiseGPU: pipeline error") }
+        guard let pMean = pMean, let cmd = ctx.commandQueue.makeCommandBuffer() else { fatalError("ElementwiseGPU: command buffer failed") }
+        cmd.label = "ElementwiseGPU.maskedMean"
+        // Buffers
+        let elem = MemoryLayout<Float>.size
+        let xCount = B * L * H
+        let yCount = B * H
+        let xBuf = BufferPool.buffer(device: ctx.device, length: xCount * elem, label: "Elem.mean.x")
+        let yBuf = BufferPool.buffer(device: ctx.device, length: yCount * elem, label: "Elem.mean.y")
+        var maskFlat = [Int32](repeating: 0, count: B * L)
+        for b in 0..<B { for t in 0..<L { maskFlat[b * L + t] = Int32(mask[b][t]) } }
+        let mBuf = BufferPool.buffer(device: ctx.device, length: B * L * MemoryLayout<Int32>.size, label: "Elem.mean.m")
+        x.data.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(xBuf.contents(), base, xCount * elem) } }
+        memset(yBuf.contents(), 0, yCount * elem)
+        maskFlat.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(mBuf.contents(), base, B * L * MemoryLayout<Int32>.size) } }
+        guard let enc = cmd.makeComputeCommandEncoder() else { fatalError("ElementwiseGPU: encoder failed") }
+        enc.label = "Elem.mean.enc"
+        enc.setComputePipelineState(pMean)
+        enc.setBuffer(xBuf, offset: 0, index: 0)
+        enc.setBuffer(mBuf, offset: 0, index: 1)
+        enc.setBuffer(yBuf, offset: 0, index: 2)
+        var vB = Int32(B), vL = Int32(L), vH = Int32(H), vEps: Float = 1e-9
+        enc.setBytes(&vB, length: MemoryLayout<Int32>.size, index: 3)
+        enc.setBytes(&vL, length: MemoryLayout<Int32>.size, index: 4)
+        enc.setBytes(&vH, length: MemoryLayout<Int32>.size, index: 5)
+        enc.setBytes(&vEps, length: MemoryLayout<Float>.size, index: 6)
+        let tpt = MTLSize(width: 256, height: 1, depth: 1)
+        let tg = MTLSize(width: (yCount + 255) / 256, height: 1, depth: 1)
+        enc.dispatchThreadgroups(tg, threadsPerThreadgroup: tpt)
+        enc.endEncoding()
+        cmd.commit(); cmd.waitUntilCompleted()
+        var yHost = [Float](repeating: 0, count: yCount)
+        memcpy(&yHost, yBuf.contents(), yCount * elem)
+        return Tensor(shape: [B, H], data: yHost)
+    }
+
+    // Backward for masked mean: given dPooled [B,H] and mask [B][L],
+    // produce dEnc [B,L,H] with dEnc[b,t,h] = (mask[b,t]/denom_b) * dPooled[b,h]
+    public static func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) -> Tensor {
+        precondition(dPooled.shape.count == 2, "maskedMeanBackward expects [B,H]")
+        let B = dPooled.shape[0], H = dPooled.shape[1]
+        let L = seqLen
+        precondition(mask.count == B && mask.allSatisfy { $0.count == L }, "mask shape mismatch")
+        let ctx = MPSGContext.shared
+        do { try ensurePipelines(device: ctx.device) } catch { fatalError("ElementwiseGPU: pipeline error") }
+        guard let pB = pMeanBwd, let cmd = ctx.commandQueue.makeCommandBuffer() else { fatalError("ElementwiseGPU: command buffer failed") }
+        cmd.label = "ElementwiseGPU.maskedMeanBackward"
+        // Buffers
+        let elem = MemoryLayout<Float>.size
+        let dyCount = B * H
+        let dxCount = B * L * H
+        let dyBuf = BufferPool.buffer(device: ctx.device, length: dyCount * elem, label: "Elem.meanbwd.dy")
+        let dxBuf = BufferPool.buffer(device: ctx.device, length: dxCount * elem, label: "Elem.meanbwd.dx")
+        var maskFlat = [Int32](repeating: 0, count: B * L)
+        for b in 0..<B { for t in 0..<L { maskFlat[b * L + t] = Int32(mask[b][t]) } }
+        let mBuf = BufferPool.buffer(device: ctx.device, length: B * L * MemoryLayout<Int32>.size, label: "Elem.meanbwd.m")
+        dPooled.data.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(dyBuf.contents(), base, dyCount * elem) } }
+        memset(dxBuf.contents(), 0, dxCount * elem)
+        maskFlat.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(mBuf.contents(), base, B * L * MemoryLayout<Int32>.size) } }
+        guard let enc = cmd.makeComputeCommandEncoder() else { fatalError("ElementwiseGPU: encoder failed") }
+        enc.label = "Elem.meanbwd.enc"
+        enc.setComputePipelineState(pB)
+        enc.setBuffer(dyBuf, offset: 0, index: 0)
+        enc.setBuffer(mBuf, offset: 0, index: 1)
+        enc.setBuffer(dxBuf, offset: 0, index: 2)
+        var vB = Int32(B), vL = Int32(L), vH = Int32(H), vEps: Float = 1e-9
+        enc.setBytes(&vB, length: MemoryLayout<Int32>.size, index: 3)
+        enc.setBytes(&vL, length: MemoryLayout<Int32>.size, index: 4)
+        enc.setBytes(&vH, length: MemoryLayout<Int32>.size, index: 5)
+        enc.setBytes(&vEps, length: MemoryLayout<Float>.size, index: 6)
+        let tpt = MTLSize(width: 256, height: 1, depth: 1)
+        let tg = MTLSize(width: (dxCount + 255) / 256, height: 1, depth: 1)
+        enc.dispatchThreadgroups(tg, threadsPerThreadgroup: tpt)
+        enc.endEncoding()
+        cmd.commit(); cmd.waitUntilCompleted()
+        var dxHost = [Float](repeating: 0, count: dxCount)
+        memcpy(&dxHost, dxBuf.contents(), dxCount * elem)
+        return Tensor(shape: [B, L, H], data: dxHost)
+    }
+
     private static let metalSource: String = """
     #include <metal_stdlib>
     using namespace metal;
@@ -123,6 +219,62 @@ public enum ElementwiseGPU {
         if (m == 0) {
             y[gid] = 0.0f;
         }
+    }
+
+    // Masked mean over L: y[b,h] = sum_t mask[b,t]*x[b,t,h] / max(sum mask[b,*], eps)
+    kernel void masked_mean_f32(
+        const device float*  x     [[buffer(0)]],
+        const device int*    mask  [[buffer(1)]],
+        device float*        y     [[buffer(2)]],
+        constant int&        B     [[buffer(3)]],
+        constant int&        L     [[buffer(4)]],
+        constant int&        H     [[buffer(5)]],
+        constant float&      eps   [[buffer(6)]],
+        uint gid [[thread_position_in_grid]])
+    {
+        int total = B * H;
+        if ((int)gid >= total) return;
+        int b = (int)gid / H;
+        int h = (int)gid % H;
+        float sum = 0.0f;
+        float denom = 0.0f;
+        for (int t = 0; t < L; ++t) {
+            int m = mask[b * L + t];
+            if (m != 0) {
+                int idx = (b * L + t) * H + h;
+                sum += x[idx];
+                denom += 1.0f;
+            }
+        }
+        denom = max(denom, eps);
+        y[b * H + h] = sum / denom;
+    }
+
+    // Backward: dx[b,t,h] = (mask[b,t]/denom_b) * dY[b,h]
+    kernel void masked_mean_bwd_f32(
+        const device float*  dY    [[buffer(0)]],
+        const device int*    mask  [[buffer(1)]],
+        device float*        dX    [[buffer(2)]],
+        constant int&        B     [[buffer(3)]],
+        constant int&        L     [[buffer(4)]],
+        constant int&        H     [[buffer(5)]],
+        constant float&      eps   [[buffer(6)]],
+        uint gid [[thread_position_in_grid]])
+    {
+        int total = B * L * H;
+        if ((int)gid >= total) return;
+        int rem = (int)gid;
+        int b = rem / (L * H);
+        rem = rem % (L * H);
+        int t = rem / H;
+        int h = rem % H;
+        // compute denom for this b
+        float denom = 0.0f;
+        for (int ti = 0; ti < L; ++ti) { if (mask[b * L + ti] != 0) denom += 1.0f; }
+        denom = max(denom, eps);
+        int m = mask[b * L + t];
+        float scale = (m != 0) ? (1.0f / denom) : 0.0f;
+        dX[gid] = scale * dY[b * H + h];
     }
     """
 }

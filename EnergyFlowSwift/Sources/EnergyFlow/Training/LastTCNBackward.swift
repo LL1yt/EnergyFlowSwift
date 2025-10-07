@@ -90,17 +90,8 @@ public func lastTCNBackward(cache: TextToCubeEncoder.LastTCNCache,
         }
         xcol = tmp
     }
-    // Repack W1 -> Wcol [Cout, Cin*K]
-    var wcol = Tensor.zeros([Cout1, Cin1 * K1])
-    for o in 0..<Cout1 {
-        for i in 0..<Cin1 {
-            for k in 0..<K1 {
-                let src = (o * Cin1 + i) * K1 + k
-                let dst = o * (Cin1 * K1) + (i * K1 + k)
-                wcol.data[dst] = params.w1.data[src]
-            }
-        }
-    }
+    // Repack W1 -> Wcol [Cout, Cin*K] on GPU
+    let wcol = ConvPackGPU.packWToCol(W: params.w1, Cout: Cout1, Cin: Cin1, K: K1)
     // Use GraphLinear on [rows, Cin*K] -> [rows, Cout]
     var gl1 = GraphLinear(inFeatures: Cin1 * K1, outFeatures: Cout1, bias: params.b1 != nil, seed: 0)
     gl1.weight = wcol
@@ -109,16 +100,8 @@ public func lastTCNBackward(cache: TextToCubeEncoder.LastTCNCache,
     let dY1 = dH1.reshaped([rows, Cout1])
     let (dW1col, dB1gpu) = try gl1.gradientsGPU(X: xcol, dY: dY1)
     let dXcol = try gl1.inputGradientsGPU(dY: dY1)
-    // Map dW1col -> dW1 [Cout, Cin, K]
-    var dW1 = Tensor.zeros([Cout1, Cin1, K1])
-    for o in 0..<Cout1 {
-        for i in 0..<Cin1 {
-            for k in 0..<K1 {
-                let src = o * (Cin1 * K1) + (i * K1 + k)
-                dW1.data[(o * Cin1 + i) * K1 + k] = dW1col.data[src]
-            }
-        }
-    }
+    // Map dW1col -> dW1 [Cout, Cin, K] on GPU
+    let dW1 = ConvPackGPU.unpackDWCol(dWcol: dW1col, Cout: Cout1, Cin: Cin1, K: K1)
     // col2im: dXcol [rows, Cin*K] -> dX [B, L, Cin]
     let dX1: Tensor
     if modelCfg.useGPUIm2ColCol2Im {

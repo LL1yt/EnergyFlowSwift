@@ -58,7 +58,7 @@ public final class TextToCubeEncoder {
         // 2) TCN encoder (shared stack)
         let enc = tcnStack.forward(embs, mask: maskFixed)
         // 3) Masked-avg over sequence -> [B, hidden]
-        let pooled = maskedMean(enc, mask: maskFixed)
+        let pooled = ElementwiseGPU.maskedMean(x: enc, mask: maskFixed)
         logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
         // 4) Projection to output via GPU
         var proj = gpuProj
@@ -79,8 +79,7 @@ public final class TextToCubeEncoder {
         let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
         let embs = embedding.forward(ids: idsFixed)
         let enc = tcnStack.forward(embs, mask: maskFixed)
-        let pooled = maskedMean(enc, mask: maskFixed)
-        var proj = gpuProj
+        let pooled = ElementwiseGPU.maskedMean(x: enc, mask: maskFixed)
         do {
             let outGPU = try proj.forward(pooled)
             self.gpuProj = proj
@@ -123,7 +122,7 @@ public final class TextToCubeEncoder {
         // Residual and mask on GPU
         y = ElementwiseGPU.residualAdd(y: y, x: x)
         y = ElementwiseGPU.maskZero(y: y, mask: maskFixed)
-        let pooled = maskedMean(y, mask: maskFixed)
+        let pooled = ElementwiseGPU.maskedMean(x: y, mask: maskFixed)
         var proj = gpuProj
         do {
             let outGPU = try proj.forward(pooled)
@@ -207,25 +206,8 @@ public final class TextToCubeEncoder {
     // Backward for masked mean: given upstream dPooled [B,H] and mask [B][L],
     // distribute gradient equally across masked positions per example.
     public func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) -> Tensor {
-        let B = dPooled.shape[0]
-        let H = dPooled.shape[1]
-        precondition(mask.count == B)
-        let L = seqLen
-        var dEnc = Tensor.zeros([B, L, H])
-        for b in 0..<B {
-            precondition(mask[b].count == L)
-            var denom: Float = 0
-            for t in 0..<L { denom += Float(mask[b][t]) }
-            denom = max(denom, 1e-9)
-            for t in 0..<L {
-                let m = Float(mask[b][t])
-                if m == 0 { continue }
-                let outBase = (b * L + t) * H
-                let inBase = b * H
-                for h in 0..<H { dEnc.data[outBase + h] = dPooled.data[inBase + h] * (m / denom) }
-            }
-        }
-        return dEnc
+        // GPU implementation
+        return ElementwiseGPU.maskedMeanBackward(dPooled: dPooled, mask: mask, seqLen: seqLen)
     }
 
     // Simple stats for debugging
