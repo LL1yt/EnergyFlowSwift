@@ -91,7 +91,7 @@ public final class TextDecoder {
         let D = config.dim
         let H = config.hidden
         let xFlat = xin.reshaped([B * L, D])
-        let normFlat = LNExecCache.shared.runForward(x: xFlat, gamma: last.ln.gamma, beta: last.ln.beta, eps: last.ln.eps)
+        let normFlat = last.ln.forward(xFlat)
         let norm = normFlat.reshaped([B, L, D])
         let h1 = last.conv1.forward(norm)
         let h1a = Activations.gelu(h1)

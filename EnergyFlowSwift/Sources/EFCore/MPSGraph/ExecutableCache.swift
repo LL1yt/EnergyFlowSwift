@@ -193,6 +193,29 @@ public final class LNGeLUGemmCache {
     }
 }
 
+// MARK: - Utilities
+// Helper extension: compute element/byte counts and shape for MPSNDArray (MPSNDArray has no numberOfBytes API)
+private extension MPSNDArray {
+    var efElementCount: Int {
+        var c = 1
+        for i in 0..<self.numberOfDimensions { c *= self.length(ofDimension: i) }
+        return c
+    }
+    var efByteCount: Int {
+        let per: Int
+        switch self.dataType {
+        case .float16: per = 2
+        case .float32: per = 4
+        case .int8, .uInt8: per = 1
+        case .int16, .uInt16: per = 2
+        case .int32, .uInt32: per = 4
+        default: per = 4
+        }
+        return efElementCount * per
+    }
+    var efShape: [Int] { (0..<numberOfDimensions).map { length(ofDimension: $0) } }
+}
+
 // Prototype: MPSGraph Executable cache for LayerNorm only
 public final class LNExecCache {
     public struct Key: Hashable {
@@ -256,18 +279,55 @@ public final class LNExecCache {
         precondition(x.shape.count == 2)
         precondition(gamma.shape == [x.shape[1]] && beta.shape == [x.shape[1]])
         let key = Key(N: x.shape[0], D: x.shape[1], eps: eps)
+        #if DEBUG
+        let logger = Logger.shared
+        logger.debug("[LNExecCache] key N=\(key.N) D=\(key.D) eps=\(key.eps)", category: Logger.Category.textBridge)
+        // TEMPORARY: Use CPU fallback in DEBUG to isolate MPSGraph issues
+        if ProcessInfo.processInfo.environment["EF_USE_CPU_LN"] == "1" {
+            logger.debug("[LNExecCache] Using CPU fallback (EF_USE_CPU_LN=1)", category: Logger.Category.textBridge)
+            return cpuLayerNormForward(x: x, gamma: gamma, beta: beta, eps: eps)
+        }
+        #endif
         let rec = buildIfNeeded(key: key)
         x.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.xArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
         gamma.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.gammaArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
         beta.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.betaArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
+        #if DEBUG
+    logger.debug("[LNExecCache] arrays: x.bytes=\(rec.xArr.efByteCount) gamma.bytes=\(rec.gammaArr.efByteCount) beta.bytes=\(rec.betaArr.efByteCount)", category: Logger.Category.textBridge)
+        #endif
         let inputs: [MPSGraphTensorData] = [rec.xData, rec.gammaData, rec.betaData]
         let results = rec.executable.run(with: MPSGContext.shared.commandQueue, inputs: inputs, results: nil, executionDescriptor: nil)
         guard let yTD = results.first else { fatalError("LN exec failed") }
         let N = x.shape[0], D = x.shape[1]
         var host = [Float](repeating: 0, count: N * D)
         host.withUnsafeMutableBytes { raw in if let base = raw.baseAddress { yTD.mpsndarray().readBytes(base, strideBytes: nil) } }
-            return Tensor(shape: [N, D], data: host)
+        #if DEBUG
+        logger.debug("[LNExecCache] completed N=\(N) D=\(D) result.count=\(host.count)", category: Logger.Category.textBridge)
+        #endif
+        return Tensor(shape: [N, D], data: host)
+    }
+    
+    // CPU fallback for DEBUG isolation
+    #if DEBUG
+    private func cpuLayerNormForward(x: Tensor, gamma: Tensor, beta: Tensor, eps: Float) -> Tensor {
+        let N = x.shape[0], D = x.shape[1]
+        var y = Tensor.zeros([N, D])
+        for n in 0..<N {
+            let base = n * D
+            var mean: Float = 0
+            for j in 0..<D { mean += x.data[base + j] }
+            mean /= Float(D)
+            var varAcc: Float = 0
+            for j in 0..<D { let d = x.data[base + j] - mean; varAcc += d*d }
+            let invStd: Float = 1.0 / Float(sqrt(Double(varAcc / Float(D) + eps)))
+            for j in 0..<D {
+                let norm = (x.data[base + j] - mean) * invStd
+                y.data[base + j] = norm * gamma.data[j] + beta.data[j]
+            }
         }
+        return y
+    }
+    #endif
     }
 
 // Prototype: MPSGraph Executable cache for GELU -> MatMul(+bias)
@@ -370,10 +430,22 @@ public final class GeLUGemmCache {
         precondition(W.shape.count == 2 && W.shape[1] == x.shape[1], "W shape mismatch")
         if let b = bias { precondition(b.shape == [W.shape[0]], "bias shape mismatch") }
         let key = Key(N: x.shape[0], H: x.shape[1], Out: W.shape[0], hasBias: bias != nil)
+        #if DEBUG
+        let logger = Logger.shared
+        logger.debug("[GeLUGemmCache] key N=\(key.N) H=\(key.H) Out=\(key.Out) hasBias=\(key.hasBias)", category: Logger.Category.textBridge)
+        // TEMPORARY: Use CPU fallback in DEBUG
+        if ProcessInfo.processInfo.environment["EF_USE_CPU_GELU_GEMM"] == "1" {
+            logger.debug("[GeLUGemmCache] Using CPU fallback (EF_USE_CPU_GELU_GEMM=1)", category: Logger.Category.textBridge)
+            return cpuGELUGemmForward(x: x, W: W, bias: bias)
+        }
+        #endif
         let rec = buildIfNeeded(key: key)
         x.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.xArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } }
         if !rec.pinnedW { W.data.withUnsafeBytes { raw in if let base = raw.baseAddress { rec.wArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
         if let b = bias, let bArr = rec.bArr, !rec.pinnedB { b.data.withUnsafeBytes { raw in if let base = raw.baseAddress { bArr.writeBytes(UnsafeMutableRawPointer(mutating: base), strideBytes: nil) } } }
+        #if DEBUG
+        logger.debug("[GeLUGemmCache] arrays: x.bytes=\(rec.xArr.efByteCount) w.bytes=\(rec.wArr.efByteCount) pinnedW=\(rec.pinnedW)", category: Logger.Category.textBridge)
+        #endif
         var inputs: [MPSGraphTensorData] = [rec.xData, rec.wData]
         if let bData = rec.bData { inputs.append(bData) }
         let results = rec.executable.run(with: MPSGContext.shared.commandQueue, inputs: inputs, results: nil, executionDescriptor: nil)
@@ -381,8 +453,39 @@ public final class GeLUGemmCache {
         let N = x.shape[0], Out = W.shape[0]
         var host = [Float](repeating: 0, count: N * Out)
         host.withUnsafeMutableBytes { raw in if let base = raw.baseAddress { yTD.mpsndarray().readBytes(base, strideBytes: nil) } }
+        #if DEBUG
+        logger.debug("[GeLUGemmCache] completed N=\(N) Out=\(Out) result.count=\(host.count)", category: Logger.Category.textBridge)
+        #endif
         return Tensor(shape: [N, Out], data: host)
     }
+    
+    // CPU fallback for DEBUG isolation
+    #if DEBUG
+    private func cpuGELUGemmForward(x: Tensor, W: Tensor, bias: Tensor?) -> Tensor {
+        let N = x.shape[0], H = x.shape[1], Out = W.shape[0]
+        // GELU
+        let c: Float = 0.7978845608028654
+        var xGelu = Tensor.zeros([N, H])
+        for i in 0..<(N*H) {
+            let v = x.data[i]
+            let u = c * (v + 0.044715 * v * v * v)
+            let tanhU = Float(Darwin.tanh(Double(u)))
+            xGelu.data[i] = 0.5 * v * (1 + tanhU)
+        }
+        // Matmul xGelu @ W^T + bias
+        var out = Tensor.zeros([N, Out])
+        for n in 0..<N {
+            for o in 0..<Out {
+                var acc: Float = 0
+                for h in 0..<H {
+                    acc += xGelu.data[n*H + h] * W.data[o*H + h]
+                }
+                out.data[n*Out + o] = acc + (bias?.data[o] ?? 0)
+            }
+        }
+        return out
+    }
+    #endif
 
     public func pinForKey(N: Int, H: Int, Out: Int, W: Tensor, bias: Tensor?) {
         let key = Key(N: N, H: H, Out: Out, hasBias: bias != nil)
