@@ -40,6 +40,19 @@ public struct TrainConfig: Codable {
     // Unfreeze controls
     public var unfreezeLastTCN: Bool?
 
+    // A/B training controls
+    public var enableAB: Bool?
+    public var abRatio: Float?            // fraction of Mode A per batch (0..1)
+
+    // Decoder config for Mode B
+    public var decVocabSize: Int?
+    public var decBlocks: Int?
+    public var decHidden: Int?
+    public var decKernelSize: Int?
+    public var decDilation: [Int]?
+    public var decLR: Float?
+    public var decWeightDecay: Float?
+
     public init() {}
 
     public static func load(path: String) throws -> TrainConfig {
@@ -80,6 +93,17 @@ public extension TrainConfig {
         if let v = saveOptState { out.saveOptState = v }
         if let v = loadOptState { out.loadOptState = v }
         if let v = unfreezeLastTCN { out.unfreezeLastTCN = v }
+        // AB controls
+        if let v = enableAB { out.enableAB = v }
+        if let v = abRatio { out.abRatio = v }
+        // Decoder
+        if let v = decVocabSize { out.decVocabSize = v }
+        if let v = decBlocks { out.decBlocks = v }
+        if let v = decHidden { out.decHidden = v }
+        if let v = decKernelSize { out.decKernelSize = v }
+        if let v = decDilation { out.decDilation = v }
+        if let v = decLR { out.decLR = v }
+        if let v = decWeightDecay { out.decWeightDecay = v }
         return out
     }
 }

@@ -9,6 +9,7 @@ import EFCore
 }
 
 struct ResolvedTrainConfig {
+    // Core encoder training
     var dataPath: String
     var batchSize: Int
     var maxLength: Int
@@ -34,6 +35,17 @@ struct ResolvedTrainConfig {
     var unfreezeLastTCN: Bool
     // Central config
     var configPath: String
+    // AB controls
+    var enableAB: Bool
+    var abRatio: Float
+    // Decoder config for Mode B
+    var decVocabSize: Int
+    var decBlocks: Int
+    var decHidden: Int
+    var decKernelSize: Int
+    var decDilation: [Int]
+    var decLR: Float
+    var decWeightDecay: Float
 }
 
 func loadResolvedConfig() -> ResolvedTrainConfig? {
@@ -82,7 +94,16 @@ func loadResolvedConfig() -> ResolvedTrainConfig? {
         let clipNorm = c.clipNorm,
         let saveOptState = c.saveOptState,
         let loadOptState = c.loadOptState,
-        let unfreezeLastTCN = c.unfreezeLastTCN
+        let unfreezeLastTCN = c.unfreezeLastTCN,
+        let enableAB = c.enableAB,
+        let abRatio = c.abRatio,
+        let decVocab = c.decVocabSize,
+        let decBlocks = c.decBlocks,
+        let decHidden = c.decHidden,
+        let decKernel = c.decKernelSize,
+        let decDil = c.decDilation,
+        let decLR = c.decLR,
+        let decWD = c.decWeightDecay
     else {
         FileHandle.standardError.write(Data("EFTrain error: invalid config structure. Ensure all required fields are present. See sample: EnergyFlowSwift/Configs/train_debug.json\n".utf8))
         return nil
@@ -91,6 +112,9 @@ func loadResolvedConfig() -> ResolvedTrainConfig? {
         FileHandle.standardError.write(Data("EFTrain error: dataPath is empty in config file \(path).\n".utf8))
         return nil
     }
+    // Defaults for AB/decoder if not specified
+    
+
     return ResolvedTrainConfig(
         dataPath: dataPath,
         batchSize: batchSize,
@@ -113,7 +137,16 @@ func loadResolvedConfig() -> ResolvedTrainConfig? {
         saveOptState: saveOptState,
         loadOptState: loadOptState,
         unfreezeLastTCN: unfreezeLastTCN,
-        configPath: path
+        configPath: path,
+        enableAB: enableAB,
+        abRatio: abRatio,
+        decVocabSize: decVocab,
+        decBlocks: decBlocks,
+        decHidden: decHidden,
+        decKernelSize: decKernel,
+        decDilation: decDil,
+        decLR: decLR,
+        decWeightDecay: decWD
     )
 }
 
@@ -134,6 +167,19 @@ guard let args = loadResolvedConfig() else { usage(); return }
         outputDim: ds.embeddingDim
     )
     let enc = TextToCubeEncoder(modelConfig: modelCfg)
+    // Optional decoder for Mode B
+    var decTrainer: DecoderTrainer? = nil
+    if args.enableAB {
+        let decCfg = TextDecoderConfig(vocabSize: args.decVocabSize,
+                                       dim: modelCfg.outputDim,
+                                       hidden: args.decHidden,
+                                       nBlocks: args.decBlocks,
+                                       kernelSize: args.decKernelSize,
+                                       dilationSchedule: args.decDilation,
+                                       maxLength: args.maxLength)
+        decTrainer = DecoderTrainer(config: decCfg, lr: args.decLR, weightDecay: args.decWeightDecay)
+        logger.info("Decoder initialized: V=\(decCfg.vocabSize) D=\(decCfg.dim) blocks=\(decCfg.nBlocks) k=\(decCfg.kernelSize) dil=\(decCfg.dilationSchedule)", category: Logger.Category.training)
+    }
     
     // Load checkpoint if provided
     if !args.loadCheckpoint.isEmpty, let (wLoaded, bLoaded) = loadProjectionCheckpoint(path: args.loadCheckpoint) {
@@ -225,6 +271,9 @@ guard let args = loadResolvedConfig() else { usage(); return }
                 let numChunks = (B + micro - 1) / micro
                 var offset = 0
                 var stepCount = 0
+                // Mode A/B budget for this batch (deterministic slice-based schedule)
+                let aBudget = Int(round(Float(numChunks) * args.abRatio))
+                var chunksDone = 0
                     var accW: Tensor? = nil
                 var accB: Tensor? = nil
                 // Last TCN block accumulators
@@ -238,6 +287,8 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     let take = min(micro, B - offset)
                     let idsChunk = Array(ids[offset..<(offset+take)])
                     let maskChunk = Array(mask[offset..<(offset+take)])
+                    let runA = (!args.enableAB) ? true : (chunksDone < aBudget)
+                    chunksDone += 1
                     let tgtChunk = Array(tgts[offset..<(offset+take)])
                     let pooled: Tensor
                     let out: Tensor
@@ -276,6 +327,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         let scale = args.betaMSE
                         if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
                     }
+                    if runA {
                     // Apply dynamic loss scaling to upstream gradient before GPU backprop
                     if lossScaler.currentScale != 1.0 {
                         for i in 0..<dY.count { dY.data[i] *= lossScaler.currentScale }
@@ -382,6 +434,37 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         accW = nil; accB = nil; stepCount = 0
                     }
                     offset += take
+                    } else {
+                        // Mode B: Decoder CE step (projection-only + optional last TCN unfreeze)
+                        guard let decT = decTrainer else { offset += take; continue }
+                        // Pad/truncate ids to decoder max length
+                        let L = args.maxLength
+                        var idsPad: [[Int]] = []
+                        idsPad.reserveCapacity(take)
+                        for row in idsChunk {
+                            if row.count > L { idsPad.append(Array(row.prefix(L))) }
+                            else if row.count < L { idsPad.append(row + Array(repeating: 0, count: L - row.count)) }
+                            else { idsPad.append(row) }
+                        }
+                        // Next-token targets (teacher forcing)
+                        var targets: [[Int]] = []
+                        targets.reserveCapacity(take)
+                        for r in idsPad {
+                            var t = Array(r.dropFirst()); t.append(r.first ?? 0)
+                            targets.append(t)
+                        }
+                        // z_teacher from dataset target floats
+                        var zData: [Float] = []
+                        zData.reserveCapacity(take * modelCfg.outputDim)
+                        for i in 0..<take { zData.append(contentsOf: tgts[offset + i]) }
+                        let zt = Tensor(shape: [take, modelCfg.outputDim], data: zData)
+                        do {
+                            _ = try decT.step(ids: idsPad, zTeacher: zt, targets: targets, unfreezeLastTCN: args.unfreezeLastTCN)
+                        } catch {
+                            logger.warn("decoder step failed: \(error)", category: Logger.Category.training)
+                        }
+                        offset += take
+                    }
                 }
             } else {
                 // text-mode path
