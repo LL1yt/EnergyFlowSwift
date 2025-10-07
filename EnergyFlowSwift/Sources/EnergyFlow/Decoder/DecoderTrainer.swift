@@ -72,4 +72,81 @@ public final class DecoderTrainer {
         decoder.invalidateOutProjCache()
         return ce
     }
+
+    // Scaled training step with mixed-precision support and overflow detection.
+    // scale: multiply upstream dLogits by this factor; grads are unscaled internally before opt.step.
+    // Returns (ce, overflow)
+    public func stepScaled(ids: [[Int]], zTeacher: Tensor, targets: [[Int]], unfreezeLastTCN: Bool = false, scale: Float = 1.0) throws -> (Float, Bool) {
+        // Forward
+        let (flat, logits, cache) = decoder.forwardForTraining(ids: ids, z: zTeacher)
+        let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
+        // dLogits (softmax - onehot) / (B*L)
+        var dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
+        // Scale upstream gradient
+        if scale != 1.0 {
+            for i in 0..<dLogits.count { dLogits.data[i] *= scale }
+        }
+        // Out projection grads
+        let (w0, b0) = decoder.getOutProjParams()
+        var gl = GraphLinear(inFeatures: config.dim, outFeatures: config.vocabSize, bias: b0 != nil, seed: 0)
+        gl.weight = w0
+        gl.bias = b0
+        _ = try? gl.forward(Tensor.zeros([1, config.dim]))
+        let (dW, dB) = try gl.gradientsGPU(X: flat, dY: dLogits)
+        let dXflat = try gl.inputGradientsGPU(dY: dLogits)
+        // Overflow detection
+        func hasNaNOrInf(_ t: Tensor) -> Bool { for v in t.data { if !v.isFinite { return true } } ; return false }
+        var overflow = hasNaNOrInf(dW) || hasNaNOrInf(dB)
+        var params: [Tensor] = [w0]
+        var grads: [Tensor] = [dW]
+        if let b = b0, dB.count > 0 { params.append(b); grads.append(dB) }
+        if unfreezeLastTCN {
+            let B = ids.count, L = config.maxLength, D = config.dim
+            let dOut = dXflat.reshaped([B, L, D])
+            let p = decoder.getLastBlockParams()
+            let gradsLast = try decoderLastTCNBackward(cache: cache, dOut: dOut, kernelSize: config.kernelSize, dilation: (config.dilationSchedule.last ?? 1), params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta))
+            // Append
+            params.append(p.w1); grads.append(gradsLast.dW1)
+            if let b1 = p.b1, let db1 = gradsLast.dB1 { params.append(b1); grads.append(db1) }
+            params.append(p.w2); grads.append(gradsLast.dW2)
+            if let b2 = p.b2, let db2 = gradsLast.dB2 { params.append(b2); grads.append(db2) }
+            params.append(p.gamma); grads.append(gradsLast.dGamma)
+            params.append(p.beta); grads.append(gradsLast.dBeta)
+            // Overflow include last-block grads
+            if hasNaNOrInf(gradsLast.dW1) { overflow = true }
+            if let db1 = gradsLast.dB1, hasNaNOrInf(db1) { overflow = true }
+            if hasNaNOrInf(gradsLast.dW2) { overflow = true }
+            if let db2 = gradsLast.dB2, hasNaNOrInf(db2) { overflow = true }
+            if hasNaNOrInf(gradsLast.dGamma) || hasNaNOrInf(gradsLast.dBeta) { overflow = true }
+        }
+        if overflow { return (ce, true) }
+        // Unscale grads before step
+        let inv = (scale == 0) ? 1.0 : (1.0 / scale)
+        if inv != 1.0 {
+            for i in 0..<grads.count { for j in 0..<grads[i].count { grads[i].data[j] *= inv } }
+        }
+        var pack = params
+        opt.step(params: &pack, grads: grads)
+        // Write back
+        var cursor = 0
+        let newW = pack[cursor]; cursor += 1
+        var newB: Tensor? = nil
+        if b0 != nil { newB = pack[cursor]; cursor += 1 }
+        decoder.setOutProjParams(weight: newW, bias: newB)
+        decoder.invalidateOutProjCache()
+        if unfreezeLastTCN {
+            let p = decoder.getLastBlockParams()
+            let newW1 = pack[cursor]; cursor += 1
+            var newB1: Tensor? = nil
+            if p.b1 != nil { newB1 = pack[cursor]; cursor += 1 }
+            let newW2 = pack[cursor]; cursor += 1
+            var newB2: Tensor? = nil
+            if p.b2 != nil { newB2 = pack[cursor]; cursor += 1 }
+            let newGamma = pack[cursor]; cursor += 1
+            let newBeta = pack[cursor]; cursor += 1
+            decoder.setLastBlockParams(w1: newW1, b1: newB1, w2: newW2, b2: newB2, gamma: newGamma, beta: newBeta)
+            decoder.invalidateLastBlockCaches()
+        }
+        return (ce, false)
+    }
 }

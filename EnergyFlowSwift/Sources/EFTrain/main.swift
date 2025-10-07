@@ -243,6 +243,8 @@ guard let args = loadResolvedConfig() else { usage(); return }
         var seen = 0
         var totalMSE: Double = 0
         var totalCos: Double = 0
+        var totalCE: Double = 0
+        var totalCESamples: Int = 0
         // Iterate train samples in batches of batchSize, each split to micro-batches
         var ptr = 0
         epoch_loop: while ptr < trainSamples.count {
@@ -459,9 +461,19 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         for i in 0..<take { zData.append(contentsOf: tgts[offset + i]) }
                         let zt = Tensor(shape: [take, modelCfg.outputDim], data: zData)
                         do {
-                            _ = try decT.step(ids: idsPad, zTeacher: zt, targets: targets, unfreezeLastTCN: args.unfreezeLastTCN)
+                            let (ce, overflow) = try decT.stepScaled(ids: idsPad, zTeacher: zt, targets: targets, unfreezeLastTCN: args.unfreezeLastTCN, scale: lossScaler.currentScale)
+                            if overflow {
+                                logger.warn("decoder overflow — reducing loss scale and skipping this micro-batch (Mode B)", category: Logger.Category.training)
+                                lossScaler.onOverflow()
+                                offset += take
+                                continue
+                            } else {
+                                lossScaler.onGoodStep()
+                                totalCE += Double(ce) * Double(take)
+                                totalCESamples += take
+                            }
                         } catch {
-                            logger.warn("decoder step failed: \(error)", category: Logger.Category.training)
+                            logger.warn("decoder step failed: \\(error)", category: Logger.Category.training)
                         }
                         offset += take
                     }
@@ -599,12 +611,65 @@ guard let args = loadResolvedConfig() else { usage(); return }
             if seen > 0 {
                 let avgMSE = totalMSE / Double(seen)
                 let avgCos = totalCos / Double(seen)
-                logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f", epoch+1, seen, avgMSE, avgCos), category: Logger.Category.dataset)
+                if totalCESamples > 0 {
+                    let avgCE = totalCE / Double(totalCESamples)
+                    logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f avgCE=%.6f", epoch+1, seen, avgMSE, avgCos, avgCE), category: Logger.Category.dataset)
+                } else {
+                    logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f", epoch+1, seen, avgMSE, avgCos), category: Logger.Category.dataset)
+                }
             }
             // Validation
             if !valSamples.isEmpty {
                 let (valMSE, valCos) = evaluate(enc: enc, samples: valSamples, batchSize: args.batchSize, microBatch: args.microBatch, maxLen: args.maxLength)
-                logger.info(String(format: "epoch %d VAL: mse=%.6f cos=%.6f", epoch+1, valMSE, valCos), category: Logger.Category.dataset)
+                var valMsg = String(format: "epoch %d VAL: mse=%.6f cos=%.6f", epoch+1, valMSE, valCos)
+                // Optional CE validation when A/B is enabled and val has tokens
+                if args.enableAB, let decT = decTrainer {
+                    let hasTokensVal = valSamples.first(where: { $0.inputIDs != nil && $0.attentionMask != nil }) != nil
+                    if hasTokensVal {
+                        // Evaluate CE over val in batches
+                        var vptr = 0
+                        var ceSum: Double = 0
+                        var ceCount: Int = 0
+                        while vptr < valSamples.count {
+                            let vend = min(vptr + args.batchSize, valSamples.count)
+                            let vslice = Array(valSamples[vptr..<vend])
+                            vptr = vend
+                            // Build ids and z_teacher
+                            var ids: [[Int]] = []
+                            ids.reserveCapacity(vslice.count)
+                            var zData: [Float] = []
+                            zData.reserveCapacity(vslice.count * modelCfg.outputDim)
+                            for s in vslice {
+                                let row = s.inputIDs ?? []
+                                // pad/truncate
+                                if row.count > args.maxLength { ids.append(Array(row.prefix(args.maxLength))) }
+                                else if row.count < args.maxLength { ids.append(row + Array(repeating: 0, count: args.maxLength - row.count)) }
+                                else { ids.append(row) }
+                                zData.append(contentsOf: s.target)
+                            }
+                            // Skip if any row was empty (no tokens)
+                            if ids.isEmpty { continue }
+                            // Targets (teacher forcing)
+                            var targets: [[Int]] = []
+                            targets.reserveCapacity(ids.count)
+                            for r in ids {
+                                var t = Array(r.dropFirst()); t.append(r.first ?? 0)
+                                targets.append(t)
+                            }
+                            let zt = Tensor(shape: [ids.count, modelCfg.outputDim], data: zData)
+                            // Forward CE
+                            let logits = decT.decoder.forward(ids: ids, z: zt)
+                            let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
+                            ceSum += Double(ce) * Double(ids.count)
+                            ceCount += ids.count
+                        }
+                        if ceCount > 0 {
+                            let avgCE = ceSum / Double(ceCount)
+                            valMsg += String(format: " ce=%.6f", avgCE)
+                        }
+                    }
+                }
+                logger.info(valMsg, category: Logger.Category.dataset)
                 if valCos > bestValCos {
                     bestValCos = valCos
                     if !args.saveCheckpoint.isEmpty {
