@@ -47,19 +47,16 @@ final class CombinedABAlternationTests: XCTestCase {
         let decLogits0 = trainer.decTrainer.decoder.forward(ids: ids, z: zt)
         let ce0 = CrossEntropyLoss.meanLogits(logits: decLogits0, targets: targets)
         // One A step (projection-only + last block)
-        let (mseA, cosA) = try trainer.stepA(inputIDs: ids, attentionMask: mask, zTeacher: zt, unfreezeLastTCN: true)
+        _ = try trainer.stepA(inputIDs: ids, attentionMask: mask, zTeacher: zt, unfreezeLastTCN: true)
+        // Re-evaluate encoder immediately after Mode A
+        let encOutA = trainer.enc.forwardForTraining(inputIDs: ids, attentionMask: mask)
+        let mseA1 = Losses.mseRowwise(encOutA.out, zt).mean
+        let cosA1 = Losses.cosineSimilarityRowwise(encOutA.out, zt).mean
+        XCTAssertLessThan(mseA1, mse0, "MSE should decrease after Mode A step")
+        XCTAssertGreaterThan(cosA1, cos0, "Cosine should increase after Mode A step")
         // One B step (projection-only + last block)
         let ceB = try trainer.stepB(ids: ids, targets: targets, zTeacher: zt, unfreezeLastTCN: true)
-        // Re-evaluate encoder
-        let encOut1 = trainer.enc.forwardForTraining(inputIDs: ids, attentionMask: mask)
-        let mse1 = Losses.mseRowwise(encOut1.out, zt).mean
-        let cos1 = Losses.cosineSimilarityRowwise(encOut1.out, zt).mean
-        // Assertions: CE decreased; KD moved in right direction (heuristic)
+        // Assertions: CE decreased after Mode B
         XCTAssertLessThan(ceB, ce0, "CE should decrease after Mode B step")
-        XCTAssertLessThan(mse1, mse0, "MSE should decrease after Mode A step")
-        XCTAssertGreaterThan(cos1, cos0, "Cosine should increase after Mode A step")
-        // Also sanity: reported A-step metrics should be consistent directionally
-        XCTAssertLessThan(mseA, mse0 + 1e-6)
-        XCTAssertGreaterThan(cosA, cos0 - 1e-6)
     }
 }

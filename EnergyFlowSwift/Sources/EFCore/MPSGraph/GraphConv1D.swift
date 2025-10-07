@@ -30,12 +30,15 @@ public final class GraphConv1D {
         self.wcolFP16 = nil
     }
 
-    // Build/copy cached Wcol FP16 buffer [Cout, Cin*K]
-private func ensureWcolFP16(device: MTLDevice) {
+    // Build/copy cached Wcol FP16 buffer [Cout, Cin*K] with aligned rowBytes
+    private func ensureWcolFP16(device: MTLDevice) {
         if wcolFP16 != nil { return }
         let CinK = inChannels * kernelSize
         let wCount = outChannels * CinK
-        wcolFP16 = device.makeBuffer(length: wCount * MemoryLayout<Float16>.size, options: .storageModeShared)
+        @inline(__always) func alignedRowBytes(_ cols: Int, _ elem: Int) -> Int { let raw = cols * elem; return ((raw + 63)/64)*64 }
+        let elemH = MemoryLayout<Float16>.size
+        let rowBytes = alignedRowBytes(CinK, elemH)
+        wcolFP16 = device.makeBuffer(length: outChannels * rowBytes, options: .storageModeShared)
         guard let wbuf = wcolFP16 else { return }
         // Repack weight [Cout, Cin, K] -> Wcol [Cout, Cin*K]
         var wHalf = [Float16](repeating: 0, count: wCount)
@@ -48,9 +51,13 @@ private func ensureWcolFP16(device: MTLDevice) {
                 }
             }
         }
+        // Pack row-wise with stride
         wHalf.withUnsafeBytes { raw in
             if let base = raw.baseAddress {
-                memcpy(wbuf.contents(), base, wCount * MemoryLayout<Float16>.size)
+                let rowSize = CinK * elemH
+                for r in 0..<outChannels {
+                    memcpy(wbuf.contents().advanced(by: r * rowBytes), base.advanced(by: r * rowSize), rowSize)
+                }
             }
         }
     }
@@ -78,13 +85,14 @@ public func forward(_ x: Tensor) -> Tensor {
         let colsX = CinK
         let colsY = outChannels
         let elemH = MemoryLayout<Float16>.size
+        @inline(__always) func alignedRowBytes(_ cols: Int, _ elem: Int) -> Int { let raw = cols * elem; return ((raw + 63)/64)*64 }
+        let xRB = alignedRowBytes(colsX, elemH)
+        let yRB = alignedRowBytes(colsY, elemH)
+        // Allocate Xcol and Y buffers (FP16) with aligned rowBytes
+        let xcolBuf = BufferPool.buffer(device: device, length: rows * xRB, label: "GraphConv1D.Xcol")
+        let yBuf = BufferPool.buffer(device: device, length: rows * yRB, label: "GraphConv1D.Y")
 
-        // Allocate Xcol and Y buffers (FP16)
-        guard let xcolBuf = device.makeBuffer(length: rows * colsX * elemH, options: .storageModeShared),
-              let yBuf = device.makeBuffer(length: rows * colsY * elemH, options: .storageModeShared)
-        else { fatalError("GraphConv1D: failed to allocate buffers") }
-
-        // Build Xcol on CPU as Float16 with causal padding
+        // Build Xcol on CPU as Float16 with causal padding and pack row-wise
         var xcolHalf = [Float16](repeating: 0, count: rows * colsX)
         for b in 0..<B {
             for t in 0..<L {
@@ -104,15 +112,19 @@ public func forward(_ x: Tensor) -> Tensor {
                 }
             }
         }
+        memset(xcolBuf.contents(), 0, rows * xRB)
         xcolHalf.withUnsafeBytes { raw in
-            if let base = raw.baseAddress { memcpy(xcolBuf.contents(), base, rows * colsX * elemH) }
+            if let base = raw.baseAddress {
+                let rowSize = colsX * elemH
+                for r in 0..<rows { memcpy(xcolBuf.contents().advanced(by: r * xRB), base.advanced(by: r * rowSize), rowSize) }
+            }
         }
-        memset(yBuf.contents(), 0, rows * colsY * elemH)
+        memset(yBuf.contents(), 0, rows * yRB)
 
-        // Matrix descriptors
-        let xDesc = MPSMatrixDescriptor(rows: rows, columns: colsX, rowBytes: colsX * elemH, dataType: .float16)
-        let wDesc = MPSMatrixDescriptor(rows: colsY, columns: colsX, rowBytes: colsX * elemH, dataType: .float16)
-        let yDesc = MPSMatrixDescriptor(rows: rows, columns: colsY, rowBytes: colsY * elemH, dataType: .float16)
+        // Matrix descriptors with aligned rowBytes
+        let xDesc = MPSMatrixDescriptor(rows: rows, columns: colsX, rowBytes: xRB, dataType: .float16)
+        let wDesc = MPSMatrixDescriptor(rows: colsY, columns: colsX, rowBytes: alignedRowBytes(colsX, elemH), dataType: .float16)
+        let yDesc = MPSMatrixDescriptor(rows: rows, columns: colsY, rowBytes: yRB, dataType: .float16)
 
         let xMat = MPSMatrix(buffer: xcolBuf, descriptor: xDesc)
         let wMat = MPSMatrix(buffer: wbuf, descriptor: wDesc)
@@ -132,9 +144,10 @@ public func forward(_ x: Tensor) -> Tensor {
         mm.encode(commandBuffer: cmd, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
         cmd.commit(); cmd.waitUntilCompleted()
 
-        // Read back and convert to Float32
+        // Read back and convert to Float32 (row-wise)
         var yHalf = [Float16](repeating: 0, count: rows * colsY)
-        memcpy(&yHalf, yBuf.contents(), rows * colsY * elemH)
+        let rowSize = colsY * elemH
+        for r in 0..<rows { memcpy(UnsafeMutableRawPointer(mutating: (&yHalf) as UnsafePointer<Array<Float16>>?).unsafelyUnwrapped + r * rowSize, yBuf.contents().advanced(by: r * yRB), rowSize) }
         var yHost = [Float](repeating: 0, count: rows * colsY)
         for i in 0..<(rows * colsY) { yHost[i] = Float(yHalf[i]) }
         if let bias = bias {

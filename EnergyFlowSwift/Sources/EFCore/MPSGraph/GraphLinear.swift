@@ -38,6 +38,19 @@ public struct GraphLinear {
         let ctx = MPSGContext.shared
         let device = ctx.device
         let elemH = MemoryLayout<Float16>.size
+        // Helper: 16-byte aligned rowBytes for MPSMatrix (required)
+        @inline(__always) func alignedRowBytes(columns: Int, elem: Int) -> Int {
+            let raw = columns * elem
+            return ((raw + 15) / 16) * 16
+        }
+        @inline(__always) func copyRowsToBuffer(src: UnsafeRawPointer, dst: UnsafeMutableRawPointer, rows: Int, cols: Int, elem: Int, rowBytes: Int) {
+            let rowSize = cols * elem
+            for r in 0..<rows { memcpy(dst.advanced(by: r * rowBytes), src.advanced(by: r * rowSize), rowSize) }
+        }
+        @inline(__always) func copyRowsFromBuffer(dst: UnsafeMutableRawPointer, src: UnsafeRawPointer, rows: Int, cols: Int, elem: Int, rowBytes: Int) {
+            let rowSize = cols * elem
+            for r in 0..<rows { memcpy(dst.advanced(by: r * rowSize), src.advanced(by: r * rowBytes), rowSize) }
+        }
         // Allocate FP16 buffers for dY^T and X
         let rowsL = outFeatures    // dY^T rows
         let colsL = B              // dY^T cols
@@ -45,9 +58,12 @@ public struct GraphLinear {
         let colsR = inFeatures     // X cols
         let rowsY = outFeatures
         let colsY = inFeatures
-        let lBuf = BufferPool.buffer(device: device, length: rowsL * colsL * elemH, label: "GraphLinear.grad.L")
-        let rBuf = BufferPool.buffer(device: device, length: rowsR * colsR * elemH, label: "GraphLinear.grad.R")
-        let yBuf = BufferPool.buffer(device: device, length: rowsY * colsY * elemH, label: "GraphLinear.grad.Y")
+        let lRowBytes = alignedRowBytes(columns: colsL, elem: elemH)
+        let rRowBytes = alignedRowBytes(columns: colsR, elem: elemH)
+        let yRowBytes = alignedRowBytes(columns: colsY, elem: elemH)
+        let lBuf = BufferPool.buffer(device: device, length: rowsL * lRowBytes, label: "GraphLinear.grad.L")
+        let rBuf = BufferPool.buffer(device: device, length: rowsR * rRowBytes, label: "GraphLinear.grad.R")
+        let yBuf = BufferPool.buffer(device: device, length: rowsY * yRowBytes, label: "GraphLinear.grad.Y")
         // Pack dY^T (Out x B) and X (B x In) into Float16
         var lHalf = [Float16](repeating: 0, count: rowsL * colsL)
         for b in 0..<B {
@@ -56,19 +72,21 @@ public struct GraphLinear {
                 lHalf[o * colsL + b] = Float16(dY.data[b * outFeatures + o])
             }
         }
-        lHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(lBuf.contents(), base, rowsL * colsL * elemH) } }
+        memset(lBuf.contents(), 0, rowsL * lRowBytes)
+        lHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { copyRowsToBuffer(src: base, dst: lBuf.contents(), rows: rowsL, cols: colsL, elem: elemH, rowBytes: lRowBytes) } }
         var rHalf = [Float16](repeating: 0, count: rowsR * colsR)
         for b in 0..<B {
             let xBase = b * inFeatures
             let rBase = b * colsR
             for i in 0..<inFeatures { rHalf[rBase + i] = Float16(X.data[xBase + i]) }
         }
-        rHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(rBuf.contents(), base, rowsR * colsR * elemH) } }
-        memset(yBuf.contents(), 0, rowsY * colsY * elemH)
+        memset(rBuf.contents(), 0, rowsR * rRowBytes)
+        rHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { copyRowsToBuffer(src: base, dst: rBuf.contents(), rows: rowsR, cols: colsR, elem: elemH, rowBytes: rRowBytes) } }
+        memset(yBuf.contents(), 0, rowsY * yRowBytes)
         // Descriptors
-        let lDesc = MPSMatrixDescriptor(rows: rowsL, columns: colsL, rowBytes: colsL * elemH, dataType: .float16)
-        let rDesc = MPSMatrixDescriptor(rows: rowsR, columns: colsR, rowBytes: colsR * elemH, dataType: .float16)
-        let yDesc = MPSMatrixDescriptor(rows: rowsY, columns: colsY, rowBytes: colsY * elemH, dataType: .float16)
+        let lDesc = MPSMatrixDescriptor(rows: rowsL, columns: colsL, rowBytes: lRowBytes, dataType: .float16)
+        let rDesc = MPSMatrixDescriptor(rows: rowsR, columns: colsR, rowBytes: rRowBytes, dataType: .float16)
+        let yDesc = MPSMatrixDescriptor(rows: rowsY, columns: colsY, rowBytes: yRowBytes, dataType: .float16)
         let lMat = MPSMatrix(buffer: lBuf, descriptor: lDesc)
         let rMat = MPSMatrix(buffer: rBuf, descriptor: rDesc)
         let yMat = MPSMatrix(buffer: yBuf, descriptor: yDesc)
@@ -85,8 +103,8 @@ public struct GraphLinear {
         mm.encode(commandBuffer: cmd, leftMatrix: lMat, rightMatrix: rMat, resultMatrix: yMat)
         cmd.commit(); cmd.waitUntilCompleted()
         // Read back dW as Float
-        var yHalf = [Float16](repeating: 0, count: rowsY * colsY)
-        memcpy(&yHalf, yBuf.contents(), rowsY * colsY * elemH)
+    var yHalf = [Float16](repeating: 0, count: rowsY * colsY)
+    yHalf.withUnsafeMutableBytes { raw in if let base = raw.baseAddress { copyRowsFromBuffer(dst: base, src: yBuf.contents(), rows: rowsY, cols: colsY, elem: elemH, rowBytes: yRowBytes) } }
         var dWHost = [Float](repeating: 0, count: rowsY * colsY)
         for i in 0..<(rowsY * colsY) { dWHost[i] = Float(yHalf[i]) }
         let dW = Tensor(shape: [rowsY, colsY], data: dWHost)
@@ -112,6 +130,18 @@ public struct GraphLinear {
         let xCount = b * inFeatures
         let wCount = outFeatures * inFeatures
         let yCount = b * outFeatures
+        @inline(__always) func alignedRowBytes(columns: Int, elem: Int) -> Int {
+            let raw = columns * elem
+            return ((raw + 15) / 16) * 16
+        }
+        @inline(__always) func copyRowsToBuffer(src: UnsafeRawPointer, dst: UnsafeMutableRawPointer, rows: Int, cols: Int, elem: Int, rowBytes: Int) {
+            let rowSize = cols * elem
+            for r in 0..<rows { memcpy(dst.advanced(by: r * rowBytes), src.advanced(by: r * rowSize), rowSize) }
+        }
+        @inline(__always) func copyRowsFromBuffer(dst: UnsafeMutableRawPointer, src: UnsafeRawPointer, rows: Int, cols: Int, elem: Int, rowBytes: Int) {
+            let rowSize = cols * elem
+            for r in 0..<rows { memcpy(dst.advanced(by: r * rowSize), src.advanced(by: r * rowBytes), rowSize) }
+        }
 
         // Ensure/copy weight & bias buffers once (cached) in FP16
         if wBufFP16 == nil {
@@ -133,17 +163,20 @@ public struct GraphLinear {
         guard let wBuf = wBufFP16 else { throw MPSGError.commandBufferFailed }
 
         // Allocate and fill x in FP16
-        let xBuf = BufferPool.buffer(device: ctx.device, length: xCount * elemSizeH, label: "GraphLinear.fwd.X")
-        let yBuf = BufferPool.buffer(device: ctx.device, length: yCount * elemSizeH, label: "GraphLinear.fwd.Y")
+        let xRowBytes = alignedRowBytes(columns: inFeatures, elem: elemSizeH)
+        let yRowBytes = alignedRowBytes(columns: outFeatures, elem: elemSizeH)
+        let xBuf = BufferPool.buffer(device: ctx.device, length: b * xRowBytes, label: "GraphLinear.fwd.X")
+        let yBuf = BufferPool.buffer(device: ctx.device, length: b * yRowBytes, label: "GraphLinear.fwd.Y")
         var xHalf = [Float16](repeating: 0, count: xCount)
         for i in 0..<xCount { xHalf[i] = Float16(x.data[i]) }
-        xHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(xBuf.contents(), base, xCount * elemSizeH) } }
-        memset(yBuf.contents(), 0, yCount * elemSizeH)
+        memset(xBuf.contents(), 0, b * xRowBytes)
+        xHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { copyRowsToBuffer(src: base, dst: xBuf.contents(), rows: b, cols: inFeatures, elem: elemSizeH, rowBytes: xRowBytes) } }
+        memset(yBuf.contents(), 0, b * yRowBytes)
 
         // Descriptors (row-major) in FP16
-        let xDesc = MPSMatrixDescriptor(rows: b, columns: inFeatures, rowBytes: inFeatures * elemSizeH, dataType: .float16)
-        let wDesc = MPSMatrixDescriptor(rows: outFeatures, columns: inFeatures, rowBytes: inFeatures * elemSizeH, dataType: .float16)
-        let yDesc = MPSMatrixDescriptor(rows: b, columns: outFeatures, rowBytes: outFeatures * elemSizeH, dataType: .float16)
+        let xDesc = MPSMatrixDescriptor(rows: b, columns: inFeatures, rowBytes: xRowBytes, dataType: .float16)
+        let wDesc = MPSMatrixDescriptor(rows: outFeatures, columns: inFeatures, rowBytes: alignedRowBytes(columns: inFeatures, elem: elemSizeH), dataType: .float16)
+        let yDesc = MPSMatrixDescriptor(rows: b, columns: outFeatures, rowBytes: yRowBytes, dataType: .float16)
 
         let xMat = MPSMatrix(buffer: xBuf, descriptor: xDesc)
         let wMat = MPSMatrix(buffer: wBuf, descriptor: wDesc)
@@ -165,7 +198,7 @@ public struct GraphLinear {
 
         // Read back as Float16 then convert to Float
         var yHalf = [Float16](repeating: 0, count: yCount)
-        memcpy(&yHalf, yBuf.contents(), yCount * elemSizeH)
+        yHalf.withUnsafeMutableBytes { raw in if let base = raw.baseAddress { copyRowsFromBuffer(dst: base, src: yBuf.contents(), rows: b, cols: outFeatures, elem: elemSizeH, rowBytes: yRowBytes) } }
         var outHost = [Float](repeating: 0, count: yCount)
         for i in 0..<yCount { outHost[i] = Float(yHalf[i]) }
         if let bias = bias {
@@ -187,6 +220,9 @@ public struct GraphLinear {
         let ctx = MPSGContext.shared
         let device = ctx.device
         let elemH = MemoryLayout<Float16>.size
+        @inline(__always) func alignedRowBytes(columns: Int, elem: Int) -> Int { let raw = columns * elem; return ((raw + 15) / 16) * 16 }
+        @inline(__always) func copyRowsToBuffer(src: UnsafeRawPointer, dst: UnsafeMutableRawPointer, rows: Int, cols: Int, elem: Int, rowBytes: Int) { let rowSize = cols * elem; for r in 0..<rows { memcpy(dst.advanced(by: r * rowBytes), src.advanced(by: r * rowSize), rowSize) } }
+        @inline(__always) func copyRowsFromBuffer(dst: UnsafeMutableRawPointer, src: UnsafeRawPointer, rows: Int, cols: Int, elem: Int, rowBytes: Int) { let rowSize = cols * elem; for r in 0..<rows { memcpy(dst.advanced(by: r * rowSize), src.advanced(by: r * rowBytes), rowSize) } }
         // Ensure weight buffer cached in FP16
         if wBufFP16 == nil {
             // We need a mutable copy to call invalidateCache/forward, but here only ensure buffer exists.
@@ -200,16 +236,19 @@ public struct GraphLinear {
         // Allocate buffers for dY and dX (FP16)
         let dyCount = B * outFeatures
         let dxCount = B * inFeatures
-        let dyBuf = BufferPool.buffer(device: device, length: dyCount * elemH, label: "GraphLinear.dX.DY")
-        let dxBuf = BufferPool.buffer(device: device, length: dxCount * elemH, label: "GraphLinear.dX.DX")
+        let dyRowBytes = alignedRowBytes(columns: outFeatures, elem: elemH)
+        let dxRowBytes = alignedRowBytes(columns: inFeatures, elem: elemH)
+        let dyBuf = BufferPool.buffer(device: device, length: B * dyRowBytes, label: "GraphLinear.dX.DY")
+        let dxBuf = BufferPool.buffer(device: device, length: B * dxRowBytes, label: "GraphLinear.dX.DX")
         var dyHalf = [Float16](repeating: 0, count: dyCount)
         for i in 0..<dyCount { dyHalf[i] = Float16(dY.data[i]) }
-        dyHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(dyBuf.contents(), base, dyCount * elemH) } }
-        memset(dxBuf.contents(), 0, dxCount * elemH)
+        memset(dyBuf.contents(), 0, B * dyRowBytes)
+        dyHalf.withUnsafeBytes { raw in if let base = raw.baseAddress { copyRowsToBuffer(src: base, dst: dyBuf.contents(), rows: B, cols: outFeatures, elem: elemH, rowBytes: dyRowBytes) } }
+        memset(dxBuf.contents(), 0, B * dxRowBytes)
         // Descriptors: dY [B, Out], W [Out, In], dX [B, In]
-        let dyDesc = MPSMatrixDescriptor(rows: B, columns: outFeatures, rowBytes: outFeatures * elemH, dataType: .float16)
-        let wDesc = MPSMatrixDescriptor(rows: outFeatures, columns: inFeatures, rowBytes: inFeatures * elemH, dataType: .float16)
-        let dxDesc = MPSMatrixDescriptor(rows: B, columns: inFeatures, rowBytes: inFeatures * elemH, dataType: .float16)
+        let dyDesc = MPSMatrixDescriptor(rows: B, columns: outFeatures, rowBytes: dyRowBytes, dataType: .float16)
+        let wDesc = MPSMatrixDescriptor(rows: outFeatures, columns: inFeatures, rowBytes: alignedRowBytes(columns: inFeatures, elem: elemH), dataType: .float16)
+        let dxDesc = MPSMatrixDescriptor(rows: B, columns: inFeatures, rowBytes: dxRowBytes, dataType: .float16)
         let dyMat = MPSMatrix(buffer: dyBuf, descriptor: dyDesc)
         let wMat = MPSMatrix(buffer: wBuf, descriptor: wDesc)
         let dxMat = MPSMatrix(buffer: dxBuf, descriptor: dxDesc)
@@ -225,7 +264,7 @@ public struct GraphLinear {
         mm.encode(commandBuffer: cmd, leftMatrix: dyMat, rightMatrix: wMat, resultMatrix: dxMat)
         cmd.commit(); cmd.waitUntilCompleted()
         var dxHalf = [Float16](repeating: 0, count: dxCount)
-        memcpy(&dxHalf, dxBuf.contents(), dxCount * elemH)
+        dxHalf.withUnsafeMutableBytes { raw in if let base = raw.baseAddress { copyRowsFromBuffer(dst: base, src: dxBuf.contents(), rows: B, cols: inFeatures, elem: elemH, rowBytes: dxRowBytes) } }
         var dxHost = [Float](repeating: 0, count: dxCount)
         for i in 0..<dxCount { dxHost[i] = Float(dxHalf[i]) }
         return Tensor(shape: [B, inFeatures], data: dxHost)
