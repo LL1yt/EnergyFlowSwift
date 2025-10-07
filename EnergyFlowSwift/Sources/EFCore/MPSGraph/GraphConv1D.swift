@@ -56,31 +56,35 @@ public final class GraphConv1D {
     }
     #endif
 
-    // Build/copy cached Wcol FP16 buffer [Cout, Cin*K] with aligned rowBytes
+    // Build/copy cached Wcol FP16 buffer [Cout, Cin*K(+1 if bias)] with aligned rowBytes
     private func ensureWcolFP16(device: MTLDevice) {
         if wcolFP16 != nil { return }
         let CinK = inChannels * kernelSize
-        let wCount = outChannels * CinK
+        let hasBias = (bias != nil)
+        let CinKp1 = hasBias ? (CinK + 1) : CinK
         let elemH = MemoryLayout<Float16>.size
-        let rowBytes = alignedRowBytes(columns: CinK, elem: elemH)
+        let rowBytes = alignedRowBytes(columns: CinKp1, elem: elemH)
         wcolFP16 = device.makeBuffer(length: outChannels * rowBytes, options: .storageModeShared)
         guard let wbuf = wcolFP16 else { return }
         wbuf.label = "GraphConv1D.Wcol.fp16"
-        // Repack weight [Cout, Cin, K] -> Wcol [Cout, Cin*K]
-        var wHalf = [Float16](repeating: 0, count: wCount)
+        // Repack weight [Cout, Cin, K] -> Wcol [Cout, Cin*K] and append bias column if present
+        var wHalf = [Float16](repeating: 0, count: outChannels * CinKp1)
         for o in 0..<outChannels {
+            // weights
             for i in 0..<inChannels {
                 for k in 0..<kernelSize {
                     let src = (o * inChannels + i) * kernelSize + k
-                    let dst = o * CinK + (i * kernelSize + k)
+                    let dst = o * CinKp1 + (i * kernelSize + k)
                     wHalf[dst] = Float16(weight.data[src])
                 }
             }
+            // bias as last column
+            if hasBias, let b = bias { wHalf[o * CinKp1 + CinK] = Float16(b.data[o]) }
         }
         // Pack row-wise with stride
         wHalf.withUnsafeBytes { raw in
             if let base = raw.baseAddress {
-                let rowSize = CinK * elemH
+                let rowSize = CinKp1 * elemH
                 for r in 0..<outChannels {
                     memcpy(wbuf.contents().advanced(by: r * rowBytes), base.advanced(by: r * rowSize), rowSize)
                 }
@@ -107,12 +111,13 @@ public func forward(_ x: Tensor) -> Tensor {
         }
 
         let CinK = inChannels * kernelSize
+        let hasBias = (bias != nil)
+        let colsX = hasBias ? (CinK + 1) : CinK
         let rows = B * L
-        let colsX = CinK
         let colsY = outChannels
         let elemH = MemoryLayout<Float16>.size
-    let xRB = alignedRowBytes(columns: colsX, elem: elemH)
-    let yRB = alignedRowBytes(columns: colsY, elem: elemH)
+        let xRB = alignedRowBytes(columns: colsX, elem: elemH)
+        let yRB = alignedRowBytes(columns: colsY, elem: elemH)
         // Allocate Xcol and Y buffers (FP16) with aligned rowBytes
         let xcolBuf = BufferPool.buffer(device: device, length: rows * xRB, label: "GraphConv1D.Xcol")
         let yBuf = BufferPool.buffer(device: device, length: rows * yRB, label: "GraphConv1D.Y")
@@ -124,7 +129,7 @@ public func forward(_ x: Tensor) -> Tensor {
         debugAssertMatrixLayout(name: "Y", rows: rows, cols: colsY, elem: elemH, rowBytes: yRB, buffer: yBuf)
         #endif
 
-        // Build Xcol on CPU as Float16 with causal padding and pack row-wise
+        // Build Xcol on CPU as Float16 with causal padding and pack row-wise (append 1 for bias if present)
         var xcolHalf = [Float16](repeating: 0, count: rows * colsX)
         for b in 0..<B {
             for t in 0..<L {
@@ -134,14 +139,14 @@ public func forward(_ x: Tensor) -> Tensor {
                     for k in 0..<kernelSize {
                         let ti = t - k * dilation
                         let dst = rowBase + i * kernelSize + k
-                        if ti < 0 {
-                            xcolHalf[dst] = Float16(0)
-                        } else {
+                        if ti < 0 { xcolHalf[dst] = Float16(0) }
+                        else {
                             let xIdx = (b * L + ti) * inChannels + i
                             xcolHalf[dst] = Float16(x.data[xIdx])
                         }
                     }
                 }
+                if hasBias { xcolHalf[rowBase + CinK] = Float16(1) }
             }
         }
         memset(xcolBuf.contents(), 0, rows * xRB)
@@ -202,12 +207,7 @@ public func forward(_ x: Tensor) -> Tensor {
         }
         var yHost = [Float](repeating: 0, count: rows * colsY)
         for i in 0..<(rows * colsY) { yHost[i] = Float(yHalf[i]) }
-        if let bias = bias {
-            for r in 0..<rows {
-                let base = r * colsY
-                for o in 0..<colsY { yHost[base + o] += bias.data[o] }
-            }
-        }
+        // Bias already incorporated via augmented Xcol/Wcol on GPU
         return Tensor(shape: [B, L, colsY], data: yHost)
     }
 
