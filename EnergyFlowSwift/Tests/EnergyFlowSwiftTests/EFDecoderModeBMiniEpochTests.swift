@@ -24,7 +24,7 @@ final class EFDecoderModeBMiniEpochTests: XCTestCase {
         for _ in 0..<(B*D) { zData.append(Float.random(in: -0.5...0.5)) }
         let zt = Tensor(shape: [B, D], data: zData)
         // Forward before update
-        let (flat0, logits0) = dec.forwardForTraining(ids: ids, z: zt)
+        let (flat0, logits0, _) = dec.forwardForTraining(ids: ids, z: zt)
         let ce0 = CrossEntropyLoss.meanLogits(logits: logits0, targets: targets)
         // Compute dLogits and projection gradients (outProj only)
         let dLogitsFlat = CrossEntropyLoss.gradLogits(logits: logits0, targets: targets) // [B*L, V]
