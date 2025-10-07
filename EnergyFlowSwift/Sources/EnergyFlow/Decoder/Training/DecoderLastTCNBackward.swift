@@ -27,8 +27,8 @@ public func decoderLastTCNBackward(cache: TextDecoder.LastTCNCache,
     let (dW2lin, dB2) = try gl.gradientsGPU(X: Xf, dY: dYf)
     let dX2f = try gl.inputGradientsGPU(dY: dYf)
     let dX2 = dX2f.reshaped([B, L, H])
-    // GELU backward on h1
-    let dH1 = dGELU(x: cache.h1, upstream: dX2)
+    // GELU backward on h1 (GPU)
+    let dH1 = GELUGPU.backward(x: cache.h1, dY: dX2)
     // Conv1 backward (GPU GEMM + GPU im2col/col2im)
     let dil = max(1, dilation)
     let K1 = kernelSize
