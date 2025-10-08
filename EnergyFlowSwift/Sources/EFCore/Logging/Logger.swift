@@ -6,7 +6,8 @@ public enum LogLevel: Int {
     case error = 0
     case warn = 1
     case info = 2
-    case debug = 3
+    case info1 = 3   // informative, less verbose than debug, more than info
+    case debug = 4
 }
 
 public final class Logger: @unchecked Sendable {
@@ -47,6 +48,7 @@ public final class Logger: @unchecked Sendable {
         case "error": return .error
         case "warn", "warning": return .warn
         case "info": return .info
+        case "info1", "info_1": return .info1
         case "debug": return .debug
         default: return .info
         }
@@ -74,6 +76,8 @@ public final class Logger: @unchecked Sendable {
             l.warning("\(text, privacy: .public)")
         case .info:
             l.info("\(text, privacy: .public)")
+        case .info1:
+            l.info("\(text, privacy: .public)")
         case .debug:
             l.debug("\(text, privacy: .public)")
         }
@@ -83,6 +87,7 @@ public final class Logger: @unchecked Sendable {
             case .error: lvl = "ERROR"
             case .warn:  lvl = "WARN"
             case .info:  lvl = "INFO"
+            case .info1: lvl = "INFO1"
             case .debug: lvl = "DEBUG"
             }
             let cat = category ?? "default"
@@ -101,5 +106,8 @@ public final class Logger: @unchecked Sendable {
     }
     public func debug(_ msg: @autoclosure () -> String, category: String? = nil, file: StaticString = #file, function: StaticString = #function, line: UInt = #line) {
         log(.debug, msg(), category: category, file: file, function: function, line: line)
+    }
+    public func info1(_ msg: @autoclosure () -> String, category: String? = nil, file: StaticString = #file, function: StaticString = #function, line: UInt = #line) {
+        log(.info1, msg(), category: category, file: file, function: function, line: line)
     }
 }

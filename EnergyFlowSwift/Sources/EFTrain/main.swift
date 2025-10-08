@@ -158,7 +158,7 @@ func usage() {
 }
 
 func run() throws {
-guard let args = loadResolvedConfig() else { usage(); return }
+    guard let args = loadResolvedConfig() else { usage(); return }
     var globalStep = 0
     let logger = Logger.shared
     logger.info("EFTrain start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength) epochs=\(args.epochs) alphaCos=\(args.alphaCos) betaMSE=\(args.betaMSE)", category: Logger.Category.dataset)
@@ -168,7 +168,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
         FileHandle.standardError.write(Data("EFTrain error: requireTokens=true but dataset has no tokens. Regenerate dataset with input_ids and attention_mask.\n".utf8))
         return
     }
-// Configure encoder; set only what differs from defaults
+    // Configure encoder; set only what differs from defaults
     let modelCfg = TextToCubeEncoderConfig(
         maxLength: args.maxLength,
         outputDim: ds.embeddingDim
@@ -227,19 +227,40 @@ guard let args = loadResolvedConfig() else { usage(); return }
     
     
     var bestValCos: Double = -Double.greatestFiniteMagnitude
-    // Global dynamic loss scaler shared across token/text paths
-    var lossScaler = LossScaler(initialScale: 1024.0, growthFactor: 2.0, backoffFactor: 0.5, growthInterval: 2000)
+    
+    // Build unified encoder/decoder via CombinedTrainer
+    let encCfg = TextToCubeEncoderConfig(maxLength: args.maxLength, outputDim: ds.embeddingDim)
+    let decCfg = TextDecoderConfig(vocabSize: args.decVocabSize,
+                                   dim: encCfg.outputDim,
+                                   hidden: args.decHidden,
+                                   nBlocks: args.decBlocks,
+                                   kernelSize: args.decKernelSize,
+                                   dilationSchedule: args.decDilation,
+                                   maxLength: args.maxLength)
+    let trainer = CombinedTrainer(encConfig: encCfg,
+                                  decConfig: decCfg,
+                                  lrEncProj: args.lr,
+                                  weightDecayEnc: args.weightDecay,
+                                  alphaCos: args.alphaCos,
+                                  betaMSE: args.betaMSE,
+                                  warmupSteps: args.warmupSteps,
+                                  cosineDecaySteps: args.cosineDecaySteps,
+                                  minLREncProj: args.minLR,
+                                  clipNorm: args.clipNorm)
+    // Set decoder optimizer hyperparams from config
+    trainer.decTrainer.opt.lr = args.decLR
+    trainer.decTrainer.opt.weightDecay = args.decWeightDecay
     
     for epoch in 0..<args.epochs {
         logger.info("epoch=\(epoch+1)/\(args.epochs)", category: Logger.Category.dataset)
         let epochStart = Date()
-        var overflowCount = 0
         
         var seen = 0
         var totalMSE: Double = 0
         var totalCos: Double = 0
         var totalCE: Double = 0
         var totalCESamples: Int = 0
+        
         // Iterate train samples in batches of batchSize, each split to micro-batches
         var ptr = 0
         epoch_loop: while ptr < trainSamples.count {
@@ -247,194 +268,56 @@ guard let args = loadResolvedConfig() else { usage(); return }
             let slice = Array(trainSamples[ptr..<end])
             ptr = end
             if args.maxBatches > 0 && (ptr / max(args.batchSize,1)) > args.maxBatches { break epoch_loop }
-            // Require tokenized samples in the batch
+            // Enforce tokens present
             let hasTokens = slice.allSatisfy { $0.inputIDs != nil && $0.attentionMask != nil }
             if !hasTokens {
-                FileHandle.standardError.write(Data("EFTrain error: batch contains samples without tokens. Set requireTokens=true and regenerate dataset with input_ids and attention_mask.\n".utf8))
+                FileHandle.standardError.write(Data("EFTrain error: batch contains samples without tokens. Regenerate dataset with input_ids and attention_mask.\n".utf8))
                 return
             }
+            // Build arrays
             var ids: [[Int]] = []
             var mask: [[Int]] = []
             var tgts: [[Float]] = []
             ids.reserveCapacity(slice.count)
             mask.reserveCapacity(slice.count)
             tgts.reserveCapacity(slice.count)
-            for s in slice {
-                ids.append(s.inputIDs!)
-                mask.append(s.attentionMask!)
-                tgts.append(s.target)
-            }
-            // micro-batching
+            for s in slice { ids.append(s.inputIDs!); mask.append(s.attentionMask!); tgts.append(s.target) }
+            
+            // Micro-batching
             let B = ids.count
             let micro = args.microBatch > 0 ? args.microBatch : B
             let numChunks = (B + micro - 1) / micro
             var offset = 0
-            var stepCount = 0
-            // Mode A/B budget for this batch (deterministic slice-based schedule)
-            let aBudget = Int(round(Float(numChunks) * args.abRatio))
+            let aBudget = args.enableAB ? Int(round(Float(numChunks) * args.abRatio)) : numChunks
             var chunksDone = 0
-            var accW: Tensor? = nil
-            var accB: Tensor? = nil
-            // Last TCN block accumulators
-            var accLastW1: Tensor? = nil
-            var accLastB1: Tensor? = nil
-            var accLastW2: Tensor? = nil
-            var accLastB2: Tensor? = nil
-            var accGamma: Tensor? = nil
-            var accBeta: Tensor? = nil
+            
             for _ in 0..<numChunks {
                 let take = min(micro, B - offset)
                 let idsChunk = Array(ids[offset..<(offset+take)])
                 let maskChunk = Array(mask[offset..<(offset+take)])
+                let tgtChunk = Array(tgts[offset..<(offset+take)])
+                
+                // Decide Mode A (KD) or Mode B (Decoder CE)
                 let runA = (!args.enableAB) ? true : (chunksDone < aBudget)
                 chunksDone += 1
-                let tgtChunk = Array(tgts[offset..<(offset+take)])
-                let pooled: Tensor
-                let out: Tensor
-                var lastCache: TextToCubeEncoder.LastTCNCache? = nil
-                var maskFixedLocal: [[Int]] = []
-                if args.unfreezeLastTCN {
-                    // Run forward with last-block cache; Metal-based LN/GELU paths are already hot
-                    let res = enc.forwardForTrainingWithLastBlockCache(inputIDs: idsChunk, attentionMask: maskChunk)
-                    pooled = res.pooled
-                    out = res.out
-                    lastCache = res.cache
-                    maskFixedLocal = res.maskFixed
-                } else {
-                    let r = enc.forwardForTraining(inputIDs: idsChunk, attentionMask: maskChunk)
-                    pooled = r.pooled
-                    out = r.out
-                }
-                let b = out.shape[0]; let d = out.shape[1]
-                var tHost = [Float](repeating: 0, count: b*d)
-                for bi in 0..<b { for di in 0..<d { tHost[bi*d + di] = tgtChunk[bi][di] } }
-                let t = Tensor(shape: [b, d], data: tHost)
-                // Pre-update metrics
-                let mse = Losses.mseRowwise(out, t)
-                let cos = Losses.cosineSimilarityRowwise(out, t)
-                totalMSE += Double(mse.mean) * Double(b)
-                totalCos += Double(cos.mean) * Double(b)
-                seen += b
-                logger.debug(String(format: "train chunk: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
-                // Backward combine
-                var dY = dY_MSEMean(y: out, target: t)
-                if args.alphaCos != 0 {
-                    let dYcos = dY_CosineMeanLoss(y: out, target: t)
-                    let B2 = dY.shape[0]; let D2 = dY.shape[1]
-                    for idx in 0..<(B2*D2) { dY.data[idx] = args.betaMSE * dY.data[idx] + args.alphaCos * dYcos.data[idx] }
-                } else {
-                    let scale = args.betaMSE
-                    if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
-                }
+                
                 if runA {
-                    // Apply dynamic loss scaling to upstream gradient before GPU backprop
-                    if lossScaler.currentScale != 1.0 {
-                        for i in 0..<dY.count { dY.data[i] *= lossScaler.currentScale }
-                    }
-                    // Gradients for projector on GPU
-                    let (dW, dB) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
-                    // Track potential overflow in last TCN block grads for this micro-batch
-                    var overflowLB = false
+                    // KD targets: z_teacher
+                    var zData: [Float] = []
+                    zData.reserveCapacity(take * encCfg.outputDim)
+                    for i in 0..<take { zData.append(contentsOf: tgtChunk[i]) }
+                    let zt = Tensor(shape: [take, encCfg.outputDim], data: zData)
                     do {
-                        let dXin = try enc.projectionInputGradientsGPU(dY: dY)
-                        let maskFixed = args.unfreezeLastTCN ? maskFixedLocal : padOrTruncateMask(maskChunk, modelCfg.maxLength)
-                        let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixed, seqLen: modelCfg.maxLength)
-                        // Log gradient norms for sanity
-                        var norm2: Float = 0
-                        for v in dEnc.data { norm2 += v*v }
-                        let gnorm = sqrt(norm2)
-                        logger.debug(String(format: "dEnc L2=%.6f", gnorm), category: Logger.Category.training)
-                        // If unfreezing last TCN, compute grads for that block
-                        if args.unfreezeLastTCN, let cache = lastCache {
-                            // Apply mask to dEnc (zero masked positions)
-                            var dOut = dEnc
-                            let Bm = cache.xIn.shape[0]; let Lm = cache.xIn.shape[1]; let Dm = cache.xIn.shape[2]
-                            for b2 in 0..<Bm {
-                                for t2 in 0..<Lm {
-                                    if maskFixed[b2][t2] == 0 {
-                                        let base = (b2 * Lm + t2) * Dm
-                                        for di2 in 0..<Dm { dOut.data[base + di2] = 0 }
-                                    }
-                                }
-                            }
-                            let params = enc.getLastBlockParams()
-                            let grads = try lastTCNBackward(cache: cache, mask: maskFixed, dOut: dOut, modelCfg: modelCfg, params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
-                            // Overflow check on last-block grads
-                            if hasNaNOrInf(grads.dW1) { overflowLB = true }
-                            if let db1 = grads.dB1, hasNaNOrInf(db1) { overflowLB = true }
-                            if hasNaNOrInf(grads.dW2) { overflowLB = true }
-                            if let db2 = grads.dB2, hasNaNOrInf(db2) { overflowLB = true }
-                            if hasNaNOrInf(grads.dGamma) || hasNaNOrInf(grads.dBeta) { overflowLB = true }
-                            if accLastW1 == nil { accLastW1 = Tensor.zeros(params.w1.shape) }
-                            if accLastB1 == nil { accLastB1 = params.b1 != nil ? Tensor.zeros([params.b1!.count]) : Tensor.zeros([0]) }
-                            if accLastW2 == nil { accLastW2 = Tensor.zeros(params.w2.shape) }
-                            if accLastB2 == nil { accLastB2 = params.b2 != nil ? Tensor.zeros([params.b2!.count]) : Tensor.zeros([0]) }
-                            if accGamma == nil { accGamma = Tensor.zeros([params.gamma.count]) }
-                            if accBeta == nil { accBeta = Tensor.zeros([params.beta.count]) }
-                            for i2 in 0..<grads.dW1.count { accLastW1!.data[i2] += grads.dW1.data[i2] }
-                            if let db1 = grads.dB1 { for i2 in 0..<db1.count { accLastB1!.data[i2] += db1.data[i2] } }
-                            for i2 in 0..<grads.dW2.count { accLastW2!.data[i2] += grads.dW2.data[i2] }
-                            if let db2 = grads.dB2 { for i2 in 0..<db2.count { accLastB2!.data[i2] += db2.data[i2] } }
-                            for i2 in 0..<grads.dGamma.count { accGamma!.data[i2] += grads.dGamma.data[i2] }
-                            for i2 in 0..<grads.dBeta.count { accBeta!.data[i2] += grads.dBeta.data[i2] }
-                        }
+                        let (mse, cos) = try trainer.stepA(inputIDs: idsChunk, attentionMask: maskChunk, zTeacher: zt, unfreezeLastTCN: args.unfreezeLastTCN)
+                        totalMSE += Double(mse) * Double(take)
+                        totalCos += Double(cos) * Double(take)
+                        seen += take
                     } catch {
-                        logger.warn("projection input gradients failed: \(error)", category: Logger.Category.training)
+                        logger.error("trainer.stepA failed: \(error)", category: Logger.Category.training)
+                        return
                     }
-                    // Overflow check for projector grads
-                    var overflow = hasNaNOrInf(dW) || hasNaNOrInf(dB)
-                    if args.unfreezeLastTCN, let _ = lastCache {
-                        // Combine with last-block overflow flag if computed above
-                        overflow = overflow || overflowLB
-                    }
-                    if overflow {
-                        logger.warn("overflow detected — reducing loss scale and skipping this micro-batch", category: Logger.Category.training)
-                        lossScaler.onOverflow()
-                        overflowCount += 1
-                        // skip accumulation for this chunk
-                        offset += take
-                        continue
-                    }
-                    // Accumulate
-                    if accW == nil { accW = Tensor.zeros(dW.shape) }
-                    for i in 0..<dW.count { accW!.data[i] += dW.data[i] }
-                    if accB == nil { accB = Tensor.zeros([dB.count]) }
-                    for i in 0..<dB.count { accB!.data[i] += dB.data[i] }
-                    stepCount += 1
-                    // Step if reached accumSteps or last chunk
-                    if stepCount % args.accumSteps == 0 || offset + take >= B {
-                        // Average grads
-                        // Combine micro-batch averaging scale with loss unscale
-                        let avgScale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
-                        let scale = avgScale * lossScaler.invScale()
-                        let gW = accW!
-                        let gB = accB!
-                        // LR schedule (warmup + cosine)
-                        let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
-                        logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)
-                        var lastPack: LastTCNGrads? = nil
-                        if args.unfreezeLastTCN, let aW1 = accLastW1, let aW2 = accLastW2, let aG = accGamma, let aBt = accBeta {
-                            let dB1 = (accLastB1 != nil && accLastB1!.count > 0) ? accLastB1 : nil
-                            let dB2 = (accLastB2 != nil && accLastB2!.count > 0) ? accLastB2 : nil
-                            lastPack = LastTCNGrads(dW1: aW1, dB1: dB1, dW2: aW2, dB2: dB2, dGamma: aG, dBeta: aBt)
-                        }
-                        optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: lastPack, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
-                        globalStep += 1
-                        lossScaler.onGoodStep()
-                        // Reset accumulators
-                        accW = nil; accB = nil; stepCount = 0
-                        if args.unfreezeLastTCN { accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil }
-                        // Post-update metrics using project-only
-                        let outPost = enc.projectOnly(pooled)
-                        let msePost = Losses.mseRowwise(outPost, t)
-                        let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
-                        logger.debug(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
-                    }
-                    offset += take
                 } else {
-                    // Mode B: Decoder CE step (projection-only + optional last TCN unfreeze)
-                    guard let decT = decTrainer else { offset += take; continue }
-                    // Pad/truncate ids to decoder max length
+                    // Decoder CE targets
                     let L = args.maxLength
                     var idsPad: [[Int]] = []
                     idsPad.reserveCapacity(take)
@@ -443,120 +326,99 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         else if row.count < L { idsPad.append(row + Array(repeating: 0, count: L - row.count)) }
                         else { idsPad.append(row) }
                     }
-                    // Next-token targets (teacher forcing)
                     var targets: [[Int]] = []
                     targets.reserveCapacity(take)
-                    for r in idsPad {
-                        var t = Array(r.dropFirst()); t.append(r.first ?? 0)
-                        targets.append(t)
-                    }
+                    for r in idsPad { var t = Array(r.dropFirst()); t.append(r.first ?? 0); targets.append(t) }
+                    
                     // z_teacher from dataset target floats
                     var zData: [Float] = []
-                    zData.reserveCapacity(take * modelCfg.outputDim)
-                    for i in 0..<take { zData.append(contentsOf: tgts[offset + i]) }
-                    let zt = Tensor(shape: [take, modelCfg.outputDim], data: zData)
+                    zData.reserveCapacity(take * encCfg.outputDim)
+                    for i in 0..<take { zData.append(contentsOf: tgtChunk[i]) }
+                    let zt = Tensor(shape: [take, encCfg.outputDim], data: zData)
                     do {
-                        let (ce, overflow) = try decT.stepScaled(ids: idsPad, zTeacher: zt, targets: targets, unfreezeLastTCN: args.unfreezeLastTCN, scale: lossScaler.currentScale)
-                        if overflow {
-                            logger.warn("decoder overflow — reducing loss scale and skipping this micro-batch (Mode B)", category: Logger.Category.training)
-                            lossScaler.onOverflow()
-                            overflowCount += 1
-                            offset += take
-                            continue
-                        } else {
-                            lossScaler.onGoodStep()
-                            totalCE += Double(ce) * Double(take)
-                            totalCESamples += take
-                        }
+                        let ce = try trainer.stepB(ids: idsPad, targets: targets, zTeacher: zt, unfreezeLastTCN: args.unfreezeLastTCN)
+                        totalCE += Double(ce) * Double(take)
+                        totalCESamples += take
+                        seen += take
                     } catch {
-                        logger.warn("decoder step failed: \\(error)", category: Logger.Category.training)
+                        logger.error("trainer.stepB failed: \(error)", category: Logger.Category.training)
+                        return
                     }
-                    offset += take
+                }
+                offset += take
+            }
+        }
+        
+        if seen > 0 {
+            let avgMSE = totalMSE / Double(seen)
+            let avgCos = totalCos / Double(seen)
+            let elapsed = Date().timeIntervalSince(epochStart)
+            let thr = elapsed > 0 ? Double(seen) / elapsed : 0
+            if totalCESamples > 0 {
+                let avgCE = totalCE / Double(totalCESamples)
+                logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f avgCE=%.6f thr=%.2f/s", epoch+1, seen, avgMSE, avgCos, avgCE, thr), category: Logger.Category.dataset)
+            } else {
+                logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f thr=%.2f/s", epoch+1, seen, avgMSE, avgCos, thr), category: Logger.Category.dataset)
+            }
+        }
+        
+        // Validation
+        if !valSamples.isEmpty {
+            let (valMSE, valCos) = evaluate(enc: trainer.enc, samples: valSamples, batchSize: args.batchSize, microBatch: args.microBatch, maxLen: args.maxLength)
+            var valMsg = String(format: "epoch %d VAL: mse=%.6f cos=%.6f", epoch+1, valMSE, valCos)
+            if args.enableAB {
+                let hasTokensVal = valSamples.first(where: { $0.inputIDs != nil && $0.attentionMask != nil }) != nil
+                if hasTokensVal {
+                    var vptr = 0
+                    var ceSum: Double = 0
+                    var ceCount: Int = 0
+                    while vptr < valSamples.count {
+                        let vend = min(vptr + args.batchSize, valSamples.count)
+                        let vslice = Array(valSamples[vptr..<vend])
+                        vptr = vend
+                        var ids: [[Int]] = []
+                        ids.reserveCapacity(vslice.count)
+                        var zData: [Float] = []
+                        zData.reserveCapacity(vslice.count * encCfg.outputDim)
+                        for s in vslice {
+                            let row = s.inputIDs ?? []
+                            if row.count > args.maxLength { ids.append(Array(row.prefix(args.maxLength))) }
+                            else if row.count < args.maxLength { ids.append(row + Array(repeating: 0, count: args.maxLength - row.count)) }
+                            else { ids.append(row) }
+                            zData.append(contentsOf: s.target)
+                        }
+                        if ids.isEmpty { continue }
+                        var targets: [[Int]] = []
+                        targets.reserveCapacity(ids.count)
+                        for r in ids { var t = Array(r.dropFirst()); t.append(r.first ?? 0); targets.append(t) }
+                        let zt = Tensor(shape: [ids.count, encCfg.outputDim], data: zData)
+                        let logits = trainer.decTrainer.decoder.forward(ids: ids, z: zt)
+                        let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
+                        ceSum += Double(ce) * Double(ids.count)
+                        ceCount += ids.count
+                    }
+                    if ceCount > 0 { valMsg += String(format: " ce=%.6f", ceSum / Double(ceCount)) }
                 }
             }
-                let avgMSE = totalMSE / Double(seen)
-                let avgCos = totalCos / Double(seen)
-                let elapsed = Date().timeIntervalSince(epochStart)
-                let thr = elapsed > 0 ? Double(seen) / elapsed : 0
-                let scaleNow = lossScaler.currentScale
-                if totalCESamples > 0 {
-                    let avgCE = totalCE / Double(totalCESamples)
-                    logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f avgCE=%.6f thr=%.2f/s scale=%.0f overflows=%d", epoch+1, seen, avgMSE, avgCos, avgCE, thr, scaleNow, overflowCount), category: Logger.Category.dataset)
-                } else {
-                    logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f thr=%.2f/s scale=%.0f overflows=%d", epoch+1, seen, avgMSE, avgCos, thr, scaleNow, overflowCount), category: Logger.Category.dataset)
+            logger.info(valMsg, category: Logger.Category.dataset)
+            if valCos > bestValCos {
+                bestValCos = valCos
+                if !args.saveCheckpoint.isEmpty {
+                    let p = trainer.enc.getProjParams()
+                    saveProjectionCheckpoint(path: args.saveCheckpoint, weight: p.weight, bias: p.bias)
+                    logger.info("saved checkpoint: \(args.saveCheckpoint) (best cos=\(String(format: "%.6f", bestValCos)))", category: Logger.Category.dataset)
                 }
-            }
-            // Validation
-            if !valSamples.isEmpty {
-                let (valMSE, valCos) = evaluate(enc: enc, samples: valSamples, batchSize: args.batchSize, microBatch: args.microBatch, maxLen: args.maxLength)
-                var valMsg = String(format: "epoch %d VAL: mse=%.6f cos=%.6f", epoch+1, valMSE, valCos)
-                // Optional CE validation when A/B is enabled and val has tokens
-                if args.enableAB, let decT = decTrainer {
-                    let hasTokensVal = valSamples.first(where: { $0.inputIDs != nil && $0.attentionMask != nil }) != nil
-                    if hasTokensVal {
-                        // Evaluate CE over val in batches
-                        var vptr = 0
-                        var ceSum: Double = 0
-                        var ceCount: Int = 0
-                        while vptr < valSamples.count {
-                            let vend = min(vptr + args.batchSize, valSamples.count)
-                            let vslice = Array(valSamples[vptr..<vend])
-                            vptr = vend
-                            // Build ids and z_teacher
-                            var ids: [[Int]] = []
-                            ids.reserveCapacity(vslice.count)
-                            var zData: [Float] = []
-                            zData.reserveCapacity(vslice.count * modelCfg.outputDim)
-                            for s in vslice {
-                                let row = s.inputIDs ?? []
-                                // pad/truncate
-                                if row.count > args.maxLength { ids.append(Array(row.prefix(args.maxLength))) }
-                                else if row.count < args.maxLength { ids.append(row + Array(repeating: 0, count: args.maxLength - row.count)) }
-                                else { ids.append(row) }
-                                zData.append(contentsOf: s.target)
-                            }
-                            // Skip if any row was empty (no tokens)
-                            if ids.isEmpty { continue }
-                            // Targets (teacher forcing)
-                            var targets: [[Int]] = []
-                            targets.reserveCapacity(ids.count)
-                            for r in ids {
-                                var t = Array(r.dropFirst()); t.append(r.first ?? 0)
-                                targets.append(t)
-                            }
-                            let zt = Tensor(shape: [ids.count, modelCfg.outputDim], data: zData)
-                            // Forward CE
-                            let logits = decT.decoder.forward(ids: ids, z: zt)
-                            let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
-                            ceSum += Double(ce) * Double(ids.count)
-                            ceCount += ids.count
-                        }
-                        if ceCount > 0 {
-                            let avgCE = ceSum / Double(ceCount)
-                            valMsg += String(format: " ce=%.6f", avgCE)
-                        }
-                    }
-                }
-                logger.info(valMsg, category: Logger.Category.dataset)
-                if valCos > bestValCos {
-                    bestValCos = valCos
-                    if !args.saveCheckpoint.isEmpty {
-                        let p = enc.getProjParams()
-                        saveProjectionCheckpoint(path: args.saveCheckpoint, weight: p.weight, bias: p.bias)
-                        logger.info("saved checkpoint: \(args.saveCheckpoint) (best cos=\(String(format: "%.6f", bestValCos)))", category: Logger.Category.dataset)
-                    }
-                    if !args.saveOptState.isEmpty {
-                        let (projW, projB) = enc.getProjParams()
-                        var counts: [Int] = [projW.count]
-                        if let bT = projB { counts.append(bT.count) }
-                        let ok = opt.saveState(path: args.saveOptState, paramCounts: counts)
-                        logger.info("saved opt state: \(ok) -> \(args.saveOptState)", category: Logger.Category.training)
-                    }
+                if !args.saveOptState.isEmpty {
+                    let (projW, projB) = trainer.enc.getProjParams()
+                    var counts: [Int] = [projW.count]
+                    if let bT = projB { counts.append(bT.count) }
+                    let ok = trainer.optEncProj.saveState(path: args.saveOptState, paramCounts: counts)
+                    logger.info("saved opt state: \(ok) -> \(args.saveOptState)", category: Logger.Category.training)
                 }
             }
         }
+    }
 }
-
 // Entry point
 do {
     try run()

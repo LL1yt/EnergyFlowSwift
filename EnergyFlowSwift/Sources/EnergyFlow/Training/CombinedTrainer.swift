@@ -7,18 +7,34 @@ public final class CombinedTrainer {
     public var optEncProj: AdamW
     public var alphaCos: Float
     public var betaMSE: Float
+    // Scheduler & clip
+    private let baseLREnc: Float
+    private let minLREnc: Float
+    private let warmupSteps: Int
+    private let cosineDecaySteps: Int
+    private let clipNorm: Float
+    private var stepAIndex: Int = 0
 
     public init(encConfig: TextToCubeEncoderConfig,
                 decConfig: TextDecoderConfig,
                 lrEncProj: Float = 5e-3,
                 weightDecayEnc: Float = 0.0,
                 alphaCos: Float = 1.0,
-                betaMSE: Float = 1.0) {
+                betaMSE: Float = 1.0,
+                warmupSteps: Int = 0,
+                cosineDecaySteps: Int = 0,
+                minLREncProj: Float = 0.0,
+                clipNorm: Float = 0.0) {
         self.enc = TextToCubeEncoder(modelConfig: encConfig)
         self.decTrainer = DecoderTrainer(config: decConfig)
         self.optEncProj = AdamW(lr: lrEncProj, beta1: 0.9, beta2: 0.999, eps: 1e-8, weightDecay: weightDecayEnc)
         self.alphaCos = alphaCos
         self.betaMSE = betaMSE
+        self.baseLREnc = lrEncProj
+        self.minLREnc = minLREncProj
+        self.warmupSteps = warmupSteps
+        self.cosineDecaySteps = cosineDecaySteps
+        self.clipNorm = clipNorm
         // Initial sync of last block params encoder -> decoder
         let p = enc.getLastBlockParams()
         decTrainer.decoder.setLastBlockParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta)
@@ -60,8 +76,18 @@ public final class CombinedTrainer {
             paramsList.append(p.gamma); gradsList.append(grads.dGamma)
             paramsList.append(p.beta); gradsList.append(grads.dBeta)
         }
+        // LR schedule for encoder projection/last block
+        let lrNow = LRSchedulers.warmupCosine(baseLR: baseLREnc, minLR: minLREnc, warmupSteps: warmupSteps, decaySteps: cosineDecaySteps, step: stepAIndex)
+        if optEncProj.lr != lrNow { optEncProj.lr = lrNow }
+        // Global clip across collected grads (projection and optional last block)
+        if clipNorm > 0 {
+            var gl = gradsList
+            _ = GradClip.clipGlobalL2Norm(tensors: &gl, maxNorm: clipNorm, eps: 1e-6)
+            gradsList = gl
+        }
         var pack = paramsList
         optEncProj.step(params: &pack, grads: gradsList)
+        stepAIndex += 1
         // Write back
         var cursor = 0
         let newWproj = pack[cursor]; cursor += 1
@@ -86,6 +112,13 @@ public final class CombinedTrainer {
             decTrainer.decoder.setLastBlockParams(w1: pSync.w1, b1: pSync.b1, w2: pSync.w2, b2: pSync.b2, gamma: pSync.gamma, beta: pSync.beta)
             decTrainer.decoder.invalidateLastBlockCaches()
         }
+        // Friendly progress log at mid-verbosity (every 100 A-steps)
+        if stepAIndex % 100 == 0 {
+Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f cos=%.6f unfreeze=%@",
+                                       stepAIndex, zTeacher.shape[0], lrNow, clipNorm,
+                                       mseRow.mean, cosRow.mean, String(describing: unfreezeLastTCN)),
+                                category: Logger.Category.training)
+        }
         return (mseRow.mean, cosRow.mean)
     }
 
@@ -96,6 +129,12 @@ public final class CombinedTrainer {
             let p = decTrainer.decoder.getLastBlockParams()
             enc.setLastBlockParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta)
             enc.invalidateLastBlockCaches()
+        }
+        // Occasional friendly log (every ~300 A-steps worth of B calls is arbitrary; here just per call throttle with small prob)
+        if stepAIndex % 150 == 0 { // re-use A counter as rough global step
+Logger.shared.info1(String(format: "B-call at A-step %d: B=%d ce=%.6f unfreeze=%@",
+                                       stepAIndex, ids.count, ce, String(describing: unfreezeLastTCN)),
+                                category: Logger.Category.training)
         }
         return ce
     }
