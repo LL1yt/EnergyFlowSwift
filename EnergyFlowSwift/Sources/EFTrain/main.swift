@@ -38,6 +38,8 @@ struct ResolvedTrainConfig {
     // AB controls
     var enableAB: Bool
     var abRatio: Float
+    // Data strictness
+    var requireTokens: Bool
     // Decoder config for Mode B
     var decVocabSize: Int
     var decBlocks: Int
@@ -112,8 +114,8 @@ func loadResolvedConfig() -> ResolvedTrainConfig? {
         FileHandle.standardError.write(Data("EFTrain error: dataPath is empty in config file \(path).\n".utf8))
         return nil
     }
-    // Defaults for AB/decoder if not specified
-    
+    // Defaults for flags
+    let requireTokens = c.requireTokens ?? true
 
     return ResolvedTrainConfig(
         dataPath: dataPath,
@@ -140,6 +142,7 @@ func loadResolvedConfig() -> ResolvedTrainConfig? {
         configPath: path,
         enableAB: enableAB,
         abRatio: abRatio,
+        requireTokens: requireTokens,
         decVocabSize: decVocab,
         decBlocks: decBlocks,
         decHidden: decHidden,
@@ -161,6 +164,10 @@ guard let args = loadResolvedConfig() else { usage(); return }
     logger.info("EFTrain start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength) epochs=\(args.epochs) alphaCos=\(args.alphaCos) betaMSE=\(args.betaMSE)", category: Logger.Category.dataset)
     
     let ds = try SimpleJSONLDataset(path: args.dataPath)
+    if args.requireTokens && !ds.hasTokens {
+        FileHandle.standardError.write(Data("EFTrain error: requireTokens=true but dataset has no tokens. Regenerate dataset with input_ids and attention_mask.\n".utf8))
+        return
+    }
 // Configure encoder; set only what differs from defaults
     let modelCfg = TextToCubeEncoderConfig(
         maxLength: args.maxLength,
@@ -240,91 +247,92 @@ guard let args = loadResolvedConfig() else { usage(); return }
             let slice = Array(trainSamples[ptr..<end])
             ptr = end
             if args.maxBatches > 0 && (ptr / max(args.batchSize,1)) > args.maxBatches { break epoch_loop }
-            // Decide mode per slice
+            // Require tokenized samples in the batch
             let hasTokens = slice.allSatisfy { $0.inputIDs != nil && $0.attentionMask != nil }
-            if hasTokens {
-                // Build token batch arrays
-                var ids: [[Int]] = []
-                var mask: [[Int]] = []
-                var tgts: [[Float]] = []
-                ids.reserveCapacity(slice.count)
-                mask.reserveCapacity(slice.count)
-                tgts.reserveCapacity(slice.count)
-                for s in slice {
-                    ids.append(s.inputIDs!)
-                    mask.append(s.attentionMask!)
-                    tgts.append(s.target)
+            if !hasTokens {
+                FileHandle.standardError.write(Data("EFTrain error: batch contains samples without tokens. Set requireTokens=true and regenerate dataset with input_ids and attention_mask.\n".utf8))
+                return
+            }
+            var ids: [[Int]] = []
+            var mask: [[Int]] = []
+            var tgts: [[Float]] = []
+            ids.reserveCapacity(slice.count)
+            mask.reserveCapacity(slice.count)
+            tgts.reserveCapacity(slice.count)
+            for s in slice {
+                ids.append(s.inputIDs!)
+                mask.append(s.attentionMask!)
+                tgts.append(s.target)
+            }
+            // micro-batching
+            let B = ids.count
+            let micro = args.microBatch > 0 ? args.microBatch : B
+            let numChunks = (B + micro - 1) / micro
+            var offset = 0
+            var stepCount = 0
+            // Mode A/B budget for this batch (deterministic slice-based schedule)
+            let aBudget = Int(round(Float(numChunks) * args.abRatio))
+            var chunksDone = 0
+            var accW: Tensor? = nil
+            var accB: Tensor? = nil
+            // Last TCN block accumulators
+            var accLastW1: Tensor? = nil
+            var accLastB1: Tensor? = nil
+            var accLastW2: Tensor? = nil
+            var accLastB2: Tensor? = nil
+            var accGamma: Tensor? = nil
+            var accBeta: Tensor? = nil
+            for _ in 0..<numChunks {
+                let take = min(micro, B - offset)
+                let idsChunk = Array(ids[offset..<(offset+take)])
+                let maskChunk = Array(mask[offset..<(offset+take)])
+                let runA = (!args.enableAB) ? true : (chunksDone < aBudget)
+                chunksDone += 1
+                let tgtChunk = Array(tgts[offset..<(offset+take)])
+                let pooled: Tensor
+                let out: Tensor
+                var lastCache: TextToCubeEncoder.LastTCNCache? = nil
+                var maskFixedLocal: [[Int]] = []
+                if args.unfreezeLastTCN {
+                    // Run forward with last-block cache; Metal-based LN/GELU paths are already hot
+                    let res = enc.forwardForTrainingWithLastBlockCache(inputIDs: idsChunk, attentionMask: maskChunk)
+                    pooled = res.pooled
+                    out = res.out
+                    lastCache = res.cache
+                    maskFixedLocal = res.maskFixed
+                } else {
+                    let r = enc.forwardForTraining(inputIDs: idsChunk, attentionMask: maskChunk)
+                    pooled = r.pooled
+                    out = r.out
                 }
-                // micro-batching
-                let B = ids.count
-                let micro = args.microBatch > 0 ? args.microBatch : B
-                let numChunks = (B + micro - 1) / micro
-                var offset = 0
-                var stepCount = 0
-                // Mode A/B budget for this batch (deterministic slice-based schedule)
-                let aBudget = Int(round(Float(numChunks) * args.abRatio))
-                var chunksDone = 0
-                    var accW: Tensor? = nil
-                var accB: Tensor? = nil
-                // Last TCN block accumulators
-                var accLastW1: Tensor? = nil
-                var accLastB1: Tensor? = nil
-                var accLastW2: Tensor? = nil
-                var accLastB2: Tensor? = nil
-                var accGamma: Tensor? = nil
-                var accBeta: Tensor? = nil
-                for _ in 0..<numChunks {
-                    let take = min(micro, B - offset)
-                    let idsChunk = Array(ids[offset..<(offset+take)])
-                    let maskChunk = Array(mask[offset..<(offset+take)])
-                    let runA = (!args.enableAB) ? true : (chunksDone < aBudget)
-                    chunksDone += 1
-                    let tgtChunk = Array(tgts[offset..<(offset+take)])
-                    let pooled: Tensor
-                    let out: Tensor
-                    var lastCache: TextToCubeEncoder.LastTCNCache? = nil
-                    var maskFixedLocal: [[Int]] = []
-                    if args.unfreezeLastTCN {
-                        // Run forward with last-block cache; Metal-based LN/GELU paths are already hot
-                        let res = enc.forwardForTrainingWithLastBlockCache(inputIDs: idsChunk, attentionMask: maskChunk)
-                        pooled = res.pooled
-                        out = res.out
-                        lastCache = res.cache
-                        maskFixedLocal = res.maskFixed
-                    } else {
-                        let r = enc.forwardForTraining(inputIDs: idsChunk, attentionMask: maskChunk)
-                        pooled = r.pooled
-                        out = r.out
-                    }
-                    let b = out.shape[0]; let d = out.shape[1]
-                    var tHost = [Float](repeating: 0, count: b*d)
-                    for bi in 0..<b { for di in 0..<d { tHost[bi*d + di] = tgtChunk[bi][di] } }
-                    let t = Tensor(shape: [b, d], data: tHost)
-                    // Pre-update metrics
-                    let mse = Losses.mseRowwise(out, t)
-                    let cos = Losses.cosineSimilarityRowwise(out, t)
-                    totalMSE += Double(mse.mean) * Double(b)
-                    totalCos += Double(cos.mean) * Double(b)
-                    seen += b
-                    logger.debug(String(format: "train chunk: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
-                    // Backward combine
-                    var dY = dY_MSEMean(y: out, target: t)
-                    if args.alphaCos != 0 {
-                        let dYcos = dY_CosineMeanLoss(y: out, target: t)
-                        let B2 = dY.shape[0]; let D2 = dY.shape[1]
-                        for idx in 0..<(B2*D2) { dY.data[idx] = args.betaMSE * dY.data[idx] + args.alphaCos * dYcos.data[idx] }
-                    } else {
-                        let scale = args.betaMSE
-                        if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
-                    }
-                    if runA {
+                let b = out.shape[0]; let d = out.shape[1]
+                var tHost = [Float](repeating: 0, count: b*d)
+                for bi in 0..<b { for di in 0..<d { tHost[bi*d + di] = tgtChunk[bi][di] } }
+                let t = Tensor(shape: [b, d], data: tHost)
+                // Pre-update metrics
+                let mse = Losses.mseRowwise(out, t)
+                let cos = Losses.cosineSimilarityRowwise(out, t)
+                totalMSE += Double(mse.mean) * Double(b)
+                totalCos += Double(cos.mean) * Double(b)
+                seen += b
+                logger.debug(String(format: "train chunk: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
+                // Backward combine
+                var dY = dY_MSEMean(y: out, target: t)
+                if args.alphaCos != 0 {
+                    let dYcos = dY_CosineMeanLoss(y: out, target: t)
+                    let B2 = dY.shape[0]; let D2 = dY.shape[1]
+                    for idx in 0..<(B2*D2) { dY.data[idx] = args.betaMSE * dY.data[idx] + args.alphaCos * dYcos.data[idx] }
+                } else {
+                    let scale = args.betaMSE
+                    if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
+                }
+                if runA {
                     // Apply dynamic loss scaling to upstream gradient before GPU backprop
                     if lossScaler.currentScale != 1.0 {
                         for i in 0..<dY.count { dY.data[i] *= lossScaler.currentScale }
                     }
                     // Gradients for projector on GPU
                     let (dW, dB) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
-                    // Optional: upstream to encoder for future unfreeze (token-mode only)
                     // Track potential overflow in last TCN block grads for this micro-batch
                     var overflowLB = false
                     do {
@@ -423,187 +431,49 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         logger.debug(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
                     }
                     offset += take
-                    } else {
-                        // Mode B: Decoder CE step (projection-only + optional last TCN unfreeze)
-                        guard let decT = decTrainer else { offset += take; continue }
-                        // Pad/truncate ids to decoder max length
-                        let L = args.maxLength
-                        var idsPad: [[Int]] = []
-                        idsPad.reserveCapacity(take)
-                        for row in idsChunk {
-                            if row.count > L { idsPad.append(Array(row.prefix(L))) }
-                            else if row.count < L { idsPad.append(row + Array(repeating: 0, count: L - row.count)) }
-                            else { idsPad.append(row) }
+                } else {
+                    // Mode B: Decoder CE step (projection-only + optional last TCN unfreeze)
+                    guard let decT = decTrainer else { offset += take; continue }
+                    // Pad/truncate ids to decoder max length
+                    let L = args.maxLength
+                    var idsPad: [[Int]] = []
+                    idsPad.reserveCapacity(take)
+                    for row in idsChunk {
+                        if row.count > L { idsPad.append(Array(row.prefix(L))) }
+                        else if row.count < L { idsPad.append(row + Array(repeating: 0, count: L - row.count)) }
+                        else { idsPad.append(row) }
+                    }
+                    // Next-token targets (teacher forcing)
+                    var targets: [[Int]] = []
+                    targets.reserveCapacity(take)
+                    for r in idsPad {
+                        var t = Array(r.dropFirst()); t.append(r.first ?? 0)
+                        targets.append(t)
+                    }
+                    // z_teacher from dataset target floats
+                    var zData: [Float] = []
+                    zData.reserveCapacity(take * modelCfg.outputDim)
+                    for i in 0..<take { zData.append(contentsOf: tgts[offset + i]) }
+                    let zt = Tensor(shape: [take, modelCfg.outputDim], data: zData)
+                    do {
+                        let (ce, overflow) = try decT.stepScaled(ids: idsPad, zTeacher: zt, targets: targets, unfreezeLastTCN: args.unfreezeLastTCN, scale: lossScaler.currentScale)
+                        if overflow {
+                            logger.warn("decoder overflow — reducing loss scale and skipping this micro-batch (Mode B)", category: Logger.Category.training)
+                            lossScaler.onOverflow()
+                            overflowCount += 1
+                            offset += take
+                            continue
+                        } else {
+                            lossScaler.onGoodStep()
+                            totalCE += Double(ce) * Double(take)
+                            totalCESamples += take
                         }
-                        // Next-token targets (teacher forcing)
-                        var targets: [[Int]] = []
-                        targets.reserveCapacity(take)
-                        for r in idsPad {
-                            var t = Array(r.dropFirst()); t.append(r.first ?? 0)
-                            targets.append(t)
-                        }
-                        // z_teacher from dataset target floats
-                        var zData: [Float] = []
-                        zData.reserveCapacity(take * modelCfg.outputDim)
-                        for i in 0..<take { zData.append(contentsOf: tgts[offset + i]) }
-                        let zt = Tensor(shape: [take, modelCfg.outputDim], data: zData)
-                        do {
-                            let (ce, overflow) = try decT.stepScaled(ids: idsPad, zTeacher: zt, targets: targets, unfreezeLastTCN: args.unfreezeLastTCN, scale: lossScaler.currentScale)
-                            if overflow {
-                                logger.warn("decoder overflow — reducing loss scale and skipping this micro-batch (Mode B)", category: Logger.Category.training)
-                                lossScaler.onOverflow()
-                                offset += take
-                                continue
-                            } else {
-                                lossScaler.onGoodStep()
-                                totalCE += Double(ce) * Double(take)
-                                totalCESamples += take
-                            }
-                        } catch {
-                            logger.warn("decoder step failed: \\(error)", category: Logger.Category.training)
-                        }
-                        offset += take
-                    }
-                }
-            } else {
-                // text-mode path
-                let texts = slice.map { $0.text ?? "" }
-                let tgts = slice.map { $0.target }
-                let B = texts.count
-                let micro = args.microBatch > 0 ? args.microBatch : B
-                let numChunks = (B + micro - 1) / micro
-                var offset = 0
-                var stepCount = 0
-                var accW: Tensor? = nil
-                var accB: Tensor? = nil
-                // Last TCN block accumulators (mirror token-mode)
-                var accLastW1: Tensor? = nil
-                var accLastB1: Tensor? = nil
-                var accLastW2: Tensor? = nil
-                var accLastB2: Tensor? = nil
-                var accGamma: Tensor? = nil
-                var accBeta: Tensor? = nil
-                for _ in 0..<numChunks {
-                    let take = min(micro, B - offset)
-                    let txtChunk = Array(texts[offset..<(offset+take)])
-                    let tgtChunk = Array(tgts[offset..<(offset+take)])
-                    let pooled: Tensor
-                    let out: Tensor
-                    var lastCacheText: TextToCubeEncoder.LastTCNCache? = nil
-                    var maskFixedText: [[Int]] = []
-                    if args.unfreezeLastTCN {
-                        let res = enc.forwardForTrainingWithLastBlockCache(texts: txtChunk)
-                        pooled = res.pooled
-                        out = res.out
-                        lastCacheText = res.cache
-                        maskFixedText = res.maskFixed
-                    } else {
-                        let r = enc.forwardForTraining(texts: txtChunk)
-                        pooled = r.pooled
-                        out = r.out
-                    }
-                    let b = out.shape[0]; let d = out.shape[1]
-                    var tHost = [Float](repeating: 0, count: b*d)
-                    for bi in 0..<b { for di in 0..<d { tHost[bi*d + di] = tgtChunk[bi][di] } }
-                    let t = Tensor(shape: [b, d], data: tHost)
-                    let mse = Losses.mseRowwise(out, t)
-                    let cos = Losses.cosineSimilarityRowwise(out, t)
-                    totalMSE += Double(mse.mean) * Double(b)
-                    totalCos += Double(cos.mean) * Double(b)
-                    seen += b
-                    logger.debug(String(format: "train chunk (text): b=%d d=%d MSE=%.6f Cos=%.6f", b, d, mse.mean, cos.mean), category: Logger.Category.dataset)
-                    var dY = dY_MSEMean(y: out, target: t)
-                    if args.alphaCos != 0 {
-                        let dYcos = dY_CosineMeanLoss(y: out, target: t)
-                        let B2 = dY.shape[0]; let D2 = dY.shape[1]
-                        for idx in 0..<(B2*D2) { dY.data[idx] = args.betaMSE * dY.data[idx] + args.alphaCos * dYcos.data[idx] }
-                    } else {
-                        let scale = args.betaMSE
-                        if scale != 1.0 { for i in 0..<dY.count { dY.data[i] *= scale } }
-                    }
-                    if lossScaler.currentScale != 1.0 {
-                        for i in 0..<dY.count { dY.data[i] *= lossScaler.currentScale }
-                    }
-                    let (dW, dB) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
-                    // Upstream to encoder (text-mode)
-                    if args.unfreezeLastTCN, let cache = lastCacheText {
-                        do {
-                            let dXin = try enc.projectionInputGradientsGPU(dY: dY)
-                            let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: maskFixedText, seqLen: modelCfg.maxLength)
-                            var norm2: Float = 0
-                            for v in dEnc.data { norm2 += v*v }
-                            let gnorm = sqrt(norm2)
-                            logger.debug(String(format: "dEnc L2=%.6f (text)", gnorm), category: Logger.Category.training)
-                            // TCN block backward (same as token-mode)
-                            var dOut = dEnc
-                            let Bm = cache.xIn.shape[0]; let Lm = cache.xIn.shape[1]; let Dm = cache.xIn.shape[2]
-                            for b2 in 0..<Bm {
-                                for t2 in 0..<Lm {
-                                    if maskFixedText[b2][t2] == 0 {
-                                        let base = (b2 * Lm + t2) * Dm
-                                        for di2 in 0..<Dm { dOut.data[base + di2] = 0 }
-                                    }
-                                }
-                            }
-                            let params = enc.getLastBlockParams()
-                            let grads = try lastTCNBackward(cache: cache, mask: maskFixedText, dOut: dOut, modelCfg: modelCfg, params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
-                            if accLastW1 == nil { accLastW1 = Tensor.zeros(params.w1.shape) }
-                            if accLastB1 == nil { accLastB1 = params.b1 != nil ? Tensor.zeros([params.b1!.count]) : Tensor.zeros([0]) }
-                            if accLastW2 == nil { accLastW2 = Tensor.zeros(params.w2.shape) }
-                            if accLastB2 == nil { accLastB2 = params.b2 != nil ? Tensor.zeros([params.b2!.count]) : Tensor.zeros([0]) }
-                            if accGamma == nil { accGamma = Tensor.zeros([params.gamma.count]) }
-                            if accBeta == nil { accBeta = Tensor.zeros([params.beta.count]) }
-                            for i2 in 0..<grads.dW1.count { accLastW1!.data[i2] += grads.dW1.data[i2] }
-                            if let db1 = grads.dB1 { for i2 in 0..<db1.count { accLastB1!.data[i2] += db1.data[i2] } }
-                            for i2 in 0..<grads.dW2.count { accLastW2!.data[i2] += grads.dW2.data[i2] }
-                            if let db2 = grads.dB2 { for i2 in 0..<db2.count { accLastB2!.data[i2] += db2.data[i2] } }
-                            for i2 in 0..<grads.dGamma.count { accGamma!.data[i2] += grads.dGamma.data[i2] }
-                            for i2 in 0..<grads.dBeta.count { accBeta!.data[i2] += grads.dBeta.data[i2] }
-                        } catch {
-                            logger.warn("text-mode TCN backward failed: \(error)", category: Logger.Category.training)
-                        }
-                    }
-                    let overflow = hasNaNOrInf(dW) || hasNaNOrInf(dB)
-                    if overflow {
-                        logger.warn("overflow detected — reducing loss scale and skipping this micro-batch (text)", category: Logger.Category.training)
-                        lossScaler.onOverflow()
-                        overflowCount += 1
-                        offset += take
-                        continue
-                    }
-                    if accW == nil { accW = Tensor.zeros(dW.shape) }
-                    for i in 0..<dW.count { accW!.data[i] += dW.data[i] }
-                    if accB == nil { accB = Tensor.zeros([dB.count]) }
-                    for i in 0..<dB.count { accB!.data[i] += dB.data[i] }
-                    stepCount += 1
-                    if stepCount % args.accumSteps == 0 || offset + take >= B {
-                        let avgScale = 1.0 / Float(stepCount % args.accumSteps == 0 ? args.accumSteps : stepCount)
-                        let scale = avgScale * lossScaler.invScale()
-                        let gW = accW!
-                        let gB = accB!
-                        // LR schedule (warmup + cosine)
-                        let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
-                        logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)
-                        var lastPack: LastTCNGrads? = nil
-                        if args.unfreezeLastTCN, let aW1 = accLastW1, let aW2 = accLastW2, let aG = accGamma, let aBt = accBeta {
-                            let dB1 = (accLastB1 != nil && accLastB1!.count > 0) ? accLastB1 : nil
-                            let dB2 = (accLastB2 != nil && accLastB2!.count > 0) ? accLastB2 : nil
-                            lastPack = LastTCNGrads(dW1: aW1, dB1: dB1, dW2: aW2, dB2: dB2, dGamma: aG, dBeta: aBt)
-                        }
-                        optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: lastPack, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
-                        globalStep += 1
-                        lossScaler.onGoodStep()
-                        let outPost = enc.projectOnly(pooled)
-                        let msePost = Losses.mseRowwise(outPost, t)
-                        let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
-                        logger.debug(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
-                        if args.unfreezeLastTCN { accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil }
-                        accW = nil; accB = nil; stepCount = 0
+                    } catch {
+                        logger.warn("decoder step failed: \\(error)", category: Logger.Category.training)
                     }
                     offset += take
                 }
             }
-            if seen > 0 {
                 let avgMSE = totalMSE / Double(seen)
                 let avgCos = totalCos / Double(seen)
                 let elapsed = Date().timeIntervalSince(epochStart)
@@ -685,8 +555,6 @@ guard let args = loadResolvedConfig() else { usage(); return }
                 }
             }
         }
-    }
-    
 }
 
 // Entry point

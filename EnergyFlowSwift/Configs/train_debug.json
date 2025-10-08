@@ -22,6 +22,7 @@
   "unfreezeLastTCN": true,
   "enableAB": true,
   "abRatio": 0.5,
+  "requireTokens": true,
   "decVocabSize": 30000,
   "decBlocks": 2,
   "decHidden": 512,

@@ -44,6 +44,9 @@ public struct TrainConfig: Codable {
     public var enableAB: Bool?
     public var abRatio: Float?            // fraction of Mode A per batch (0..1)
 
+    // Data strictness
+    public var requireTokens: Bool?       // require input_ids/attention_mask to be present
+
     // Decoder config for Mode B
     public var decVocabSize: Int?
     public var decBlocks: Int?
@@ -96,6 +99,8 @@ public extension TrainConfig {
         // AB controls
         if let v = enableAB { out.enableAB = v }
         if let v = abRatio { out.abRatio = v }
+        // Data strictness
+        if let v = requireTokens { out.requireTokens = v }
         // Decoder
         if let v = decVocabSize { out.decVocabSize = v }
         if let v = decBlocks { out.decBlocks = v }
