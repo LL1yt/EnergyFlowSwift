@@ -75,8 +75,9 @@ public final class DecoderTrainer {
 
     // Scaled training step with mixed-precision support and overflow detection.
     // scale: multiply upstream dLogits by this factor; grads are unscaled internally before opt.step.
+    // clipNorm: optional global L2 grad clip across outProj and optional last TCN block
     // Returns (ce, overflow)
-    public func stepScaled(ids: [[Int]], zTeacher: Tensor, targets: [[Int]], unfreezeLastTCN: Bool = false, scale: Float = 1.0) throws -> (Float, Bool) {
+    public func stepScaled(ids: [[Int]], zTeacher: Tensor, targets: [[Int]], unfreezeLastTCN: Bool = false, scale: Float = 1.0, clipNorm: Float = 0.0) throws -> (Float, Bool) {
         // Forward
         let (flat, logits, cache) = decoder.forwardForTraining(ids: ids, z: zTeacher)
         let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
@@ -124,6 +125,12 @@ public final class DecoderTrainer {
         let inv = (scale == 0) ? 1.0 : (1.0 / scale)
         if inv != 1.0 {
             for i in 0..<grads.count { for j in 0..<grads[i].count { grads[i].data[j] *= inv } }
+        }
+        // Global grad clip across outProj and optional last-block
+        if clipNorm > 0 {
+            var gl = grads
+            _ = GradClip.clipGlobalL2Norm(tensors: &gl, maxNorm: clipNorm, eps: 1e-6)
+            grads = gl
         }
         var pack = params
         opt.step(params: &pack, grads: grads)

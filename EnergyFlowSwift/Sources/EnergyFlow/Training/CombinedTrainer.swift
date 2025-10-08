@@ -35,10 +35,14 @@ public final class CombinedTrainer {
         self.warmupSteps = warmupSteps
         self.cosineDecaySteps = cosineDecaySteps
         self.clipNorm = clipNorm
-        // Initial sync of last block params encoder -> decoder
-        let p = enc.getLastBlockParams()
-        decTrainer.decoder.setLastBlockParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta)
+        // Enforce dim sync: encoder/decoder trunks must match teacher embeddingDim
+        let pe = enc.getLastBlockParams()
+        let pd = decTrainer.decoder.getLastBlockParams()
+        let match = pe.w1.shape == pd.w1.shape && pe.w2.shape == pd.w2.shape && pe.gamma.shape == pd.gamma.shape && pe.beta.shape == pd.beta.shape
+        precondition(match, "Encoder/Decoder last TCN shapes mismatch. Ensure enc.hiddenDim == dec.dim == teacher embeddingDim. Got enc: w1=\(pe.w1.prettyShape) w2=\(pe.w2.prettyShape) gamma=\(pe.gamma.prettyShape); dec: w1=\(pd.w1.prettyShape) w2=\(pd.w2.prettyShape) gamma=\(pd.gamma.prettyShape)")
+        decTrainer.decoder.setLastBlockParams(w1: pe.w1, b1: pe.b1, w2: pe.w2, b2: pe.b2, gamma: pe.gamma, beta: pe.beta)
         decTrainer.decoder.invalidateLastBlockCaches()
+        Logger.shared.info1("Init sync enc->dec last TCN params (dims verified)", category: Logger.Category.training)
     }
 
     // Mode A: tokens -> z_s, KD vs z_t; projection-only + optional last-block update
@@ -124,10 +128,13 @@ Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f c
 
     // Mode B: z_t + teacher forcing CE; uses DecoderTrainer and then syncs last block to encoder
     public func stepB(ids: [[Int]], targets: [[Int]], zTeacher: Tensor, unfreezeLastTCN: Bool = true) throws -> Float {
-        let ce = try decTrainer.step(ids: ids, zTeacher: zTeacher, targets: targets, unfreezeLastTCN: unfreezeLastTCN)
+        let (ce, _) = try decTrainer.stepScaled(ids: ids, zTeacher: zTeacher, targets: targets, unfreezeLastTCN: unfreezeLastTCN, scale: 1.0, clipNorm: clipNorm)
         if unfreezeLastTCN {
-            let p = decTrainer.decoder.getLastBlockParams()
-            enc.setLastBlockParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta)
+            let pd = decTrainer.decoder.getLastBlockParams()
+            let pe = enc.getLastBlockParams()
+            let match = pd.w1.shape == pe.w1.shape && pd.w2.shape == pe.w2.shape && pd.gamma.shape == pe.gamma.shape && pd.beta.shape == pe.beta.shape
+            precondition(match, "dec->enc last TCN sync mismatch (unexpected). Ensure enc.hiddenDim == dec.dim == teacher embeddingDim.")
+            enc.setLastBlockParams(w1: pd.w1, b1: pd.b1, w2: pd.w2, b2: pd.b2, gamma: pd.gamma, beta: pd.beta)
             enc.invalidateLastBlockCaches()
         }
         // Occasional friendly log (every ~300 A-steps worth of B calls is arbitrary; here just per call throttle with small prob)

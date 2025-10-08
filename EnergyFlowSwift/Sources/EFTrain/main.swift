@@ -229,7 +229,14 @@ func run() throws {
     var bestValCos: Double = -Double.greatestFiniteMagnitude
     
     // Build unified encoder/decoder via CombinedTrainer
-    let encCfg = TextToCubeEncoderConfig(maxLength: args.maxLength, outputDim: ds.embeddingDim)
+    // Enforce encoder hiddenDim == teacher embeddingDim and trunk hyperparams match decoder for last-block sync
+    let encCfg = TextToCubeEncoderConfig(hiddenDim: ds.embeddingDim,
+                                         maxLength: args.maxLength,
+                                         outputDim: ds.embeddingDim,
+                                         tcnBlocks: args.decBlocks,
+                                         kernelSize: args.decKernelSize,
+                                         dilationSchedule: args.decDilation,
+                                         ffDim: args.decHidden)
     let decCfg = TextDecoderConfig(vocabSize: args.decVocabSize,
                                    dim: encCfg.outputDim,
                                    hidden: args.decHidden,
@@ -263,10 +270,20 @@ func run() throws {
         
         // Iterate train samples in batches of batchSize, each split to micro-batches
         var ptr = 0
+        let totalBatches = (trainSamples.count + max(args.batchSize,1) - 1) / max(args.batchSize,1)
+        var batchIndex = 0
         epoch_loop: while ptr < trainSamples.count {
             let end = min(ptr + args.batchSize, trainSamples.count)
             let slice = Array(trainSamples[ptr..<end])
             ptr = end
+            batchIndex += 1
+            // Batch start log (mid-verbosity)
+            let plannedChunks = (min(args.batchSize, slice.count) + max(args.microBatch,1) - 1) / max(args.microBatch,1)
+            let plannedAB = args.enableAB ? Int(round(Float(plannedChunks) * args.abRatio)) : plannedChunks
+            Logger.shared.info1(String(format: "epoch %d/%d — batch %d/%d start: size=%d micro=%d chunks=%d A/B=%d/%d (hint: A=KD cos↑→1 mse↓→0, B=CE↓→0)",
+                                       epoch+1, args.epochs, batchIndex, totalBatches, slice.count, args.microBatch, plannedChunks, plannedAB, max(plannedChunks - plannedAB,0)),
+                                category: Logger.Category.training)
+            let batchStart = Date()
             if args.maxBatches > 0 && (ptr / max(args.batchSize,1)) > args.maxBatches { break epoch_loop }
             // Enforce tokens present
             let hasTokens = slice.allSatisfy { $0.inputIDs != nil && $0.attentionMask != nil }
@@ -291,16 +308,19 @@ func run() throws {
             let aBudget = args.enableAB ? Int(round(Float(numChunks) * args.abRatio)) : numChunks
             var chunksDone = 0
             
+            var lastA_mse: Float = 0
+            var lastA_cos: Float = 0
+            var lastB_ce: Float = 0
             for _ in 0..<numChunks {
                 let take = min(micro, B - offset)
                 let idsChunk = Array(ids[offset..<(offset+take)])
                 let maskChunk = Array(mask[offset..<(offset+take)])
                 let tgtChunk = Array(tgts[offset..<(offset+take)])
-                
+
                 // Decide Mode A (KD) or Mode B (Decoder CE)
                 let runA = (!args.enableAB) ? true : (chunksDone < aBudget)
                 chunksDone += 1
-                
+
                 if runA {
                     // KD targets: z_teacher
                     var zData: [Float] = []
@@ -309,6 +329,7 @@ func run() throws {
                     let zt = Tensor(shape: [take, encCfg.outputDim], data: zData)
                     do {
                         let (mse, cos) = try trainer.stepA(inputIDs: idsChunk, attentionMask: maskChunk, zTeacher: zt, unfreezeLastTCN: args.unfreezeLastTCN)
+                        lastA_mse = mse; lastA_cos = cos
                         totalMSE += Double(mse) * Double(take)
                         totalCos += Double(cos) * Double(take)
                         seen += take
@@ -329,7 +350,7 @@ func run() throws {
                     var targets: [[Int]] = []
                     targets.reserveCapacity(take)
                     for r in idsPad { var t = Array(r.dropFirst()); t.append(r.first ?? 0); targets.append(t) }
-                    
+
                     // z_teacher from dataset target floats
                     var zData: [Float] = []
                     zData.reserveCapacity(take * encCfg.outputDim)
@@ -337,6 +358,7 @@ func run() throws {
                     let zt = Tensor(shape: [take, encCfg.outputDim], data: zData)
                     do {
                         let ce = try trainer.stepB(ids: idsPad, targets: targets, zTeacher: zt, unfreezeLastTCN: args.unfreezeLastTCN)
+                        lastB_ce = ce
                         totalCE += Double(ce) * Double(take)
                         totalCESamples += take
                         seen += take
@@ -347,6 +369,26 @@ func run() throws {
                 }
                 offset += take
             }
+            // Batch end summary (mid-verbosity)
+            let bt = Date().timeIntervalSince(batchStart)
+            let thrBatch = bt > 0 ? Double(B) / bt : 0
+            let avgMSErun = seen > 0 ? totalMSE / Double(seen) : 0
+            let avgCOSrun = seen > 0 ? totalCos / Double(seen) : 0
+            let avgCErun = totalCESamples > 0 ? totalCE / Double(totalCESamples) : 0
+            // ETA for the epoch based on running throughput
+            let elapsedRun = Date().timeIntervalSince(epochStart)
+            let thrRun = elapsedRun > 0 ? Double(seen) / elapsedRun : 0
+            let remaining = max(0, trainSamples.count - seen)
+            let etaSec = thrRun > 0 ? Double(remaining) / thrRun : 0
+            let etaI = Int(etaSec.rounded())
+            let etaH = etaI / 3600
+            let etaM = (etaI % 3600) / 60
+            let etaS = etaI % 60
+            let etaStr = etaH > 0 ? String(format: "%dh %02dm %02ds", etaH, etaM, etaS) : String(format: "%dm %02ds", etaM, etaS)
+            Logger.shared.info1(String(format: "epoch %d/%d — batch %d/%d done: lr=%.4g thr=%.1f/s lastA[mse=%.5f cos=%.5f] lastB[ce=%.5f] avg[mse=%.5f cos=%.5f ce=%.5f] ETA=%@ (hints: cos↑→1, mse↓→0, ce↓→0)",
+                                       epoch+1, args.epochs, batchIndex, totalBatches, trainer.optEncProj.lr, thrBatch,
+                                       lastA_mse, lastA_cos, lastB_ce, avgMSErun, avgCOSrun, avgCErun, etaStr),
+                                category: Logger.Category.training)
         }
         
         if seen > 0 {
