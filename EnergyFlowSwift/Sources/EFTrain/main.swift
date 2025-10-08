@@ -218,20 +218,6 @@ guard let args = loadResolvedConfig() else { usage(); return }
     let trainSamples = samplesByIndex(trainIdx)
     let valSamples = samplesByIndex(valIdx)
     
-    // Helper: pad or truncate mask to fixed length (aligns with encoder's pad/truncate)
-    func padOrTruncateMask(_ mask: [[Int]], _ len: Int) -> [[Int]] {
-        var out: [[Int]] = []
-        out.reserveCapacity(mask.count)
-        for var row in mask {
-            if row.count > len {
-                row = Array(row.prefix(len))
-            } else if row.count < len {
-                row.append(contentsOf: Array(repeating: 0, count: len - row.count))
-            }
-            out.append(row)
-        }
-        return out
-    }
     
     var bestValCos: Double = -Double.greatestFiniteMagnitude
     // Global dynamic loss scaler shared across token/text paths
@@ -239,6 +225,8 @@ guard let args = loadResolvedConfig() else { usage(); return }
     
     for epoch in 0..<args.epochs {
         logger.info("epoch=\(epoch+1)/\(args.epochs)", category: Logger.Category.dataset)
+        let epochStart = Date()
+        var overflowCount = 0
         
         var seen = 0
         var totalMSE: Double = 0
@@ -394,6 +382,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     if overflow {
                         logger.warn("overflow detected — reducing loss scale and skipping this micro-batch", category: Logger.Category.training)
                         lossScaler.onOverflow()
+                        overflowCount += 1
                         // skip accumulation for this chunk
                         offset += take
                         continue
@@ -432,8 +421,6 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         let msePost = Losses.mseRowwise(outPost, t)
                         let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
                         logger.debug(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
-                        // Reset accumulators
-                        accW = nil; accB = nil; stepCount = 0
                     }
                     offset += take
                     } else {
@@ -580,6 +567,7 @@ guard let args = loadResolvedConfig() else { usage(); return }
                     if overflow {
                         logger.warn("overflow detected — reducing loss scale and skipping this micro-batch (text)", category: Logger.Category.training)
                         lossScaler.onOverflow()
+                        overflowCount += 1
                         offset += take
                         continue
                     }
@@ -596,13 +584,20 @@ guard let args = loadResolvedConfig() else { usage(); return }
                         // LR schedule (warmup + cosine)
                         let lrNow = LRSchedulers.warmupCosine(baseLR: args.lr, minLR: args.minLR, warmupSteps: args.warmupSteps, decaySteps: args.cosineDecaySteps, step: globalStep)
                         logger.debug(String(format: "opt step=%d lr=%.6g", globalStep, lrNow), category: Logger.Category.training)
-                        optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: nil, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
+                        var lastPack: LastTCNGrads? = nil
+                        if args.unfreezeLastTCN, let aW1 = accLastW1, let aW2 = accLastW2, let aG = accGamma, let aBt = accBeta {
+                            let dB1 = (accLastB1 != nil && accLastB1!.count > 0) ? accLastB1 : nil
+                            let dB2 = (accLastB2 != nil && accLastB2!.count > 0) ? accLastB2 : nil
+                            lastPack = LastTCNGrads(dW1: aW1, dB1: dB1, dW2: aW2, dB2: dB2, dGamma: aG, dBeta: aBt)
+                        }
+                        optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: gW, projGradB: gB, lastGrads: lastPack, lrNow: lrNow, scale: scale, clipNorm: args.clipNorm))
                         globalStep += 1
                         lossScaler.onGoodStep()
                         let outPost = enc.projectOnly(pooled)
                         let msePost = Losses.mseRowwise(outPost, t)
                         let cosPost = Losses.cosineSimilarityRowwise(outPost, t)
                         logger.debug(String(format: "post-upd: b=%d d=%d MSE=%.6f Cos=%.6f", b, d, msePost.mean, cosPost.mean), category: Logger.Category.dataset)
+                        if args.unfreezeLastTCN { accLastW1 = nil; accLastB1 = nil; accLastW2 = nil; accLastB2 = nil; accGamma = nil; accBeta = nil }
                         accW = nil; accB = nil; stepCount = 0
                     }
                     offset += take
@@ -611,11 +606,14 @@ guard let args = loadResolvedConfig() else { usage(); return }
             if seen > 0 {
                 let avgMSE = totalMSE / Double(seen)
                 let avgCos = totalCos / Double(seen)
+                let elapsed = Date().timeIntervalSince(epochStart)
+                let thr = elapsed > 0 ? Double(seen) / elapsed : 0
+                let scaleNow = lossScaler.currentScale
                 if totalCESamples > 0 {
                     let avgCE = totalCE / Double(totalCESamples)
-                    logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f avgCE=%.6f", epoch+1, seen, avgMSE, avgCos, avgCE), category: Logger.Category.dataset)
+                    logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f avgCE=%.6f thr=%.2f/s scale=%.0f overflows=%d", epoch+1, seen, avgMSE, avgCos, avgCE, thr, scaleNow, overflowCount), category: Logger.Category.dataset)
                 } else {
-                    logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f", epoch+1, seen, avgMSE, avgCos), category: Logger.Category.dataset)
+                    logger.info(String(format: "epoch %d summary: samples=%d avgMSE=%.6f avgCos=%.6f thr=%.2f/s scale=%.0f overflows=%d", epoch+1, seen, avgMSE, avgCos, thr, scaleNow, overflowCount), category: Logger.Category.dataset)
                 }
             }
             // Validation
