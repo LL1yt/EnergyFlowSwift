@@ -311,6 +311,9 @@ func run() throws {
             var lastA_mse: Float = 0
             var lastA_cos: Float = 0
             var lastB_ce: Float = 0
+            // Track actual executed A/B chunks
+            var actualAChunks = 0
+            var actualBChunks = 0
             for _ in 0..<numChunks {
                 let take = min(micro, B - offset)
                 let idsChunk = Array(ids[offset..<(offset+take)])
@@ -322,6 +325,7 @@ func run() throws {
                 chunksDone += 1
 
                 if runA {
+                    actualAChunks += 1
                     // KD targets: z_teacher
                     var zData: [Float] = []
                     zData.reserveCapacity(take * encCfg.outputDim)
@@ -338,6 +342,7 @@ func run() throws {
                         return
                     }
                 } else {
+                    actualBChunks += 1
                     // Decoder CE targets
                     let L = args.maxLength
                     var idsPad: [[Int]] = []
@@ -385,9 +390,9 @@ func run() throws {
             let etaM = (etaI % 3600) / 60
             let etaS = etaI % 60
             let etaStr = etaH > 0 ? String(format: "%dh %02dm %02ds", etaH, etaM, etaS) : String(format: "%dm %02ds", etaM, etaS)
-            Logger.shared.info1(String(format: "epoch %d/%d — batch %d/%d done: lr=%.4g thr=%.1f/s lastA[mse=%.5f cos=%.5f] lastB[ce=%.5f] avg[mse=%.5f cos=%.5f ce=%.5f] ETA=%@ (hints: cos↑→1, mse↓→0, ce↓→0)",
+            Logger.shared.info1(String(format: "epoch %d/%d — batch %d/%d done: lr=%.4g thr=%.1f/s lastA[mse=%.5f cos=%.5f] lastB[ce=%.5f] avg[mse=%.5f cos=%.5f ce=%.5f] A/B actual=%d/%d ETA=%@ (hints: cos↑→1, mse↓→0, ce↓→0)",
                                        epoch+1, args.epochs, batchIndex, totalBatches, trainer.optEncProj.lr, thrBatch,
-                                       lastA_mse, lastA_cos, lastB_ce, avgMSErun, avgCOSrun, avgCErun, etaStr),
+                                       lastA_mse, lastA_cos, lastB_ce, avgMSErun, avgCOSrun, avgCErun, actualAChunks, actualBChunks, etaStr),
                                 category: Logger.Category.training)
         }
         
@@ -414,6 +419,9 @@ func run() throws {
                     var vptr = 0
                     var ceSum: Double = 0
                     var ceCount: Int = 0
+                    let valStart = Date()
+                    let totalVal = valSamples.count
+                    let stride = max(1, totalVal / 10)
                     while vptr < valSamples.count {
                         let vend = min(vptr + args.batchSize, valSamples.count)
                         let vslice = Array(valSamples[vptr..<vend])
@@ -438,6 +446,14 @@ func run() throws {
                         let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
                         ceSum += Double(ce) * Double(ids.count)
                         ceCount += ids.count
+                        // Periodic VAL progress log
+                        if ceCount % stride == 0 || vptr >= valSamples.count {
+                            let elapsed = Date().timeIntervalSince(valStart)
+                            let thrVal = elapsed > 0 ? Double(ceCount) / elapsed : 0
+                            let pct = Double(vptr) / Double(totalVal) * 100.0
+                            let cePart = ceCount > 0 ? (ceSum / Double(ceCount)) : 0
+                            Logger.shared.info1(String(format: "VAL progress: %d/%d (%.0f%%) ce=%.6f thr=%.1f/s", vptr, totalVal, pct, cePart, thrVal), category: Logger.Category.dataset)
+                        }
                     }
                     if ceCount > 0 { valMsg += String(format: " ce=%.6f", ceSum / Double(ceCount)) }
                 }

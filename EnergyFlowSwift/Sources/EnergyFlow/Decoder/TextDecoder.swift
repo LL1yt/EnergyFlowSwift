@@ -40,15 +40,11 @@ public final class TextDecoder {
         precondition(z.shape == [B, config.dim], "z must be [B, dim]")
         // 1) Embedding
         var x = embedding.forward(ids: ids) // [B,L,dim]
-        // 2) Conditioning (additive): cond = condProj(z) -> [B,dim], broadcast-add over time
+        // 2) Conditioning (additive): cond = condProj(z) -> [B,dim], broadcast-add over time (GPU)
         var cproj = condProj
         let cond = try! cproj.forward(z) // [B,dim]
         self.condProj = cproj
-        for b in 0..<B { for t in 0..<L {
-            let baseX = (b * L + t) * config.dim
-            let baseC = b * config.dim
-            for d in 0..<config.dim { x.data[baseX + d] += cond.data[baseC + d] }
-        } }
+        x = ElementwiseGPU.addBroadcast2DInto3D(y: x, addBD: cond, L: L)
         // 3) Causal TCN blocks
         let maskFull: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
         let y = stack.forward(x, mask: maskFull)
@@ -71,11 +67,7 @@ public final class TextDecoder {
         var cproj = condProj
         let cond = try! cproj.forward(z)
         self.condProj = cproj
-        for b in 0..<B { for t in 0..<L {
-            let baseX = (b * L + t) * config.dim
-            let baseC = b * config.dim
-            for d in 0..<config.dim { x.data[baseX + d] += cond.data[baseC + d] }
-        } }
+        x = ElementwiseGPU.addBroadcast2DInto3D(y: x, addBD: cond, L: L)
         let maskFull: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
         // Run all but last block
         let nb = stack.blocks.count

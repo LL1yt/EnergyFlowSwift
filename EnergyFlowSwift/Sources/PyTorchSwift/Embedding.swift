@@ -15,21 +15,7 @@ public struct Embedding {
 
     // ids: [B][L]
     public func forward(ids: [[Int]]) -> Tensor {
-        let b = ids.count
-        let l = ids.first?.count ?? 0
-        precondition(ids.allSatisfy { $0.count == l }, "Embedding.forward: ragged input")
-        var out = Tensor.zeros([b, l, embeddingDim])
-        for bi in 0..<b {
-            for li in 0..<l {
-                let token = ids[bi][li]
-                let idx = token >= 0 && token < vocabSize ? token : 0
-                let wBase = idx * embeddingDim
-                let oBase = (bi * l + li) * embeddingDim
-                for d in 0..<embeddingDim {
-                    out.data[oBase + d] = weight.data[wBase + d]
-                }
-            }
-        }
-        return out
+        // GPU gather for performance
+        return EmbeddingGPU.forward(ids: ids, weight: weight)
     }
 }
