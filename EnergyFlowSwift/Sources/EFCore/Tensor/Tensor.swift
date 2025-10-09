@@ -1,14 +1,15 @@
 import Foundation
 
-public enum DType {
+public enum DType: Sendable {
     case float32
 }
 
-public enum Device {
+public enum Device: Sendable {
     case cpu
 }
 
-public struct Tensor {
+// Tensor is a pure value type (arrays of Int/Float), safe to send across concurrency domains.
+public struct Tensor: Sendable {
     public var shape: [Int]
     public var data: [Float]
 

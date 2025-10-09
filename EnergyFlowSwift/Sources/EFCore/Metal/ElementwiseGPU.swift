@@ -3,21 +3,16 @@ import Metal
 
 public enum ElementwiseGPU {
     nonisolated(unsafe) private static var library: MTLLibrary? = nil
-    nonisolated(unsafe) private static var pAdd: MTLComputePipelineState? = nil
     nonisolated(unsafe) private static var pMask: MTLComputePipelineState? = nil
     nonisolated(unsafe) private static var pMean: MTLComputePipelineState? = nil
     nonisolated(unsafe) private static var pMeanBwd: MTLComputePipelineState? = nil
-
+    
     private static func ensurePipelines(device: MTLDevice) throws {
-        if let _ = pAdd, let _ = pMask, let _ = pMean, let _ = pMeanBwd { return }
+        if let _ = pMask, let _ = pMean, let _ = pMeanBwd { return }
         if library == nil {
-            library = try device.makeLibrary(source: metalSource, options: nil)
+            library = try device.makeLibrary(source: ElementwiseMetalLibrary.source, options: nil)
         }
         guard let lib = library else { throw MPSGError.contextUnavailable }
-        if pAdd == nil {
-            let fn = lib.makeFunction(name: "residual_add_f32")!
-            pAdd = try device.makeComputePipelineState(function: fn)
-        }
         if pMask == nil {
             let fn = lib.makeFunction(name: "mask_zero_f32")!
             pMask = try device.makeComputePipelineState(function: fn)
@@ -31,38 +26,18 @@ public enum ElementwiseGPU {
             pMeanBwd = try device.makeComputePipelineState(function: fn)
         }
     }
-
+    
     // y = y + x (elementwise), both Float32
     public static func residualAdd(y: Tensor, x: Tensor) -> Tensor {
-        precondition(y.shape == x.shape, "residualAdd shape mismatch")
-        let N = y.count
-        if N == 0 { return y }
-        let ctx = MPSGContext.shared
-        do { try ensurePipelines(device: ctx.device) } catch { fatalError("ElementwiseGPU: pipeline error: \(error)") }
-        guard let pAdd = pAdd, let cmd = ctx.commandQueue.makeCommandBuffer() else { fatalError("ElementwiseGPU: command buffer failed") }
-        cmd.label = "ElementwiseGPU.residualAdd"
-        let elem = MemoryLayout<Float>.size
-        let xBuf = BufferPool.buffer(device: ctx.device, length: N * elem, label: "Elem.add.x")
-        let yBuf = BufferPool.buffer(device: ctx.device, length: N * elem, label: "Elem.add.y")
-        x.data.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(xBuf.contents(), base, N * elem) } }
-        y.data.withUnsafeBytes { raw in if let base = raw.baseAddress { memcpy(yBuf.contents(), base, N * elem) } }
-        guard let enc = cmd.makeComputeCommandEncoder() else { fatalError("ElementwiseGPU: encoder failed") }
-        enc.label = "Elem.add.enc"
-        enc.setComputePipelineState(pAdd)
-        enc.setBuffer(yBuf, offset: 0, index: 0)
-        enc.setBuffer(xBuf, offset: 0, index: 1)
-        var n = Int32(N)
-        enc.setBytes(&n, length: MemoryLayout<Int32>.size, index: 2)
-        let tpt = MTLSize(width: 256, height: 1, depth: 1)
-        let tg = MTLSize(width: (N + 255) / 256, height: 1, depth: 1)
-        enc.dispatchThreadgroups(tg, threadsPerThreadgroup: tpt)
-        enc.endEncoding()
-        cmd.commit(); cmd.waitUntilCompleted()
-        var yOut = [Float](repeating: 0, count: N)
-        memcpy(&yOut, yBuf.contents(), N * elem)
-        return Tensor(shape: y.shape, data: yOut)
+        do {
+            return try GPU.blocking(label: "ElementwiseGPU.residualAdd") { actor in
+                try await actor.residualAdd(y: y, x: x)
+            }
+        } catch {
+            fatalError("ElementwiseGPU.residualAdd failed: \(error)")
+        }
     }
-
+    
     // Add broadcast: y[b,t,d] += add[b,d] for all t in 0..L-1
     public static func addBroadcast2DInto3D(y: Tensor, addBD: Tensor, L: Int) -> Tensor {
         precondition(y.shape.count == 3, "addBroadcast2DInto3D expects y [B,L,D]")
@@ -79,7 +54,7 @@ public enum ElementwiseGPU {
             pAddBC = pipe
         } else {
             // Recreate library and pipeline in case not compiled yet
-            do { library = try ctx.device.makeLibrary(source: metalSource, options: nil) } catch { fatalError("ElementwiseGPU: makeLibrary failed: \(error)") }
+            do { library = try ctx.device.makeLibrary(source: ElementwiseMetalLibrary.source, options: nil) } catch { fatalError("ElementwiseGPU: makeLibrary failed: \(error)") }
             guard let fn = library?.makeFunction(name: "add_broadcast_2d_into_3d_f32") else { fatalError("ElementwiseGPU: kernel not found") }
             pAddBC = try! ctx.device.makeComputePipelineState(function: fn)
         }
@@ -110,7 +85,7 @@ public enum ElementwiseGPU {
         memcpy(&yOut, yBuf.contents(), yCount * elem)
         return Tensor(shape: y.shape, data: yOut)
     }
-
+    
     // Zero masked positions: y[b,t,:] = 0 if mask[b][t] == 0
     public static func maskZero(y: Tensor, mask: [[Int]]) -> Tensor {
         precondition(y.shape.count == 3, "maskZero expects y [B,L,D]")
@@ -148,7 +123,7 @@ public enum ElementwiseGPU {
         memcpy(&yOut, yBuf.contents(), N * elem)
         return Tensor(shape: y.shape, data: yOut)
     }
-
+    
     // Masked mean over sequence dimension: x [B,L,H], mask [[B][L]] -> [B,H]
     public static func maskedMean(x: Tensor, mask: [[Int]]) -> Tensor {
         precondition(x.shape.count == 3, "maskedMean expects x [B,L,H]")
@@ -190,7 +165,7 @@ public enum ElementwiseGPU {
         memcpy(&yHost, yBuf.contents(), yCount * elem)
         return Tensor(shape: [B, H], data: yHost)
     }
-
+    
     // Backward for masked mean: given dPooled [B,H] and mask [B][L],
     // produce dEnc [B,L,H] with dEnc[b,t,h] = (mask[b,t]/denom_b) * dPooled[b,h]
     public static func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) -> Tensor {
@@ -234,207 +209,4 @@ public enum ElementwiseGPU {
         memcpy(&dxHost, dxBuf.contents(), dxCount * elem)
         return Tensor(shape: [B, L, H], data: dxHost)
     }
-
-    private static let metalSource: String = """
-    #include <metal_stdlib>
-    using namespace metal;
-
-    // y += x (elementwise)
-    kernel void residual_add_f32(
-        device float*       y   [[buffer(0)]],
-        const device float* x   [[buffer(1)]],
-        constant int&       N   [[buffer(2)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        if ((int)gid >= N) return;
-        y[gid] += x[gid];
-    }
-
-    // y[b,t,d] += a[b,d]
-    kernel void add_broadcast_2d_into_3d_f32(
-        device float*        y    [[buffer(0)]],
-        const device float*  a    [[buffer(1)]],
-        constant int&        B    [[buffer(2)]],
-        constant int&        L    [[buffer(3)]],
-        constant int&        D    [[buffer(4)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        int N = B * L * D;
-        if ((int)gid >= N) return;
-        int rem = (int)gid;
-        int b = rem / (L * D);
-        rem = rem % (L * D);
-        int t = rem / D;
-        int d = rem % D;
-        (void)t; // unused, but kept for clarity
-        y[gid] += a[b * D + d];
-    }
-
-    // Zero masked positions: y[b,t,:] = 0 if mask[b][t] == 0
-    kernel void mask_zero_f32(
-        device float*        y    [[buffer(0)]],
-        const device int*    mask [[buffer(1)]],
-        constant int&        B    [[buffer(2)]],
-        constant int&        L    [[buffer(3)]],
-        constant int&        D    [[buffer(4)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        int N = B * L * D;
-        if ((int)gid >= N) return;
-        int rem = (int)gid;
-        int b = rem / (L * D);
-        rem = rem % (L * D);
-        int t = rem / D;
-        int m = mask[b * L + t];
-        if (m == 0) {
-            y[gid] = 0.0f;
-        }
-    }
-
-    // Masked mean over L: y[b,h] = sum_t mask[b,t]*x[b,t,h] / max(sum mask[b,*], eps)
-    kernel void masked_mean_f32(
-        const device float*  x     [[buffer(0)]],
-        const device int*    mask  [[buffer(1)]],
-        device float*        y     [[buffer(2)]],
-        constant int&        B     [[buffer(3)]],
-        constant int&        L     [[buffer(4)]],
-        constant int&        H     [[buffer(5)]],
-        constant float&      eps   [[buffer(6)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        int total = B * H;
-        if ((int)gid >= total) return;
-        int b = (int)gid / H;
-        int h = (int)gid % H;
-        float sum = 0.0f;
-        float denom = 0.0f;
-        for (int t = 0; t < L; ++t) {
-            int m = mask[b * L + t];
-            if (m != 0) {
-                int idx = (b * L + t) * H + h;
-                sum += x[idx];
-                denom += 1.0f;
-            }
-        }
-        denom = max(denom, eps);
-        y[b * H + h] = sum / denom;
-    }
-
-    // Backward: dx[b,t,h] = (mask[b,t]/denom_b) * dY[b,h]
-    kernel void masked_mean_bwd_f32(
-        const device float*  dY    [[buffer(0)]],
-        const device int*    mask  [[buffer(1)]],
-        device float*        dX    [[buffer(2)]],
-        constant int&        B     [[buffer(3)]],
-        constant int&        L     [[buffer(4)]],
-        constant int&        H     [[buffer(5)]],
-        constant float&      eps   [[buffer(6)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        int N = B * L * H;
-        if ((int)gid >= N) return;
-        int rem = (int)gid;
-        int b = rem / (L * H);
-        rem = rem % (L * H);
-        int t = rem / H;
-        int h = rem % H;
-        int m = mask[b * L + t];
-        float denom = 0.0f;
-        for (int tt = 0; tt < L; ++tt) { denom += (mask[b * L + tt] != 0) ? 1.0f : 0.0f; }
-        denom = max(denom, eps);
-        int dyIndex = b * H + h;
-        int dxIndex = (b * L + t) * H + h;
-        float val = (m != 0) ? (dY[dyIndex] / denom) : 0.0f;
-        dX[dxIndex] = val;
-    }
-    
-    #include <metal_stdlib>
-    using namespace metal;
-
-    kernel void residual_add_f32(
-        device float*       y   [[buffer(0)]],
-        const device float* x   [[buffer(1)]],
-        constant int&       N   [[buffer(2)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        if ((int)gid >= N) return;
-        y[gid] += x[gid];
-    }
-
-    kernel void mask_zero_f32(
-        device float*        y    [[buffer(0)]],
-        const device int*    mask [[buffer(1)]],
-        constant int&        B    [[buffer(2)]],
-        constant int&        L    [[buffer(3)]],
-        constant int&        D    [[buffer(4)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        int N = B * L * D;
-        if ((int)gid >= N) return;
-        int rem = (int)gid;
-        int b = rem / (L * D);
-        rem = rem % (L * D);
-        int t = rem / D;
-        int m = mask[b * L + t];
-        if (m == 0) {
-            y[gid] = 0.0f;
-        }
-    }
-
-    // Masked mean over L: y[b,h] = sum_t mask[b,t]*x[b,t,h] / max(sum mask[b,*], eps)
-    kernel void masked_mean_f32(
-        const device float*  x     [[buffer(0)]],
-        const device int*    mask  [[buffer(1)]],
-        device float*        y     [[buffer(2)]],
-        constant int&        B     [[buffer(3)]],
-        constant int&        L     [[buffer(4)]],
-        constant int&        H     [[buffer(5)]],
-        constant float&      eps   [[buffer(6)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        int total = B * H;
-        if ((int)gid >= total) return;
-        int b = (int)gid / H;
-        int h = (int)gid % H;
-        float sum = 0.0f;
-        float denom = 0.0f;
-        for (int t = 0; t < L; ++t) {
-            int m = mask[b * L + t];
-            if (m != 0) {
-                int idx = (b * L + t) * H + h;
-                sum += x[idx];
-                denom += 1.0f;
-            }
-        }
-        denom = max(denom, eps);
-        y[b * H + h] = sum / denom;
-    }
-
-    // Backward: dx[b,t,h] = (mask[b,t]/denom_b) * dY[b,h]
-    kernel void masked_mean_bwd_f32(
-        const device float*  dY    [[buffer(0)]],
-        const device int*    mask  [[buffer(1)]],
-        device float*        dX    [[buffer(2)]],
-        constant int&        B     [[buffer(3)]],
-        constant int&        L     [[buffer(4)]],
-        constant int&        H     [[buffer(5)]],
-        constant float&      eps   [[buffer(6)]],
-        uint gid [[thread_position_in_grid]])
-    {
-        int total = B * L * H;
-        if ((int)gid >= total) return;
-        int rem = (int)gid;
-        int b = rem / (L * H);
-        rem = rem % (L * H);
-        int t = rem / H;
-        int h = rem % H;
-        // compute denom for this b
-        float denom = 0.0f;
-        for (int ti = 0; ti < L; ++ti) { if (mask[b * L + ti] != 0) denom += 1.0f; }
-        denom = max(denom, eps);
-        int m = mask[b * L + t];
-        float scale = (m != 0) ? (1.0f / denom) : 0.0f;
-        dX[gid] = scale * dY[b * H + h];
-    }
-    """
 }

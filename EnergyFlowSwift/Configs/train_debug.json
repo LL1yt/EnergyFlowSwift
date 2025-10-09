@@ -1,7 +1,7 @@
 {
   "dataPath": "/Users/id/Documents/GitHub/EnergyFlowSwift/EnergyFlowSwift/data/2k_snli_tokens.efb",
   "epochs": 1,
-  "batchSize": 256,
+  "batchSize": 64,
   "maxLength": 128,
   "maxBatches": 1000,
   "lr": 0.0003,
@@ -12,7 +12,7 @@
   "warmupSteps": 50,
   "cosineDecaySteps": 500,
   "minLR": 0.00001,
-  "microBatch": 128,
+  "microBatch": 32,
   "clipNorm": 1.0,
   "valFraction": 0.1,
   "saveCheckpoint": "Checkpoints/proj_best.bin",
