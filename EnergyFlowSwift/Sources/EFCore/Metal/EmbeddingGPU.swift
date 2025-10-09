@@ -1,4 +1,5 @@
 import Foundation
+import EFCore
 
 public enum EmbeddingGPU {
     public static func forward(ids: [[Int]], weight: Tensor) -> Tensor {
