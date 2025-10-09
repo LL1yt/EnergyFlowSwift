@@ -41,7 +41,7 @@ public final class TextDecoder {
         // 1) Embedding
         var x = embedding.forward(ids: ids) // [B,L,dim]
         // 2) Conditioning (additive): cond = condProj(z) -> [B,dim], broadcast-add over time (GPU)
-        var cproj = condProj
+        let cproj = condProj
         let cond = try! cproj.forward(z) // [B,dim]
         self.condProj = cproj
         x = ElementwiseGPU.addBroadcast2DInto3D(y: x, addBD: cond, L: L)
@@ -50,7 +50,7 @@ public final class TextDecoder {
         let y = stack.forward(x, mask: maskFull)
         // 4) Vocab projection per time-step: reshape to [B*L, dim] -> [B*L, V]
         let flat = y.reshaped([B * L, config.dim])
-        var oproj = outProj
+        let oproj = outProj
         let logitsFlat = try! oproj.forward(flat)
         self.outProj = oproj
         let logits = logitsFlat.reshaped([B, L, config.vocabSize])
@@ -64,7 +64,7 @@ public final class TextDecoder {
         precondition(L == config.maxLength)
         precondition(z.shape == [B, config.dim])
         var x = embedding.forward(ids: ids)
-        var cproj = condProj
+        let cproj = condProj
         let cond = try! cproj.forward(z)
         self.condProj = cproj
         x = ElementwiseGPU.addBroadcast2DInto3D(y: x, addBD: cond, L: L)
@@ -92,7 +92,7 @@ public final class TextDecoder {
         for idx in 0..<(B*L*D) { y.data[idx] += xin.data[idx] }
         // Flat for outProj
         let flat = y.reshaped([B * L, D])
-        var oproj = outProj
+        let oproj = outProj
         let logitsFlat = try! oproj.forward(flat)
         self.outProj = oproj
         let logits = logitsFlat.reshaped([B, L, config.vocabSize])

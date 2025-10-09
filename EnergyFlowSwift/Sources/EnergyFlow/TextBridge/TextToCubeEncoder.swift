@@ -61,7 +61,7 @@ public final class TextToCubeEncoder {
         let pooled = ElementwiseGPU.maskedMean(x: enc, mask: maskFixed)
         logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
         // 4) Projection to output via GPU
-        var proj = gpuProj
+        let proj = gpuProj
         do {
             let outGPU = try proj.forward(pooled)
             self.gpuProj = proj
@@ -80,7 +80,7 @@ public final class TextToCubeEncoder {
         let embs = embedding.forward(ids: idsFixed)
         let enc = tcnStack.forward(embs, mask: maskFixed)
         let pooled = ElementwiseGPU.maskedMean(x: enc, mask: maskFixed)
-        var proj = gpuProj
+        let proj = gpuProj
         do {
             let outGPU = try proj.forward(pooled)
             self.gpuProj = proj
@@ -124,7 +124,7 @@ public final class TextToCubeEncoder {
         y = ElementwiseGPU.residualAdd(y: y, x: x)
         y = ElementwiseGPU.maskZero(y: y, mask: maskFixed)
         let pooled = ElementwiseGPU.maskedMean(x: y, mask: maskFixed)
-        var proj = gpuProj
+        let proj = gpuProj
         do {
             let outGPU = try proj.forward(pooled)
             self.gpuProj = proj
@@ -189,7 +189,7 @@ public final class TextToCubeEncoder {
 
     // Project-only using current GPU projection (to evaluate post-update metrics without recomputing TCN)
     public func projectOnly(_ pooled: Tensor) -> Tensor {
-        var proj = gpuProj
+        let proj = gpuProj
         do {
             let outGPU = try proj.forward(pooled)
             self.gpuProj = proj
