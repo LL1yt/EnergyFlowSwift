@@ -347,7 +347,7 @@ public enum ElementwiseGPU {
         float val = (m != 0) ? (dY[dyIndex] / denom) : 0.0f;
         dX[dxIndex] = val;
     }
-    """
+    
     #include <metal_stdlib>
     using namespace metal;
 
