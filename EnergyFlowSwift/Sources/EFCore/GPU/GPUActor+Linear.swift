@@ -7,7 +7,7 @@ extension GPUActor {
                               outFeatures: Int,
                               weight: Tensor,
                               bias: Tensor?,
-                              x: Tensor) throws -> Tensor {
+                              x: Tensor) async throws -> Tensor {
         precondition(x.shape.count == 2 && x.shape[1] == inFeatures, "linearForward expects [B, inFeatures]")
         let batch = x.shape[0]
         if batch == 0 { return x }
@@ -119,7 +119,7 @@ extension GPUActor {
                                 weight: Tensor,
                                 X: Tensor,
                                 dY: Tensor,
-                                bias: Tensor?) throws -> (Tensor, Tensor) {
+                                bias: Tensor?) async throws -> (Tensor, Tensor) {
         precondition(X.shape.count == 2 && dY.shape.count == 2, "linearGradients expects 2D tensors")
         let batch = X.shape[0]
         precondition(X.shape[1] == inFeatures && dY.shape[0] == batch && dY.shape[1] == outFeatures,
@@ -236,7 +236,7 @@ extension GPUActor {
                                      outFeatures: Int,
                                      weight: Tensor,
                                      bias: Tensor?,
-                                     dY: Tensor) throws -> Tensor {
+                                     dY: Tensor) async throws -> Tensor {
         precondition(dY.shape.count == 2 && dY.shape[1] == outFeatures, "linearInputGradients expects [B, outFeatures]")
         let batch = dY.shape[0]
         if batch == 0 { return Tensor.zeros([0, inFeatures]) }

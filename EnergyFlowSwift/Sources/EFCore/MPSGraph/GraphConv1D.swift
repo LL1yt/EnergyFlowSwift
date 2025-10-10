@@ -5,8 +5,8 @@ public final class GraphConv1D {
     public let outChannels: Int
     public let kernelSize: Int
     public let dilation: Int
-    public var weight: Tensor   // [Cout, Cin, K] on host (Float32)
-    public var bias: Tensor?    // [Cout] on host (Float32)
+    public var weight: Tensor   // [Cout, Cin, K]
+    public var bias: Tensor?
 
     private let cacheID: UUID
     private var cacheVersion: UInt64
@@ -38,9 +38,34 @@ public final class GraphConv1D {
         cacheVersion &+= 1
     }
 
-    public func forward(_ x: Tensor) -> Tensor {
+    public func forwardAsync(_ x: Tensor, on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         precondition(x.shape.count == 3, "GraphConv1D.forward expects [B,L,Cin]")
-        precondition(x.shape[2] == inChannels, "Cin mismatch: got \(x.shape[2]), expected \(inChannels)")
+        precondition(x.shape[2] == inChannels, "Cin mismatch: got \\(x.shape[2]), expected \\(inChannels)")
+        let key = cacheID
+        let ver = cacheVersion
+        let inC = inChannels
+        let outC = outChannels
+        let ksz = kernelSize
+        let dil = dilation
+        let w = weight
+        let b = bias
+        return try await gpu.conv1DForward(
+            key: key,
+            version: ver,
+            inChannels: inC,
+            outChannels: outC,
+            kernelSize: ksz,
+            dilation: dil,
+            weight: w,
+            bias: b,
+            x: x
+        )
+    }
+
+    public func forward(_ x: Tensor) -> Tensor {
+        // Validate shapes outside of the closure to avoid capturing self inside it
+        precondition(x.shape.count == 3, "GraphConv1D.forward expects [B,L,Cin]")
+        precondition(x.shape[2] == inChannels, "Cin mismatch: got \\(x.shape[2]), expected \\(inChannels)")
         do {
             // Capture values into locals to avoid capturing self in an @Sendable closure
             let key = cacheID
@@ -65,7 +90,7 @@ public final class GraphConv1D {
                 )
             }
         } catch {
-            fatalError("GraphConv1D.forward failed: \(error)")
+            fatalError("GraphConv1D.forward failed: \\(error)")
         }
     }
 }

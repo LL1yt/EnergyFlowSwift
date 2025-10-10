@@ -9,7 +9,7 @@ extension GPUActor {
                               dilation: Int,
                               weight: Tensor,
                               bias: Tensor?,
-                              x: Tensor) throws -> Tensor {
+                              x: Tensor) throws -> Tensor{
         precondition(x.shape.count == 3, "conv1DForward expects [B,L,Cin]")
         let B = x.shape[0]
         let L = x.shape[1]
