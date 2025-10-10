@@ -69,29 +69,17 @@ public func lastTCNBackward(cache: TextToCubeEncoder.LastTCNCache,
     let Cout1 = params.w1.shape[0]
     // Build Xcol [B*L, Cin*K]
     let rows = B * L
-    let colsX = Cin1 * K1
-    let xcol: Tensor
-    if modelCfg.useGPUIm2ColCol2Im {
-        xcol = try Im2ColCol2ImGPU.im2col(X: cache.norm, B: B, L: L, Cin: Cin1, K: K1, dilation: dil)
-    } else {
-        var tmp = Tensor.zeros([rows, colsX])
-        for b in 0..<B {
-            for t in 0..<L {
-                let r = b * L + t
-                let rowBase = r * colsX
-                for i in 0..<Cin1 {
-                    for k in 0..<K1 {
-                        let ti = t - k * dil
-                        let dst = rowBase + i * K1 + k
-                        if ti < 0 { tmp.data[dst] = 0 } else { tmp.data[dst] = cache.norm.data[(b * L + ti) * Cin1 + i] }
-                    }
-                }
-            }
-        }
-        xcol = tmp
+    // Avoid capturing non-Sendable 'cache' in @Sendable closure by copying the needed tensor
+    let norm = cache.norm
+    let xcol = try GPU.blocking(label: "LastTCNBackward.im2col") { actor in
+        try await actor.im2col(X: norm, B: B, L: L, Cin: Cin1, K: K1, dilation: dil)
     }
     // Repack W1 -> Wcol [Cout, Cin*K] on GPU
-    let wcol = ConvPackGPU.packWToCol(W: params.w1, Cout: Cout1, Cin: Cin1, K: K1)
+    // Avoid capturing non-Sendable 'params' in @Sendable closure by copying the needed tensor
+    let W1 = params.w1
+    let wcol = try GPU.blocking(label: "LastTCNBackward.packW") { actor in
+        try await actor.packWToCol(W: W1, Cout: Cout1, Cin: Cin1, K: K1)
+    }
     // Use GraphLinear on [rows, Cin*K] -> [rows, Cout]
     var gl1 = GraphLinear(inFeatures: Cin1 * K1, outFeatures: Cout1, bias: params.b1 != nil, seed: 0)
     gl1.weight = wcol
@@ -101,28 +89,12 @@ public func lastTCNBackward(cache: TextToCubeEncoder.LastTCNCache,
     let (dW1col, dB1gpu) = try gl1.gradientsGPU(X: xcol, dY: dY1)
     let dXcol = try gl1.inputGradientsGPU(dY: dY1)
     // Map dW1col -> dW1 [Cout, Cin, K] on GPU
-    let dW1 = ConvPackGPU.unpackDWCol(dWcol: dW1col, Cout: Cout1, Cin: Cin1, K: K1)
+    let dW1 = try GPU.blocking(label: "LastTCNBackward.unpackDW") { actor in
+        try await actor.unpackDWCol(dWcol: dW1col, Cout: Cout1, Cin: Cin1, K: K1)
+    }
     // col2im: dXcol [rows, Cin*K] -> dX [B, L, Cin]
-    let dX1: Tensor
-    if modelCfg.useGPUIm2ColCol2Im {
-        dX1 = try Im2ColCol2ImGPU.col2im(dXcol: dXcol, B: B, L: L, Cin: Cin1, K: K1, dilation: dil)
-    } else {
-        var tmp = Tensor.zeros([B, L, Cin1])
-        for b in 0..<B {
-            for t in 0..<L {
-                let r = b * L + t
-                let rowBase = r * colsX
-                for i in 0..<Cin1 {
-                    for k in 0..<K1 {
-                        let ti = t - k * dil
-                        if ti < 0 { continue }
-                        let val = dXcol.data[rowBase + i * K1 + k]
-                        tmp.data[(b * L + ti) * Cin1 + i] += val
-                    }
-                }
-            }
-        }
-        dX1 = tmp
+    let dX1 = try GPU.blocking(label: "LastTCNBackward.col2im") { actor in
+        try await actor.col2im(dXcol: dXcol, B: B, L: L, Cin: Cin1, K: K1, dilation: dil)
     }
     // LN backward (row-wise on [B*L, D]) using dX1
     let xFlat = cache.xIn.reshaped([B * L, D])

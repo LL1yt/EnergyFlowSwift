@@ -20,6 +20,7 @@ public actor GPUActor {
     var embeddingPipelines: EmbeddingPipelines?
     var im2ColPipelines: Im2ColPipelines?
     var convPackPipelines: ConvPackPipelines?
+    var conv1DCaches: [UUID: Conv1DCacheEntry] = [:]
     var linearCaches: [UUID: LinearCacheEntry] = [:]
     var buffers: [String: MTLBuffer] = [:]
 

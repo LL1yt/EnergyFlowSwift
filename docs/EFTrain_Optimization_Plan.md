@@ -8,7 +8,7 @@
   - EnergyFlow/Training: {OptimStep.swift, LastTCNBackward.swift, Gradients.swift, CombinedTrainer.swift}
   - EnergyFlow/Decoder: {DecoderTrainer.swift, TextDecoder.swift, TextDecoderConfig.swift}
   - EFCore/MPSGraph: {GraphLinear.swift, GraphConv1D.swift, ExecutableCache.swift, GraphContext.swift}
-  - EFCore/Metal: {LayerNormGPU.swift, GELUGPU.swift, Im2ColCol2ImGPU.swift, ConvPackGPU.swift, ElementwiseGPU.swift, BufferPool.swift}
+  - EFCore/GPU: {GPUActor.swift, GPUActor+Elementwise.swift, GPUActor+GELU.swift, GPUActor+LayerNorm.swift, GPUActor+Embedding.swift, GPUActor+Im2Col.swift, GPUActor+ConvPack.swift, GPUActor+Conv1D.swift, BufferPool.swift}
   - PyTorchSwift/Embedding.swift
   - Dataset: EnergyFlow/Dataset/SimpleJSONLDataset.swift
   - Optim: EFCore/Optim/{AdamW.swift, LossScaler.swift}

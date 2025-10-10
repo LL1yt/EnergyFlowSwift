@@ -24,7 +24,7 @@ Design Overview
   - MPSMatrix helper allocation utilities
   - A BufferPool replacement with actor-owned cache (label → MTLBuffer)
   - Optional weight/buffer caches keyed by stable identifiers
-- Move existing GPU helpers (ElementwiseGPU, GELUGPU, LayerNormGPU, Im2ColCol2ImGPU, EmbeddingGPU) into methods on GPUActor.
+- Move existing GPU helpers (ElementwiseGPU, GELUGPU, LayerNormGPU, EmbeddingGPU, Im2Col/ConvPack) into methods on GPUActor.
 - Refactor MPSMatrix wrappers (GraphLinear, GraphConv1D) so that any GPU buffers and encodes flow through GPUActor. The structs retain CPU-side weights; the actor manages MTLBuffers pinned/cached as needed.
 - Make forward/grad methods async across layers that touch GPU; await at callsites.
 - Keep waitUntilCompleted before returning from each actor GPU op to preserve determinism.
@@ -57,7 +57,7 @@ Phase 2 — Port Metal helpers to GPUActor
   - addBroadcast2DInto3D(y: Tensor, addBD: Tensor, L: Int) async -> Tensor
 - GELUGPU → GPUActor.geluForward(x: Tensor) async, geluBackward(x: Tensor, dY: Tensor) async
 - LayerNormGPU → GPUActor.layerNormForward(x: Tensor, gamma: Tensor, beta: Tensor, eps: Float) async; backward async
-- Im2ColCol2ImGPU → GPUActor.im2colFP16ToBuffer(...), fillBiasColumnFP16(...), col2im(...), etc. (async)
+- Im2Col/ConvPack kernels → GPUActor.im2col/col2im/fillBias + pack/unpack helpers (async)
 - EmbeddingGPU → GPUActor.embeddingForward(ids: [[Int]], weight: Tensor) async
 - Delete/empty original static singletons and move code under actor; fix imports accordingly.
 

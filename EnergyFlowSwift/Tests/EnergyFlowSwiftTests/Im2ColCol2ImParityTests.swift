@@ -9,7 +9,9 @@ final class Im2ColCol2ImParityTests: XCTestCase {
         for _ in 0..<(B*L*Cin) { xData.append(Float.random(in: -1...1)) }
         let X = Tensor(shape: [B, L, Cin], data: xData)
         // GPU im2col
-        let XcolGPU = try Im2ColCol2ImGPU.im2col(X: X, B: B, L: L, Cin: Cin, K: K, dilation: dil)
+        let XcolGPU = try GPU.blocking(label: "Im2ColParity.im2col") { actor in
+            try await actor.im2col(X: X, B: B, L: L, Cin: Cin, K: K, dilation: dil)
+        }
         // CPU im2col
         let rows = B * L
         let colsX = Cin * K
@@ -37,7 +39,9 @@ final class Im2ColCol2ImParityTests: XCTestCase {
         var dxcData: [Float] = []
         for _ in 0..<(rows*colsX) { dxcData.append(Float.random(in: -1...1)) }
         let dXcol = Tensor(shape: [rows, colsX], data: dxcData)
-        let dXGPU = try Im2ColCol2ImGPU.col2im(dXcol: dXcol, B: B, L: L, Cin: Cin, K: K, dilation: dil)
+        let dXGPU = try GPU.blocking(label: "Im2ColParity.col2im") { actor in
+            try await actor.col2im(dXcol: dXcol, B: B, L: L, Cin: Cin, K: K, dilation: dil)
+        }
         var dXCPU = Tensor.zeros([B, L, Cin])
         for b in 0..<B {
             for t in 0..<L {

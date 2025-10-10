@@ -16,9 +16,6 @@ public struct TextToCubeEncoderConfig {
     // Projection
     public var useGPUProjection: Bool      // FP16 GPU projection
 
-    // Backward helpers
-    public var useGPUIm2ColCol2Im: Bool    // GPU im2col/col2im for last TCN backward
-
     // Seeding
     public var baseSeed: UInt64
 
@@ -32,7 +29,6 @@ public struct TextToCubeEncoderConfig {
                 dilationSchedule: [Int] = [1,2,4,8],
                 ffDim: Int = 512,
                 useGPUProjection: Bool = true,
-                useGPUIm2ColCol2Im: Bool = true,
                 baseSeed: UInt64 = 42) {
         self.hiddenDim = hiddenDim
         self.maxLength = maxLength
@@ -43,7 +39,6 @@ public struct TextToCubeEncoderConfig {
         self.dilationSchedule = dilationSchedule
         self.ffDim = ffDim
         self.useGPUProjection = useGPUProjection
-        self.useGPUIm2ColCol2Im = useGPUIm2ColCol2Im
         self.baseSeed = baseSeed
     }
 }
