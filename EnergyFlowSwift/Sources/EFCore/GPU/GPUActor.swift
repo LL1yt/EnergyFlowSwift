@@ -18,6 +18,8 @@ public actor GPUActor {
     var geluPipelines: GELUPipelines?
     var layerNormPipelines: LayerNormPipelines?
     var embeddingPipelines: EmbeddingPipelines?
+    var im2ColPipelines: Im2ColPipelines?
+    var convPackPipelines: ConvPackPipelines?
     var linearCaches: [UUID: LinearCacheEntry] = [:]
     var buffers: [String: MTLBuffer] = [:]
 

@@ -84,14 +84,14 @@ final class GPUKernelsAndStrideTests: XCTestCase {
 
     func testGraphLinearDXAugStrideAlignment() throws {
         let inF = 32, outF = 5, B = 32
-        var gl = GraphLinear(inFeatures: inF, outFeatures: outF, bias: true, seed: 1)
+        let gl = GraphLinear(inFeatures: inF, outFeatures: outF, bias: true, seed: 1)
         let dY = Tensor.randomUniform([B, outF], min: -0.1, max: 0.1, seed: 2)
         _ = try gl.inputGradientsGPU(dY: dY) // should not crash and no invalid device load
     }
 
     func testGraphConv1DStrideAlignment() {
         let B = 2, L = 11, Cin = 7, Cout = 5, K = 3
-        var x = Tensor.randomUniform([B, L, Cin], min: -0.5, max: 0.5, seed: 3)
+        let x = Tensor.randomUniform([B, L, Cin], min: -0.5, max: 0.5, seed: 3)
         let conv = GraphConv1D(inChannels: Cin, outChannels: Cout, kernelSize: K, dilation: 1, bias: true, seed: 4)
         let y = conv.forward(x)
         XCTAssertEqual(y.shape, [B, L, Cout])
@@ -121,7 +121,7 @@ for i in 0..<(N*D) { XCTAssertLessThan(abs(dxCPU.data[i] - dxGPU.data[i]), 5e-4)
 
     func testMaskedMeanBackwardGPUParity() {
         let B = 3, L = 6, H = 4
-        var dy = Tensor.randomUniform([B, H], min: -1, max: 1, seed: 10)
+        let dy = Tensor.randomUniform([B, H], min: -1, max: 1, seed: 10)
         var mask = Array(repeating: Array(repeating: 0, count: L), count: B)
         for b in 0..<B { for t in 0..<L { mask[b][t] = (t % 3 == 0) ? 1 : 0 } }
         // CPU ref
