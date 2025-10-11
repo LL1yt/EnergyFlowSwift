@@ -82,11 +82,11 @@ final class GPUKernelsAndStrideTests: XCTestCase {
         for i in 0..<cpu.count { XCTAssertLessThan(abs(cpu.data[i] - gpu.data[i]), 1e-6) }
     }
 
-    func testGraphLinearDXAugStrideAlignment() throws {
+    func testGraphLinearDXAugStrideAlignment() async throws {
         let inF = 32, outF = 5, B = 32
         let gl = GraphLinear(inFeatures: inF, outFeatures: outF, bias: true, seed: 1)
         let dY = Tensor.randomUniform([B, outF], min: -0.1, max: 0.1, seed: 2)
-        _ = try gl.inputGradientsGPU(dY: dY) // should not crash and no invalid device load
+        _ = try await gl.inputGradientsGPUAsync(dY: dY) // should not crash and no invalid device load
     }
 
     func testGraphConv1DStrideAlignment() {

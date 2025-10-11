@@ -421,7 +421,8 @@ func run() async throws {
                                                       samples: valSamples,
                                                       batchSize: args.batchSize,
                                                       microBatch: args.microBatch,
-                                                      maxLen: args.maxLength)
+                                                      maxLen: args.maxLength,
+                                                      on: trainer.gpu)
             var valMsg = String(format: "epoch %d VAL: mse=%.6f cos=%.6f", epoch+1, valMSE, valCos)
             if args.enableAB {
                 let hasTokensVal = valSamples.first(where: { $0.inputIDs != nil && $0.attentionMask != nil }) != nil
@@ -452,7 +453,7 @@ func run() async throws {
                         targets.reserveCapacity(ids.count)
                         for r in ids { var t = Array(r.dropFirst()); t.append(r.first ?? 0); targets.append(t) }
                         let zt = Tensor(shape: [ids.count, encCfg.outputDim], data: zData)
-                        let logits = try await trainer.decTrainer.decoder.forward(ids: ids, z: zt)
+                        let logits = try await trainer.decTrainer.decoder.forward(ids: ids, z: zt, on: trainer.gpu)
                         let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
                         ceSum += Double(ce) * Double(ids.count)
                         ceCount += ids.count

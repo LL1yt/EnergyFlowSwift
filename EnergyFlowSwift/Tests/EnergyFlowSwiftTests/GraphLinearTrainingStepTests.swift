@@ -3,7 +3,7 @@ import XCTest
 @testable import EnergyFlow
 
 final class GraphLinearTrainingStepTests: XCTestCase {
-    func testSingleStepReducesMSEOnToyData() throws {
+    func testSingleStepReducesMSEOnToyData() async throws {
         // Toy data: X [B, In], target T [B, Out]
         let B = 4, In = 5, Out = 3
         // Build a fixed X and a hidden true W/b to generate T
@@ -22,7 +22,7 @@ final class GraphLinearTrainingStepTests: XCTestCase {
         // Model: GraphLinear with random weights
         var gl = GraphLinear(inFeatures: In, outFeatures: Out, bias: true, seed: 42)
         // Forward
-        let Y0 = try gl.forward(X)
+        let Y0 = try await gl.forwardAsync(X)
         let mse0 = Losses.mseRowwise(Y0, T).mean
         // Backward (MSE-only) and one AdamW step
         let dY = dY_MSEMean(y: Y0, target: T)
@@ -35,7 +35,7 @@ final class GraphLinearTrainingStepTests: XCTestCase {
         if gl.bias != nil { gl.bias = params[1] }
         gl.invalidateCache()
         // Forward again
-        let Y1 = try gl.forward(X)
+        let Y1 = try await gl.forwardAsync(X)
         let mse1 = Losses.mseRowwise(Y1, T).mean
         XCTAssertLessThan(mse1, mse0, String(format: "mse1=%.6f should be < mse0=%.6f", mse1, mse0))
     }

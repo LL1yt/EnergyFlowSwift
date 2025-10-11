@@ -42,16 +42,6 @@ public struct GraphLinear {
                                           x: x)
     }
 
-    public func forward(_ x: Tensor) -> Tensor {
-        do {
-            return try GPU.blocking(label: "GraphLinear.forward") { actor in
-                try await forwardAsync(x, on: actor)
-            }
-        } catch {
-            fatalError("GraphLinear.forward failed: \(error)")
-        }
-    }
-
     public func gradientsGPUAsync(X: Tensor, dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> (dW: Tensor, dB: Tensor) {
         precondition(X.shape.count == 2 && dY.shape.count == 2, "GraphLinear.gradientsGPU expects 2D tensors")
         let batch = X.shape[0]
@@ -71,16 +61,6 @@ public struct GraphLinear {
                                             bias: b)
     }
 
-    public func gradientsGPU(X: Tensor, dY: Tensor) -> (dW: Tensor, dB: Tensor) {
-        do {
-            return try GPU.blocking(label: "GraphLinear.gradientsGPU") { actor in
-                try await gradientsGPUAsync(X: X, dY: dY, on: actor)
-            }
-        } catch {
-            fatalError("GraphLinear.gradientsGPU failed: \(error)")
-        }
-    }
-
     public func inputGradientsGPUAsync(dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         precondition(dY.shape.count == 2 && dY.shape[1] == outFeatures, "GraphLinear.inputGradientsGPU expects [B, outFeatures]")
         let key = cacheID
@@ -96,13 +76,4 @@ public struct GraphLinear {
                                                 dY: dY)
     }
 
-    public func inputGradientsGPU(dY: Tensor) -> Tensor {
-        do {
-            return try GPU.blocking(label: "GraphLinear.inputGradientsGPU") { actor in
-                try await inputGradientsGPUAsync(dY: dY, on: actor)
-            }
-        } catch {
-            fatalError("GraphLinear.inputGradientsGPU failed: \(error)")
-        }
-    }
 }

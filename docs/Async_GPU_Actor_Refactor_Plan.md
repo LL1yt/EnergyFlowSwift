@@ -67,8 +67,8 @@ Phase 3 — Refactor MPSMatrix wrappers via GPUActor
   - Actor owns weight buffers keyed by ObjectIdentifier(self) + version.
   - Public API:
     - mutating func forward(_ x: Tensor, on gpu: GPUActor = GPU.shared) async throws -> Tensor
-    - func gradientsGPU(X: Tensor, dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> (dW: Tensor, dB: Tensor)
-    - func inputGradientsGPU(dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> Tensor
+    - func gradientsGPUAsync(X: Tensor, dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> (dW: Tensor, dB: Tensor)
+    - func inputGradientsGPUAsync(dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> Tensor
   - Invalidate cache: bump version token so actor recreates buffers next call.
 - GraphConv1D
   - Actor manages Wcol FP16 buffers and im2col intermediates.

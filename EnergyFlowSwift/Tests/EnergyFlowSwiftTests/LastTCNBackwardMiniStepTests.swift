@@ -54,7 +54,11 @@ final class LastTCNBackwardMiniStepTests: XCTestCase {
                                                     seqLen: modelCfg.maxLength)
         // Last block grads
         let params = enc.getLastBlockParams()
-        let grads = try lastTCNBackward(cache: res.cache, mask: res.maskFixed, dOut: dEnc, modelCfg: modelCfg, params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
+        let grads = try await lastTCNBackward(cache: res.cache,
+                                              mask: res.maskFixed,
+                                              dOut: dEnc,
+                                              modelCfg: modelCfg,
+                                              params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
         // Optimizer step on projection + last block
         var paramsList: [Tensor] = [enc.getProjParams().weight]
         var gradsList: [Tensor] = [dWproj]

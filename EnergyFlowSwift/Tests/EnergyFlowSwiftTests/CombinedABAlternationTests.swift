@@ -45,7 +45,7 @@ final class CombinedABAlternationTests: XCTestCase {
                                                                attentionMask: mask)
         let mse0 = Losses.mseRowwise(encOut0.out, zt).mean
         let cos0 = Losses.cosineSimilarityRowwise(encOut0.out, zt).mean
-        let decLogits0 = try await trainer.decTrainer.decoder.forward(ids: ids, z: zt)
+        let decLogits0 = try await trainer.decTrainer.decoder.forward(ids: ids, z: zt, on: trainer.gpu)
         let ce0 = CrossEntropyLoss.meanLogits(logits: decLogits0, targets: targets)
         // One A step (projection-only + last block)
         _ = try await trainer.stepA(inputIDs: ids,

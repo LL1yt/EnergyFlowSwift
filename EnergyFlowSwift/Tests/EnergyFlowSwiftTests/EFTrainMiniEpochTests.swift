@@ -46,8 +46,11 @@ final class EFTrainMiniEpochTests: XCTestCase {
                                                     seqLen: cfg.maxLength)
         // Last block grads via helper (with GPU conv1 GEMM)
         let params = enc.getLastBlockParams()
-        let grads = try lastTCNBackward(cache: res.cache, mask: res.maskFixed, dOut: dEnc, modelCfg: cfg,
-                                        params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
+        let grads = try await lastTCNBackward(cache: res.cache,
+                                              mask: res.maskFixed,
+                                              dOut: dEnc,
+                                              modelCfg: cfg,
+                                              params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
         // Optimizer step using helper
         let opt = AdamW(lr: 3e-3, beta1: 0.9, beta2: 0.999, eps: 1e-8, weightDecay: 0)
         optimizerStepProjectionAndLastBlock(enc: enc, opt: opt, inputs: OptimStepInputs(projGradW: dWproj, projGradB: dBproj, lastGrads: grads, lrNow: opt.lr, scale: 1.0, clipNorm: 0.0))

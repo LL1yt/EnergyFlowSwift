@@ -7,6 +7,7 @@ public final class CombinedTrainer {
     public var optEncProj: AdamW
     public var alphaCos: Float
     public var betaMSE: Float
+    public let gpu: GPUActor
     // Scheduler & clip
     private let baseLREnc: Float
     private let minLREnc: Float
@@ -24,12 +25,14 @@ public final class CombinedTrainer {
                 warmupSteps: Int = 0,
                 cosineDecaySteps: Int = 0,
                 minLREncProj: Float = 0.0,
-                clipNorm: Float = 0.0) {
+                clipNorm: Float = 0.0,
+                gpu: GPUActor = GPU.shared) {
         self.enc = TextToCubeEncoder(modelConfig: encConfig)
-        self.decTrainer = DecoderTrainer(config: decConfig)
+        self.decTrainer = DecoderTrainer(config: decConfig, gpu: gpu)
         self.optEncProj = AdamW(lr: lrEncProj, beta1: 0.9, beta2: 0.999, eps: 1e-8, weightDecay: weightDecayEnc)
         self.alphaCos = alphaCos
         self.betaMSE = betaMSE
+        self.gpu = gpu
         self.baseLREnc = lrEncProj
         self.minLREnc = minLREncProj
         self.warmupSteps = warmupSteps
@@ -49,8 +52,7 @@ public final class CombinedTrainer {
     public func stepA(inputIDs: [[Int]],
                       attentionMask: [[Int]],
                       zTeacher: Tensor,
-                      unfreezeLastTCN: Bool = true,
-                      on gpu: GPUActor = GPU.shared) async throws -> (mse: Float, cos: Float) {
+                      unfreezeLastTCN: Bool = true) async throws -> (mse: Float, cos: Float) {
         let modelCfg = enc.modelConfig
         // Forward with cache
         let res = try await enc.forwardForTrainingWithLastBlockCache(inputIDs: inputIDs,
@@ -83,7 +85,12 @@ public final class CombinedTrainer {
         if let bp = proj.bias { paramsList.append(bp); gradsList.append(dBproj) }
         if unfreezeLastTCN {
             let p = enc.getLastBlockParams()
-            let grads = try lastTCNBackward(cache: res.cache, mask: res.maskFixed, dOut: dEnc, modelCfg: modelCfg, params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta))
+            let grads = try await lastTCNBackward(cache: res.cache,
+                                                  mask: res.maskFixed,
+                                                  dOut: dEnc,
+                                                  modelCfg: modelCfg,
+                                                  params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta),
+                                                  on: gpu)
             paramsList.append(p.w1); gradsList.append(grads.dW1)
             if let b1 = p.b1, let db1 = grads.dB1 { paramsList.append(b1); gradsList.append(db1) }
             paramsList.append(p.w2); gradsList.append(grads.dW2)
@@ -141,15 +148,13 @@ Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f c
     public func stepB(ids: [[Int]],
                       targets: [[Int]],
                       zTeacher: Tensor,
-                      unfreezeLastTCN: Bool = true,
-                      on gpu: GPUActor = GPU.shared) async throws -> Float {
+                      unfreezeLastTCN: Bool = true) async throws -> Float {
         let (ce, _) = try await decTrainer.stepScaled(ids: ids,
                                                       zTeacher: zTeacher,
                                                       targets: targets,
                                                       unfreezeLastTCN: unfreezeLastTCN,
                                                       scale: 1.0,
-                                                      clipNorm: clipNorm,
-                                                      on: gpu)
+                                                      clipNorm: clipNorm)
         if unfreezeLastTCN {
             let pd = decTrainer.decoder.getLastBlockParams()
             let pe = enc.getLastBlockParams()

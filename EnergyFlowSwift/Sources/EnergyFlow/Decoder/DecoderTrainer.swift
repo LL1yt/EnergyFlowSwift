@@ -6,22 +6,24 @@ public final class DecoderTrainer {
     public let config: TextDecoderConfig
     public var decoder: TextDecoder
     public var opt: AdamW
+    public let gpu: GPUActor
 
     public init(config: TextDecoderConfig,
                 lr: Float = 5e-3,
                 weightDecay: Float = 0.0,
-                seed: UInt64 = 0xDCD010) {
+                seed: UInt64 = 0xDCD010,
+                gpu: GPUActor = GPU.shared) {
         self.config = config
         self.decoder = TextDecoder(config: config, seed: seed)
         self.opt = AdamW(lr: lr, beta1: 0.9, beta2: 0.999, eps: 1e-8, weightDecay: weightDecay)
+        self.gpu = gpu
     }
 
     // One training step (projection-only): returns CE loss
     public func step(ids: [[Int]],
                      zTeacher: Tensor,
                      targets: [[Int]],
-                     unfreezeLastTCN: Bool = false,
-                     on gpu: GPUActor = GPU.shared) async throws -> Float {
+                     unfreezeLastTCN: Bool = false) async throws -> Float {
         // Forward
         let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
                                                                          z: zTeacher,
@@ -30,7 +32,10 @@ public final class DecoderTrainer {
         // Gradients on outProj
         let dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets) // [B*L, V]
         let (w0, b0) = decoder.getOutProjParams()
-        var gl = GraphLinear(inFeatures: config.dim, outFeatures: config.vocabSize, bias: b0 != nil, seed: 0)
+        var gl = GraphLinear(inFeatures: config.dim,
+                             outFeatures: config.vocabSize,
+                             bias: b0 != nil,
+                             seed: 0)
         gl.weight = w0
         gl.bias = b0
         _ = try await gl.forwardAsync(Tensor.zeros([1, config.dim]), on: gpu)
@@ -45,11 +50,12 @@ public final class DecoderTrainer {
             let B = ids.count, L = config.maxLength, D = config.dim
             let dOut = dXflat.reshaped([B, L, D])
             let p = decoder.getLastBlockParams()
-            let gradsLast = try decoderLastTCNBackward(cache: cache,
-                                                       dOut: dOut,
-                                                       kernelSize: config.kernelSize,
-                                                       dilation: (config.dilationSchedule.last ?? 1),
-                                                       params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta))
+            let gradsLast = try await decoderLastTCNBackward(cache: cache,
+                                                             dOut: dOut,
+                                                             kernelSize: config.kernelSize,
+                                                             dilation: (config.dilationSchedule.last ?? 1),
+                                                             params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta),
+                                                             on: gpu)
             // Append last-block grads to packs
             params.append(p.w1); grads.append(gradsLast.dW1)
             if let b1 = p.b1, let db1 = gradsLast.dB1 { params.append(b1); grads.append(db1) }
@@ -92,8 +98,7 @@ public final class DecoderTrainer {
                            targets: [[Int]],
                            unfreezeLastTCN: Bool = false,
                            scale: Float = 1.0,
-                           clipNorm: Float = 0.0,
-                           on gpu: GPUActor = GPU.shared) async throws -> (Float, Bool) {
+                           clipNorm: Float = 0.0) async throws -> (Float, Bool) {
         // Forward
         let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
                                                                          z: zTeacher,
@@ -107,7 +112,10 @@ public final class DecoderTrainer {
         }
         // Out projection grads
         let (w0, b0) = decoder.getOutProjParams()
-        var gl = GraphLinear(inFeatures: config.dim, outFeatures: config.vocabSize, bias: b0 != nil, seed: 0)
+        var gl = GraphLinear(inFeatures: config.dim,
+                             outFeatures: config.vocabSize,
+                             bias: b0 != nil,
+                             seed: 0)
         gl.weight = w0
         gl.bias = b0
         _ = try await gl.forwardAsync(Tensor.zeros([1, config.dim]), on: gpu)
@@ -123,11 +131,12 @@ public final class DecoderTrainer {
             let B = ids.count, L = config.maxLength, D = config.dim
             let dOut = dXflat.reshaped([B, L, D])
             let p = decoder.getLastBlockParams()
-            let gradsLast = try decoderLastTCNBackward(cache: cache,
-                                                       dOut: dOut,
-                                                       kernelSize: config.kernelSize,
-                                                       dilation: (config.dilationSchedule.last ?? 1),
-                                                       params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta))
+            let gradsLast = try await decoderLastTCNBackward(cache: cache,
+                                                             dOut: dOut,
+                                                             kernelSize: config.kernelSize,
+                                                             dilation: (config.dilationSchedule.last ?? 1),
+                                                             params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta),
+                                                             on: gpu)
             // Append
             params.append(p.w1); grads.append(gradsLast.dW1)
             if let b1 = p.b1, let db1 = gradsLast.dB1 { params.append(b1); grads.append(db1) }
