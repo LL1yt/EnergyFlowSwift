@@ -172,6 +172,13 @@ extension GPUActor {
     }
 
     public func maskedMean(x: Tensor, mask: [[Int]]) async throws -> Tensor {
+        let readback = try await maskedMeanDeferred(x: x, mask: mask, deferUntilSync: false)
+        return try await readback.value()
+    }
+
+    public func maskedMeanDeferred(x: Tensor,
+                                   mask: [[Int]],
+                                   deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
         precondition(x.shape.count == 3, "maskedMean expects x [B,L,H]")
         let B = x.shape[0], L = x.shape[1], H = x.shape[2]
         let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: L)
@@ -215,8 +222,9 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (B * H + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.maskedMean",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskedMean",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
             var output = [Float](repeating: 0, count: B * H)
             memcpy(&output, yBuffer.contents(), yBytes)
             return Tensor(shape: [B, H], data: output)
@@ -224,6 +232,17 @@ extension GPUActor {
     }
 
     public func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) async throws -> Tensor {
+        let readback = try await maskedMeanBackwardDeferred(dPooled: dPooled,
+                                                            mask: mask,
+                                                            seqLen: seqLen,
+                                                            deferUntilSync: false)
+        return try await readback.value()
+    }
+
+    public func maskedMeanBackwardDeferred(dPooled: Tensor,
+                                           mask: [[Int]],
+                                           seqLen: Int,
+                                           deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
         precondition(dPooled.shape.count == 2, "maskedMeanBackward expects [B,H]")
         let B = dPooled.shape[0], H = dPooled.shape[1]
         let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: seqLen)
@@ -267,8 +286,9 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (B * seqLen * H + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.maskedMeanBackward",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskedMeanBackward",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
             var dxHost = [Float](repeating: 0, count: B * seqLen * H)
             memcpy(&dxHost, dxBuffer.contents(), dxBytes)
             return Tensor(shape: [B, seqLen, H], data: dxHost)

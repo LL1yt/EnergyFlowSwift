@@ -9,14 +9,37 @@ extension GPUActor {
                               dilation: Int,
                               weight: Tensor,
                               bias: Tensor?,
-                              x: Tensor) async throws -> Tensor{
+                              x: Tensor) async throws -> Tensor {
+        let readback = try await conv1DForwardDeferred(key: key,
+                                                       version: version,
+                                                       inChannels: inChannels,
+                                                       outChannels: outChannels,
+                                                       kernelSize: kernelSize,
+                                                       dilation: dilation,
+                                                       weight: weight,
+                                                       bias: bias,
+                                                       x: x,
+                                                       deferUntilSync: false)
+        return try await readback.value()
+    }
+
+    public func conv1DForwardDeferred(key: UUID,
+                                      version: UInt64,
+                                      inChannels: Int,
+                                      outChannels: Int,
+                                      kernelSize: Int,
+                                      dilation: Int,
+                                      weight: Tensor,
+                                      bias: Tensor?,
+                                      x: Tensor,
+                                      deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
         precondition(x.shape.count == 3, "conv1DForward expects [B,L,Cin]")
         let B = x.shape[0]
         let L = x.shape[1]
         let Cin = x.shape[2]
         precondition(Cin == inChannels, "Cin mismatch: got \(Cin) expected \(inChannels)")
         if B == 0 || L == 0 {
-            return Tensor.zeros([B, L, outChannels])
+            return GPUReadback(resolved: Tensor.zeros([B, L, outChannels]))
         }
 
         let weightCache = try ensureConv1DCache(
@@ -81,8 +104,9 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Conv1D.forward"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
-        return try await awaitCommandBuffer(label: "GPUActor.Conv1D.forward",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Conv1D.forward",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
             var yHalf = [Float16](repeating: 0, count: rows * outChannels)
             let rowSize = outChannels * elemHalf
             yHalf.withUnsafeMutableBytes { raw in

@@ -40,7 +40,7 @@ public final class GraphConv1D {
 
     public func forwardAsync(_ x: Tensor, on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         precondition(x.shape.count == 3, "GraphConv1D.forward expects [B,L,Cin]")
-        precondition(x.shape[2] == inChannels, "Cin mismatch: got \\(x.shape[2]), expected \\(inChannels)")
+        precondition(x.shape[2] == inChannels, "Cin mismatch: got \(x.shape[2]), expected \(inChannels)")
         let key = cacheID
         let ver = cacheVersion
         let inC = inChannels
@@ -59,6 +59,33 @@ public final class GraphConv1D {
             weight: w,
             bias: b,
             x: x
+        )
+    }
+
+    public func forwardDeferred(_ x: Tensor,
+                                on gpu: GPUActor = GPU.shared,
+                                deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
+        precondition(x.shape.count == 3, "GraphConv1D.forward expects [B,L,Cin]")
+        precondition(x.shape[2] == inChannels, "Cin mismatch: got \(x.shape[2]), expected \(inChannels)")
+        let key = cacheID
+        let ver = cacheVersion
+        let inC = inChannels
+        let outC = outChannels
+        let ksz = kernelSize
+        let dil = dilation
+        let w = weight
+        let b = bias
+        return try await gpu.conv1DForwardDeferred(
+            key: key,
+            version: ver,
+            inChannels: inC,
+            outChannels: outC,
+            kernelSize: ksz,
+            dilation: dil,
+            weight: w,
+            bias: b,
+            x: x,
+            deferUntilSync: deferUntilSync
         )
     }
 
