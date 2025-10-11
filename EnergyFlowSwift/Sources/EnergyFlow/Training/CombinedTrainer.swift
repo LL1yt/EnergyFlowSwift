@@ -61,7 +61,7 @@ public final class CombinedTrainer {
                                                                      on: gpu)
         let out = res.out // [B, D]
         // KD losses
-        let (mseMean, cosMean) = await gpu.kdMetricsMean(student: out, teacher: zTeacher)
+        let (mseMean, cosMean) = try await gpu.kdMetricsMean(student: out, teacher: zTeacher)
         // Build dY for combined loss alpha*(1-cos) + beta*MSE
         var dY = dY_MSEMean(y: out, target: zTeacher)
         let dYcos = dY_CosineMeanLoss(y: out, target: zTeacher)

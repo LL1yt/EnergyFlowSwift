@@ -3,8 +3,6 @@ import Dispatch
 import Metal
 import MetalPerformanceShaders
 
-extension MTLCommandBuffer: @unchecked Sendable {}
-
 public enum GPUActorError: Error {
     case deviceUnavailable
     case commandQueueUnavailable
@@ -23,15 +21,26 @@ public actor GPUActor {
     var embeddingPipelines: EmbeddingPipelines?
     var im2ColPipelines: Im2ColPipelines?
     var convPackPipelines: ConvPackPipelines?
+    var metricsPipelines: MetricsPipelines?
     var conv1DCaches: [UUID: Conv1DCacheEntry] = [:]
     var linearCaches: [UUID: LinearCacheEntry] = [:]
     var buffers: [String: MTLBuffer] = [:]
+    private final class CommandBufferToken: @unchecked Sendable {
+        let label: String
+        let buffer: MTLCommandBuffer
+
+        init(label: String, buffer: MTLCommandBuffer) {
+            self.label = label
+            self.buffer = buffer
+        }
+    }
+
     private struct PendingHostReadback {
         let label: String
         let resume: () -> Void
     }
 
-    private var pendingCommandBuffers: [MTLCommandBuffer] = []
+    private var pendingCommandBuffers: [CommandBufferToken] = []
     private var pendingHostReadbacks: [PendingHostReadback] = []
     private var activeBatchDepth: Int = 0
 
@@ -82,8 +91,8 @@ public actor GPUActor {
         guard activeBatchDepth == 0 else { return }
         let pending = pendingCommandBuffers
         pendingCommandBuffers.removeAll(keepingCapacity: true)
-        for buffer in pending {
-            _ = await buffer.completed()
+        for token in pending {
+            _ = await token.buffer.completed()
         }
         drainHostReadbacks()
     }
@@ -93,12 +102,6 @@ public actor GPUActor {
     }
 
     // MARK: - Metrics helpers
-
-    public func kdMetricsMean(student: Tensor, teacher: Tensor) -> (mse: Float, cos: Float) {
-        let mse = Losses.mseRowwise(student, teacher).mean
-        let cos = Losses.cosineSimilarityRowwise(student, teacher).mean
-        return (mse, cos)
-    }
 
     public func crossEntropyMean(logits: Tensor, targets: [[Int]]) -> Float {
         return CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
@@ -110,17 +113,18 @@ public actor GPUActor {
                                commandBuffer: MTLCommandBuffer,
                                produce: @escaping () throws -> T) async throws -> T {
         return try await withCheckedThrowingContinuation { continuation in
-            commandBuffer.addCompletedHandler { [weak self] cb in
+            let token = CommandBufferToken(label: label, buffer: commandBuffer)
+            commandBuffer.addCompletedHandler { [weak self] _ in
                 guard let self else { return }
-                Task {
-                    await self.handleCommandBufferCompletion(label: label,
-                                                             commandBuffer: cb,
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.handleCommandBufferCompletion(token: token,
                                                              produce: produce,
                                                              continuation: continuation)
                 }
             }
             if activeBatchDepth > 0 {
-                pendingCommandBuffers.append(commandBuffer)
+                pendingCommandBuffers.append(token)
             }
             commandBuffer.commit()
         }
@@ -142,13 +146,12 @@ public actor GPUActor {
         }
     }
 
-    private func handleCommandBufferCompletion<T>(label: String,
-                                                  commandBuffer: MTLCommandBuffer,
+    private func handleCommandBufferCompletion<T>(token: CommandBufferToken,
                                                   produce: @escaping () throws -> T,
                                                   continuation: CheckedContinuation<T, Error>) async {
         let resume: () -> Void = {
-            if let error = commandBuffer.error {
-                continuation.resume(throwing: GPUActorError.commandBufferFailed(label: label, underlying: error))
+            if let error = token.buffer.error {
+                continuation.resume(throwing: GPUActorError.commandBufferFailed(label: token.label, underlying: error))
                 return
             }
             do {
@@ -158,7 +161,7 @@ public actor GPUActor {
                 continuation.resume(throwing: error)
             }
         }
-        enqueueHostReadback(label: label, resume: resume)
+        enqueueHostReadback(label: token.label, resume: resume)
     }
 }
 
