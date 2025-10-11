@@ -82,14 +82,12 @@ extension GPUActor {
         let normThreadgroups = MTLSize(width: (N + 255) / 256, height: 1, depth: 1)
         normEncoder.dispatchThreadgroups(normThreadgroups, threadsPerThreadgroup: normThreadsPerGroup)
         normEncoder.endEncoding()
-        return try await awaitCommandBuffer(label: "GPUActor.LayerNorm.forward",
-                                            commandBuffer: commandBuffer) {
-            var yHalf = [Float16](repeating: 0, count: count)
-            memcpy(&yHalf, yBuffer.contents(), yBytes)
-            var output = [Float](repeating: 0, count: count)
-            for i in 0..<count { output[i] = Float(yHalf[i]) }
-            return Tensor(shape: x.shape, data: output)
-        }
+        let reader = Float16BufferReader(buffer: yBuffer, count: count, shape: x.shape)
+        return try await awaitCommandBufferWithReader(
+            label: "GPUActor.LayerNorm.forward",
+            commandBuffer: commandBuffer,
+            reader: reader
+        )
     }
 
     public func layerNormForwardDeferred(x: Tensor, gamma: Tensor, beta: Tensor, eps: Float, deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
