@@ -2,9 +2,16 @@ import Metal
 
 extension GPUActor {
     public func residualAdd(y: Tensor, x: Tensor) async throws -> Tensor {
+        let readback = try await residualAddDeferred(y: y, x: x, deferUntilSync: false)
+        return try await readback.value()
+    }
+
+    public func residualAddDeferred(y: Tensor,
+                                    x: Tensor,
+                                    deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
         precondition(y.shape == x.shape, "GPUActor.residualAdd shape mismatch")
         let count = y.count
-        if count == 0 { return y }
+        if count == 0 { return GPUReadback(resolved: y) }
         let pipelines = try ensureElementwisePipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             throw GPUActorError.commandBufferUnavailable("Elementwise.residualAdd: command buffer creation failed")
@@ -36,8 +43,9 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.residualAdd",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.residualAdd",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
             var output = [Float](repeating: 0, count: count)
             memcpy(&output, yBuffer.contents(), byteCount)
             return Tensor(shape: y.shape, data: output)
@@ -45,12 +53,23 @@ extension GPUActor {
     }
 
     public func addBroadcast2DInto3D(y: Tensor, addBD: Tensor, sequenceLength L: Int) async throws -> Tensor {
+        let readback = try await addBroadcast2DInto3DDeferred(y: y,
+                                                               addBD: addBD,
+                                                               sequenceLength: L,
+                                                               deferUntilSync: false)
+        return try await readback.value()
+    }
+
+    public func addBroadcast2DInto3DDeferred(y: Tensor,
+                                             addBD: Tensor,
+                                             sequenceLength L: Int,
+                                             deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
         precondition(y.shape.count == 3, "addBroadcast2DInto3D expects y [B,L,D]")
         let B = y.shape[0], seq = y.shape[1], D = y.shape[2]
         precondition(seq == L, "sequenceLength mismatch: provided \(L) vs tensor \(seq)")
         precondition(addBD.shape == [B, D], "addBroadcast2DInto3D expects add [B,D]")
         let count = B * L * D
-        if count == 0 { return y }
+        if count == 0 { return GPUReadback(resolved: y) }
         let pipelines = try ensureElementwisePipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             throw GPUActorError.commandBufferUnavailable("Elementwise.addBroadcast: command buffer creation failed")
@@ -86,8 +105,9 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.addBroadcast2DInto3D",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.addBroadcast2DInto3D",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
             var out = [Float](repeating: 0, count: count)
             memcpy(&out, yBuffer.contents(), yBytes)
             return Tensor(shape: y.shape, data: out)
@@ -95,11 +115,18 @@ extension GPUActor {
     }
 
     public func maskZero(y: Tensor, mask: [[Int]]) async throws -> Tensor {
+        let readback = try await maskZeroDeferred(y: y, mask: mask, deferUntilSync: false)
+        return try await readback.value()
+    }
+
+    public func maskZeroDeferred(y: Tensor,
+                                 mask: [[Int]],
+                                 deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
         precondition(y.shape.count == 3, "maskZero expects y [B,L,D]")
         let B = y.shape[0], L = y.shape[1], D = y.shape[2]
         let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: L)
         let count = B * L * D
-        if count == 0 { return y }
+        if count == 0 { return GPUReadback(resolved: y) }
         let pipelines = try ensureElementwisePipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             throw GPUActorError.commandBufferUnavailable("Elementwise.maskZero: command buffer creation failed")
@@ -135,8 +162,9 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.maskZero",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskZero",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
             var out = [Float](repeating: 0, count: count)
             memcpy(&out, yBuffer.contents(), yBytes)
             return Tensor(shape: y.shape, data: out)
