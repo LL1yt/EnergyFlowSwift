@@ -42,6 +42,21 @@ public struct GraphLinear {
                                           x: x)
     }
 
+    public func forwardDeferred(_ x: Tensor, on gpu: GPUActor = GPU.shared) async throws -> GPUReadback<Tensor> {
+        precondition(x.shape.count == 2 && x.shape[1] == inFeatures, "GraphLinear.forward expects [B, inFeatures]")
+        let key = cacheID
+        let ver = cacheVersion
+        let w = weight
+        let b = bias
+        return try await gpu.linearForwardDeferred(key: key,
+                                                   version: ver,
+                                                   inFeatures: inFeatures,
+                                                   outFeatures: outFeatures,
+                                                   weight: w,
+                                                   bias: b,
+                                                   x: x)
+    }
+
     public func gradientsGPUAsync(X: Tensor, dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> (dW: Tensor, dB: Tensor) {
         precondition(X.shape.count == 2 && dY.shape.count == 2, "GraphLinear.gradientsGPU expects 2D tensors")
         let batch = X.shape[0]
@@ -61,6 +76,25 @@ public struct GraphLinear {
                                             bias: b)
     }
 
+    public func gradientsGPUDeferred(X: Tensor, dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> GPUReadback<(Tensor, Tensor)> {
+        precondition(X.shape.count == 2 && dY.shape.count == 2, "GraphLinear.gradientsGPU expects 2D tensors")
+        let batch = X.shape[0]
+        precondition(X.shape[1] == inFeatures && dY.shape[0] == batch && dY.shape[1] == outFeatures,
+                     "Shape mismatch: X [B, In], dY [B, Out]")
+        let key = cacheID
+        let ver = cacheVersion
+        let w = weight
+        let b = bias
+        return try await gpu.linearGradientsDeferred(key: key,
+                                                     version: ver,
+                                                     inFeatures: inFeatures,
+                                                     outFeatures: outFeatures,
+                                                     weight: w,
+                                                     X: X,
+                                                     dY: dY,
+                                                     bias: b)
+    }
+
     public func inputGradientsGPUAsync(dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         precondition(dY.shape.count == 2 && dY.shape[1] == outFeatures, "GraphLinear.inputGradientsGPU expects [B, outFeatures]")
         let key = cacheID
@@ -74,6 +108,21 @@ public struct GraphLinear {
                                                 weight: w,
                                                 bias: b,
                                                 dY: dY)
+    }
+
+    public func inputGradientsGPUDeferred(dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> GPUReadback<Tensor> {
+        precondition(dY.shape.count == 2 && dY.shape[1] == outFeatures, "GraphLinear.inputGradientsGPU expects [B, outFeatures]")
+        let key = cacheID
+        let ver = cacheVersion
+        let w = weight
+        let b = bias
+        return try await gpu.linearInputGradientsDeferred(key: key,
+                                                          version: ver,
+                                                          inFeatures: inFeatures,
+                                                          outFeatures: outFeatures,
+                                                          weight: w,
+                                                          bias: b,
+                                                          dY: dY)
     }
 
 }

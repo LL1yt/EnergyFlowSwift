@@ -8,9 +8,26 @@ extension GPUActor {
                               weight: Tensor,
                               bias: Tensor?,
                               x: Tensor) async throws -> Tensor {
+        let readback = try await linearForwardDeferred(key: key,
+                                                       version: version,
+                                                       inFeatures: inFeatures,
+                                                       outFeatures: outFeatures,
+                                                       weight: weight,
+                                                       bias: bias,
+                                                       x: x)
+        return try await readback.value()
+    }
+
+    public func linearForwardDeferred(key: UUID,
+                                      version: UInt64,
+                                      inFeatures: Int,
+                                      outFeatures: Int,
+                                      weight: Tensor,
+                                      bias: Tensor?,
+                                      x: Tensor) async throws -> GPUReadback<Tensor> {
         precondition(x.shape.count == 2 && x.shape[1] == inFeatures, "linearForward expects [B, inFeatures]")
         let batch = x.shape[0]
-        if batch == 0 { return x }
+        if batch == 0 { return GPUReadback(resolved: Tensor.zeros([0, outFeatures])) }
         let cache = try ensureLinearCache(
             key: key,
             version: version,
@@ -95,8 +112,8 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.forward"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
-        return try await awaitCommandBuffer(label: "GPUActor.Linear.forward",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Linear.forward",
+                                     commandBuffer: commandBuffer) {
             var yHalf = [Float16](repeating: 0, count: batch * outFeatures)
             yHalf.withUnsafeMutableBytes { raw in
                 if let base = raw.baseAddress {
@@ -121,12 +138,31 @@ extension GPUActor {
                                 X: Tensor,
                                 dY: Tensor,
                                 bias: Tensor?) async throws -> (Tensor, Tensor) {
+        let readback = try await linearGradientsDeferred(key: key,
+                                                         version: version,
+                                                         inFeatures: inFeatures,
+                                                         outFeatures: outFeatures,
+                                                         weight: weight,
+                                                         X: X,
+                                                         dY: dY,
+                                                         bias: bias)
+        return try await readback.value()
+    }
+
+    public func linearGradientsDeferred(key: UUID,
+                                        version: UInt64,
+                                        inFeatures: Int,
+                                        outFeatures: Int,
+                                        weight: Tensor,
+                                        X: Tensor,
+                                        dY: Tensor,
+                                        bias: Tensor?) async throws -> GPUReadback<(Tensor, Tensor)> {
         precondition(X.shape.count == 2 && dY.shape.count == 2, "linearGradients expects 2D tensors")
         let batch = X.shape[0]
         precondition(X.shape[1] == inFeatures && dY.shape[0] == batch && dY.shape[1] == outFeatures,
                      "linearGradients shape mismatch")
         if batch == 0 {
-            return (Tensor.zeros([outFeatures, inFeatures]), Tensor.zeros([outFeatures]))
+            return GPUReadback(resolved: (Tensor.zeros([outFeatures, inFeatures]), Tensor.zeros([outFeatures])))
         }
         _ = try ensureLinearCache(
             key: key,
@@ -205,8 +241,8 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.gradients"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: lMat, rightMatrix: rMat, resultMatrix: yMat)
-        return try await awaitCommandBuffer(label: "GPUActor.Linear.gradients",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Linear.gradients",
+                                     commandBuffer: commandBuffer) {
             var dWHalf = [Float16](repeating: 0, count: rowsY * colsY)
             dWHalf.withUnsafeMutableBytes { raw in
                 if let base = raw.baseAddress {
@@ -239,9 +275,26 @@ extension GPUActor {
                                      weight: Tensor,
                                      bias: Tensor?,
                                      dY: Tensor) async throws -> Tensor {
+        let readback = try await linearInputGradientsDeferred(key: key,
+                                                              version: version,
+                                                              inFeatures: inFeatures,
+                                                              outFeatures: outFeatures,
+                                                              weight: weight,
+                                                              bias: bias,
+                                                              dY: dY)
+        return try await readback.value()
+    }
+
+    public func linearInputGradientsDeferred(key: UUID,
+                                             version: UInt64,
+                                             inFeatures: Int,
+                                             outFeatures: Int,
+                                             weight: Tensor,
+                                             bias: Tensor?,
+                                             dY: Tensor) async throws -> GPUReadback<Tensor> {
         precondition(dY.shape.count == 2 && dY.shape[1] == outFeatures, "linearInputGradients expects [B, outFeatures]")
         let batch = dY.shape[0]
-        if batch == 0 { return Tensor.zeros([0, inFeatures]) }
+        if batch == 0 { return GPUReadback(resolved: Tensor.zeros([0, inFeatures])) }
         let cache = try ensureLinearCache(
             key: key,
             version: version,
@@ -322,8 +375,8 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.inputGradients"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: dyMat, rightMatrix: wMat, resultMatrix: dxMat)
-        return try await awaitCommandBuffer(label: "GPUActor.Linear.inputGradients",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Linear.inputGradients",
+                                     commandBuffer: commandBuffer) {
             var dxHalfAug = [Float16](repeating: 0, count: batch * inAug)
             dxHalfAug.withUnsafeMutableBytes { raw in
                 if let base = raw.baseAddress {

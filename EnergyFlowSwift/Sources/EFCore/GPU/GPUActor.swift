@@ -120,6 +120,10 @@ public actor GPUActor {
         commandBuffer.addCompletedHandler { [weak self] _ in
             guard let self else { return }
             self.enqueueHostReadback(label: label) {
+                if let error = commandBuffer.error {
+                    state.resolve(.failure(GPUActorError.commandBufferFailed(label: label, underlying: error)))
+                    return
+                }
                 do {
                     let value = try produce()
                     state.resolve(.success(value))
@@ -191,6 +195,12 @@ public struct GPUReadback<T>: Sendable {
     private let state: GPUReadbackState<T>
 
     fileprivate init(state: GPUReadbackState<T>) {
+        self.state = state
+    }
+
+    public init(resolved value: T) {
+        let state = GPUReadbackState<T>()
+        state.resolve(.success(value))
         self.state = state
     }
 
