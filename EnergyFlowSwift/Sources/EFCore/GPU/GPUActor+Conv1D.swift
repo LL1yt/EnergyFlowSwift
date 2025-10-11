@@ -18,7 +18,8 @@ extension GPUActor {
                                                        dilation: dilation,
                                                        weight: weight,
                                                        bias: bias,
-                                                       x: x)
+                                                       x: x,
+                                                       deferUntilSync: false)
         return try await readback.value()
     }
 
