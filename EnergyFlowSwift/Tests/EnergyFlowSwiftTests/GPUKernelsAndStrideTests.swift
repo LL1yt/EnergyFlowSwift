@@ -89,11 +89,11 @@ final class GPUKernelsAndStrideTests: XCTestCase {
         _ = try await gl.inputGradientsGPUAsync(dY: dY) // should not crash and no invalid device load
     }
 
-    func testGraphConv1DStrideAlignment() {
+    func testGraphConv1DStrideAlignment() async throws {
         let B = 2, L = 11, Cin = 7, Cout = 5, K = 3
         let x = Tensor.randomUniform([B, L, Cin], min: -0.5, max: 0.5, seed: 3)
         let conv = GraphConv1D(inChannels: Cin, outChannels: Cout, kernelSize: K, dilation: 1, bias: true, seed: 4)
-        let y = conv.forward(x)
+        let y = try await conv.forwardAsync(x, on: GPU.shared)
         XCTAssertEqual(y.shape, [B, L, Cout])
         for v in y.data { XCTAssert(v.isFinite) }
     }

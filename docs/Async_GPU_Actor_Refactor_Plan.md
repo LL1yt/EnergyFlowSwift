@@ -229,7 +229,7 @@ Checklist
 - [ ] Im2Col/Col2Im ported
 - [ ] Embedding ported
 - [ ] GraphLinear refactored
-- [ ] GraphConv1D refactored
+- [x] GraphConv1D refactored
 - [ ] Models async
 - [ ] Trainers async
 - [ ] EFTrain async main

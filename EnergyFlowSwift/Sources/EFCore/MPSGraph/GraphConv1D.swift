@@ -62,35 +62,4 @@ public final class GraphConv1D {
         )
     }
 
-    public func forward(_ x: Tensor) -> Tensor {
-        // Validate shapes outside of the closure to avoid capturing self inside it
-        precondition(x.shape.count == 3, "GraphConv1D.forward expects [B,L,Cin]")
-        precondition(x.shape[2] == inChannels, "Cin mismatch: got \\(x.shape[2]), expected \\(inChannels)")
-        do {
-            // Capture values into locals to avoid capturing self in an @Sendable closure
-            let key = cacheID
-            let ver = cacheVersion
-            let inC = inChannels
-            let outC = outChannels
-            let ksz = kernelSize
-            let dil = dilation
-            let w = weight
-            let b = bias
-            return try GPU.blocking(label: "GraphConv1D.forward") { actor in
-                try await actor.conv1DForward(
-                    key: key,
-                    version: ver,
-                    inChannels: inC,
-                    outChannels: outC,
-                    kernelSize: ksz,
-                    dilation: dil,
-                    weight: w,
-                    bias: b,
-                    x: x
-                )
-            }
-        } catch {
-            fatalError("GraphConv1D.forward failed: \\(error)")
-        }
-    }
 }
