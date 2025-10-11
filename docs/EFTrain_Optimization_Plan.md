@@ -7,7 +7,7 @@
   - EnergyFlow/TextBridge: TextToCubeEncoder.swift (+ Config)
   - EnergyFlow/Training: {OptimStep.swift, LastTCNBackward.swift, Gradients.swift, CombinedTrainer.swift}
   - EnergyFlow/Decoder: {DecoderTrainer.swift, TextDecoder.swift, TextDecoderConfig.swift}
-  - EFCore/MPSGraph: {GraphLinear.swift, GraphConv1D.swift, ExecutableCache.swift, GraphContext.swift}
+  - EFCore/MPSGraph: {GraphLinear.swift, GraphConv1D.swift} _(исторически включал ExecutableCache/GraphContext; удалены после перехода на GPUActor)_
   - EFCore/GPU: {GPUActor.swift, GPUActor+Elementwise.swift, GPUActor+GELU.swift, GPUActor+LayerNorm.swift, GPUActor+Embedding.swift, GPUActor+Im2Col.swift, GPUActor+ConvPack.swift, GPUActor+Conv1D.swift, BufferPool.swift}
   - PyTorchSwift/Embedding.swift
   - Dataset: EnergyFlow/Dataset/SimpleJSONLDataset.swift
@@ -26,7 +26,7 @@
 - CheckpointIO.swift: бинарные чекпоинты только для проекции энкодера (W, optional b). Есть отдельное сохранение состояния оптимизатора (EFOP1).
 - TextToCubeEncoder: CPU токенизация → Embedding (CPU) → TCN (GPU: LN/conv/GELU/conv/residual/mask) → maskedMean (GPU) → GraphLinear (GPU) → optional tanh. Для unfreeze предоставляет кеш последнего блока и функции градиентов (через вспомогательные GPU-классы).
 - EnergyFlow/Training/\*: OptimStep объединяет шаг оптимизации над проекцией и опционально последним блоком; LastTCNBackward реализует бэквард последнего блока (GPU path с MPSMatrix, ElementwiseGPU и т.п.).
-- Механизм MPSGraph: подготовлены кэши LNExecCache и LNGeLUGemmCache для фьюзинга LN→GELU→MatMul, но в энкодере ещё напрямую не применяются для последнего блока.
+- Механизм MPSGraph (LNExecCache / LNGeLUGemmCache) ранее использовался для фьюзинга LN→GELU→MatMul; в актуальной ветке кэши удалены вместе с ExecutableCache.swift.
 
 ---
 

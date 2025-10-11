@@ -164,7 +164,7 @@ Testing Strategy
 - Convert affected unit tests to async and verify:
   - EFDecoderModeBMiniEpochTests
   - EFTrainMiniEpochTests and CombinedABAlternationTests
-  - LNGeLUGemmCacheTests, LNExecCacheTests — will be removed or replaced with actor-based LN/GELU tests
+- LNGeLUGemmCacheTests, LNExecCacheTests — removed alongside the legacy MPSGraph executable cache; future coverage will come from actor-based LN/GELU paths
   - GPUKernelsAndStrideTests, Im2ColCol2ImParityTests — rewire to GPUActor APIs
 - Add microbench tests (optional) to confirm no regression in throughput; still using waits.
 
@@ -235,7 +235,7 @@ Checklist
 - [ ] EFTrain async main
 - [ ] Tests async + green
 - [ ] Phase 6b: GPU metrics + batched waits (no per-op waits)
-- [ ] MPSGraph/BufferPool removed
+- [x] MPSGraph cache removed (BufferPool cleanup pending)
 - [ ] Nonisolated hacks removed
 
 Timeline (rough)
