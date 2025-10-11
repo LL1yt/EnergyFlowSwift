@@ -132,6 +132,7 @@ func run() async throws {
         baseSeed: 42
     )
     let enc = TextToCubeEncoder(modelConfig: cfg)
+    let gpu = GPU.shared
 
     // Progress helpers
     let t0 = Date()
@@ -170,8 +171,11 @@ func run() async throws {
                 let idsChunk = Array(inputIDs[offset..<(offset+take)])
                 let maskChunk = Array(attentionMask[offset..<(offset+take)])
                 let tgtChunk = Array(targets[offset..<(offset+take)])
+                await gpu.beginBatch()
                 let out = try await enc.encodeTokens(inputIDs: idsChunk,
-                                                     attentionMask: maskChunk)
+                                                     attentionMask: maskChunk,
+                                                     on: gpu)
+                await gpu.syncBatch(label: "textEval.tokens")
                 let b = out.shape[0], d = out.shape[1]
                 var pred: [[Float]] = Array(repeating: Array(repeating: 0, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
@@ -193,7 +197,9 @@ func run() async throws {
                 let take = min(micro, B - offset)
                 let txtChunk = Array(texts[offset..<(offset+take)])
                 let tgtChunk = Array(targets[offset..<(offset+take)])
-                let out = try await enc.encode(txtChunk)
+                await gpu.beginBatch()
+                let out = try await enc.encode(txtChunk, on: gpu)
+                await gpu.syncBatch(label: "textEval.text")
                 let b = out.shape[0], d = out.shape[1]
                 var pred: [[Float]] = Array(repeating: Array(repeating: 0, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }

@@ -126,9 +126,9 @@ public actor GPUActor {
 
     private func enqueueHostReadback(label: String, resume: @escaping () -> Void) {
         pendingHostReadbacks.append(PendingHostReadback(label: label, resume: resume))
-        // Current pipeline still expects immediate availability of results.
-        // Once GPU-only flows are in place we can defer draining until syncBatch.
-        drainHostReadbacks()
+        if activeBatchDepth == 0 {
+            drainHostReadbacks()
+        }
     }
 
     private func drainHostReadbacks() {
