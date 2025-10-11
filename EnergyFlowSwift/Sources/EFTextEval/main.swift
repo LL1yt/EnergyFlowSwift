@@ -218,7 +218,7 @@ struct EFTextEvalMain {
         do {
             try await run()
         } catch {
-            Logger.shared.error("EFTextEval failed: \(error)", category: Logger.Category.dataset)
+            Logger.shared.error("EFTextEval failed: \\(error)", category: Logger.Category.dataset)
             exit(1)
         }
     }

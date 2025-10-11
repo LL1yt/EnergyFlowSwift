@@ -1,4 +1,5 @@
 import Foundation
+import Dispatch
 import EnergyFlow
 import EFCore
 
@@ -159,7 +160,6 @@ func usage() {
 
 func run() async throws {
     guard let args = loadResolvedConfig() else { usage(); return }
-    var globalStep = 0
     let logger = Logger.shared
     logger.info("EFTrain start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength) epochs=\(args.epochs) alphaCos=\(args.alphaCos) betaMSE=\(args.betaMSE)", category: Logger.Category.dataset)
     
@@ -174,19 +174,7 @@ func run() async throws {
         outputDim: ds.embeddingDim
     )
     let enc = TextToCubeEncoder(modelConfig: modelCfg)
-    // Optional decoder for Mode B
-    var decTrainer: DecoderTrainer? = nil
-    if args.enableAB {
-        let decCfg = TextDecoderConfig(vocabSize: args.decVocabSize,
-                                       dim: modelCfg.outputDim,
-                                       hidden: args.decHidden,
-                                       nBlocks: args.decBlocks,
-                                       kernelSize: args.decKernelSize,
-                                       dilationSchedule: args.decDilation,
-                                       maxLength: args.maxLength)
-        decTrainer = DecoderTrainer(config: decCfg, lr: args.decLR, weightDecay: args.decWeightDecay)
-        logger.info("Decoder initialized: V=\(decCfg.vocabSize) D=\(decCfg.dim) blocks=\(decCfg.nBlocks) k=\(decCfg.kernelSize) dil=\(decCfg.dilationSchedule)", category: Logger.Category.training)
-    }
+    // Decoder is initialized later via CombinedTrainer; no separate early decoder init here
     
     // Load checkpoint if provided
     if !args.loadCheckpoint.isEmpty, let (wLoaded, bLoaded) = loadProjectionCheckpoint(path: args.loadCheckpoint) {
@@ -488,14 +476,19 @@ func run() async throws {
         }
     }
 }
-@main
-struct EFTrainMain {
-    static func main() async {
+// Top-level entry point driving the async run() without using @main
+do {
+    let sema = DispatchSemaphore(value: 0)
+    var exitCode: Int32 = 0
+    Task {
         do {
             try await run()
         } catch {
             Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
-            exit(1)
+            exitCode = 1
         }
+        sema.signal()
     }
+    sema.wait()
+    exit(exitCode)
 }
