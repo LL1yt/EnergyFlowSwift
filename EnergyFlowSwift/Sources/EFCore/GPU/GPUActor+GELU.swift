@@ -107,6 +107,48 @@ extension GPUActor {
         )
     }
 
+    public func geluForwardDeferred(x: Tensor, deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
+        let count = x.count
+        if count == 0 { return GPUReadback(resolved: x) }
+        let pipelines = try ensureGELUPipelines()
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("GELU.forwardDeferred: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.GELU.forward"
+        let elemHalf = MemoryLayout<Float16>.size
+        let byteCount = count * elemHalf
+        let xBuffer = buffer(length: byteCount, label: "GPUActor.GELU.forward.x")
+        let yBuffer = buffer(length: byteCount, label: "GPUActor.GELU.forward.y")
+        var xHalf = [Float16](repeating: 0, count: count)
+        for i in 0..<count { xHalf[i] = Float16(x.data[i]) }
+        xHalf.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(xBuffer.contents(), base, byteCount)
+            }
+        }
+        memset(yBuffer.contents(), 0, byteCount)
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("GELU.forwardDeferred: encoder creation failed")
+        }
+        encoder.label = "GPUActor.GELU.forward.encoder"
+        encoder.setComputePipelineState(pipelines.forward)
+        encoder.setBuffer(xBuffer, offset: 0, index: 0)
+        encoder.setBuffer(yBuffer, offset: 0, index: 1)
+        var n = Int32(count)
+        encoder.setBytes(&n, length: MemoryLayout<Int32>.size, index: 2)
+        let threadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
+        encoder.endEncoding()
+        let reader = Float16BufferReader(buffer: yBuffer, count: count, shape: x.shape)
+        return scheduleCommandBufferWithReader(
+            label: "GPUActor.GELU.forward",
+            commandBuffer: commandBuffer,
+            deferUntilSync: deferUntilSync,
+            reader: reader
+        )
+    }
+
     private func ensureGELUPipelines() throws -> GELUPipelines {
         if let pipelines = geluPipelines {
             return pipelines
