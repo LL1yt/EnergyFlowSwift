@@ -101,12 +101,6 @@ public actor GPUActor {
         return activeBatchDepth > 0
     }
 
-    // MARK: - Metrics helpers
-
-    public func crossEntropyMean(logits: Tensor, targets: [[Int]]) -> Float {
-        return CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
-    }
-
     // MARK: - Command buffer utilities
 
     func awaitCommandBuffer<T>(label: String,

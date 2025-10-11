@@ -29,7 +29,10 @@ public final class DecoderTrainer {
         let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
                                                                          z: zTeacher,
                                                                          on: gpu)
-        let ce = await gpu.crossEntropyMean(logits: logits, targets: targets)
+        let ceTask = Task<Float, Error> {
+            try await gpu.crossEntropyMean(logits: logits, targets: targets)
+        }
+        defer { ceTask.cancel() }
         // Gradients on outProj
         let dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets) // [B*L, V]
         let (w0, b0) = decoder.getOutProjParams()
@@ -88,6 +91,7 @@ public final class DecoderTrainer {
         decoder.setOutProjParams(weight: newW, bias: newB)
         decoder.invalidateOutProjCache()
         await gpu.syncBatch(label: "decoderTrainer.step")
+        let ce = try await ceTask.value
         return ce
     }
 
@@ -106,7 +110,10 @@ public final class DecoderTrainer {
         let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
                                                                          z: zTeacher,
                                                                          on: gpu)
-        let ce = await gpu.crossEntropyMean(logits: logits, targets: targets)
+        let ceTask = Task<Float, Error> {
+            try await gpu.crossEntropyMean(logits: logits, targets: targets)
+        }
+        defer { ceTask.cancel() }
         // dLogits (softmax - onehot) / (B*L)
         var dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
         // Scale upstream gradient
@@ -154,7 +161,11 @@ public final class DecoderTrainer {
             if let db2 = gradsLast.dB2, hasNaNOrInf(db2) { overflow = true }
             if hasNaNOrInf(gradsLast.dGamma) || hasNaNOrInf(gradsLast.dBeta) { overflow = true }
         }
-        if overflow { return (ce, true) }
+        if overflow {
+            await gpu.syncBatch(label: "decoderTrainer.stepScaled")
+            let ce = try await ceTask.value
+            return (ce, true)
+        }
         // Unscale grads before step
         let inv = (scale == 0) ? 1.0 : (1.0 / scale)
         if inv != 1.0 {
@@ -189,6 +200,7 @@ public final class DecoderTrainer {
             decoder.invalidateLastBlockCaches()
         }
         await gpu.syncBatch(label: "decoderTrainer.stepScaled")
+        let ce = try await ceTask.value
         return (ce, false)
     }
 }
