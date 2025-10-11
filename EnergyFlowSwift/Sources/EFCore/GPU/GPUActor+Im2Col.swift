@@ -1,7 +1,7 @@
 import Metal
 
 extension GPUActor {
-    public func im2col(X: Tensor, B: Int, L: Int, Cin: Int, K: Int, dilation: Int) throws -> Tensor {
+    public func im2col(X: Tensor, B: Int, L: Int, Cin: Int, K: Int, dilation: Int) async throws -> Tensor {
         precondition(X.shape == [B, L, Cin], "im2col expects X [B,L,Cin]")
         let pipelines = try ensureIm2ColPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
@@ -38,14 +38,15 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (outCount + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var host = [Float](repeating: 0, count: outCount)
-        memcpy(&host, outBuffer.contents(), outCount * elem)
-        return Tensor(shape: [rows, colsX], data: host)
+        return try await awaitCommandBuffer(label: "GPUActor.im2col",
+                                            commandBuffer: commandBuffer) {
+            var host = [Float](repeating: 0, count: outCount)
+            memcpy(&host, outBuffer.contents(), outCount * elem)
+            return Tensor(shape: [rows, colsX], data: host)
+        }
     }
 
-    public func col2im(dXcol: Tensor, B: Int, L: Int, Cin: Int, K: Int, dilation: Int) throws -> Tensor {
+    public func col2im(dXcol: Tensor, B: Int, L: Int, Cin: Int, K: Int, dilation: Int) async throws -> Tensor {
         precondition(dXcol.shape == [B * L, Cin * K], "col2im expects dXcol [B*L, Cin*K]")
         let pipelines = try ensureIm2ColPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
@@ -82,11 +83,12 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (outCount + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var host = [Float](repeating: 0, count: outCount)
-        memcpy(&host, outBuffer.contents(), outCount * elem)
-        return Tensor(shape: [B, L, Cin], data: host)
+        return try await awaitCommandBuffer(label: "GPUActor.col2im",
+                                            commandBuffer: commandBuffer) {
+            var host = [Float](repeating: 0, count: outCount)
+            memcpy(&host, outBuffer.contents(), outCount * elem)
+            return Tensor(shape: [B, L, Cin], data: host)
+        }
     }
 
     public func im2colFP16ToBuffer(X: Tensor,
@@ -97,7 +99,7 @@ extension GPUActor {
                                    dilation: Int,
                                    outBuffer: MTLBuffer,
                                    outRowBytes: Int,
-                                   outColsTotal: Int) throws {
+                                   outColsTotal: Int) async throws {
         precondition(X.shape == [B, L, Cin], "im2colFP16ToBuffer expects X [B,L,Cin]")
         let pipelines = try ensureIm2ColPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
@@ -137,11 +139,11 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (total + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
+        try await awaitCommandBuffer(label: "GPUActor.im2colFP16ToBuffer",
+                                     commandBuffer: commandBuffer) { () }
     }
 
-    public func fillBiasColumnFP16(outBuffer: MTLBuffer, rows: Int, outRowBytes: Int, biasIndex: Int) throws {
+    public func fillBiasColumnFP16(outBuffer: MTLBuffer, rows: Int, outRowBytes: Int, biasIndex: Int) async throws {
         let pipelines = try ensureIm2ColPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             throw GPUActorError.commandBufferUnavailable("fillBiasColumnFP16: command buffer creation failed")
@@ -163,8 +165,8 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (rows + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
+        try await awaitCommandBuffer(label: "GPUActor.fillBiasColumnFP16",
+                                     commandBuffer: commandBuffer) { () }
     }
 
     private func ensureIm2ColPipelines() throws -> Im2ColPipelines {

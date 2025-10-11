@@ -1,7 +1,7 @@
 import Metal
 
 extension GPUActor {
-    public func embeddingForward(ids: [[Int]], weight: Tensor) throws -> Tensor {
+    public func embeddingForward(ids: [[Int]], weight: Tensor) async throws -> Tensor {
         let B = ids.count
         let L = ids.first?.count ?? 0
         precondition(ids.allSatisfy { $0.count == L }, "GPUActor.embeddingForward: ragged ids input")
@@ -58,11 +58,12 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (outCount + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var output = [Float](repeating: 0, count: outCount)
-        memcpy(&output, outBuffer.contents(), outCount * MemoryLayout<Float>.size)
-        return Tensor(shape: [B, L, D], data: output)
+        return try await awaitCommandBuffer(label: "GPUActor.Embedding.forward",
+                                            commandBuffer: commandBuffer) {
+            var output = [Float](repeating: 0, count: outCount)
+            memcpy(&output, outBuffer.contents(), outCount * MemoryLayout<Float>.size)
+            return Tensor(shape: [B, L, D], data: output)
+        }
     }
 
     private func ensureEmbeddingPipelines() throws -> EmbeddingPipelines {

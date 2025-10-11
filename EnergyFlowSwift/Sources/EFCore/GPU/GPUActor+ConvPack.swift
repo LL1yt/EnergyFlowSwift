@@ -1,7 +1,7 @@
 import Metal
 
 extension GPUActor {
-    public func packWToCol(W: Tensor, Cout: Int, Cin: Int, K: Int) throws -> Tensor {
+    public func packWToCol(W: Tensor, Cout: Int, Cin: Int, K: Int) async throws -> Tensor {
         precondition(W.shape == [Cout, Cin, K], "packWToCol expects weight [Cout,Cin,K]")
         let pipelines = try ensureConvPackPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
@@ -35,14 +35,15 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (total + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var outHost = [Float](repeating: 0, count: outCount)
-        memcpy(&outHost, outBuffer.contents(), outCount * elem)
-        return Tensor(shape: [Cout, outCols], data: outHost)
+        return try await awaitCommandBuffer(label: "GPUActor.ConvPack.pack",
+                                            commandBuffer: commandBuffer) {
+            var outHost = [Float](repeating: 0, count: outCount)
+            memcpy(&outHost, outBuffer.contents(), outCount * elem)
+            return Tensor(shape: [Cout, outCols], data: outHost)
+        }
     }
 
-    public func unpackDWCol(dWcol: Tensor, Cout: Int, Cin: Int, K: Int) throws -> Tensor {
+    public func unpackDWCol(dWcol: Tensor, Cout: Int, Cin: Int, K: Int) async throws -> Tensor {
         precondition(dWcol.shape == [Cout, Cin * K], "unpackDWCol expects [Cout, Cin*K]")
         let pipelines = try ensureConvPackPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
@@ -74,11 +75,12 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (total + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var outHost = [Float](repeating: 0, count: total)
-        memcpy(&outHost, outBuffer.contents(), total * elem)
-        return Tensor(shape: [Cout, Cin, K], data: outHost)
+        return try await awaitCommandBuffer(label: "GPUActor.ConvPack.unpack",
+                                            commandBuffer: commandBuffer) {
+            var outHost = [Float](repeating: 0, count: total)
+            memcpy(&outHost, outBuffer.contents(), total * elem)
+            return Tensor(shape: [Cout, Cin, K], data: outHost)
+        }
     }
 
     private func ensureConvPackPipelines() throws -> ConvPackPipelines {

@@ -9,7 +9,7 @@ extension GPUActor {
                               dilation: Int,
                               weight: Tensor,
                               bias: Tensor?,
-                              x: Tensor) throws -> Tensor{
+                              x: Tensor) async throws -> Tensor{
         precondition(x.shape.count == 3, "conv1DForward expects [B,L,Cin]")
         let B = x.shape[0]
         let L = x.shape[1]
@@ -37,7 +37,7 @@ extension GPUActor {
         let xcolBuffer = buffer(length: rows * xRowBytes, label: "GPUActor.Conv1D.Xcol")
         memset(xcolBuffer.contents(), 0, rows * xRowBytes)
 
-        try im2colFP16ToBuffer(
+        try await im2colFP16ToBuffer(
             X: x,
             B: B,
             L: L,
@@ -49,7 +49,7 @@ extension GPUActor {
             outColsTotal: colsX
         )
         if weightCache.hasBias {
-            try fillBiasColumnFP16(
+            try await fillBiasColumnFP16(
                 outBuffer: xcolBuffer,
                 rows: rows,
                 outRowBytes: xRowBytes,
@@ -81,21 +81,21 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Conv1D.forward"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-
-        var yHalf = [Float16](repeating: 0, count: rows * outChannels)
-        let rowSize = outChannels * elemHalf
-        yHalf.withUnsafeMutableBytes { raw in
-            if let base = raw.baseAddress {
-                for r in 0..<rows {
-                    memcpy(base.advanced(by: r * rowSize), yBuffer.contents().advanced(by: r * yRowBytes), rowSize)
+        return try await awaitCommandBuffer(label: "GPUActor.Conv1D.forward",
+                                            commandBuffer: commandBuffer) {
+            var yHalf = [Float16](repeating: 0, count: rows * outChannels)
+            let rowSize = outChannels * elemHalf
+            yHalf.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress {
+                    for r in 0..<rows {
+                        memcpy(base.advanced(by: r * rowSize), yBuffer.contents().advanced(by: r * yRowBytes), rowSize)
+                    }
                 }
             }
+            var yHost = [Float](repeating: 0, count: rows * outChannels)
+            for i in 0..<yHost.count { yHost[i] = Float(yHalf[i]) }
+            return Tensor(shape: [B, L, outChannels], data: yHost)
         }
-        var yHost = [Float](repeating: 0, count: rows * outChannels)
-        for i in 0..<yHost.count { yHost[i] = Float(yHalf[i]) }
-        return Tensor(shape: [B, L, outChannels], data: yHost)
     }
 
     private func ensureConv1DCache(key: UUID,
