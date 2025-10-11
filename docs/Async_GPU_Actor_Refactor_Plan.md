@@ -235,7 +235,8 @@ Checklist
 - [ ] EFTrain async main
 - [ ] Tests async + green
 - [ ] Phase 6b: GPU metrics + batched waits (no per-op waits)
-- [x] MPSGraph cache removed (BufferPool cleanup pending)
+- [x] MPSGraph cache removed
+- [x] Legacy BufferPool removed (GPUActor buffer cache is the single allocator)
 - [ ] Nonisolated hacks removed
 
 Timeline (rough)

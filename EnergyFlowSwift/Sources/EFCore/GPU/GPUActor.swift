@@ -8,6 +8,7 @@ public enum GPUActorError: Error {
     case commandQueueUnavailable
     case pipelineFunctionMissing(String)
     case commandBufferUnavailable(String)
+    case commandBufferFailed(label: String, underlying: Error?)
 }
 
 public actor GPUActor {
@@ -87,6 +88,28 @@ public actor GPUActor {
 
     public func crossEntropyMean(logits: Tensor, targets: [[Int]]) -> Float {
         return CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
+    }
+
+    // MARK: - Command buffer utilities
+
+    func awaitCommandBuffer<T>(label: String,
+                               commandBuffer: MTLCommandBuffer,
+                               produce: @escaping () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            commandBuffer.addCompletedHandler { cb in
+                if let error = cb.error {
+                    continuation.resume(throwing: GPUActorError.commandBufferFailed(label: label, underlying: error))
+                    return
+                }
+                do {
+                    let value = try produce()
+                    continuation.resume(returning: value)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+            commandBuffer.commit()
+        }
     }
 }
 

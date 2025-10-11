@@ -70,9 +70,9 @@ EFTrain pipeline. The list is sorted by highest impact vs. lowest implementation
     matmul would eliminate that overhead. These tweaks would push nearly the entire training math
     onto the GPU. The benefit is faster training and simpler code (no special-case CPU math), at the cost
     of writing or integrating a few additional GPU kernels or MPSGraph ops.
-    Memory Pooling and Buffer Reuse – The project already introduced a BufferPool for Metal
-    buffers. To further reduce overhead and memory fragmentation, consider using MTLHeaps or a
-    single MPSGraph MPSNDArray buffer reused across iterations 13
+    Memory Pooling and Buffer Reuse – GPUActor уже содержит кэш буферов по label. Чтобы
+    дальше снижать накладные расходы и фрагментацию, можно перейти на MTLHeaps или
+    единый пул MTLBuffer/MPSNDArray, переиспользуемый между итерациями 13
     . Since tensor shapes (B, L, D,
     etc.) are mostly fixed during training, you can allocate GPU buffers once and reuse them for each
     batch, rather than allocating/freeing every time. This also ensures better cache locality. Similarly,

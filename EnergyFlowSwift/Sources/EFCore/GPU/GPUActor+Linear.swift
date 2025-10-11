@@ -95,21 +95,22 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.forward"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var yHalf = [Float16](repeating: 0, count: batch * outFeatures)
-        yHalf.withUnsafeMutableBytes { raw in
-            if let base = raw.baseAddress {
-                for row in 0..<batch {
-                    let dst = base.advanced(by: row * outFeatures * elemHalf)
-                    let src = yBuffer.contents().advanced(by: row * yRowBytes)
-                    memcpy(dst, src, outFeatures * elemHalf)
+        return try await awaitCommandBuffer(label: "GPUActor.Linear.forward",
+                                            commandBuffer: commandBuffer) {
+            var yHalf = [Float16](repeating: 0, count: batch * outFeatures)
+            yHalf.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress {
+                    for row in 0..<batch {
+                        let dst = base.advanced(by: row * outFeatures * elemHalf)
+                        let src = yBuffer.contents().advanced(by: row * yRowBytes)
+                        memcpy(dst, src, outFeatures * elemHalf)
+                    }
                 }
             }
+            var output = [Float](repeating: 0, count: batch * outFeatures)
+            for i in 0..<output.count { output[i] = Float(yHalf[i]) }
+            return Tensor(shape: [batch, outFeatures], data: output)
         }
-        var output = [Float](repeating: 0, count: batch * outFeatures)
-        for i in 0..<output.count { output[i] = Float(yHalf[i]) }
-        return Tensor(shape: [batch, outFeatures], data: output)
     }
 
     public func linearGradients(key: UUID,
@@ -204,30 +205,31 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.gradients"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: lMat, rightMatrix: rMat, resultMatrix: yMat)
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var dWHalf = [Float16](repeating: 0, count: rowsY * colsY)
-        dWHalf.withUnsafeMutableBytes { raw in
-            if let base = raw.baseAddress {
-                for row in 0..<rowsY {
-                    let dst = base.advanced(by: row * colsY * elemHalf)
-                    let src = yBuffer.contents().advanced(by: row * yRowBytes)
-                    memcpy(dst, src, colsY * elemHalf)
+        return try await awaitCommandBuffer(label: "GPUActor.Linear.gradients",
+                                            commandBuffer: commandBuffer) {
+            var dWHalf = [Float16](repeating: 0, count: rowsY * colsY)
+            dWHalf.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress {
+                    for row in 0..<rowsY {
+                        let dst = base.advanced(by: row * colsY * elemHalf)
+                        let src = yBuffer.contents().advanced(by: row * yRowBytes)
+                        memcpy(dst, src, colsY * elemHalf)
+                    }
                 }
             }
-        }
-        var dWHost = [Float](repeating: 0, count: rowsY * colsY)
-        for i in 0..<dWHost.count { dWHost[i] = Float(dWHalf[i]) }
-        var dBHost = [Float](repeating: 0, count: outFeatures)
-        for bIdx in 0..<batch {
-            let base = bIdx * outFeatures
-            for o in 0..<outFeatures {
-                dBHost[o] += dY.data[base + o]
+            var dWHost = [Float](repeating: 0, count: rowsY * colsY)
+            for i in 0..<dWHost.count { dWHost[i] = Float(dWHalf[i]) }
+            var dBHost = [Float](repeating: 0, count: outFeatures)
+            for bIdx in 0..<batch {
+                let base = bIdx * outFeatures
+                for o in 0..<outFeatures {
+                    dBHost[o] += dY.data[base + o]
+                }
             }
+            let dW = Tensor(shape: [outFeatures, inFeatures], data: dWHost)
+            let dB = Tensor(shape: [outFeatures], data: dBHost)
+            return (dW, dB)
         }
-        let dW = Tensor(shape: [outFeatures, inFeatures], data: dWHost)
-        let dB = Tensor(shape: [outFeatures], data: dBHost)
-        return (dW, dB)
     }
 
     public func linearInputGradients(key: UUID,
@@ -320,27 +322,28 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.inputGradients"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: dyMat, rightMatrix: wMat, resultMatrix: dxMat)
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var dxHalfAug = [Float16](repeating: 0, count: batch * inAug)
-        dxHalfAug.withUnsafeMutableBytes { raw in
-            if let base = raw.baseAddress {
-                for row in 0..<batch {
-                    let dst = base.advanced(by: row * inAug * elemHalf)
-                    let src = dxBuffer.contents().advanced(by: row * dxRowBytesAug)
-                    memcpy(dst, src, inAug * elemHalf)
+        return try await awaitCommandBuffer(label: "GPUActor.Linear.inputGradients",
+                                            commandBuffer: commandBuffer) {
+            var dxHalfAug = [Float16](repeating: 0, count: batch * inAug)
+            dxHalfAug.withUnsafeMutableBytes { raw in
+                if let base = raw.baseAddress {
+                    for row in 0..<batch {
+                        let dst = base.advanced(by: row * inAug * elemHalf)
+                        let src = dxBuffer.contents().advanced(by: row * dxRowBytesAug)
+                        memcpy(dst, src, inAug * elemHalf)
+                    }
                 }
             }
-        }
-        var dxHost = [Float](repeating: 0, count: batch * inFeatures)
-        for row in 0..<batch {
-            let srcBase = row * inAug
-            let dstBase = row * inFeatures
-            for c in 0..<inFeatures {
-                dxHost[dstBase + c] = Float(dxHalfAug[srcBase + c])
+            var dxHost = [Float](repeating: 0, count: batch * inFeatures)
+            for row in 0..<batch {
+                let srcBase = row * inAug
+                let dstBase = row * inFeatures
+                for c in 0..<inFeatures {
+                    dxHost[dstBase + c] = Float(dxHalfAug[srcBase + c])
+                }
             }
+            return Tensor(shape: [batch, inFeatures], data: dxHost)
         }
-        return Tensor(shape: [batch, inFeatures], data: dxHost)
     }
 
     private func ensureLinearCache(key: UUID,

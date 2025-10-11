@@ -8,7 +8,7 @@
   - EnergyFlow/Training: {OptimStep.swift, LastTCNBackward.swift, Gradients.swift, CombinedTrainer.swift}
   - EnergyFlow/Decoder: {DecoderTrainer.swift, TextDecoder.swift, TextDecoderConfig.swift}
   - EFCore/MPSGraph: {GraphLinear.swift, GraphConv1D.swift} _(исторически включал ExecutableCache/GraphContext; удалены после перехода на GPUActor)_
-  - EFCore/GPU: {GPUActor.swift, GPUActor+Elementwise.swift, GPUActor+GELU.swift, GPUActor+LayerNorm.swift, GPUActor+Embedding.swift, GPUActor+Im2Col.swift, GPUActor+ConvPack.swift, GPUActor+Conv1D.swift, BufferPool.swift}
+  - EFCore/GPU: {GPUActor.swift, GPUActor+Elementwise.swift, GPUActor+GELU.swift, GPUActor+LayerNorm.swift, GPUActor+Embedding.swift, GPUActor+Im2Col.swift, GPUActor+ConvPack.swift, GPUActor+Conv1D.swift}
   - PyTorchSwift/Embedding.swift
   - Dataset: EnergyFlow/Dataset/SimpleJSONLDataset.swift
   - Optim: EFCore/Optim/{AdamW.swift, LossScaler.swift}
@@ -110,9 +110,9 @@
   - JSONL парсить в фоне и/или заменить на более быстрый парсер;
   - Для больших файлов — ленивые итераторы/streaming. Для .efb добавить mmap-путь или страничное чтение, если файл велик.
 
-12. Потокобезопасность буфер-пула
+12. Потокобезопасность кэша буферов в GPUActor
 
-- BufferPool сегодня nonisolated(unsafe). При введении параллелизма ограничить использование буферов одним потоком или сделать простой синхронизатор на горячие лейблы. Ввести слой Allocator с раздельными пулами по стадиям конвейера, чтобы избежать гонок.
+- Текущий кэш `GPUActor.buffer` хранит shared-букмарк по label и не синхронизирован. При появлении параллельных вызовов нужно добавить лёгкий синхронизатор или разнести лейблы, чтобы избежать гонок. Рассмотреть вынос в отдельный allocator с разделением по стадиям конвейера.
 
 ---
 
@@ -124,8 +124,8 @@
 
 14. Управление памятью GPU
 
-- Расширить BufferPool/MTLHeaps для крупных стабильных буферов (Xcol/Y, FP16 веса, временные). Предварительные размеры фиксированы (B,L,D) — выгодно аллоцировать единожды и переиспользовать.
-- В кэшах ExecutableCache (LNGeLUGemmCache) уже есть persistent MPSNDArray — продолжить линию «pin/unpin»: пинить веса/гамма/бета до шага, отпинивать сразу после обновления параметров.
+- Расширить кэш буферов GPUActor (или перейти на MTLHeaps) для крупных стабильных буферов (Xcol/Y, FP16 веса, временные). Предварительные размеры фиксированы (B,L,D) — выгодно аллоцировать единожды и переиспользовать.
+- Ранее persistent MPSNDArray поддерживались в ExecutableCache; после удаления MPSGraph-кэшей использовать аналогичные «pin/unpin» подходы в actor-кэше (пинить веса/гамма/бета до шага, отпинивать сразу после обновления параметров).
 
 ---
 

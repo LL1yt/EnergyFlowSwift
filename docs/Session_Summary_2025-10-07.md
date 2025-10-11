@@ -40,7 +40,7 @@ Scope: stabilize FP16 GPU path for TCN/TextBridge, eliminate invalid device load
 
 - Bias addition in some paths is still on CPU (post-matmul). Can be moved into GPU graph for completeness.
 - Backward pass coverage: GraphLinear has GPU dW and dX paths; fused block backward is not yet implemented (rely on MPSGraph autodiff or extend fused caches to backward).
-- Memory pool/heap not fully leveraged; current BufferPool uses shared buffers but not MTLHeap/private storage.
+- Memory pool/heap not fully leveraged; текущий кэш `GPUActor.buffer` использует shared MTLBuffer и ещё не переведён на MTLHeap/private storage.
 
 ## Next steps aligned with docs/roadmap_swift_mps.md (focus on Phase 8)
 
