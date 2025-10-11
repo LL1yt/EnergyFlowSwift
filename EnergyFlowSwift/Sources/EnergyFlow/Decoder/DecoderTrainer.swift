@@ -24,11 +24,12 @@ public final class DecoderTrainer {
                      zTeacher: Tensor,
                      targets: [[Int]],
                      unfreezeLastTCN: Bool = false) async throws -> Float {
+        await gpu.beginBatch()
         // Forward
         let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
                                                                          z: zTeacher,
                                                                          on: gpu)
-        let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
+        let ce = await gpu.crossEntropyMean(logits: logits, targets: targets)
         // Gradients on outProj
         let dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets) // [B*L, V]
         let (w0, b0) = decoder.getOutProjParams()
@@ -86,6 +87,7 @@ public final class DecoderTrainer {
         }
         decoder.setOutProjParams(weight: newW, bias: newB)
         decoder.invalidateOutProjCache()
+        await gpu.syncBatch(label: "decoderTrainer.step")
         return ce
     }
 
@@ -99,11 +101,12 @@ public final class DecoderTrainer {
                            unfreezeLastTCN: Bool = false,
                            scale: Float = 1.0,
                            clipNorm: Float = 0.0) async throws -> (Float, Bool) {
+        await gpu.beginBatch()
         // Forward
         let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
                                                                          z: zTeacher,
                                                                          on: gpu)
-        let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
+        let ce = await gpu.crossEntropyMean(logits: logits, targets: targets)
         // dLogits (softmax - onehot) / (B*L)
         var dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
         // Scale upstream gradient
@@ -185,6 +188,7 @@ public final class DecoderTrainer {
             decoder.setLastBlockParams(w1: newW1, b1: newB1, w2: newW2, b2: newB2, gamma: newGamma, beta: newBeta)
             decoder.invalidateLastBlockCaches()
         }
+        await gpu.syncBatch(label: "decoderTrainer.stepScaled")
         return (ce, false)
     }
 }

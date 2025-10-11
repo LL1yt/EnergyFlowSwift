@@ -54,14 +54,14 @@ public final class CombinedTrainer {
                       zTeacher: Tensor,
                       unfreezeLastTCN: Bool = true) async throws -> (mse: Float, cos: Float) {
         let modelCfg = enc.modelConfig
+        await gpu.beginBatch()
         // Forward with cache
         let res = try await enc.forwardForTrainingWithLastBlockCache(inputIDs: inputIDs,
                                                                      attentionMask: attentionMask,
                                                                      on: gpu)
         let out = res.out // [B, D]
         // KD losses
-        let mseRow = Losses.mseRowwise(out, zTeacher)
-        let cosRow = Losses.cosineSimilarityRowwise(out, zTeacher)
+        let (mseMean, cosMean) = await gpu.kdMetricsMean(student: out, teacher: zTeacher)
         // Build dY for combined loss alpha*(1-cos) + beta*MSE
         var dY = dY_MSEMean(y: out, target: zTeacher)
         let dYcos = dY_CosineMeanLoss(y: out, target: zTeacher)
@@ -136,12 +136,13 @@ public final class CombinedTrainer {
         }
         // Friendly progress log at mid-verbosity (every 100 A-steps)
         if stepAIndex % 100 == 0 {
-Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f cos=%.6f unfreeze=%@",
+            Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f cos=%.6f unfreeze=%@",
                                        stepAIndex, zTeacher.shape[0], lrNow, clipNorm,
-                                       mseRow.mean, cosRow.mean, String(describing: unfreezeLastTCN)),
+                                       mseMean, cosMean, String(describing: unfreezeLastTCN)),
                                 category: Logger.Category.training)
         }
-        return (mseRow.mean, cosRow.mean)
+        await gpu.syncBatch(label: "trainer.stepA")
+        return (mseMean, cosMean)
     }
 
     // Mode B: z_t + teacher forcing CE; uses DecoderTrainer and then syncs last block to encoder
@@ -149,6 +150,7 @@ Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f c
                       targets: [[Int]],
                       zTeacher: Tensor,
                       unfreezeLastTCN: Bool = true) async throws -> Float {
+        await gpu.beginBatch()
         let (ce, _) = try await decTrainer.stepScaled(ids: ids,
                                                       zTeacher: zTeacher,
                                                       targets: targets,
@@ -165,10 +167,11 @@ Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f c
         }
         // Occasional friendly log (every ~300 A-steps worth of B calls is arbitrary; here just per call throttle with small prob)
         if stepAIndex % 150 == 0 { // re-use A counter as rough global step
-Logger.shared.info1(String(format: "B-call at A-step %d: B=%d ce=%.6f unfreeze=%@",
+            Logger.shared.info1(String(format: "B-call at A-step %d: B=%d ce=%.6f unfreeze=%@",
                                        stepAIndex, ids.count, ce, String(describing: unfreezeLastTCN)),
                                 category: Logger.Category.training)
         }
+        await gpu.syncBatch(label: "trainer.stepB")
         return ce
     }
 }

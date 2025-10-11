@@ -23,6 +23,7 @@ public actor GPUActor {
     var conv1DCaches: [UUID: Conv1DCacheEntry] = [:]
     var linearCaches: [UUID: LinearCacheEntry] = [:]
     var buffers: [String: MTLBuffer] = [:]
+    private var activeBatchDepth: Int = 0
 
     public init() {
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -56,6 +57,36 @@ public actor GPUActor {
         buffer.label = label
         buffers[label] = buffer
         return buffer
+    }
+
+    // MARK: - Batch helpers (Phase 6b scaffolding)
+
+    public func beginBatch() {
+        activeBatchDepth &+= 1
+    }
+
+    public func syncBatch(label: String? = nil) async {
+        if activeBatchDepth > 0 {
+            activeBatchDepth &-= 1
+        }
+        // NOTE: All GPU helpers still wait inline because tensors are materialised on CPU arrays.
+        // Once tensor materialisation becomes deferred, this hook will drain queued command buffers.
+    }
+
+    public func isBatching() -> Bool {
+        return activeBatchDepth > 0
+    }
+
+    // MARK: - Metrics helpers
+
+    public func kdMetricsMean(student: Tensor, teacher: Tensor) -> (mse: Float, cos: Float) {
+        let mse = Losses.mseRowwise(student, teacher).mean
+        let cos = Losses.cosineSimilarityRowwise(student, teacher).mean
+        return (mse, cos)
+    }
+
+    public func crossEntropyMean(logits: Tensor, targets: [[Int]]) -> Float {
+        return CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
     }
 }
 

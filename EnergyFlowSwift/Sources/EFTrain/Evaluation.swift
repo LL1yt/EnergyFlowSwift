@@ -32,9 +32,11 @@ public func evaluate(enc: TextToCubeEncoder,
                 let idsChunk = Array(ids[offset..<(offset+take)])
                 let maskChunk = Array(mask[offset..<(offset+take)])
                 let tgtChunk = Array(tgts[offset..<(offset+take)])
+                await gpu.beginBatch()
                 let out = try await enc.encodeTokens(inputIDs: idsChunk,
                                                      attentionMask: maskChunk,
                                                      on: gpu)
+                await gpu.syncBatch(label: "eval.tokens")
                 let b = out.shape[0]; let d = out.shape[1]
                 var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
@@ -56,7 +58,9 @@ public func evaluate(enc: TextToCubeEncoder,
                 let take = min(micro, B - offset)
                 let txtChunk = Array(texts[offset..<(offset+take)])
                 let tgtChunk = Array(tgts[offset..<(offset+take)])
+                await gpu.beginBatch()
                 let out = try await enc.encode(txtChunk, on: gpu)
+                await gpu.syncBatch(label: "eval.text")
                 let b = out.shape[0]; let d = out.shape[1]
                 var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
