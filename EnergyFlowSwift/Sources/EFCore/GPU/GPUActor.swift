@@ -119,16 +119,19 @@ public actor GPUActor {
         let token = CommandBufferToken(label: label, buffer: commandBuffer)
         commandBuffer.addCompletedHandler { [weak self] _ in
             guard let self else { return }
-            self.enqueueHostReadback(label: label) {
-                if let error = commandBuffer.error {
-                    state.resolve(.failure(GPUActorError.commandBufferFailed(label: label, underlying: error)))
-                    return
-                }
-                do {
-                    let value = try produce()
-                    state.resolve(.success(value))
-                } catch {
-                    state.resolve(.failure(error))
+            Task { [weak self] in
+                guard let self else { return }
+                await self.enqueueHostReadback(label: label) {
+                    if let error = commandBuffer.error {
+                        state.resolve(.failure(GPUActorError.commandBufferFailed(label: label, underlying: error)))
+                        return
+                    }
+                    do {
+                        let value = try produce()
+                        state.resolve(.success(value))
+                    } catch {
+                        state.resolve(.failure(error))
+                    }
                 }
             }
         }
