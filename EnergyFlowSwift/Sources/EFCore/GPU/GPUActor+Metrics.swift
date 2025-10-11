@@ -61,32 +61,21 @@ extension GPUActor {
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         
-        // We need to defer the reading until after the GPU work completes
-        // Create a wrapper that captures only Sendable values
-        struct ResultReader: Sendable {
-            let bufferPtr: UInt
-            let batchCount: Int
-            
-            func read() -> (Float, Float) {
-                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
-                    .bindMemory(to: Float.self, capacity: 2)
-                let sumMSE = ptr[0]
-                let sumCos = ptr[1]
-                let invB = 1.0 / Float(batchCount)
-                return (sumMSE * invB, sumCos * invB)
-            }
+        let reader = TupleFloatReader(
+            buffer: accumBuffer
+        ) { ptr in
+            let sumMSE = ptr[0]
+            let sumCos = ptr[1]
+            let invB = 1.0 / Float(batches)
+            return (sumMSE * invB, sumCos * invB)
         }
         
-        let reader = ResultReader(
-            bufferPtr: UInt(bitPattern: accumBuffer.contents()),
-            batchCount: batches
+        return scheduleCommandBufferWithReader(
+            label: "GPUActor.Metrics.kdMetricsMean",
+            commandBuffer: commandBuffer,
+            deferUntilSync: true,
+            reader: reader
         )
-        
-        return scheduleCommandBuffer(label: "GPUActor.Metrics.kdMetricsMean",
-                                     commandBuffer: commandBuffer,
-                                     deferUntilSync: true) { [reader] in
-            return reader.read()
-        }
     }
 
     public func crossEntropyMean(logits: Tensor,
@@ -159,27 +148,20 @@ extension GPUActor {
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         
-        // We need to defer the reading until after the GPU work completes
-        // Create a wrapper that captures only Sendable values
-        struct ResultReader: Sendable {
-            let bufferPtr: UInt
-            
-            func read() -> Float {
-                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
-                    .bindMemory(to: Float.self, capacity: 2)
-                let totalLoss = ptr[0]
-                let count = max(ptr[1], 1.0)
-                return totalLoss / count
-            }
+        let reader = SingleFloatReader(
+            buffer: accumBuffer
+        ) { ptr in
+            let totalLoss = ptr[0]
+            let count = max(ptr[1], 1.0)
+            return totalLoss / count
         }
         
-        let reader = ResultReader(bufferPtr: UInt(bitPattern: accumBuffer.contents()))
-        
-        return scheduleCommandBuffer(label: "GPUActor.Metrics.crossEntropyMean",
-                                     commandBuffer: commandBuffer,
-                                     deferUntilSync: true) { [reader] in
-            return reader.read()
-        }
+        return scheduleCommandBufferWithReader(
+            label: "GPUActor.Metrics.crossEntropyMean",
+            commandBuffer: commandBuffer,
+            deferUntilSync: true,
+            reader: reader
+        )
     }
 
     private func ensureMetricsPipelines() throws -> MetricsPipelines {

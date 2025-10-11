@@ -39,33 +39,17 @@ extension GPUActor {
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         
-        struct ResultReader: Sendable {
-            let bufferPtr: UInt
-            let outCount: Int
-            let elem: Int
-            let rows: Int
-            let colsX: Int
-            
-            func read() -> Tensor {
-                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
-                var host = [Float](repeating: 0, count: outCount)
-                memcpy(&host, ptr, outCount * elem)
-                return Tensor(shape: [rows, colsX], data: host)
-            }
-        }
-        
-        let reader = ResultReader(
-            bufferPtr: UInt(bitPattern: outBuffer.contents()),
-            outCount: outCount,
-            elem: elem,
-            rows: rows,
-            colsX: colsX
+        let reader = FloatBufferReader(
+            buffer: outBuffer,
+            count: outCount,
+            shape: [rows, colsX]
         )
         
-        return try await awaitCommandBuffer(label: "GPUActor.im2col",
-                                            commandBuffer: commandBuffer) { [reader] in
-            return reader.read()
-        }
+        return try await awaitCommandBufferWithReader(
+            label: "GPUActor.im2col",
+            commandBuffer: commandBuffer,
+            reader: reader
+        )
     }
 
     public func col2im(dXcol: Tensor, B: Int, L: Int, Cin: Int, K: Int, dilation: Int) async throws -> Tensor {
@@ -106,35 +90,17 @@ extension GPUActor {
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         
-        struct ResultReader: Sendable {
-            let bufferPtr: UInt
-            let outCount: Int
-            let elem: Int
-            let B: Int
-            let L: Int
-            let Cin: Int
-            
-            func read() -> Tensor {
-                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
-                var host = [Float](repeating: 0, count: outCount)
-                memcpy(&host, ptr, outCount * elem)
-                return Tensor(shape: [B, L, Cin], data: host)
-            }
-        }
-        
-        let reader = ResultReader(
-            bufferPtr: UInt(bitPattern: outBuffer.contents()),
-            outCount: outCount,
-            elem: elem,
-            B: B,
-            L: L,
-            Cin: Cin
+        let reader = FloatBufferReader(
+            buffer: outBuffer,
+            count: outCount,
+            shape: [B, L, Cin]
         )
         
-        return try await awaitCommandBuffer(label: "GPUActor.col2im",
-                                            commandBuffer: commandBuffer) { [reader] in
-            return reader.read()
-        }
+        return try await awaitCommandBufferWithReader(
+            label: "GPUActor.col2im",
+            commandBuffer: commandBuffer,
+            reader: reader
+        )
     }
 
     public func im2colFP16ToBuffer(X: Tensor,

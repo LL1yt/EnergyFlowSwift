@@ -105,48 +105,20 @@ extension GPUActor {
         commandBuffer.label = "GPUActor.Conv1D.forward"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
         
-        // Create a wrapper that captures only Sendable values
-        struct ResultReader: Sendable {
-            let bufferPtr: UInt
-            let rows: Int
-            let outChannels: Int
-            let elemHalf: Int
-            let yRowBytes: Int
-            let B: Int
-            let L: Int
-            
-            func read() -> Tensor {
-                let yBuffer = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
-                var yHalf = [Float16](repeating: 0, count: rows * outChannels)
-                let rowSize = outChannels * elemHalf
-                yHalf.withUnsafeMutableBytes { raw in
-                    if let base = raw.baseAddress {
-                        for r in 0..<rows {
-                            memcpy(base.advanced(by: r * rowSize), yBuffer.advanced(by: r * yRowBytes), rowSize)
-                        }
-                    }
-                }
-                var yHost = [Float](repeating: 0, count: rows * outChannels)
-                for i in 0..<yHost.count { yHost[i] = Float(yHalf[i]) }
-                return Tensor(shape: [B, L, outChannels], data: yHost)
-            }
-        }
-        
-        let reader = ResultReader(
-            bufferPtr: UInt(bitPattern: yBuffer.contents()),
+        let reader = StridedFloat16BufferReader(
+            buffer: yBuffer,
             rows: rows,
-            outChannels: outChannels,
-            elemHalf: elemHalf,
-            yRowBytes: yRowBytes,
-            B: B,
-            L: L
+            cols: outChannels,
+            rowBytes: yRowBytes,
+            shape: [B, L, outChannels]
         )
         
-        return scheduleCommandBuffer(label: "GPUActor.Conv1D.forward",
-                                     commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) { [reader] in
-            return reader.read()
-        }
+        return scheduleCommandBufferWithReader(
+            label: "GPUActor.Conv1D.forward",
+            commandBuffer: commandBuffer,
+            deferUntilSync: deferUntilSync,
+            reader: reader
+        )
     }
 
     private func ensureConv1DCache(key: UUID,

@@ -83,33 +83,17 @@ extension GPUActor {
         normEncoder.dispatchThreadgroups(normThreadgroups, threadsPerThreadgroup: normThreadsPerGroup)
         normEncoder.endEncoding()
         
-        struct ResultReader: Sendable {
-            let bufferPtr: UInt
-            let count: Int
-            let yBytes: Int
-            let shape: [Int]
-            
-            func read() -> Tensor {
-                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
-                var yHalf = [Float16](repeating: 0, count: count)
-                memcpy(&yHalf, ptr, yBytes)
-                var output = [Float](repeating: 0, count: count)
-                for i in 0..<count { output[i] = Float(yHalf[i]) }
-                return Tensor(shape: shape, data: output)
-            }
-        }
-        
-        let reader = ResultReader(
-            bufferPtr: UInt(bitPattern: yBuffer.contents()),
+        let reader = Float16BufferReader(
+            buffer: yBuffer,
             count: count,
-            yBytes: yBytes,
             shape: x.shape
         )
         
-        return try await awaitCommandBuffer(label: "GPUActor.LayerNorm.forward",
-                                            commandBuffer: commandBuffer) { [reader] in
-            return reader.read()
-        }
+        return try await awaitCommandBufferWithReader(
+            label: "GPUActor.LayerNorm.forward",
+            commandBuffer: commandBuffer,
+            reader: reader
+        )
     }
 
     public func layerNormBackward(x: Tensor, g: Tensor, gamma: Tensor, eps: Float) async throws -> (Tensor, Tensor, Tensor) {
@@ -234,65 +218,35 @@ extension GPUActor {
         dgbEncoder.dispatchThreadgroups(dgbThreadgroups, threadsPerThreadgroup: dgbThreadsPerGroup)
         dgbEncoder.endEncoding()
         
-        struct ResultReader: Sendable {
-            let dxBufferPtr: UInt
-            let dGammaBufferPtr: UInt
-            let dBetaBufferPtr: UInt
-            let count: Int
-            let dxBytes: Int
-            let dGammaBytes: Int
-            let dBetaBytes: Int
-            let N: Int
-            let D: Int
-            
-            func read() -> (Tensor, Tensor, Tensor) {
-                let dxPtr = UnsafeMutableRawPointer(bitPattern: dxBufferPtr)!
-                let dGammaPtr = UnsafeMutableRawPointer(bitPattern: dGammaBufferPtr)!
-                let dBetaPtr = UnsafeMutableRawPointer(bitPattern: dBetaBufferPtr)!
-                
-                var dxHalf = [Float16](repeating: 0, count: count)
-                memcpy(&dxHalf, dxPtr, dxBytes)
-                var dxHost = [Float](repeating: 0, count: count)
-                for i in 0..<count { dxHost[i] = Float(dxHalf[i]) }
-                
-                var dGammaHost = [Float](repeating: 0, count: D)
-                dGammaHost.withUnsafeMutableBytes { dest in
-                    if let base = dest.baseAddress {
-                        memcpy(base, dGammaPtr, dGammaBytes)
-                    }
-                }
-                
-                var dBetaHost = [Float](repeating: 0, count: D)
-                dBetaHost.withUnsafeMutableBytes { dest in
-                    if let base = dest.baseAddress {
-                        memcpy(base, dBetaPtr, dBetaBytes)
-                    }
-                }
-                
-                return (
-                    Tensor(shape: [N, D], data: dxHost),
-                    Tensor(shape: [D], data: dGammaHost),
-                    Tensor(shape: [D], data: dBetaHost)
-                )
-            }
-        }
-        
-        let reader = ResultReader(
-            dxBufferPtr: UInt(bitPattern: dxBuffer.contents()),
-            dGammaBufferPtr: UInt(bitPattern: dGammaBuffer.contents()),
-            dBetaBufferPtr: UInt(bitPattern: dBetaBuffer.contents()),
+        let dxReader = Float16BufferReader(
+            buffer: dxBuffer,
             count: count,
-            dxBytes: dxBytes,
-            dGammaBytes: dGammaBytes,
-            dBetaBytes: dBetaBytes,
-            N: N,
-            D: D
+            shape: [N, D]
         )
-        
-        return try await awaitCommandBuffer(label: "GPUActor.LayerNorm.backward",
-                                            commandBuffer: commandBuffer) { [reader] in
-            return reader.read()
+        let dGammaReader = FloatBufferReader(
+            buffer: dGammaBuffer,
+            count: D,
+            shape: [D]
+        )
+        let dBetaReader = FloatBufferReader(
+            buffer: dBetaBuffer,
+            count: D,
+            shape: [D]
+        )
+        let reader = BufferReader<(Tensor, Tensor, Tensor)>(
+            buffer: dxBuffer
+        ) {
+            let dx = dxReader.read()
+            let dGamma = dGammaReader.read()
+            let dBeta = dBetaReader.read()
+            return (dx, dGamma, dBeta)
         }
+        
+        return try await awaitCommandBufferWithReader(
+            label: "GPUActor.LayerNorm.backward",
+            commandBuffer: commandBuffer,
+            reader: reader
+        )
     }
 
     private func ensureLayerNormPipelines() throws -> LayerNormPipelines {

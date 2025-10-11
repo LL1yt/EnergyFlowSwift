@@ -36,33 +36,17 @@ extension GPUActor {
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         
-        struct ResultReader: Sendable {
-            let bufferPtr: UInt
-            let outCount: Int
-            let elem: Int
-            let Cout: Int
-            let outCols: Int
-            
-            func read() -> Tensor {
-                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
-                var outHost = [Float](repeating: 0, count: outCount)
-                memcpy(&outHost, ptr, outCount * elem)
-                return Tensor(shape: [Cout, outCols], data: outHost)
-            }
-        }
-        
-        let reader = ResultReader(
-            bufferPtr: UInt(bitPattern: outBuffer.contents()),
-            outCount: outCount,
-            elem: elem,
-            Cout: Cout,
-            outCols: outCols
+        let reader = FloatBufferReader(
+            buffer: outBuffer,
+            count: outCount,
+            shape: [Cout, outCols]
         )
         
-        return try await awaitCommandBuffer(label: "GPUActor.ConvPack.pack",
-                                            commandBuffer: commandBuffer) { [reader] in
-            return reader.read()
-        }
+        return try await awaitCommandBufferWithReader(
+            label: "GPUActor.ConvPack.pack",
+            commandBuffer: commandBuffer,
+            reader: reader
+        )
     }
 
     public func unpackDWCol(dWcol: Tensor, Cout: Int, Cin: Int, K: Int) async throws -> Tensor {
@@ -98,35 +82,17 @@ extension GPUActor {
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         
-        struct ResultReader: Sendable {
-            let bufferPtr: UInt
-            let total: Int
-            let elem: Int
-            let Cout: Int
-            let Cin: Int
-            let K: Int
-            
-            func read() -> Tensor {
-                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
-                var outHost = [Float](repeating: 0, count: total)
-                memcpy(&outHost, ptr, total * elem)
-                return Tensor(shape: [Cout, Cin, K], data: outHost)
-            }
-        }
-        
-        let reader = ResultReader(
-            bufferPtr: UInt(bitPattern: outBuffer.contents()),
-            total: total,
-            elem: elem,
-            Cout: Cout,
-            Cin: Cin,
-            K: K
+        let reader = FloatBufferReader(
+            buffer: outBuffer,
+            count: total,
+            shape: [Cout, Cin, K]
         )
         
-        return try await awaitCommandBuffer(label: "GPUActor.ConvPack.unpack",
-                                            commandBuffer: commandBuffer) { [reader] in
-            return reader.read()
-        }
+        return try await awaitCommandBufferWithReader(
+            label: "GPUActor.ConvPack.unpack",
+            commandBuffer: commandBuffer,
+            reader: reader
+        )
     }
 
     private func ensureConvPackPipelines() throws -> ConvPackPipelines {
