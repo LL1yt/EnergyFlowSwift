@@ -34,13 +34,33 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let count: Int
+            let byteCount: Int
+            let shape: [Int]
+            
+            func read() -> Tensor {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var yHalf = [Float16](repeating: 0, count: count)
+                memcpy(&yHalf, ptr, byteCount)
+                var output = [Float](repeating: 0, count: count)
+                for i in 0..<count { output[i] = Float(yHalf[i]) }
+                return Tensor(shape: shape, data: output)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: yBuffer.contents()),
+            count: count,
+            byteCount: byteCount,
+            shape: x.shape
+        )
+        
         return try await awaitCommandBuffer(label: "GPUActor.GELU.forward",
-                                            commandBuffer: commandBuffer) {
-            var yHalf = [Float16](repeating: 0, count: count)
-            memcpy(&yHalf, yBuffer.contents(), byteCount)
-            var output = [Float](repeating: 0, count: count)
-            for i in 0..<count { output[i] = Float(yHalf[i]) }
-            return Tensor(shape: x.shape, data: output)
+                                            commandBuffer: commandBuffer) { [reader] in
+            return reader.read()
         }
     }
 
@@ -89,13 +109,33 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let count: Int
+            let byteCount: Int
+            let shape: [Int]
+            
+            func read() -> Tensor {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var dxHalf = [Float16](repeating: 0, count: count)
+                memcpy(&dxHalf, ptr, byteCount)
+                var output = [Float](repeating: 0, count: count)
+                for i in 0..<count { output[i] = Float(dxHalf[i]) }
+                return Tensor(shape: shape, data: output)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: dxBuffer.contents()),
+            count: count,
+            byteCount: byteCount,
+            shape: x.shape
+        )
+        
         return try await awaitCommandBuffer(label: "GPUActor.GELU.backward",
-                                            commandBuffer: commandBuffer) {
-            var dxHalf = [Float16](repeating: 0, count: count)
-            memcpy(&dxHalf, dxBuffer.contents(), byteCount)
-            var output = [Float](repeating: 0, count: count)
-            for i in 0..<count { output[i] = Float(dxHalf[i]) }
-            return Tensor(shape: x.shape, data: output)
+                                            commandBuffer: commandBuffer) { [reader] in
+            return reader.read()
         }
     }
 

@@ -35,11 +35,33 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (total + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let outCount: Int
+            let elem: Int
+            let Cout: Int
+            let outCols: Int
+            
+            func read() -> Tensor {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var outHost = [Float](repeating: 0, count: outCount)
+                memcpy(&outHost, ptr, outCount * elem)
+                return Tensor(shape: [Cout, outCols], data: outHost)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: outBuffer.contents()),
+            outCount: outCount,
+            elem: elem,
+            Cout: Cout,
+            outCols: outCols
+        )
+        
         return try await awaitCommandBuffer(label: "GPUActor.ConvPack.pack",
-                                            commandBuffer: commandBuffer) {
-            var outHost = [Float](repeating: 0, count: outCount)
-            memcpy(&outHost, outBuffer.contents(), outCount * elem)
-            return Tensor(shape: [Cout, outCols], data: outHost)
+                                            commandBuffer: commandBuffer) { [reader] in
+            return reader.read()
         }
     }
 
@@ -75,11 +97,35 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (total + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let total: Int
+            let elem: Int
+            let Cout: Int
+            let Cin: Int
+            let K: Int
+            
+            func read() -> Tensor {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var outHost = [Float](repeating: 0, count: total)
+                memcpy(&outHost, ptr, total * elem)
+                return Tensor(shape: [Cout, Cin, K], data: outHost)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: outBuffer.contents()),
+            total: total,
+            elem: elem,
+            Cout: Cout,
+            Cin: Cin,
+            K: K
+        )
+        
         return try await awaitCommandBuffer(label: "GPUActor.ConvPack.unpack",
-                                            commandBuffer: commandBuffer) {
-            var outHost = [Float](repeating: 0, count: total)
-            memcpy(&outHost, outBuffer.contents(), total * elem)
-            return Tensor(shape: [Cout, Cin, K], data: outHost)
+                                            commandBuffer: commandBuffer) { [reader] in
+            return reader.read()
         }
     }
 

@@ -43,13 +43,14 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return scheduleCommandBuffer(label: "GPUActor.Elementwise.residualAdd",
-                                     commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) {
-            var output = [Float](repeating: 0, count: count)
-            memcpy(&output, yBuffer.contents(), byteCount)
-            return Tensor(shape: y.shape, data: output)
-        }
+        
+        let reader = FloatBufferReader(buffer: yBuffer, count: count, shape: y.shape)
+        return scheduleCommandBufferWithReader(
+            label: "GPUActor.Elementwise.residualAdd",
+            commandBuffer: commandBuffer,
+            deferUntilSync: deferUntilSync,
+            reader: reader
+        )
     }
 
     public func addBroadcast2DInto3D(y: Tensor, addBD: Tensor, sequenceLength L: Int) async throws -> Tensor {
@@ -105,13 +106,14 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return scheduleCommandBuffer(label: "GPUActor.Elementwise.addBroadcast2DInto3D",
-                                     commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) {
-            var out = [Float](repeating: 0, count: count)
-            memcpy(&out, yBuffer.contents(), yBytes)
-            return Tensor(shape: y.shape, data: out)
-        }
+        
+        let reader = FloatBufferReader(buffer: yBuffer, count: count, shape: y.shape)
+        return scheduleCommandBufferWithReader(
+            label: "GPUActor.Elementwise.addBroadcast2DInto3D",
+            commandBuffer: commandBuffer,
+            deferUntilSync: deferUntilSync,
+            reader: reader
+        )
     }
 
     public func maskZero(y: Tensor, mask: [[Int]]) async throws -> Tensor {
@@ -162,12 +164,32 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let count: Int
+            let yBytes: Int
+            let shape: [Int]
+            
+            func read() -> Tensor {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var out = [Float](repeating: 0, count: count)
+                memcpy(&out, ptr, yBytes)
+                return Tensor(shape: shape, data: out)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: yBuffer.contents()),
+            count: count,
+            yBytes: yBytes,
+            shape: y.shape
+        )
+        
         return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskZero",
                                      commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) {
-            var out = [Float](repeating: 0, count: count)
-            memcpy(&out, yBuffer.contents(), yBytes)
-            return Tensor(shape: y.shape, data: out)
+                                     deferUntilSync: deferUntilSync) { [reader] in
+            return reader.read()
         }
     }
 
@@ -222,12 +244,32 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (B * H + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let B: Int
+            let H: Int
+            let yBytes: Int
+            
+            func read() -> Tensor {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var output = [Float](repeating: 0, count: B * H)
+                memcpy(&output, ptr, yBytes)
+                return Tensor(shape: [B, H], data: output)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: yBuffer.contents()),
+            B: B,
+            H: H,
+            yBytes: yBytes
+        )
+        
         return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskedMean",
                                      commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) {
-            var output = [Float](repeating: 0, count: B * H)
-            memcpy(&output, yBuffer.contents(), yBytes)
-            return Tensor(shape: [B, H], data: output)
+                                     deferUntilSync: deferUntilSync) { [reader] in
+            return reader.read()
         }
     }
 
@@ -286,12 +328,34 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (B * seqLen * H + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let B: Int
+            let seqLen: Int
+            let H: Int
+            let dxBytes: Int
+            
+            func read() -> Tensor {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var dxHost = [Float](repeating: 0, count: B * seqLen * H)
+                memcpy(&dxHost, ptr, dxBytes)
+                return Tensor(shape: [B, seqLen, H], data: dxHost)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: dxBuffer.contents()),
+            B: B,
+            seqLen: seqLen,
+            H: H,
+            dxBytes: dxBytes
+        )
+        
         return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskedMeanBackward",
                                      commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) {
-            var dxHost = [Float](repeating: 0, count: B * seqLen * H)
-            memcpy(&dxHost, dxBuffer.contents(), dxBytes)
-            return Tensor(shape: [B, seqLen, H], data: dxHost)
+                                     deferUntilSync: deferUntilSync) { [reader] in
+            return reader.read()
         }
     }
 

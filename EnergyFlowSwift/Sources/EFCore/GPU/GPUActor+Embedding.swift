@@ -58,11 +58,33 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (outCount + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let outCount: Int
+            let B: Int
+            let L: Int
+            let D: Int
+            
+            func read() -> Tensor {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var output = [Float](repeating: 0, count: outCount)
+                memcpy(&output, ptr, outCount * MemoryLayout<Float>.size)
+                return Tensor(shape: [B, L, D], data: output)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: outBuffer.contents()),
+            outCount: outCount,
+            B: B,
+            L: L,
+            D: D
+        )
+        
         return try await awaitCommandBuffer(label: "GPUActor.Embedding.forward",
-                                            commandBuffer: commandBuffer) {
-            var output = [Float](repeating: 0, count: outCount)
-            memcpy(&output, outBuffer.contents(), outCount * MemoryLayout<Float>.size)
-            return Tensor(shape: [B, L, D], data: output)
+                                            commandBuffer: commandBuffer) { [reader] in
+            return reader.read()
         }
     }
 

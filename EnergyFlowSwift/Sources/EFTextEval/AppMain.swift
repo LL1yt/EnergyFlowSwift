@@ -232,14 +232,4 @@ func run() async throws {
     }
 
 
-@main
-struct EFTextEvalMain {
-    static func main() async {
-        do {
-            try await run()
-        } catch {
-            Logger.shared.error("EFTextEval failed: \(error)", category: Logger.Category.dataset)
-            exit(1)
-        }
-    }
-}
+// run() function is now called from main.swift top-level code

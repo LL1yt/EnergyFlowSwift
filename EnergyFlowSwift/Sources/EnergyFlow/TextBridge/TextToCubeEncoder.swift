@@ -214,7 +214,7 @@ public final class TextToCubeEncoder {
     public func projectionInputGradientsGPUDeferred(dY: Tensor,
                                                      on gpu: GPUActor = GPU.shared) async throws -> GPUReadback<Tensor> {
         var proj = gpuProj
-        let readback = try await proj.inputGradientsGPUDeferred(dY: dY, on: gpu, deferUntilSync: true)
+        let readback = try await proj.inputGradientsGPUDeferred(dY: dY, on: gpu)
         gpuProj = proj
         return readback
     }

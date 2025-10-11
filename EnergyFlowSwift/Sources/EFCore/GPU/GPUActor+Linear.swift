@@ -114,22 +114,44 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.forward"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
-        return scheduleCommandBuffer(label: "GPUActor.Linear.forward",
-                                     commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) {
-            var yHalf = [Float16](repeating: 0, count: batch * outFeatures)
-            yHalf.withUnsafeMutableBytes { raw in
-                if let base = raw.baseAddress {
-                    for row in 0..<batch {
-                        let dst = base.advanced(by: row * outFeatures * elemHalf)
-                        let src = yBuffer.contents().advanced(by: row * yRowBytes)
-                        memcpy(dst, src, outFeatures * elemHalf)
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let batch: Int
+            let outFeatures: Int
+            let elemHalf: Int
+            let yRowBytes: Int
+            
+            func read() -> Tensor {
+                let yBufferPtr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var yHalf = [Float16](repeating: 0, count: batch * outFeatures)
+                yHalf.withUnsafeMutableBytes { raw in
+                    if let base = raw.baseAddress {
+                        for row in 0..<batch {
+                            let dst = base.advanced(by: row * outFeatures * elemHalf)
+                            let src = yBufferPtr.advanced(by: row * yRowBytes)
+                            memcpy(dst, src, outFeatures * elemHalf)
+                        }
                     }
                 }
+                var output = [Float](repeating: 0, count: batch * outFeatures)
+                for i in 0..<output.count { output[i] = Float(yHalf[i]) }
+                return Tensor(shape: [batch, outFeatures], data: output)
             }
-            var output = [Float](repeating: 0, count: batch * outFeatures)
-            for i in 0..<output.count { output[i] = Float(yHalf[i]) }
-            return Tensor(shape: [batch, outFeatures], data: output)
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: yBuffer.contents()),
+            batch: batch,
+            outFeatures: outFeatures,
+            elemHalf: elemHalf,
+            yRowBytes: yRowBytes
+        )
+        
+        return scheduleCommandBuffer(label: "GPUActor.Linear.forward",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) { [reader] in
+            return reader.read()
         }
     }
 
@@ -246,31 +268,61 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.gradients"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: lMat, rightMatrix: rMat, resultMatrix: yMat)
-        return scheduleCommandBuffer(label: "GPUActor.Linear.gradients",
-                                     commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) {
-            var dWHalf = [Float16](repeating: 0, count: rowsY * colsY)
-            dWHalf.withUnsafeMutableBytes { raw in
-                if let base = raw.baseAddress {
-                    for row in 0..<rowsY {
-                        let dst = base.advanced(by: row * colsY * elemHalf)
-                        let src = yBuffer.contents().advanced(by: row * yRowBytes)
-                        memcpy(dst, src, colsY * elemHalf)
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let rowsY: Int
+            let colsY: Int
+            let elemHalf: Int
+            let yRowBytes: Int
+            let outFeatures: Int
+            let inFeatures: Int
+            let batch: Int
+            let dyData: [Float]
+            
+            func read() -> (Tensor, Tensor) {
+                let yBufferPtr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var dWHalf = [Float16](repeating: 0, count: rowsY * colsY)
+                dWHalf.withUnsafeMutableBytes { raw in
+                    if let base = raw.baseAddress {
+                        for row in 0..<rowsY {
+                            let dst = base.advanced(by: row * colsY * elemHalf)
+                            let src = yBufferPtr.advanced(by: row * yRowBytes)
+                            memcpy(dst, src, colsY * elemHalf)
+                        }
                     }
                 }
-            }
-            var dWHost = [Float](repeating: 0, count: rowsY * colsY)
-            for i in 0..<dWHost.count { dWHost[i] = Float(dWHalf[i]) }
-            var dBHost = [Float](repeating: 0, count: outFeatures)
-            for bIdx in 0..<batch {
-                let base = bIdx * outFeatures
-                for o in 0..<outFeatures {
-                    dBHost[o] += dY.data[base + o]
+                var dWHost = [Float](repeating: 0, count: rowsY * colsY)
+                for i in 0..<dWHost.count { dWHost[i] = Float(dWHalf[i]) }
+                var dBHost = [Float](repeating: 0, count: outFeatures)
+                for bIdx in 0..<batch {
+                    let base = bIdx * outFeatures
+                    for o in 0..<outFeatures {
+                        dBHost[o] += dyData[base + o]
+                    }
                 }
+                let dW = Tensor(shape: [outFeatures, inFeatures], data: dWHost)
+                let dB = Tensor(shape: [outFeatures], data: dBHost)
+                return (dW, dB)
             }
-            let dW = Tensor(shape: [outFeatures, inFeatures], data: dWHost)
-            let dB = Tensor(shape: [outFeatures], data: dBHost)
-            return (dW, dB)
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: yBuffer.contents()),
+            rowsY: rowsY,
+            colsY: colsY,
+            elemHalf: elemHalf,
+            yRowBytes: yRowBytes,
+            outFeatures: outFeatures,
+            inFeatures: inFeatures,
+            batch: batch,
+            dyData: dY.data
+        )
+        
+        return scheduleCommandBuffer(label: "GPUActor.Linear.gradients",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) { [reader] in
+            return reader.read()
         }
     }
 
@@ -383,28 +435,52 @@ extension GPUActor {
         }
         commandBuffer.label = "GPUActor.Linear.inputGradients"
         mm.encode(commandBuffer: commandBuffer, leftMatrix: dyMat, rightMatrix: wMat, resultMatrix: dxMat)
-        return scheduleCommandBuffer(label: "GPUActor.Linear.inputGradients",
-                                     commandBuffer: commandBuffer,
-                                     deferUntilSync: deferUntilSync) {
-            var dxHalfAug = [Float16](repeating: 0, count: batch * inAug)
-            dxHalfAug.withUnsafeMutableBytes { raw in
-                if let base = raw.baseAddress {
-                    for row in 0..<batch {
-                        let dst = base.advanced(by: row * inAug * elemHalf)
-                        let src = dxBuffer.contents().advanced(by: row * dxRowBytesAug)
-                        memcpy(dst, src, inAug * elemHalf)
+        
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let batch: Int
+            let inAug: Int
+            let inFeatures: Int
+            let elemHalf: Int
+            let dxRowBytesAug: Int
+            
+            func read() -> Tensor {
+                let dxBufferPtr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                var dxHalfAug = [Float16](repeating: 0, count: batch * inAug)
+                dxHalfAug.withUnsafeMutableBytes { raw in
+                    if let base = raw.baseAddress {
+                        for row in 0..<batch {
+                            let dst = base.advanced(by: row * inAug * elemHalf)
+                            let src = dxBufferPtr.advanced(by: row * dxRowBytesAug)
+                            memcpy(dst, src, inAug * elemHalf)
+                        }
                     }
                 }
-            }
-            var dxHost = [Float](repeating: 0, count: batch * inFeatures)
-            for row in 0..<batch {
-                let srcBase = row * inAug
-                let dstBase = row * inFeatures
-                for c in 0..<inFeatures {
-                    dxHost[dstBase + c] = Float(dxHalfAug[srcBase + c])
+                var dxHost = [Float](repeating: 0, count: batch * inFeatures)
+                for row in 0..<batch {
+                    let srcBase = row * inAug
+                    let dstBase = row * inFeatures
+                    for c in 0..<inFeatures {
+                        dxHost[dstBase + c] = Float(dxHalfAug[srcBase + c])
+                    }
                 }
+                return Tensor(shape: [batch, inFeatures], data: dxHost)
             }
-            return Tensor(shape: [batch, inFeatures], data: dxHost)
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: dxBuffer.contents()),
+            batch: batch,
+            inAug: inAug,
+            inFeatures: inFeatures,
+            elemHalf: elemHalf,
+            dxRowBytesAug: dxRowBytesAug
+        )
+        
+        return scheduleCommandBuffer(label: "GPUActor.Linear.inputGradients",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) { [reader] in
+            return reader.read()
         }
     }
 

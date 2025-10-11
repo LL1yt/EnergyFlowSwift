@@ -37,7 +37,7 @@ public actor GPUActor {
 
     private struct PendingHostReadback {
         let label: String
-        let execute: () -> Void
+        let execute: @Sendable () -> Void
     }
 
     private var pendingCommandBuffers: [CommandBufferToken] = []
@@ -105,9 +105,9 @@ public actor GPUActor {
 
     // MARK: - Command buffer utilities
 
-    func awaitCommandBuffer<T>(label: String,
+    func awaitCommandBuffer<T: Sendable>(label: String,
                                commandBuffer: MTLCommandBuffer,
-                               produce: @escaping () throws -> T) async throws -> T {
+                               produce: @escaping @Sendable () throws -> T) async throws -> T {
         let readback = scheduleCommandBuffer(label: label,
                                              commandBuffer: commandBuffer,
                                              deferUntilSync: false,
@@ -115,20 +115,23 @@ public actor GPUActor {
         return try await readback.value()
     }
 
-    func scheduleCommandBuffer<T>(label: String,
+    func scheduleCommandBuffer<T: Sendable>(label: String,
                                   commandBuffer: MTLCommandBuffer,
                                   deferUntilSync: Bool,
-                                  produce: @escaping () throws -> T) -> GPUReadback<T> {
+                                  produce: @escaping @Sendable () throws -> T) -> GPUReadback<T> {
         let state = GPUReadbackState<T>()
         let token = CommandBufferToken(label: label, buffer: commandBuffer)
         let epochSnapshot = batchEpoch
         let requiresSync = deferUntilSync && activeBatchDepth > 0
-        commandBuffer.addCompletedHandler { [weak self] _ in
+        
+        // Capture the error before the handler to make it Sendable-safe
+        commandBuffer.addCompletedHandler { [weak self] cb in
+            let error = cb.error
             guard let self else { return }
             Task { [weak self] in
                 guard let self else { return }
-                await self.enqueueHostReadback(label: label) {
-                    if let error = commandBuffer.error {
+                await self.enqueueHostReadback(label: label) { [state, produce] in
+                    if let error = error {
                         state.resolve(.failure(GPUActorError.commandBufferFailed(label: label, underlying: error)))
                         return
                     }
@@ -152,7 +155,7 @@ public actor GPUActor {
                            requiresSync: requiresSync)
     }
 
-    private func enqueueHostReadback(label: String, execute: @escaping () -> Void) {
+    private func enqueueHostReadback(label: String, execute: @escaping @Sendable () -> Void) {
         pendingHostReadbacks.append(PendingHostReadback(label: label, execute: execute))
         if activeBatchDepth == 0 {
             drainHostReadbacks()
@@ -179,7 +182,7 @@ public actor GPUActor {
 
 }
 
-private final class GPUReadbackState<T>: @unchecked Sendable {
+private final class GPUReadbackState<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var result: Result<T, Error>?
     private var continuations: [CheckedContinuation<T, Error>] = []
@@ -213,7 +216,7 @@ private final class GPUReadbackState<T>: @unchecked Sendable {
     }
 }
 
-public struct GPUReadback<T>: Sendable {
+public struct GPUReadback<T: Sendable>: Sendable {
     private let state: GPUReadbackState<T>
     private let actor: GPUActor?
     private let epoch: UInt64

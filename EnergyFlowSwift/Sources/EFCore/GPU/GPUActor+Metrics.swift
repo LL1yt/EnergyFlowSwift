@@ -60,14 +60,32 @@ extension GPUActor {
                              depth: 1)
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        // We need to defer the reading until after the GPU work completes
+        // Create a wrapper that captures only Sendable values
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            let batchCount: Int
+            
+            func read() -> (Float, Float) {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                    .bindMemory(to: Float.self, capacity: 2)
+                let sumMSE = ptr[0]
+                let sumCos = ptr[1]
+                let invB = 1.0 / Float(batchCount)
+                return (sumMSE * invB, sumCos * invB)
+            }
+        }
+        
+        let reader = ResultReader(
+            bufferPtr: UInt(bitPattern: accumBuffer.contents()),
+            batchCount: batches
+        )
+        
         return scheduleCommandBuffer(label: "GPUActor.Metrics.kdMetricsMean",
                                      commandBuffer: commandBuffer,
-                                     deferUntilSync: true) {
-            let ptr = accumBuffer.contents().bindMemory(to: Float.self, capacity: 2)
-            let sumMSE = ptr[0]
-            let sumCos = ptr[1]
-            let invB = 1.0 / Float(batches)
-            return (sumMSE * invB, sumCos * invB)
+                                     deferUntilSync: true) { [reader] in
+            return reader.read()
         }
     }
 
@@ -140,13 +158,27 @@ extension GPUActor {
                              depth: 1)
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
+        
+        // We need to defer the reading until after the GPU work completes
+        // Create a wrapper that captures only Sendable values
+        struct ResultReader: Sendable {
+            let bufferPtr: UInt
+            
+            func read() -> Float {
+                let ptr = UnsafeMutableRawPointer(bitPattern: bufferPtr)!
+                    .bindMemory(to: Float.self, capacity: 2)
+                let totalLoss = ptr[0]
+                let count = max(ptr[1], 1.0)
+                return totalLoss / count
+            }
+        }
+        
+        let reader = ResultReader(bufferPtr: UInt(bitPattern: accumBuffer.contents()))
+        
         return scheduleCommandBuffer(label: "GPUActor.Metrics.crossEntropyMean",
                                      commandBuffer: commandBuffer,
-                                     deferUntilSync: true) {
-            let ptr = accumBuffer.contents().bindMemory(to: Float.self, capacity: 2)
-            let totalLoss = ptr[0]
-            let count = max(ptr[1], 1.0)
-            return totalLoss / count
+                                     deferUntilSync: true) { [reader] in
+            return reader.read()
         }
     }
 
