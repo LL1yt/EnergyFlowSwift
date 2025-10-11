@@ -126,10 +126,5 @@ trainer.train(input_embeddings, target_embeddings)
 - `Sources/EnergyFlow/` — модули архитектуры, начиная с TextBridge (TextToCubeEncoder)
 - `Tests/` — юнит‑тесты на формы и корректность
 
-### Фаза 1 (пошагово)
-1) База: Tensor (CPU), простые ops; минимальный whitespace‑Tokenizer
-2) PyTorchSwift аналоги: Embedding, Linear, LayerNorm, Activations
-3) TextToCubeEncoder (CPU): embedding → (пока без Transformer) → masked‑avg → MLP → tanh → [B, surface_dim]
-4) Тест: проверка формы и диапазона значений
 
 Полный объединённый план: `docs/Swift_MPS_Port_Plan.md`

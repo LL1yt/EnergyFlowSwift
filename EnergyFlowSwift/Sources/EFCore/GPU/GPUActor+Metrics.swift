@@ -61,7 +61,8 @@ extension GPUActor {
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         return scheduleCommandBuffer(label: "GPUActor.Metrics.kdMetricsMean",
-                                     commandBuffer: commandBuffer) {
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: true) {
             let ptr = accumBuffer.contents().bindMemory(to: Float.self, capacity: 2)
             let sumMSE = ptr[0]
             let sumCos = ptr[1]
@@ -140,7 +141,8 @@ extension GPUActor {
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         return scheduleCommandBuffer(label: "GPUActor.Metrics.crossEntropyMean",
-                                     commandBuffer: commandBuffer) {
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: true) {
             let ptr = accumBuffer.contents().bindMemory(to: Float.self, capacity: 2)
             let totalLoss = ptr[0]
             let count = max(ptr[1], 1.0)

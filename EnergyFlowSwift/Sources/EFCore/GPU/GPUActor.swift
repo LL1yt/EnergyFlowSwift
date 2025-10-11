@@ -43,6 +43,7 @@ public actor GPUActor {
     private var pendingCommandBuffers: [CommandBufferToken] = []
     private var pendingHostReadbacks: [PendingHostReadback] = []
     private var activeBatchDepth: Int = 0
+    private var batchEpoch: UInt64 = 0
 
     public init() {
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -95,6 +96,7 @@ public actor GPUActor {
             _ = await token.buffer.completed()
         }
         drainHostReadbacks()
+        batchEpoch &+= 1
     }
 
     public func isBatching() -> Bool {
@@ -108,20 +110,24 @@ public actor GPUActor {
                                produce: @escaping () throws -> T) async throws -> T {
         let readback = scheduleCommandBuffer(label: label,
                                              commandBuffer: commandBuffer,
+                                             deferUntilSync: false,
                                              produce: produce)
         return try await readback.value()
     }
 
     func scheduleCommandBuffer<T>(label: String,
                                   commandBuffer: MTLCommandBuffer,
+                                  deferUntilSync: Bool,
                                   produce: @escaping () throws -> T) -> GPUReadback<T> {
         let state = GPUReadbackState<T>()
         let token = CommandBufferToken(label: label, buffer: commandBuffer)
+        let epochSnapshot = batchEpoch
+        let requiresSync = deferUntilSync && activeBatchDepth > 0
         commandBuffer.addCompletedHandler { [weak self] _ in
             guard let self else { return }
             Task { [weak self] in
                 guard let self else { return }
-                await self.enqueueHostReadback(label: label) {
+                self.enqueueHostReadback(label: label) {
                     if let error = commandBuffer.error {
                         state.resolve(.failure(GPUActorError.commandBufferFailed(label: label, underlying: error)))
                         return
@@ -139,7 +145,11 @@ public actor GPUActor {
             pendingCommandBuffers.append(token)
         }
         commandBuffer.commit()
-        return GPUReadback(state: state)
+        return GPUReadback(state: state,
+                           actor: self,
+                           epoch: epochSnapshot,
+                           label: label,
+                           requiresSync: requiresSync)
     }
 
     private func enqueueHostReadback(label: String, execute: @escaping () -> Void) {
@@ -155,6 +165,15 @@ public actor GPUActor {
         pendingHostReadbacks.removeAll(keepingCapacity: true)
         for task in tasks {
             task.execute()
+        }
+    }
+
+    fileprivate func ensureBatchSynced(for epoch: UInt64, label: String) async {
+        if activeBatchDepth > 0 {
+            fatalError("GPUActor: readback \(label) awaited while batch still active. Call syncBatch() before accessing results.")
+        }
+        if batchEpoch == epoch {
+            fatalError("GPUActor: readback \(label) awaited before syncBatch drained queued work.")
         }
     }
 
@@ -196,19 +215,38 @@ private final class GPUReadbackState<T>: @unchecked Sendable {
 
 public struct GPUReadback<T>: Sendable {
     private let state: GPUReadbackState<T>
+    private let actor: GPUActor?
+    private let epoch: UInt64
+    private let label: String
+    private let requiresSync: Bool
 
-    fileprivate init(state: GPUReadbackState<T>) {
+    fileprivate init(state: GPUReadbackState<T>,
+                     actor: GPUActor,
+                     epoch: UInt64,
+                     label: String,
+                     requiresSync: Bool) {
         self.state = state
+        self.actor = actor
+        self.epoch = epoch
+        self.label = label
+        self.requiresSync = requiresSync
     }
 
     public init(resolved value: T) {
         let state = GPUReadbackState<T>()
         state.resolve(.success(value))
         self.state = state
+        self.actor = nil
+        self.epoch = 0
+        self.label = ""
+        self.requiresSync = false
     }
 
     public func value() async throws -> T {
-        try await state.awaitValue()
+        if requiresSync, let actor = actor {
+            await actor.ensureBatchSynced(for: epoch, label: label)
+        }
+        return try await state.awaitValue()
     }
 }
 
