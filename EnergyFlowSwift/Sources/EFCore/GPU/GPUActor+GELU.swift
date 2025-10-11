@@ -1,7 +1,7 @@
 import Metal
 
 extension GPUActor {
-    public func geluForward(x: Tensor) throws -> Tensor {
+    public func geluForward(x: Tensor) async throws -> Tensor {
         let count = x.count
         if count == 0 { return x }
         let pipelines = try ensureGELUPipelines()
@@ -34,16 +34,17 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var yHalf = [Float16](repeating: 0, count: count)
-        memcpy(&yHalf, yBuffer.contents(), byteCount)
-        var output = [Float](repeating: 0, count: count)
-        for i in 0..<count { output[i] = Float(yHalf[i]) }
-        return Tensor(shape: x.shape, data: output)
+        return try await awaitCommandBuffer(label: "GPUActor.GELU.forward",
+                                            commandBuffer: commandBuffer) {
+            var yHalf = [Float16](repeating: 0, count: count)
+            memcpy(&yHalf, yBuffer.contents(), byteCount)
+            var output = [Float](repeating: 0, count: count)
+            for i in 0..<count { output[i] = Float(yHalf[i]) }
+            return Tensor(shape: x.shape, data: output)
+        }
     }
 
-    public func geluBackward(x: Tensor, dY: Tensor) throws -> Tensor {
+    public func geluBackward(x: Tensor, dY: Tensor) async throws -> Tensor {
         precondition(x.shape == dY.shape, "GPUActor.geluBackward shape mismatch")
         let count = x.count
         if count == 0 { return dY }
@@ -88,13 +89,14 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var dxHalf = [Float16](repeating: 0, count: count)
-        memcpy(&dxHalf, dxBuffer.contents(), byteCount)
-        var output = [Float](repeating: 0, count: count)
-        for i in 0..<count { output[i] = Float(dxHalf[i]) }
-        return Tensor(shape: x.shape, data: output)
+        return try await awaitCommandBuffer(label: "GPUActor.GELU.backward",
+                                            commandBuffer: commandBuffer) {
+            var dxHalf = [Float16](repeating: 0, count: count)
+            memcpy(&dxHalf, dxBuffer.contents(), byteCount)
+            var output = [Float](repeating: 0, count: count)
+            for i in 0..<count { output[i] = Float(dxHalf[i]) }
+            return Tensor(shape: x.shape, data: output)
+        }
     }
 
     private func ensureGELUPipelines() throws -> GELUPipelines {

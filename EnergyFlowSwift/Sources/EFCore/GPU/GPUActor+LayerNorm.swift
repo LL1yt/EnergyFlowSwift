@@ -1,7 +1,7 @@
 import Metal
 
 extension GPUActor {
-    public func layerNormForward(x: Tensor, gamma: Tensor, beta: Tensor, eps: Float) throws -> Tensor {
+    public func layerNormForward(x: Tensor, gamma: Tensor, beta: Tensor, eps: Float) async throws -> Tensor {
         precondition(x.shape.count == 2, "GPUActor.layerNormForward expects [N,D]")
         precondition(gamma.shape == [x.shape[1]] && beta.shape == [x.shape[1]], "LayerNorm gamma/beta mismatch")
         let pipelines = try ensureLayerNormPipelines()
@@ -82,16 +82,17 @@ extension GPUActor {
         let normThreadgroups = MTLSize(width: (N + 255) / 256, height: 1, depth: 1)
         normEncoder.dispatchThreadgroups(normThreadgroups, threadsPerThreadgroup: normThreadsPerGroup)
         normEncoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var yHalf = [Float16](repeating: 0, count: count)
-        memcpy(&yHalf, yBuffer.contents(), yBytes)
-        var output = [Float](repeating: 0, count: count)
-        for i in 0..<count { output[i] = Float(yHalf[i]) }
-        return Tensor(shape: x.shape, data: output)
+        return try await awaitCommandBuffer(label: "GPUActor.LayerNorm.forward",
+                                            commandBuffer: commandBuffer) {
+            var yHalf = [Float16](repeating: 0, count: count)
+            memcpy(&yHalf, yBuffer.contents(), yBytes)
+            var output = [Float](repeating: 0, count: count)
+            for i in 0..<count { output[i] = Float(yHalf[i]) }
+            return Tensor(shape: x.shape, data: output)
+        }
     }
 
-    public func layerNormBackward(x: Tensor, g: Tensor, gamma: Tensor, eps: Float) throws -> (Tensor, Tensor, Tensor) {
+    public func layerNormBackward(x: Tensor, g: Tensor, gamma: Tensor, eps: Float) async throws -> (Tensor, Tensor, Tensor) {
         precondition(x.shape.count == 2 && g.shape == x.shape, "GPUActor.layerNormBackward expects x,g [N,D]")
         precondition(gamma.shape == [x.shape[1]], "GPUActor.layerNormBackward gamma mismatch")
         let pipelines = try ensureLayerNormPipelines()
@@ -212,29 +213,30 @@ extension GPUActor {
         let dgbThreadgroups = MTLSize(width: (D + 255) / 256, height: 1, depth: 1)
         dgbEncoder.dispatchThreadgroups(dgbThreadgroups, threadsPerThreadgroup: dgbThreadsPerGroup)
         dgbEncoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var dxHalf = [Float16](repeating: 0, count: count)
-        memcpy(&dxHalf, dxBuffer.contents(), dxBytes)
-        var dxHost = [Float](repeating: 0, count: count)
-        for i in 0..<count { dxHost[i] = Float(dxHalf[i]) }
-        var dGammaHost = [Float](repeating: 0, count: D)
-        dGammaHost.withUnsafeMutableBytes { dest in
-            if let base = dest.baseAddress {
-                memcpy(base, dGammaBuffer.contents(), dGammaBytes)
+        return try await awaitCommandBuffer(label: "GPUActor.LayerNorm.backward",
+                                            commandBuffer: commandBuffer) {
+            var dxHalf = [Float16](repeating: 0, count: count)
+            memcpy(&dxHalf, dxBuffer.contents(), dxBytes)
+            var dxHost = [Float](repeating: 0, count: count)
+            for i in 0..<count { dxHost[i] = Float(dxHalf[i]) }
+            var dGammaHost = [Float](repeating: 0, count: D)
+            dGammaHost.withUnsafeMutableBytes { dest in
+                if let base = dest.baseAddress {
+                    memcpy(base, dGammaBuffer.contents(), dGammaBytes)
+                }
             }
-        }
-        var dBetaHost = [Float](repeating: 0, count: D)
-        dBetaHost.withUnsafeMutableBytes { dest in
-            if let base = dest.baseAddress {
-                memcpy(base, dBetaBuffer.contents(), dBetaBytes)
+            var dBetaHost = [Float](repeating: 0, count: D)
+            dBetaHost.withUnsafeMutableBytes { dest in
+                if let base = dest.baseAddress {
+                    memcpy(base, dBetaBuffer.contents(), dBetaBytes)
+                }
             }
+            return (
+                Tensor(shape: [N, D], data: dxHost),
+                Tensor(shape: [D], data: dGammaHost),
+                Tensor(shape: [D], data: dBetaHost)
+            )
         }
-        return (
-            Tensor(shape: [N, D], data: dxHost),
-            Tensor(shape: [D], data: dGammaHost),
-            Tensor(shape: [D], data: dBetaHost)
-        )
     }
 
     private func ensureLayerNormPipelines() throws -> LayerNormPipelines {

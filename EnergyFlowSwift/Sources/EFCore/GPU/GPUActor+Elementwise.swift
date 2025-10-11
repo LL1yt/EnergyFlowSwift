@@ -1,7 +1,7 @@
 import Metal
 
 extension GPUActor {
-    public func residualAdd(y: Tensor, x: Tensor) throws -> Tensor {
+    public func residualAdd(y: Tensor, x: Tensor) async throws -> Tensor {
         precondition(y.shape == x.shape, "GPUActor.residualAdd shape mismatch")
         let count = y.count
         if count == 0 { return y }
@@ -36,14 +36,15 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var output = [Float](repeating: 0, count: count)
-        memcpy(&output, yBuffer.contents(), byteCount)
-        return Tensor(shape: y.shape, data: output)
+        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.residualAdd",
+                                            commandBuffer: commandBuffer) {
+            var output = [Float](repeating: 0, count: count)
+            memcpy(&output, yBuffer.contents(), byteCount)
+            return Tensor(shape: y.shape, data: output)
+        }
     }
 
-    public func addBroadcast2DInto3D(y: Tensor, addBD: Tensor, sequenceLength L: Int) throws -> Tensor {
+    public func addBroadcast2DInto3D(y: Tensor, addBD: Tensor, sequenceLength L: Int) async throws -> Tensor {
         precondition(y.shape.count == 3, "addBroadcast2DInto3D expects y [B,L,D]")
         let B = y.shape[0], seq = y.shape[1], D = y.shape[2]
         precondition(seq == L, "sequenceLength mismatch: provided \(L) vs tensor \(seq)")
@@ -85,14 +86,15 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var out = [Float](repeating: 0, count: count)
-        memcpy(&out, yBuffer.contents(), yBytes)
-        return Tensor(shape: y.shape, data: out)
+        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.addBroadcast2DInto3D",
+                                            commandBuffer: commandBuffer) {
+            var out = [Float](repeating: 0, count: count)
+            memcpy(&out, yBuffer.contents(), yBytes)
+            return Tensor(shape: y.shape, data: out)
+        }
     }
 
-    public func maskZero(y: Tensor, mask: [[Int]]) throws -> Tensor {
+    public func maskZero(y: Tensor, mask: [[Int]]) async throws -> Tensor {
         precondition(y.shape.count == 3, "maskZero expects y [B,L,D]")
         let B = y.shape[0], L = y.shape[1], D = y.shape[2]
         let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: L)
@@ -133,14 +135,15 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var out = [Float](repeating: 0, count: count)
-        memcpy(&out, yBuffer.contents(), yBytes)
-        return Tensor(shape: y.shape, data: out)
+        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.maskZero",
+                                            commandBuffer: commandBuffer) {
+            var out = [Float](repeating: 0, count: count)
+            memcpy(&out, yBuffer.contents(), yBytes)
+            return Tensor(shape: y.shape, data: out)
+        }
     }
 
-    public func maskedMean(x: Tensor, mask: [[Int]]) throws -> Tensor {
+    public func maskedMean(x: Tensor, mask: [[Int]]) async throws -> Tensor {
         precondition(x.shape.count == 3, "maskedMean expects x [B,L,H]")
         let B = x.shape[0], L = x.shape[1], H = x.shape[2]
         let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: L)
@@ -184,14 +187,15 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (B * H + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var output = [Float](repeating: 0, count: B * H)
-        memcpy(&output, yBuffer.contents(), yBytes)
-        return Tensor(shape: [B, H], data: output)
+        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.maskedMean",
+                                            commandBuffer: commandBuffer) {
+            var output = [Float](repeating: 0, count: B * H)
+            memcpy(&output, yBuffer.contents(), yBytes)
+            return Tensor(shape: [B, H], data: output)
+        }
     }
 
-    public func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) throws -> Tensor {
+    public func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) async throws -> Tensor {
         precondition(dPooled.shape.count == 2, "maskedMeanBackward expects [B,H]")
         let B = dPooled.shape[0], H = dPooled.shape[1]
         let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: seqLen)
@@ -235,11 +239,12 @@ extension GPUActor {
         let threadGroups = MTLSize(width: (B * seqLen * H + 255) / 256, height: 1, depth: 1)
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        var dxHost = [Float](repeating: 0, count: B * seqLen * H)
-        memcpy(&dxHost, dxBuffer.contents(), dxBytes)
-        return Tensor(shape: [B, seqLen, H], data: dxHost)
+        return try await awaitCommandBuffer(label: "GPUActor.Elementwise.maskedMeanBackward",
+                                            commandBuffer: commandBuffer) {
+            var dxHost = [Float](repeating: 0, count: B * seqLen * H)
+            memcpy(&dxHost, dxBuffer.contents(), dxBytes)
+            return Tensor(shape: [B, seqLen, H], data: dxHost)
+        }
     }
 
     private func ensureElementwisePipelines() throws -> ElementwisePipelines {
