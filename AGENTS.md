@@ -1,131 +1,57 @@
-### Контекст проекта
+## Контекст
 
-- Исследовательский проект на одного разработчика
-- Структура: EnergyFlowSwift/ , EnergyFlowSwift/new_rebuild/, EnergyFlowSwift/energy_flow/ (легаси), EnergyFlowSwift/archive/ (старые версии), EnergyFlowSwift/EnergyFlowSwift/ (Swift-порт, активная разработка)
+- Проект исследования генераторов энергетических потоков.
+- Активная ветка — SwiftPM-пакет `EnergyFlowSwift/`.
+- Легаси-питон лежит в `energy_flow/`, но новые задачи выполняются в Swift.
 
-## Принципы работы
+## Принципы
 
-**Приоритет: вдумчивость, постепенность, эффективность**
-
-- Сначала разобраться в проблеме, потом действовать
-- Простой вариант → тесты → оптимизация при необходимости
-
-### Основные принципы
-
+- Делаем просто, но быстро: основной приоритет — производительность GPU.
+- Никаких фолбэков: если GPU-функция недоступна, вызываем явную ошибку.
+- CPU-вычисления только как временный хелпер, если нет GPU варианта.
+- Конфигурации/логи централизованы (см. `Logger`, конфиг-структуры в Swift).
 - Модульность
-- Централизованные конфигурации и логирование
-- Минимальные церемонии, максимальная эффективность
-- Современные языковые возможности
-- Прямолинейные решения вместо сложных абстракций
 - Проект исследовательский, не продакшн
 - Без fallback — лучше ошибка, чем костыли
-- Apple Silicon (M‑серия, M4): используем MPS/Metal по максимуму; избегаем CPU там, где это замедляет GPU
-- тесты и компиляцию запускает пользователь сам из консоли, так что не нужно генерировать команду.
+- Тесты и сборку запускает пользователь вручную; агенты не дергают `swift build/test`.
 
-### Что исключаем
+## Текущая структура SwiftPM
 
-- **НЕТ** CLI автоматизации
-- **НЕТ** Множественных конфигураций
-- **НЕТ** Legacy совместимости
-- **НЕТ** Динамических конфигураций
-- **НЕТ** хардкодам
-- **НЕТ** fallback
-
-## Система конфигурации
-
-### 3 режима работы
-
-- **DEBUG** — быстрые тесты (15×15×15 решётка, максимум логов)
-- **EXPERIMENT** — исследования (30×30×30, сбалансировано)
-- **OPTIMIZED** — финальные прогоны (100×100×100, минимум логов)
-
-Python пример:
-
-```python
-from new_rebuild.config import create_debug_config, set_project_config
-config = create_debug_config()
-set_project_config(config)
+```
+EnergyFlowSwift/
+  Sources/
+    EFCore/         // Tensor API, GPUActor, Metal/MPS обвязка
+    PyTorchSwift/   // Swift-аналоги модулей PyTorch (Embedding, Linear, TCN)
+    EnergyFlow/     // TextBridge, Decoder, Trainers
+    EFTrain/        // CLI тренировки
+    EFTextEval/     // CLI оценки
+  Tests/
+    EnergyFlowSwiftTests/ // async XCTest, проверка форм и градиентов
+  docs/             // планы (см. Async_GPU_Actor_Refactor_Plan.md)
 ```
 
-Swift пример (порт):
+## GPUActor — состояние
 
-```swift
-let config = createDebugConfig()
-let encoder = TextToCubeEncoder(config: config)
-let out = encoder.encode(["hello world"]) // [B, surface_dim]
-```
+- Все GPU-хелперы (Linear, Conv1D, Elementwise, Metrics) работают через `GPUActor`.
+- Каждая операция возвращает `GPUReadback<T>` — deferred readback, который разрешается после `syncBatch()`.
+- Метрики KD/CE перенесены на Metal-редукции, CPU-версии удалены.
+- Guard: попытка `readback.value()` до `syncBatch` → `fatalError`.
 
-### Защита от hardcoded
+## Что уже сделано в Swift
 
-- `@no_hardcoded` — декоратор для функций (Python)
-- `strict_no_hardcoded()` — автоматическая замена
-- `HardcodedValueError` — исключение с инструкцией
-- `allow_hardcoded` — временное отключение
+- TextBridge использует deferred readback для проекции и метрик.
+- DecoderTrainer/CombinedTrainer переходят на `GPUReadback` + `syncBatch`.
+- Elementwise/Conv1D имеют `*_Deferred` API; старые методы вызывают их с `deferUntilSync: false`.
+- `EFTextEval` переписан без top-level кода, с явным `@main`.
 
-### Custom Debug Levels
+## Что дальше
 
-- `DEBUG_VERBOSE` (11) — подробный вывод
-- `DEBUG_CACHE` (12) — кэширование
-- `DEBUG_SPATIAL` (13) — пространственная оптимизация
-- `DEBUG_FORWARD` (14) — forward pass
-- `DEBUG_MEMORY` (15) — управление памятью
-- `DEBUG_TRAINING` (16) — прогресс обучения
-- `DEBUG_INIT` (17) — инициализация
-- `DEBUG_ENERGY` (18) — энергетические потоки (energy_flow)
-- `DEBUG_SPAWN` (19) — создание новых потоков
-- `DEBUG_CONVERGENCE` (20) — статистика достижения выхода
+1. **TCN/decoder deferred** — протянуть `GPUReadback` в Conv/LN/Mask внутри TCNBlock, упростить тренеровки.
+2. **Тесты** — обновить GPU-тесты (TCN, decoder, elementwise) на новые API.
+3. **Документация** — отслеживать прогресс в `docs/Async_GPU_Actor_Refactor_Plan.md` и новом плане `docs/Deferred_Readbacks_TCN.md`.
 
-## Архитектура energy_flow (Python)
+## Полезные ссылки
 
-### Концепция
-
-Энергетическая архитектура, где RNN‑модели ("энергия") распространяются через 3D решётку простых нейронов. Ключевое отличие — параллельная обработка независимых потоков вместо последовательной обработки клеток.
-
-### config/ — Конфигурация энергетической системы
-
-- **`energy_config.py`** — `EnergyConfig` с параметрами решётки и потоков
-- **`base_config.py`** — адаптированная базовая конфигурация
-
-### core/ — Ядро энергетической архитектуры
-
-- **energy_carrier.py** — RNN‑based энергетические потоки
-- **simple_neuron.py** — простой нейрон‑автомат
-- **energy_lattice.py** — 3D решётка для потоков
-- **flow_processor.py** — механизм распространения
-
-### training/ — Обучение
-
-- **`energy_trainer.py`** — тренировочный цикл через сравнение выходных эмбеддингов
-
-### Размеры решётки для energy_flow
-
-- **DEBUG**: 20×20×10 (толщина 10 слоёв)
-- **EXPERIMENT**: 50×50×20
-- **OPTIMIZED**: 100×100×50
-
-### Использование energy_flow (Python)
-
-```python
-from energy_flow.config import create_experiment_config
-from energy_flow.core import EnergyLattice, SimpleNeuron, FlowProcessor
-from energy_flow.training import EnergyTrainer
-
-config = create_experiment_config()
-lattice = EnergyLattice(config)
-neuron = SimpleNeuron(config)
-processor = FlowProcessor(lattice, neuron, config)
-
-trainer = EnergyTrainer(processor, config)
-trainer.train(input_embeddings, target_embeddings)
-```
-
-## Swift‑порт: EnergyFlowSwift
-
-Структура SwiftPM (см. docs/Swift_MPS_Port_Plan.md):
-
-- `Sources/EFCore/` — Tensor и базовые операции
-- `Sources/PyTorchSwift/` — аналоги PyTorch модулей (Embedding, Linear, LayerNorm, Activations)
-- `Sources/EnergyFlow/` — модули архитектуры, начиная с TextBridge (TextToCubeEncoder)
-- `Tests/` — юнит‑тесты на формы и корректность
-
-Полный объединённый план: `docs/Swift_MPS_Port_Plan.md`
+- Основной план GPU-акторa: `docs/Async_GPU_Actor_Refactor_Plan.md`
+- План портирования Swift/MPS: `docs/Swift_MPS_Port_Plan.md`
+- План по deferred readbacks (см. новый документ в docs).

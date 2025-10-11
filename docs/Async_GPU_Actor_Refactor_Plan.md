@@ -1,8 +1,16 @@
 # Async/Actor GPU Refactor Plan (EnergyFlowSwift)
 
 Owner: EnergyFlowSwift
-Status: Draft
-Scope: Make GPU execution actor-isolated and async, remove nonisolated hacks, keep deterministic waits by default, and set foundations for future overlap.
+Status: In progress
+Scope: Make GPU execution actor-isolated and async, remove nonisolated hacks, keep deterministic waits by default, and lay the groundwork for deferred GPU/CPU overlap.
+
+## Progress snapshot
+
+- GPUActor введён; все Metal pipelines живут в актёре.
+- Linear/Conv1D/Elementwise возвращают `GPUReadback`, `syncBatch` синхронизирует deferred работу.
+- KD/CE метрики переписаны на GPU (Metal атомики + guard).
+- TextBridge/DecoderTrainer используют deferred readbacks после `syncBatch`.
+- Следующий этап — протянуть deferred conv/elementwise через TCN/decoder и обновить тесты (см. `docs/Deferred_Readbacks_TCN.md`).
 
 Goals
 - Correct Swift Concurrency model for GPU code: no main-actor globals, no nonisolated(unsafe) statics for mutable GPU state.
@@ -88,41 +96,22 @@ Phase 5 — Trainers and EFTrain async
 - Update tests to async XCTest (use async test functions and await calls).
 
 Phase 6 — Deterministic waits (default behavior)
-- In every GPUActor method, commit command buffer and waitUntilCompleted before returning.
-- Provide internal helper encodeAndWait(label:) to unify command buffer lifecycle and status checks.
-- Optional future step (not now): batched encode without waits and a sync fence at batch end — gated by internal design, not flags.
+- Выполнено: `waitUntilCompleted` заменены на `GPUReadback`, `syncBatch()` дожидается всех команд.
+- Добавлен guard (`ensureBatchSynced`) для предотвращения ранних CPU-ридбэков.
 
-Phase 6b — Batched waits and GPU metrics (remove local waits)
-Pre-req: Phase 6 is complete and stable
-Goals:
-- Remove per-op waitUntilCompleted within GPUActor methods; synchronize once per micro-batch/batch.
-- Move runtime metrics to GPU (return scalars):
-  - Mode A: MSE and cosine similarity means.
-  - Mode B: CE mean over [B,L].
-- Avoid CPU readbacks of large tensors mid-graph; only read back tiny scalars or finalize at barriers.
+Phase 6b — Batched waits and GPU metrics *(в работе)*
+Pre-req: Phase 6 завершён
+Goals (обновлено):
+- ✅ Remove per-op waits — все хелперы возвращают `GPUReadback`, `syncBatch` ждёт буферы.
+- ✅ Move runtime metrics to GPU — kdMetricsMean/crossEntropyMean используют Metal атомики.
+- ✅ Guard против ранних `value()`.
+- 🚧 Call-site refactor — TCN/decoder conv & elementwise всё ещё читают результат сразу (см. `docs/Deferred_Readbacks_TCN.md`).
+- 🚧 Tests — нужно обновить GPU-тесты под deferred readbacks.
 
-Tasks:
-- GPUActor synchronization API
-  - func beginBatch() async: optional no-op marker (for future multi-buffer).
-  - func syncBatch(label: String? = nil) async: waits for all enqueued command buffers since beginBatch (or last sync) to complete.
-  - Internals: keep a list of pending command buffers (weak), clear list on sync.
-- GPU metrics kernels/APIs
-  - func kdMetricsMean(y: Tensor, t: Tensor) async -> (mse: Float, cos: Float)
-    - Implement pairwise rowwise ops + reductions on GPU; return host scalars.
-  - func ceMean(logits: Tensor, targets: [[Int]]) async -> Float
-    - Softmax+NLL on GPU; return host scalar.
-  - Phase 6b keeps training grads implementation unchanged (dLogits on CPU as is). Optional future: dLogits GPU.
-- Call-site refactors (no per-op waits)
-  - Replace local waits in GELU/LN/Conv/Linear helpers with simple commit (no wait).
-  - CombinedTrainer/DecoderTrainer/Encoder paths:
-    - Within micro-batch loop: only enqueue GPU ops; compute metrics via GPUActor.*Metrics*.
-    - At batch end: await gpu.syncBatch(); then log and update running stats.
-  - Ensure no CPU tensor reads before syncBatch.
-- Safety & validation
-  - Add asserts to detect CPU readbacks of GPU-produced buffers prior to sync.
-  - Compare metrics to prior CPU versions within tolerance; keep CPU fallback test harness during migration only.
-- Logging
-  - Throughput should be measured around sync points (true effective rate), not per-op.
+Remaining Tasks:
+- Перевести TCNBlock/TextDecoder/Trainers на deferred conv/elementwise + отложенные `value()`.
+- Обновить XCTest (decoder/encoder mini-epochs, GPUKernelsAndStrideTests, Im2Col parity) для работы с `GPUReadback`.
+- Добавить логирование времени между `beginBatch`/`syncBatch` (опционально, под DEBUG).
 
 Risks & mitigations
 - Hidden stalls move to syncBatch: harder to locate slow ops → add optional per-op timestamps (cmdBuf GPUStart/GPUEnd) under DEBUG.
@@ -228,13 +217,13 @@ Checklist
 - [ ] GELU/LN ported
 - [ ] Im2Col/Col2Im ported
 - [ ] Embedding ported
-- [ ] GraphLinear refactored
+- [x] GraphLinear refactored
 - [x] GraphConv1D refactored
-- [ ] Models async
-- [ ] Trainers async
+- [ ] Models async *(TCN/decoder awaiting deferred conv/elementwise)*
+- [ ] Trainers async *(Combined/Decoder частично переведены)*
 - [ ] EFTrain async main
 - [ ] Tests async + green
-- [ ] Phase 6b: GPU metrics + batched waits (no per-op waits)
+- [ ] Phase 6b: GPU metrics + batched waits *(metrics done, TCN/decoder + тесты в работе)*
 - [x] MPSGraph cache removed
 - [x] Legacy BufferPool removed (GPUActor buffer cache is the single allocator)
 - [ ] Nonisolated hacks removed
