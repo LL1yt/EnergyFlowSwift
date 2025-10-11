@@ -153,6 +153,7 @@ public final class TextToCubeEncoder {
     public func forwardForTrainingWithLastBlockCacheDeferred(inputIDs: [[Int]],
                                                              attentionMask: [[Int]],
                                                              on gpu: GPUActor = GPU.shared) async throws -> (pooledRB: GPUReadback<Tensor>, outRB: GPUReadback<Tensor>, cache: LastTCNCache, maskFixed: [[Int]]) {
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: start B=\(inputIDs.count) L=\(inputIDs.first?.count ?? 0)", category: Logger.Category.training)
         let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
         let embs = embedding.forward(ids: idsFixed)
         let B = embs.shape[0]; let L = embs.shape[1]; let D = embs.shape[2]
@@ -174,18 +175,25 @@ public final class TextToCubeEncoder {
                                                       beta: last.ln.beta,
                                                       eps: last.ln.eps)
         let norm = normFlat.reshaped([B, L, D])
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: LN done", category: Logger.Category.training)
         let h1 = try await last.conv1.forwardAsync(norm, on: gpu)
         let h1a = try await gpu.geluForward(x: h1)
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: GELU done", category: Logger.Category.training)
         var y = try await last.conv2.forwardAsync(h1a, on: gpu)
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: conv2 done", category: Logger.Category.training)
         // Residual and mask on GPU (immediate to build pooled tensor)
         y = try await gpu.residualAdd(y: y, x: x)
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: residual done", category: Logger.Category.training)
         // For now, compute pooled immediately to feed projection; return it as a resolved readback
         let pooled = try await gpu.maskedMean(x: y, mask: maskFixed)
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: maskedMean done", category: Logger.Category.training)
         var proj = gpuProj
         let outRB = try await proj.forwardDeferred(pooled, on: gpu)
         gpuProj = proj
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled proj deferred", category: Logger.Category.training)
         let cache = LastTCNCache(xIn: x, norm: norm, h1: h1, h1a: h1a)
         let pooledRB = GPUReadback(resolved: pooled)
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: return", category: Logger.Category.training)
         return (pooledRB, outRB, cache, maskFixed)
     }
 

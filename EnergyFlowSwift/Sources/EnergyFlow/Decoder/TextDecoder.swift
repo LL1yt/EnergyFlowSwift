@@ -129,6 +129,7 @@ public final class TextDecoder {
     public func forwardForTrainingDeferred(ids: [[Int]],
                                            z: Tensor,
                                            on gpu: GPUActor = GPU.shared) async throws -> (flatRB: GPUReadback<Tensor>, logitsRB: GPUReadback<Tensor>, cache: LastTCNCache) {
+        Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: start B=\(ids.count) L=\(ids.first?.count ?? 0)", category: Logger.Category.training)
         let B = ids.count
         let L = ids.first?.count ?? 0
         precondition(L == config.maxLength)
@@ -138,11 +139,13 @@ public final class TextDecoder {
         let cond: Tensor
         do {
             cond = try await cproj.forwardAsync(z, on: gpu) // immediate to feed addBroadcast
+            Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: condProj done", category: Logger.Category.training)
             condProj = cproj
         } catch {
             fatalError("TextDecoder.forwardForTrainingDeferred condProj failed: \(error)")
         }
         x = try await gpu.addBroadcast2DInto3D(y: x, addBD: cond, sequenceLength: L)
+        Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: addBroadcast done", category: Logger.Category.training)
         let maskFull: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
         // Run all but last block
         let nb = stack.blocks.count
@@ -162,10 +165,13 @@ public final class TextDecoder {
                                                       beta: last.ln.beta,
                                                       eps: last.ln.eps)
         let norm = normFlat.reshaped([B, L, D])
+        Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: LN done", category: Logger.Category.training)
         let h1 = try await last.conv1.forwardAsync(norm, on: gpu)
         let h1a = try await gpu.geluForward(x: h1)
+        Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: GELU done", category: Logger.Category.training)
         var y = try await last.conv2.forwardAsync(h1a, on: gpu)
         y = try await gpu.residualAdd(y: y, x: xin)
+        Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: convs+residual done", category: Logger.Category.training)
         // Flat for outProj
         let flat = y.reshaped([B * L, D])
         var oproj = outProj
@@ -173,12 +179,14 @@ public final class TextDecoder {
         do {
             logitsRB = try await oproj.forwardDeferred(flat, on: gpu)
             outProj = oproj
+            Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: scheduled outProj deferred", category: Logger.Category.training)
         } catch {
             fatalError("TextDecoder.forwardForTrainingDeferred outProj failed: \(error)")
         }
         let cache = LastTCNCache(xIn: xin, norm: norm, h1: h1, h1a: h1a)
         // flat is CPU reshape; wrap as resolved readback for uniformity
         let flatRB = GPUReadback(resolved: flat)
+        Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: return", category: Logger.Category.training)
         return (flatRB, logitsRB, cache)
     }
     // Accessors for out projection (for training)

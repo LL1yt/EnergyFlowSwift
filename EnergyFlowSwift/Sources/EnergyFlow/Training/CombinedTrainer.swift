@@ -54,13 +54,12 @@ public final class CombinedTrainer {
                       zTeacher: Tensor,
                       unfreezeLastTCN: Bool = true) async throws -> (mse: Float, cos: Float) {
         let modelCfg = enc.modelConfig
-        await gpu.beginBatch()
-        // Forward (deferred) with last-block cache
+        // Forward (deferred) with last-block cache (do not begin batch yet to avoid deadlock on immediate ops inside forward)
         let fwd = try await enc.forwardForTrainingWithLastBlockCacheDeferred(inputIDs: inputIDs,
                                                                             attentionMask: attentionMask,
                                                                             on: gpu)
         // First sync to resolve forward readbacks
-        await gpu.syncBatch(label: "trainer.stepA.fwd")
+        // No batching yet; forward readbacks resolve without sync
         let out = try await fwd.outRB.value()   // [B, D]
         let pooled = try await fwd.pooledRB.value()
         // Build dY for combined loss alpha*(1-cos) + beta*MSE (CPU)
@@ -69,6 +68,7 @@ public final class CombinedTrainer {
         let B = dY.shape[0]; let D = dY.shape[1]
         for i in 0..<(B*D) { dY.data[i] = betaMSE * dY.data[i] + alphaCos * dYcos.data[i] }
         // Schedule GPU ops (deferred) for proj grads, input grads, maskedMeanBackward, and metrics
+        await gpu.beginBatch()
         let projGradReadback = try await enc.projectionGradientsGPUDeferred(X: pooled,
                                                                             dY: dY,
                                                                             on: gpu)

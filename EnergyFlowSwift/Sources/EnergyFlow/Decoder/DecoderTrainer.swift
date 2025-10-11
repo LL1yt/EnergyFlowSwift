@@ -24,16 +24,16 @@ public final class DecoderTrainer {
                      zTeacher: Tensor,
                      targets: [[Int]],
                      unfreezeLastTCN: Bool = false) async throws -> Float {
-        await gpu.beginBatch()
         let fwd = try await decoder.forwardForTrainingDeferred(ids: ids,
                                                                z: zTeacher,
                                                                on: gpu)
-        // Resolve forward readbacks first
-        await gpu.syncBatch(label: "decoderTrainer.fwd")
+        // Resolve forward readbacks first (no batching yet)
+        // await gpu.syncBatch(label: "decoderTrainer.fwd")
         let flat = try await fwd.flatRB.value()
         let logits = try await fwd.logitsRB.value()
         let cache = fwd.cache
         // Now schedule CE + grads (deferred)
+        await gpu.beginBatch()
         let ceReadback = try await gpu.crossEntropyMeanDeferred(logits: logits, targets: targets)
         var dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
         let (w0, b0) = decoder.getOutProjParams()
@@ -115,16 +115,16 @@ public final class DecoderTrainer {
                            unfreezeLastTCN: Bool = false,
                            scale: Float = 1.0,
                            clipNorm: Float = 0.0) async throws -> (Float, Bool) {
-        await gpu.beginBatch()
         // Forward (deferred)
         let fwd = try await decoder.forwardForTrainingDeferred(ids: ids,
                                                                z: zTeacher,
                                                                on: gpu)
-        // Resolve forward first
-        await gpu.syncBatch(label: "decoderTrainer.fwdScaled")
+        // Resolve forward first (no batching yet)
+        // await gpu.syncBatch(label: "decoderTrainer.fwdScaled")
         let flat = try await fwd.flatRB.value()
         let logits = try await fwd.logitsRB.value()
         let cache = fwd.cache
+        await gpu.beginBatch()
         let ceReadback = try await gpu.crossEntropyMeanDeferred(logits: logits, targets: targets)
         var dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
         if scale != 1.0 {
