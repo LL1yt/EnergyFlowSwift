@@ -149,6 +149,46 @@ public final class TextToCubeEncoder {
         }
     }
 
+    // Deferred variant: returns readbacks for pooled and out; cache and mask remain as-is
+    public func forwardForTrainingWithLastBlockCacheDeferred(inputIDs: [[Int]],
+                                                             attentionMask: [[Int]],
+                                                             on gpu: GPUActor = GPU.shared) async throws -> (pooledRB: GPUReadback<Tensor>, outRB: GPUReadback<Tensor>, cache: LastTCNCache, maskFixed: [[Int]]) {
+        let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
+        let embs = embedding.forward(ids: idsFixed)
+        let B = embs.shape[0]; let L = embs.shape[1]; let D = embs.shape[2]
+        var x = embs
+        // Run all but last block
+        let nb = tcnStack.blocks.count
+        precondition(nb > 0)
+        if nb > 1 {
+            for i in 0..<(nb - 1) {
+                x = try await tcnStack.blocks[i].forward(x, mask: maskFixed, on: gpu)
+            }
+        }
+        // Last block with caches
+        let last = tcnStack.blocks[nb - 1]
+        // LN on [B*L, D]
+        let xFlat = x.reshaped([B * L, D])
+        let normFlat = try await gpu.layerNormForward(x: xFlat,
+                                                      gamma: last.ln.gamma,
+                                                      beta: last.ln.beta,
+                                                      eps: last.ln.eps)
+        let norm = normFlat.reshaped([B, L, D])
+        let h1 = try await last.conv1.forwardAsync(norm, on: gpu)
+        let h1a = try await gpu.geluForward(x: h1)
+        var y = try await last.conv2.forwardAsync(h1a, on: gpu)
+        // Residual and mask on GPU (immediate to build pooled tensor)
+        y = try await gpu.residualAdd(y: y, x: x)
+        // For now, compute pooled immediately to feed projection; return it as a resolved readback
+        let pooled = try await gpu.maskedMean(x: y, mask: maskFixed)
+        var proj = gpuProj
+        let outRB = try await proj.forwardDeferred(pooled, on: gpu)
+        gpuProj = proj
+        let cache = LastTCNCache(xIn: x, norm: norm, h1: h1, h1a: h1a)
+        let pooledRB = GPUReadback(resolved: pooled)
+        return (pooledRB, outRB, cache, maskFixed)
+    }
+
     // Accessors for last TCN block params
     public func getLastBlockParams() -> (w1: Tensor, b1: Tensor?, w2: Tensor, b2: Tensor?, gamma: Tensor, beta: Tensor) {
         let nb = tcnStack.blocks.count

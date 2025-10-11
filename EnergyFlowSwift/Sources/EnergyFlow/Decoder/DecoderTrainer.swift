@@ -25,11 +25,17 @@ public final class DecoderTrainer {
                      targets: [[Int]],
                      unfreezeLastTCN: Bool = false) async throws -> Float {
         await gpu.beginBatch()
-        let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
-                                                                         z: zTeacher,
-                                                                         on: gpu)
+        let fwd = try await decoder.forwardForTrainingDeferred(ids: ids,
+                                                               z: zTeacher,
+                                                               on: gpu)
+        // Resolve forward readbacks first
+        await gpu.syncBatch(label: "decoderTrainer.fwd")
+        let flat = try await fwd.flatRB.value()
+        let logits = try await fwd.logitsRB.value()
+        let cache = fwd.cache
+        // Now schedule CE + grads (deferred)
         let ceReadback = try await gpu.crossEntropyMeanDeferred(logits: logits, targets: targets)
-        let dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
+        var dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
         let (w0, b0) = decoder.getOutProjParams()
         var gl = GraphLinear(inFeatures: config.dim,
                              outFeatures: config.vocabSize,
@@ -110,10 +116,15 @@ public final class DecoderTrainer {
                            scale: Float = 1.0,
                            clipNorm: Float = 0.0) async throws -> (Float, Bool) {
         await gpu.beginBatch()
-        // Forward
-        let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
-                                                                         z: zTeacher,
-                                                                         on: gpu)
+        // Forward (deferred)
+        let fwd = try await decoder.forwardForTrainingDeferred(ids: ids,
+                                                               z: zTeacher,
+                                                               on: gpu)
+        // Resolve forward first
+        await gpu.syncBatch(label: "decoderTrainer.fwdScaled")
+        let flat = try await fwd.flatRB.value()
+        let logits = try await fwd.logitsRB.value()
+        let cache = fwd.cache
         let ceReadback = try await gpu.crossEntropyMeanDeferred(logits: logits, targets: targets)
         var dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
         if scale != 1.0 {

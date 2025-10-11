@@ -55,34 +55,43 @@ public final class CombinedTrainer {
                       unfreezeLastTCN: Bool = true) async throws -> (mse: Float, cos: Float) {
         let modelCfg = enc.modelConfig
         await gpu.beginBatch()
-        // Forward with cache
-        let res = try await enc.forwardForTrainingWithLastBlockCache(inputIDs: inputIDs,
-                                                                     attentionMask: attentionMask,
-                                                                     on: gpu)
-        let out = res.out // [B, D]
-        // KD losses
-        let metricsReadback = try await gpu.kdMetricsMeanDeferred(student: out, teacher: zTeacher)
-        // Build dY for combined loss alpha*(1-cos) + beta*MSE
+        // Forward (deferred) with last-block cache
+        let fwd = try await enc.forwardForTrainingWithLastBlockCacheDeferred(inputIDs: inputIDs,
+                                                                            attentionMask: attentionMask,
+                                                                            on: gpu)
+        // First sync to resolve forward readbacks
+        await gpu.syncBatch(label: "trainer.stepA.fwd")
+        let out = try await fwd.outRB.value()   // [B, D]
+        let pooled = try await fwd.pooledRB.value()
+        // Build dY for combined loss alpha*(1-cos) + beta*MSE (CPU)
         var dY = dY_MSEMean(y: out, target: zTeacher)
         let dYcos = dY_CosineMeanLoss(y: out, target: zTeacher)
         let B = dY.shape[0]; let D = dY.shape[1]
         for i in 0..<(B*D) { dY.data[i] = betaMSE * dY.data[i] + alphaCos * dYcos.data[i] }
-        // Projection grads + upstream to encoder
-        let projGradReadback = try await enc.projectionGradientsGPUDeferred(X: res.pooled,
+        // Schedule GPU ops (deferred) for proj grads, input grads, maskedMeanBackward, and metrics
+        let projGradReadback = try await enc.projectionGradientsGPUDeferred(X: pooled,
                                                                             dY: dY,
                                                                             on: gpu)
-        let dXin = try await enc.projectionInputGradientsGPU(dY: dY, on: gpu)
-        let dEnc = try await enc.maskedMeanBackward(dPooled: dXin,
-                                                    mask: res.maskFixed,
-                                                    seqLen: modelCfg.maxLength,
-                                                    on: gpu)
-        // Last block grads
+        let dXin = try await enc.projectionInputGradientsGPU(dY: dY, on: gpu) // immediate to avoid extra sync
+        let dEncRB = try await gpu.maskedMeanBackwardDeferred(dPooled: dXin,
+                                                              mask: fwd.maskFixed,
+                                                              seqLen: modelCfg.maxLength)
+        let metricsReadback = try await gpu.kdMetricsMeanDeferred(student: out, teacher: zTeacher)
+        // Prepare holders for optional last-block grads
         var lastBlockParams: (w1: Tensor, b1: Tensor?, w2: Tensor, b2: Tensor?, gamma: Tensor, beta: Tensor)? = nil
         var lastBlockGrads: LastTCNGrads? = nil
+        // LR schedule for encoder projection/last block
+        let lrNow = LRSchedulers.warmupCosine(baseLR: baseLREnc, minLR: minLREnc, warmupSteps: warmupSteps, decaySteps: cosineDecaySteps, step: stepAIndex)
+        if optEncProj.lr != lrNow { optEncProj.lr = lrNow }
+        // Friendly progress log at mid-verbosity (every 100 A-steps)
+        await gpu.syncBatch(label: "trainer.stepA")
+        let (dWproj, dBproj) = try await projGradReadback.value()
+        let dEnc = try await dEncRB.value()
+        // Compute last-block grads (after dEnc is available)
         if unfreezeLastTCN {
             let p = enc.getLastBlockParams()
-            let grads = try await lastTCNBackward(cache: res.cache,
-                                                  mask: res.maskFixed,
+            let grads = try await lastTCNBackward(cache: fwd.cache,
+                                                  mask: fwd.maskFixed,
                                                   dOut: dEnc,
                                                   modelCfg: modelCfg,
                                                   params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta),
@@ -90,12 +99,6 @@ public final class CombinedTrainer {
             lastBlockParams = p
             lastBlockGrads = grads
         }
-        // LR schedule for encoder projection/last block
-        let lrNow = LRSchedulers.warmupCosine(baseLR: baseLREnc, minLR: minLREnc, warmupSteps: warmupSteps, decaySteps: cosineDecaySteps, step: stepAIndex)
-        if optEncProj.lr != lrNow { optEncProj.lr = lrNow }
-        // Friendly progress log at mid-verbosity (every 100 A-steps)
-        await gpu.syncBatch(label: "trainer.stepA")
-        let (dWproj, dBproj) = try await projGradReadback.value()
         var paramsList: [Tensor] = []
         var gradsList: [Tensor] = []
         let proj = enc.getProjParams()
