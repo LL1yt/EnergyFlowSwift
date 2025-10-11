@@ -82,16 +82,102 @@ extension GPUActor {
         let normThreadgroups = MTLSize(width: (N + 255) / 256, height: 1, depth: 1)
         normEncoder.dispatchThreadgroups(normThreadgroups, threadsPerThreadgroup: normThreadsPerGroup)
         normEncoder.endEncoding()
-        
-        let reader = Float16BufferReader(
-            buffer: yBuffer,
-            count: count,
-            shape: x.shape
-        )
-        
-        return try await awaitCommandBufferWithReader(
+        return try await awaitCommandBuffer(label: "GPUActor.LayerNorm.forward",
+                                            commandBuffer: commandBuffer) {
+            var yHalf = [Float16](repeating: 0, count: count)
+            memcpy(&yHalf, yBuffer.contents(), yBytes)
+            var output = [Float](repeating: 0, count: count)
+            for i in 0..<count { output[i] = Float(yHalf[i]) }
+            return Tensor(shape: x.shape, data: output)
+        }
+    }
+
+    public func layerNormForwardDeferred(x: Tensor, gamma: Tensor, beta: Tensor, eps: Float, deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
+        precondition(x.shape.count == 2, "GPUActor.layerNormForwardDeferred expects [N,D]")
+        precondition(gamma.shape == [x.shape[1]] && beta.shape == [x.shape[1]], "LayerNorm gamma/beta mismatch")
+        let pipelines = try ensureLayerNormPipelines()
+        let N = x.shape[0]
+        let D = x.shape[1]
+        let count = N * D
+        if count == 0 { return GPUReadback(resolved: x) }
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardDeferred: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.LayerNorm.forward"
+        let elemHalf = MemoryLayout<Float16>.size
+        let elemFloat = MemoryLayout<Float>.size
+        let xBytes = count * elemHalf
+        let yBytes = count * elemHalf
+        let meanBytes = N * elemFloat
+        let invStdBytes = N * elemFloat
+        let gammaBytes = D * elemFloat
+        let betaBytes = D * elemFloat
+        let xBuffer = buffer(length: xBytes, label: "GPUActor.LayerNorm.forward.x")
+        let yBuffer = buffer(length: yBytes, label: "GPUActor.LayerNorm.forward.y")
+        let meanBuffer = buffer(length: meanBytes, label: "GPUActor.LayerNorm.forward.mean")
+        let invStdBuffer = buffer(length: invStdBytes, label: "GPUActor.LayerNorm.forward.invstd")
+        let gammaBuffer = buffer(length: gammaBytes, label: "GPUActor.LayerNorm.forward.gamma")
+        let betaBuffer = buffer(length: betaBytes, label: "GPUActor.LayerNorm.forward.beta")
+        var xHalf = [Float16](repeating: 0, count: count)
+        for i in 0..<count { xHalf[i] = Float16(x.data[i]) }
+        xHalf.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(xBuffer.contents(), base, xBytes)
+            }
+        }
+        gamma.data.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(gammaBuffer.contents(), base, gammaBytes)
+            }
+        }
+        beta.data.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(betaBuffer.contents(), base, betaBytes)
+            }
+        }
+        memset(meanBuffer.contents(), 0, meanBytes)
+        memset(invStdBuffer.contents(), 0, invStdBytes)
+        memset(yBuffer.contents(), 0, yBytes)
+        guard let statsEncoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardDeferred: stats encoder creation failed")
+        }
+        statsEncoder.label = "GPUActor.LayerNorm.forward.stats"
+        statsEncoder.setComputePipelineState(pipelines.stats)
+        statsEncoder.setBuffer(xBuffer, offset: 0, index: 0)
+        statsEncoder.setBuffer(meanBuffer, offset: 0, index: 1)
+        statsEncoder.setBuffer(invStdBuffer, offset: 0, index: 2)
+        var vN = Int32(N)
+        var vD = Int32(D)
+        var vEps = eps
+        statsEncoder.setBytes(&vN, length: MemoryLayout<Int32>.size, index: 3)
+        statsEncoder.setBytes(&vD, length: MemoryLayout<Int32>.size, index: 4)
+        statsEncoder.setBytes(&vEps, length: MemoryLayout<Float>.size, index: 5)
+        let statsThreadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let statsThreadgroups = MTLSize(width: (N + 255) / 256, height: 1, depth: 1)
+        statsEncoder.dispatchThreadgroups(statsThreadgroups, threadsPerThreadgroup: statsThreadsPerGroup)
+        statsEncoder.endEncoding()
+        guard let normEncoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardDeferred: normalize encoder creation failed")
+        }
+        normEncoder.label = "GPUActor.LayerNorm.forward.norm"
+        normEncoder.setComputePipelineState(pipelines.normalize)
+        normEncoder.setBuffer(xBuffer, offset: 0, index: 0)
+        normEncoder.setBuffer(yBuffer, offset: 0, index: 1)
+        normEncoder.setBuffer(gammaBuffer, offset: 0, index: 2)
+        normEncoder.setBuffer(betaBuffer, offset: 0, index: 3)
+        normEncoder.setBuffer(meanBuffer, offset: 0, index: 4)
+        normEncoder.setBuffer(invStdBuffer, offset: 0, index: 5)
+        normEncoder.setBytes(&vN, length: MemoryLayout<Int32>.size, index: 6)
+        normEncoder.setBytes(&vD, length: MemoryLayout<Int32>.size, index: 7)
+        let normThreadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let normThreadgroups = MTLSize(width: (N + 255) / 256, height: 1, depth: 1)
+        normEncoder.dispatchThreadgroups(normThreadgroups, threadsPerThreadgroup: normThreadsPerGroup)
+        normEncoder.endEncoding()
+        let reader = Float16BufferReader(buffer: yBuffer, count: count, shape: x.shape)
+        return scheduleCommandBufferWithReader(
             label: "GPUActor.LayerNorm.forward",
             commandBuffer: commandBuffer,
+            deferUntilSync: deferUntilSync,
             reader: reader
         )
     }
