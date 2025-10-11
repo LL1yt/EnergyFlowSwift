@@ -24,6 +24,7 @@ public actor GPUActor {
     var conv1DCaches: [UUID: Conv1DCacheEntry] = [:]
     var linearCaches: [UUID: LinearCacheEntry] = [:]
     var buffers: [String: MTLBuffer] = [:]
+    private var pendingCommandBuffers: [MTLCommandBuffer] = []
     private var activeBatchDepth: Int = 0
 
     public init() {
@@ -70,8 +71,12 @@ public actor GPUActor {
         if activeBatchDepth > 0 {
             activeBatchDepth &-= 1
         }
-        // NOTE: All GPU helpers still wait inline because tensors are materialised on CPU arrays.
-        // Once tensor materialisation becomes deferred, this hook will drain queued command buffers.
+        guard activeBatchDepth == 0 else { return }
+        let pending = pendingCommandBuffers
+        pendingCommandBuffers.removeAll(keepingCapacity: true)
+        for buffer in pending {
+            buffer.waitUntilCompleted()
+        }
     }
 
     public func isBatching() -> Bool {
@@ -95,7 +100,7 @@ public actor GPUActor {
     func awaitCommandBuffer<T>(label: String,
                                commandBuffer: MTLCommandBuffer,
                                produce: @escaping () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             commandBuffer.addCompletedHandler { cb in
                 if let error = cb.error {
                     continuation.resume(throwing: GPUActorError.commandBufferFailed(label: label, underlying: error))
@@ -107,6 +112,9 @@ public actor GPUActor {
                 } catch {
                     continuation.resume(throwing: error)
                 }
+            }
+            if activeBatchDepth > 0 {
+                pendingCommandBuffers.append(commandBuffer)
             }
             commandBuffer.commit()
         }
