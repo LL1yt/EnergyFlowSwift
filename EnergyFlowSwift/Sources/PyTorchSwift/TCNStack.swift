@@ -15,9 +15,13 @@ public struct TCNStack {
     }
 
     // x: [B,L,D]
-    public func forward(_ x: Tensor, mask: [[Int]]) -> Tensor {
+    public func forward(_ x: Tensor,
+                        mask: [[Int]],
+                        on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         var out = x
-        for b in blocks { out = b.forward(out, mask: mask) }
+        for block in blocks {
+            out = try await block.forward(out, mask: mask, on: gpu)
+        }
         return out
     }
 }

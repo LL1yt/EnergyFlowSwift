@@ -3,7 +3,7 @@ import XCTest
 @testable import EFCore
 
 final class LastTCNBackwardMiniStepTests: XCTestCase {
-    func test_one_step_loss_decreases_with_last_block_unfreeze() throws {
+    func test_one_step_loss_decreases_with_last_block_unfreeze() async throws {
         // Tiny config
         let modelCfg = TextToCubeEncoderConfig(
             hiddenDim: 32,
@@ -30,7 +30,8 @@ final class LastTCNBackwardMiniStepTests: XCTestCase {
             targets.append(row)
         }
         // Forward with cache
-        let res = enc.forwardForTrainingWithLastBlockCache(inputIDs: ids, attentionMask: mask)
+        let res = try await enc.forwardForTrainingWithLastBlockCache(inputIDs: ids,
+                                                                     attentionMask: mask)
         let out0 = res.out
         // Pre-loss
         let t0 = Tensor(shape: [B, D], data: targets.flatMap { $0 })
@@ -44,10 +45,13 @@ final class LastTCNBackwardMiniStepTests: XCTestCase {
         for i in 0..<dY.count { dY.data[i] = beta * dY.data[i] + alpha * dYcos.data[i] }
         // Projection grads + dXin
         let (pooled, _) = (res.pooled, res.out)
-        let (dWproj, dBproj) = try enc.projectionGradientsGPU(X: pooled, dY: dY)
-        let dXin = try enc.projectionInputGradientsGPU(dY: dY)
-// Back through masked mean (use fixed-length mask from forward cache)
-        let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: res.maskFixed, seqLen: modelCfg.maxLength)
+        let (dWproj, dBproj) = try await enc.projectionGradientsGPU(X: pooled,
+                                                                    dY: dY)
+        let dXin = try await enc.projectionInputGradientsGPU(dY: dY)
+        // Back through masked mean (use fixed-length mask from forward cache)
+        let dEnc = try await enc.maskedMeanBackward(dPooled: dXin,
+                                                    mask: res.maskFixed,
+                                                    seqLen: modelCfg.maxLength)
         // Last block grads
         let params = enc.getLastBlockParams()
         let grads = try lastTCNBackward(cache: res.cache, mask: res.maskFixed, dOut: dEnc, modelCfg: modelCfg, params: LastTCNParams(w1: params.w1, b1: params.b1, w2: params.w2, b2: params.b2, gamma: params.gamma, beta: params.beta))
@@ -84,7 +88,8 @@ final class LastTCNBackwardMiniStepTests: XCTestCase {
         enc.setLastBlockParams(w1: newW1, b1: newB1, w2: newW2, b2: newB2, gamma: newGamma, beta: newBeta)
         enc.invalidateLastBlockCaches()
         // Forward again
-        let res2 = enc.forwardForTrainingWithLastBlockCache(inputIDs: ids, attentionMask: mask)
+        let res2 = try await enc.forwardForTrainingWithLastBlockCache(inputIDs: ids,
+                                                                      attentionMask: mask)
         let out1 = res2.out
         let mse1 = Losses.mseRowwise(out1, t0)
         let cos1 = Losses.cosineSimilarityRowwise(out1, t0)

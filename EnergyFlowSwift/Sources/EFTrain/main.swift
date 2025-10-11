@@ -157,7 +157,7 @@ func usage() {
     print("Usage: EFTrain [path/to/config.json]  (default: Configs/train_debug.json)")
 }
 
-func run() throws {
+func run() async throws {
     guard let args = loadResolvedConfig() else { usage(); return }
     var globalStep = 0
     let logger = Logger.shared
@@ -332,7 +332,10 @@ func run() throws {
                     for i in 0..<take { zData.append(contentsOf: tgtChunk[i]) }
                     let zt = Tensor(shape: [take, encCfg.outputDim], data: zData)
                     do {
-                        let (mse, cos) = try trainer.stepA(inputIDs: idsChunk, attentionMask: maskChunk, zTeacher: zt, unfreezeLastTCN: args.unfreezeLastTCN)
+                        let (mse, cos) = try await trainer.stepA(inputIDs: idsChunk,
+                                                                 attentionMask: maskChunk,
+                                                                 zTeacher: zt,
+                                                                 unfreezeLastTCN: args.unfreezeLastTCN)
                         lastA_mse = mse; lastA_cos = cos
                         totalMSE += Double(mse) * Double(take)
                         totalCos += Double(cos) * Double(take)
@@ -362,7 +365,10 @@ func run() throws {
                     for i in 0..<take { zData.append(contentsOf: tgtChunk[i]) }
                     let zt = Tensor(shape: [take, encCfg.outputDim], data: zData)
                     do {
-                        let ce = try trainer.stepB(ids: idsPad, targets: targets, zTeacher: zt, unfreezeLastTCN: args.unfreezeLastTCN)
+                        let ce = try await trainer.stepB(ids: idsPad,
+                                                          targets: targets,
+                                                          zTeacher: zt,
+                                                          unfreezeLastTCN: args.unfreezeLastTCN)
                         lastB_ce = ce
                         totalCE += Double(ce) * Double(take)
                         totalCESamples += take
@@ -411,7 +417,11 @@ func run() throws {
         
         // Validation
         if !valSamples.isEmpty {
-            let (valMSE, valCos) = evaluate(enc: trainer.enc, samples: valSamples, batchSize: args.batchSize, microBatch: args.microBatch, maxLen: args.maxLength)
+            let (valMSE, valCos) = try await evaluate(enc: trainer.enc,
+                                                      samples: valSamples,
+                                                      batchSize: args.batchSize,
+                                                      microBatch: args.microBatch,
+                                                      maxLen: args.maxLength)
             var valMsg = String(format: "epoch %d VAL: mse=%.6f cos=%.6f", epoch+1, valMSE, valCos)
             if args.enableAB {
                 let hasTokensVal = valSamples.first(where: { $0.inputIDs != nil && $0.attentionMask != nil }) != nil
@@ -442,7 +452,7 @@ func run() throws {
                         targets.reserveCapacity(ids.count)
                         for r in ids { var t = Array(r.dropFirst()); t.append(r.first ?? 0); targets.append(t) }
                         let zt = Tensor(shape: [ids.count, encCfg.outputDim], data: zData)
-                        let logits = trainer.decTrainer.decoder.forward(ids: ids, z: zt)
+                        let logits = try await trainer.decTrainer.decoder.forward(ids: ids, z: zt)
                         let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
                         ceSum += Double(ce) * Double(ids.count)
                         ceCount += ids.count
@@ -477,10 +487,14 @@ func run() throws {
         }
     }
 }
-// Entry point
-do {
-    try run()
-} catch {
-    Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
-    exit(1)
+@main
+struct EFTrainMain {
+    static func main() async {
+        do {
+            try await run()
+        } catch {
+            Logger.shared.error("EFTrain failed: \(error)", category: Logger.Category.dataset)
+            exit(1)
+        }
+    }
 }

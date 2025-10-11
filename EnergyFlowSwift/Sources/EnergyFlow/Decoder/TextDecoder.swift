@@ -33,7 +33,9 @@ public final class TextDecoder {
     }
 
     // Forward with teacher-forcing tokens (no CE here, just logits)
-    public func forward(ids: [[Int]], z: Tensor) -> Tensor {
+    public func forward(ids: [[Int]],
+                        z: Tensor,
+                        on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         let B = ids.count
         let L = ids.first?.count ?? 0
         precondition(L == config.maxLength, "ids must be fixed-length to match static graph; got L=\(L) expected \(config.maxLength)")
@@ -41,33 +43,50 @@ public final class TextDecoder {
         // 1) Embedding
         var x = embedding.forward(ids: ids) // [B,L,dim]
         // 2) Conditioning (additive): cond = condProj(z) -> [B,dim], broadcast-add over time (GPU)
-        let cproj = condProj
-        let cond = try! cproj.forward(z) // [B,dim]
-        self.condProj = cproj
-        x = ElementwiseGPU.addBroadcast2DInto3D(y: x, addBD: cond, L: L)
+        var cproj = condProj
+        let cond: Tensor
+        do {
+            cond = try await cproj.forwardAsync(z, on: gpu) // [B,dim]
+            condProj = cproj
+        } catch {
+            fatalError("TextDecoder.condProj forward failed: \(error)")
+        }
+        x = try await gpu.addBroadcast2DInto3D(y: x, addBD: cond, sequenceLength: L)
         // 3) Causal TCN blocks
         let maskFull: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
-        let y = stack.forward(x, mask: maskFull)
+        let y = try await stack.forward(x, mask: maskFull, on: gpu)
         // 4) Vocab projection per time-step: reshape to [B*L, dim] -> [B*L, V]
         let flat = y.reshaped([B * L, config.dim])
-        let oproj = outProj
-        let logitsFlat = try! oproj.forward(flat)
-        self.outProj = oproj
+        var oproj = outProj
+        let logitsFlat: Tensor
+        do {
+            logitsFlat = try await oproj.forwardAsync(flat, on: gpu)
+            outProj = oproj
+        } catch {
+            fatalError("TextDecoder.outProj forward failed: \(error)")
+        }
         let logits = logitsFlat.reshaped([B, L, config.vocabSize])
         return logits
     }
 
     // Training helper: returns (flatFeatures [B*L, dim], logits [B,L,V])
-    public func forwardForTraining(ids: [[Int]], z: Tensor) -> (flatFeatures: Tensor, logits: Tensor, cache: LastTCNCache) {
+    public func forwardForTraining(ids: [[Int]],
+                                   z: Tensor,
+                                   on gpu: GPUActor = GPU.shared) async throws -> (flatFeatures: Tensor, logits: Tensor, cache: LastTCNCache) {
         let B = ids.count
         let L = ids.first?.count ?? 0
         precondition(L == config.maxLength)
         precondition(z.shape == [B, config.dim])
         var x = embedding.forward(ids: ids)
-        let cproj = condProj
-        let cond = try! cproj.forward(z)
-        self.condProj = cproj
-        x = ElementwiseGPU.addBroadcast2DInto3D(y: x, addBD: cond, L: L)
+        var cproj = condProj
+        let cond: Tensor
+        do {
+            cond = try await cproj.forwardAsync(z, on: gpu)
+            condProj = cproj
+        } catch {
+            fatalError("TextDecoder.forwardForTraining condProj failed: \(error)")
+        }
+        x = try await gpu.addBroadcast2DInto3D(y: x, addBD: cond, sequenceLength: L)
         let maskFull: [[Int]] = Array(repeating: Array(repeating: 1, count: L), count: B)
         // Run all but last block
         let nb = stack.blocks.count
@@ -75,29 +94,34 @@ public final class TextDecoder {
         var xin = x
         if nb > 1 {
             for i in 0..<(nb - 1) {
-                xin = stack.blocks[i].forward(xin, mask: maskFull)
+                xin = try await stack.blocks[i].forward(xin, mask: maskFull, on: gpu)
             }
         }
         let last = stack.blocks[nb - 1]
         // LN on [B*L,D]
         let D = config.dim
-        let H = config.hidden
         let xFlat = xin.reshaped([B * L, D])
-        let normFlat = last.ln.forward(xFlat)
+        let normFlat = try await gpu.layerNormForward(x: xFlat,
+                                                      gamma: last.ln.gamma,
+                                                      beta: last.ln.beta,
+                                                      eps: last.ln.eps)
         let norm = normFlat.reshaped([B, L, D])
-        let h1 = last.conv1.forward(norm)
-        let h1a = Activations.gelu(h1)
-        var y = last.conv2.forward(h1a)
-        // Residual
-        for idx in 0..<(B*L*D) { y.data[idx] += xin.data[idx] }
+        let h1 = try await last.conv1.forwardAsync(norm, on: gpu)
+        let h1a = try await gpu.geluForward(x: h1)
+        var y = try await last.conv2.forwardAsync(h1a, on: gpu)
+        y = try await gpu.residualAdd(y: y, x: xin)
         // Flat for outProj
         let flat = y.reshaped([B * L, D])
-        let oproj = outProj
-        let logitsFlat = try! oproj.forward(flat)
-        self.outProj = oproj
+        var oproj = outProj
+        let logitsFlat: Tensor
+        do {
+            logitsFlat = try await oproj.forwardAsync(flat, on: gpu)
+            outProj = oproj
+        } catch {
+            fatalError("TextDecoder.forwardForTraining outProj failed: \(error)")
+        }
         let logits = logitsFlat.reshaped([B, L, config.vocabSize])
         let cache = LastTCNCache(xIn: xin, norm: norm, h1: h1, h1a: h1a)
-        _ = H // silence unused warning if any
         return (flat, logits, cache)
     }
     // Accessors for out projection (for training)

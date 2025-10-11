@@ -4,7 +4,7 @@ import XCTest
 @testable import PyTorchSwift
 
 final class EFDecoderModeBMiniEpochTests: XCTestCase {
-    func test_modeB_projection_only_training_decreases_CE() throws {
+    func test_modeB_projection_only_training_decreases_CE() async throws {
         // Config
         let cfg = TextDecoderConfig(vocabSize: 64, dim: 32, hidden: 64, nBlocks: 2, kernelSize: 3, dilationSchedule: [1,2], maxLength: 8)
         let dec = TextDecoder(config: cfg, seed: 2025)
@@ -24,7 +24,7 @@ final class EFDecoderModeBMiniEpochTests: XCTestCase {
         for _ in 0..<(B*D) { zData.append(Float.random(in: -0.5...0.5)) }
         let zt = Tensor(shape: [B, D], data: zData)
         // Forward before update
-        let (flat0, logits0, _) = dec.forwardForTraining(ids: ids, z: zt)
+        let (flat0, logits0, _) = try await dec.forwardForTraining(ids: ids, z: zt)
         let ce0 = CrossEntropyLoss.meanLogits(logits: logits0, targets: targets)
         // Compute dLogits and projection gradients (outProj only)
         let dLogitsFlat = CrossEntropyLoss.gradLogits(logits: logits0, targets: targets) // [B*L, V]
@@ -37,8 +37,8 @@ final class EFDecoderModeBMiniEpochTests: XCTestCase {
         var gl = GraphLinear(inFeatures: cfg.dim, outFeatures: cfg.vocabSize, bias: b0 != nil, seed: 0)
         gl.weight = w0
         gl.bias = b0
-        _ = try? gl.forward(Tensor.zeros([1, cfg.dim]))
-        let (dW, dB) = try gl.gradientsGPU(X: flat0, dY: dLogitsFlat)
+        _ = try await gl.forwardAsync(Tensor.zeros([1, cfg.dim]))
+        let (dW, dB) = try await gl.gradientsGPUAsync(X: flat0, dY: dLogitsFlat)
         // Apply step
         var pack = params
         var grads: [Tensor] = [dW]
@@ -50,7 +50,7 @@ final class EFDecoderModeBMiniEpochTests: XCTestCase {
         dec.setOutProjParams(weight: newW, bias: newB)
         dec.invalidateOutProjCache()
         // Forward after update
-        let logits1 = dec.forward(ids: ids, z: zt)
+        let logits1 = try await dec.forward(ids: ids, z: zt)
         let ce1 = CrossEntropyLoss.meanLogits(logits: logits1, targets: targets)
         XCTAssertLessThan(ce1, ce0, "CE should decrease after projection-only update")
     }

@@ -77,7 +77,7 @@ func batchCosine(_ y: [[Float]], _ t: [[Float]]) -> Float {
     return acc / Float(max(y.count, 1))
 }
 
-func run() throws {
+func run() async throws {
     guard let args = parseArgs() else { usage(); return }
     let logger = Logger.shared
     logger.info("EFTextEval start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength)", category: Logger.Category.dataset)
@@ -170,7 +170,8 @@ func run() throws {
                 let idsChunk = Array(inputIDs[offset..<(offset+take)])
                 let maskChunk = Array(attentionMask[offset..<(offset+take)])
                 let tgtChunk = Array(targets[offset..<(offset+take)])
-                let out = enc.encodeTokens(inputIDs: idsChunk, attentionMask: maskChunk)
+                let out = try await enc.encodeTokens(inputIDs: idsChunk,
+                                                     attentionMask: maskChunk)
                 let b = out.shape[0], d = out.shape[1]
                 var pred: [[Float]] = Array(repeating: Array(repeating: 0, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
@@ -192,7 +193,7 @@ func run() throws {
                 let take = min(micro, B - offset)
                 let txtChunk = Array(texts[offset..<(offset+take)])
                 let tgtChunk = Array(targets[offset..<(offset+take)])
-                let out = enc.encode(txtChunk)
+                let out = try await enc.encode(txtChunk)
                 let b = out.shape[0], d = out.shape[1]
                 var pred: [[Float]] = Array(repeating: Array(repeating: 0, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
@@ -211,9 +212,14 @@ func run() throws {
     // We don't track a running cosine across all chunks without storing all preds; compute per-chunk only.
     logger.info("FINAL: samples=\(seen) avgMSE=\(String(format: "%.6f", finalMSE))", category: Logger.Category.dataset)
 }
-do {
-    try run()
-} catch {
-    Logger.shared.error("EFTextEval failed: \(error)", category: Logger.Category.dataset)
-    exit(1)
+@main
+struct EFTextEvalMain {
+    static func main() async {
+        do {
+            try await run()
+        } catch {
+            Logger.shared.error("EFTextEval failed: \(error)", category: Logger.Category.dataset)
+            exit(1)
+        }
+    }
 }

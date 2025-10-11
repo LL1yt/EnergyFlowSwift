@@ -27,8 +27,12 @@ public final class Trainer {
     public init(kd: KDWeights) { self.kd = kd }
 
     // Computes KD loss and metrics. No backprop yet.
-    public func computeLossAndMetrics(encoder: TextToCubeEncoder, batch: TrainBatch) -> TrainMetrics {
-        let out = encoder.encodeTokens(inputIDs: batch.inputIDs, attentionMask: batch.attentionMask) // [B, D]
+    public func computeLossAndMetrics(encoder: TextToCubeEncoder,
+                                      batch: TrainBatch,
+                                      on gpu: GPUActor = GPU.shared) async throws -> TrainMetrics {
+        let out = try await encoder.encodeTokens(inputIDs: batch.inputIDs,
+                                                 attentionMask: batch.attentionMask,
+                                                 on: gpu) // [B, D]
         let B = out.shape[0]
         let D = out.shape[1]
         precondition(!batch.teacher.isEmpty && batch.teacher.first?.count == D)

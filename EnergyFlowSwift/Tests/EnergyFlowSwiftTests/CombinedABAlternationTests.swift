@@ -3,7 +3,7 @@ import XCTest
 @testable import EFCore
 
 final class CombinedABAlternationTests: XCTestCase {
-    func test_modeA_then_modeB_runs_and_improves_metrics() throws {
+    func test_modeA_then_modeB_runs_and_improves_metrics() async throws {
         // Encoder config
         let encCfg = TextToCubeEncoderConfig(hiddenDim: 32,
                                              maxLength: 8,
@@ -41,21 +41,29 @@ final class CombinedABAlternationTests: XCTestCase {
         for _ in 0..<(B*D) { zData.append(Float.random(in: -0.2...0.2)) }
         let zt = Tensor(shape: [B, D], data: zData)
         // Metrics before
-        let encOut0 = trainer.enc.forwardForTraining(inputIDs: ids, attentionMask: mask)
+        let encOut0 = try await trainer.enc.forwardForTraining(inputIDs: ids,
+                                                               attentionMask: mask)
         let mse0 = Losses.mseRowwise(encOut0.out, zt).mean
         let cos0 = Losses.cosineSimilarityRowwise(encOut0.out, zt).mean
-        let decLogits0 = trainer.decTrainer.decoder.forward(ids: ids, z: zt)
+        let decLogits0 = try await trainer.decTrainer.decoder.forward(ids: ids, z: zt)
         let ce0 = CrossEntropyLoss.meanLogits(logits: decLogits0, targets: targets)
         // One A step (projection-only + last block)
-        _ = try trainer.stepA(inputIDs: ids, attentionMask: mask, zTeacher: zt, unfreezeLastTCN: true)
+        _ = try await trainer.stepA(inputIDs: ids,
+                                    attentionMask: mask,
+                                    zTeacher: zt,
+                                    unfreezeLastTCN: true)
         // Re-evaluate encoder immediately after Mode A
-        let encOutA = trainer.enc.forwardForTraining(inputIDs: ids, attentionMask: mask)
+        let encOutA = try await trainer.enc.forwardForTraining(inputIDs: ids,
+                                                               attentionMask: mask)
         let mseA1 = Losses.mseRowwise(encOutA.out, zt).mean
         let cosA1 = Losses.cosineSimilarityRowwise(encOutA.out, zt).mean
         XCTAssertLessThan(mseA1, mse0, "MSE should decrease after Mode A step")
         XCTAssertGreaterThan(cosA1, cos0, "Cosine should increase after Mode A step")
         // One B step (projection-only + last block)
-        let ceB = try trainer.stepB(ids: ids, targets: targets, zTeacher: zt, unfreezeLastTCN: true)
+        let ceB = try await trainer.stepB(ids: ids,
+                                          targets: targets,
+                                          zTeacher: zt,
+                                          unfreezeLastTCN: true)
         // Assertions: CE decreased after Mode B
         XCTAssertLessThan(ceB, ce0, "CE should decrease after Mode B step")
     }

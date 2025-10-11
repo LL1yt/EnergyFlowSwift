@@ -46,10 +46,16 @@ public final class CombinedTrainer {
     }
 
     // Mode A: tokens -> z_s, KD vs z_t; projection-only + optional last-block update
-    public func stepA(inputIDs: [[Int]], attentionMask: [[Int]], zTeacher: Tensor, unfreezeLastTCN: Bool = true) throws -> (mse: Float, cos: Float) {
+    public func stepA(inputIDs: [[Int]],
+                      attentionMask: [[Int]],
+                      zTeacher: Tensor,
+                      unfreezeLastTCN: Bool = true,
+                      on gpu: GPUActor = GPU.shared) async throws -> (mse: Float, cos: Float) {
         let modelCfg = enc.modelConfig
         // Forward with cache
-        let res = enc.forwardForTrainingWithLastBlockCache(inputIDs: inputIDs, attentionMask: attentionMask)
+        let res = try await enc.forwardForTrainingWithLastBlockCache(inputIDs: inputIDs,
+                                                                     attentionMask: attentionMask,
+                                                                     on: gpu)
         let out = res.out // [B, D]
         // KD losses
         let mseRow = Losses.mseRowwise(out, zTeacher)
@@ -60,9 +66,14 @@ public final class CombinedTrainer {
         let B = dY.shape[0]; let D = dY.shape[1]
         for i in 0..<(B*D) { dY.data[i] = betaMSE * dY.data[i] + alphaCos * dYcos.data[i] }
         // Projection grads + upstream to encoder
-        let (dWproj, dBproj) = try enc.projectionGradientsGPU(X: res.pooled, dY: dY)
-        let dXin = try enc.projectionInputGradientsGPU(dY: dY)
-        let dEnc = enc.maskedMeanBackward(dPooled: dXin, mask: res.maskFixed, seqLen: modelCfg.maxLength)
+        let (dWproj, dBproj) = try await enc.projectionGradientsGPU(X: res.pooled,
+                                                                    dY: dY,
+                                                                    on: gpu)
+        let dXin = try await enc.projectionInputGradientsGPU(dY: dY, on: gpu)
+        let dEnc = try await enc.maskedMeanBackward(dPooled: dXin,
+                                                    mask: res.maskFixed,
+                                                    seqLen: modelCfg.maxLength,
+                                                    on: gpu)
         // Last block grads
         var paramsList: [Tensor] = []
         var gradsList: [Tensor] = []
@@ -127,8 +138,18 @@ Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f c
     }
 
     // Mode B: z_t + teacher forcing CE; uses DecoderTrainer and then syncs last block to encoder
-    public func stepB(ids: [[Int]], targets: [[Int]], zTeacher: Tensor, unfreezeLastTCN: Bool = true) throws -> Float {
-        let (ce, _) = try decTrainer.stepScaled(ids: ids, zTeacher: zTeacher, targets: targets, unfreezeLastTCN: unfreezeLastTCN, scale: 1.0, clipNorm: clipNorm)
+    public func stepB(ids: [[Int]],
+                      targets: [[Int]],
+                      zTeacher: Tensor,
+                      unfreezeLastTCN: Bool = true,
+                      on gpu: GPUActor = GPU.shared) async throws -> Float {
+        let (ce, _) = try await decTrainer.stepScaled(ids: ids,
+                                                      zTeacher: zTeacher,
+                                                      targets: targets,
+                                                      unfreezeLastTCN: unfreezeLastTCN,
+                                                      scale: 1.0,
+                                                      clipNorm: clipNorm,
+                                                      on: gpu)
         if unfreezeLastTCN {
             let pd = decTrainer.decoder.getLastBlockParams()
             let pe = enc.getLastBlockParams()

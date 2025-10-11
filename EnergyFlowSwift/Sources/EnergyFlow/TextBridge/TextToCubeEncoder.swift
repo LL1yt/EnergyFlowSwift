@@ -35,16 +35,21 @@ public final class TextToCubeEncoder {
         self.gpuProj = GraphLinear(inFeatures: modelConfig.hiddenDim, outFeatures: modelConfig.outputDim, bias: true, seed: Seed.derive(modelConfig.baseSeed, label: "gpu_proj"))
     }
 
-    public func encode(_ texts: [String]) -> Tensor {
+    public func encode(_ texts: [String],
+                       on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         let logger = Logger.shared
         logger.debug("encode(texts) start: batch=\(texts.count) maxLen=\(modelConfig.maxLength) outputDim=\(modelConfig.outputDim)", category: Logger.Category.textBridge)
         // 1) Tokenize
         let batch = tokenizer.encodeBatch(texts, maxLength: modelConfig.maxLength)
-        return encodeTokens(inputIDs: batch.ids, attentionMask: batch.attentionMask)
+        return try await encodeTokens(inputIDs: batch.ids,
+                                      attentionMask: batch.attentionMask,
+                                      on: gpu)
     }
 
     // Public API: allow pre-tokenized inputs
-    public func encodeTokens(inputIDs: [[Int]], attentionMask: [[Int]]) -> Tensor {
+    public func encodeTokens(inputIDs: [[Int]],
+                             attentionMask: [[Int]],
+                             on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         let logger = Logger.shared
         let b = inputIDs.count
         let l = inputIDs.first?.count ?? 0
@@ -56,17 +61,16 @@ public final class TextToCubeEncoder {
         let embs = embedding.forward(ids: idsFixed)
         logger.debug("embeddings: \(embs.prettyShape)", category: Logger.Category.textBridge)
         // 2) TCN encoder (shared stack)
-        let enc = tcnStack.forward(embs, mask: maskFixed)
+        let enc = try await tcnStack.forward(embs, mask: maskFixed, on: gpu)
         // 3) Masked-avg over sequence -> [B, hidden]
-        let pooled = ElementwiseGPU.maskedMean(x: enc, mask: maskFixed)
+        let pooled = try await gpu.maskedMean(x: enc, mask: maskFixed)
         logger.debug("pooled: \(pooled.prettyShape) mean=\(mean(of: pooled)), std=\(std(of: pooled))", category: Logger.Category.textBridge)
         // 4) Projection to output via GPU
-        let proj = gpuProj
+        var proj = gpuProj
         do {
-            let outGPU = try proj.forward(pooled)
-            self.gpuProj = proj
-            var out = outGPU
-            if modelConfig.useTanhOutput { out = Activations.tanh(out) }
+            let outGPU = try await proj.forwardAsync(pooled, on: gpu)
+            gpuProj = proj
+            let out = modelConfig.useTanhOutput ? Activations.tanh(outGPU) : outGPU
             logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: Logger.Category.textBridge)
             return out
         } catch {
@@ -75,15 +79,17 @@ public final class TextToCubeEncoder {
     }
 
     // Training forward: returns pooled and output before optional tanh
-    public func forwardForTraining(inputIDs: [[Int]], attentionMask: [[Int]]) -> (pooled: Tensor, out: Tensor) {
+    public func forwardForTraining(inputIDs: [[Int]],
+                                   attentionMask: [[Int]],
+                                   on gpu: GPUActor = GPU.shared) async throws -> (pooled: Tensor, out: Tensor) {
         let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
         let embs = embedding.forward(ids: idsFixed)
-        let enc = tcnStack.forward(embs, mask: maskFixed)
-        let pooled = ElementwiseGPU.maskedMean(x: enc, mask: maskFixed)
-        let proj = gpuProj
+        let enc = try await tcnStack.forward(embs, mask: maskFixed, on: gpu)
+        let pooled = try await gpu.maskedMean(x: enc, mask: maskFixed)
+        var proj = gpuProj
         do {
-            let outGPU = try proj.forward(pooled)
-            self.gpuProj = proj
+            let outGPU = try await proj.forwardAsync(pooled, on: gpu)
+            gpuProj = proj
             return (pooled, outGPU)
         } catch {
             fatalError("GPU projection failed: \(error)")
@@ -98,7 +104,9 @@ public final class TextToCubeEncoder {
     }
 
     // Forward for training with cache for the last TCN block
-    public func forwardForTrainingWithLastBlockCache(inputIDs: [[Int]], attentionMask: [[Int]]) -> (pooled: Tensor, out: Tensor, cache: LastTCNCache, maskFixed: [[Int]]) {
+    public func forwardForTrainingWithLastBlockCache(inputIDs: [[Int]],
+                                                     attentionMask: [[Int]],
+                                                     on gpu: GPUActor = GPU.shared) async throws -> (pooled: Tensor, out: Tensor, cache: LastTCNCache, maskFixed: [[Int]]) {
         let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
         let embs = embedding.forward(ids: idsFixed)
         let B = embs.shape[0]; let L = embs.shape[1]; let D = embs.shape[2]
@@ -108,26 +116,29 @@ public final class TextToCubeEncoder {
         precondition(nb > 0)
         if nb > 1 {
             for i in 0..<(nb - 1) {
-                x = tcnStack.blocks[i].forward(x, mask: maskFixed)
+                x = try await tcnStack.blocks[i].forward(x, mask: maskFixed, on: gpu)
             }
         }
         // Last block with caches
         let last = tcnStack.blocks[nb - 1]
         // LN on [B*L, D] using GPU LayerNorm via Metal
         let xFlat = x.reshaped([B * L, D])
-        let normFlat = LayerNormGPU.forward(x: xFlat, gamma: last.ln.gamma, beta: last.ln.beta, eps: last.ln.eps)
+        let normFlat = try await gpu.layerNormForward(x: xFlat,
+                                                      gamma: last.ln.gamma,
+                                                      beta: last.ln.beta,
+                                                      eps: last.ln.eps)
         let norm = normFlat.reshaped([B, L, D])
-        let h1 = last.conv1.forward(norm)
-        let h1a = GELUGPU.forward(h1)
-        var y = last.conv2.forward(h1a)
+        let h1 = try await last.conv1.forwardAsync(norm, on: gpu)
+        let h1a = try await gpu.geluForward(x: h1)
+        var y = try await last.conv2.forwardAsync(h1a, on: gpu)
         // Residual and mask on GPU
-        y = ElementwiseGPU.residualAdd(y: y, x: x)
-        y = ElementwiseGPU.maskZero(y: y, mask: maskFixed)
-        let pooled = ElementwiseGPU.maskedMean(x: y, mask: maskFixed)
-        let proj = gpuProj
+        y = try await gpu.residualAdd(y: y, x: x)
+        y = try await gpu.maskZero(y: y, mask: maskFixed)
+        let pooled = try await gpu.maskedMean(x: y, mask: maskFixed)
+        var proj = gpuProj
         do {
-            let outGPU = try proj.forward(pooled)
-            self.gpuProj = proj
+            let outGPU = try await proj.forwardAsync(pooled, on: gpu)
+            gpuProj = proj
             let cache = LastTCNCache(xIn: x, norm: norm, h1: h1, h1a: h1a)
             return (pooled, outGPU, cache, maskFixed)
         } catch {
@@ -160,15 +171,21 @@ public final class TextToCubeEncoder {
     }
 
     // Training forward (text-mode): tokenize inside and return pooled/out
-    public func forwardForTraining(texts: [String]) -> (pooled: Tensor, out: Tensor) {
+    public func forwardForTraining(texts: [String],
+                                   on gpu: GPUActor = GPU.shared) async throws -> (pooled: Tensor, out: Tensor) {
         let batch = tokenizer.encodeBatch(texts, maxLength: modelConfig.maxLength)
-        return forwardForTraining(inputIDs: batch.ids, attentionMask: batch.attentionMask)
+        return try await forwardForTraining(inputIDs: batch.ids,
+                                            attentionMask: batch.attentionMask,
+                                            on: gpu)
     }
 
     // Training forward (text-mode) with last-block cache and fixed mask
-    public func forwardForTrainingWithLastBlockCache(texts: [String]) -> (pooled: Tensor, out: Tensor, cache: LastTCNCache, maskFixed: [[Int]]) {
+    public func forwardForTrainingWithLastBlockCache(texts: [String],
+                                                     on gpu: GPUActor = GPU.shared) async throws -> (pooled: Tensor, out: Tensor, cache: LastTCNCache, maskFixed: [[Int]]) {
         let batch = tokenizer.encodeBatch(texts, maxLength: modelConfig.maxLength)
-        return forwardForTrainingWithLastBlockCache(inputIDs: batch.ids, attentionMask: batch.attentionMask)
+        return try await forwardForTrainingWithLastBlockCache(inputIDs: batch.ids,
+                                                              attentionMask: batch.attentionMask,
+                                                              on: gpu)
     }
 
     // Projection param accessors for training
@@ -183,16 +200,21 @@ public final class TextToCubeEncoder {
         gpuProj.invalidateCache()
     }
     // Input gradients of projection: dX = dY @ W
-    public func projectionInputGradientsGPU(dY: Tensor) throws -> Tensor {
-        return try gpuProj.inputGradientsGPU(dY: dY)
+    public func projectionInputGradientsGPU(dY: Tensor,
+                                            on gpu: GPUActor = GPU.shared) async throws -> Tensor {
+        var proj = gpuProj
+        let dx = try await proj.inputGradientsGPUAsync(dY: dY, on: gpu)
+        gpuProj = proj
+        return dx
     }
 
     // Project-only using current GPU projection (to evaluate post-update metrics without recomputing TCN)
-    public func projectOnly(_ pooled: Tensor) -> Tensor {
-        let proj = gpuProj
+    public func projectOnly(_ pooled: Tensor,
+                            on gpu: GPUActor = GPU.shared) async throws -> Tensor {
+        var proj = gpuProj
         do {
-            let outGPU = try proj.forward(pooled)
-            self.gpuProj = proj
+            let outGPU = try await proj.forwardAsync(pooled, on: gpu)
+            gpuProj = proj
             return outGPU
         } catch {
             fatalError("GPU projection failed: \(error)")
@@ -200,15 +222,22 @@ public final class TextToCubeEncoder {
     }
 
     // Projection gradients via GPU matmul wrapper
-    public func projectionGradientsGPU(X: Tensor, dY: Tensor) throws -> (Tensor, Tensor) {
-        return try gpuProj.gradientsGPU(X: X, dY: dY)
+    public func projectionGradientsGPU(X: Tensor,
+                                       dY: Tensor,
+                                       on gpu: GPUActor = GPU.shared) async throws -> (Tensor, Tensor) {
+        var proj = gpuProj
+        let grads = try await proj.gradientsGPUAsync(X: X, dY: dY, on: gpu)
+        gpuProj = proj
+        return grads
     }
 
     // Backward for masked mean: given upstream dPooled [B,H] and mask [B][L],
     // distribute gradient equally across masked positions per example.
-    public func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) -> Tensor {
-        // GPU implementation
-        return ElementwiseGPU.maskedMeanBackward(dPooled: dPooled, mask: mask, seqLen: seqLen)
+    public func maskedMeanBackward(dPooled: Tensor,
+                                   mask: [[Int]],
+                                   seqLen: Int,
+                                   on gpu: GPUActor = GPU.shared) async throws -> Tensor {
+        return try await gpu.maskedMeanBackward(dPooled: dPooled, mask: mask, seqLen: seqLen)
     }
 
     // Simple stats for debugging

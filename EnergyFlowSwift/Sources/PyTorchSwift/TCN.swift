@@ -21,21 +21,26 @@ public struct TCNBlock {
     }
 
     // x: [B,L,dim], mask: [B][L]
-    public func forward(_ x: Tensor, mask: [[Int]]) -> Tensor {
+    public func forward(_ x: Tensor,
+                        mask: [[Int]],
+                        on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         let B = x.shape[0], L = x.shape[1], D = x.shape[2]
         precondition(D == dim)
         // Path: LN -> Conv1D -> GELU -> Conv1D -> Residual
         let xFlat = x.reshaped([B * L, D])
         // GPU LayerNorm via Metal (FP16 IO, FP32 accumulators)
-        let normFlat = LayerNormGPU.forward(x: xFlat, gamma: ln.gamma, beta: ln.beta, eps: ln.eps)
+        let normFlat = try await gpu.layerNormForward(x: xFlat,
+                                                      gamma: ln.gamma,
+                                                      beta: ln.beta,
+                                                      eps: ln.eps)
         let norm = normFlat.reshaped([B, L, D])
         // Conv1D -> GELU -> Conv1D(1x1) using MPSMatrix path
-        let h = conv1.forward(norm)         // [B,L,hidden]
-        let h1a = GELUGPU.forward(h)
-        var y = conv2.forward(h1a)
+        let h = try await conv1.forwardAsync(norm, on: gpu)         // [B,L,hidden]
+        let h1a = try await gpu.geluForward(x: h)
+        var y = try await conv2.forwardAsync(h1a, on: gpu)
         // Residual and mask on GPU
-        y = ElementwiseGPU.residualAdd(y: y, x: x)
-        y = ElementwiseGPU.maskZero(y: y, mask: mask)
+        y = try await gpu.residualAdd(y: y, x: x)
+        y = try await gpu.maskZero(y: y, mask: mask)
         return y
     }
 }
@@ -54,9 +59,13 @@ public struct TCNEncoder {
     }
 
     // x: [B,L,D]
-    public func forward(_ x: Tensor, mask: [[Int]]) -> Tensor {
+    public func forward(_ x: Tensor,
+                        mask: [[Int]],
+                        on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         var out = x
-        for b in blocks { out = b.forward(out, mask: mask) }
+        for block in blocks {
+            out = try await block.forward(out, mask: mask, on: gpu)
+        }
         return out
     }
 }

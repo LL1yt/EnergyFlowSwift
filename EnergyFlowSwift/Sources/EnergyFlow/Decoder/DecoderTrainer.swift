@@ -17,9 +17,15 @@ public final class DecoderTrainer {
     }
 
     // One training step (projection-only): returns CE loss
-    public func step(ids: [[Int]], zTeacher: Tensor, targets: [[Int]], unfreezeLastTCN: Bool = false) throws -> Float {
+    public func step(ids: [[Int]],
+                     zTeacher: Tensor,
+                     targets: [[Int]],
+                     unfreezeLastTCN: Bool = false,
+                     on gpu: GPUActor = GPU.shared) async throws -> Float {
         // Forward
-        let (flat, logits, cache) = decoder.forwardForTraining(ids: ids, z: zTeacher)
+        let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
+                                                                         z: zTeacher,
+                                                                         on: gpu)
         let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
         // Gradients on outProj
         let dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets) // [B*L, V]
@@ -27,9 +33,9 @@ public final class DecoderTrainer {
         var gl = GraphLinear(inFeatures: config.dim, outFeatures: config.vocabSize, bias: b0 != nil, seed: 0)
         gl.weight = w0
         gl.bias = b0
-        _ = try? gl.forward(Tensor.zeros([1, config.dim]))
-        let (dW, dB) = try gl.gradientsGPU(X: flat, dY: dLogits)
-        let dXflat = try gl.inputGradientsGPU(dY: dLogits) // upstream for last block
+        _ = try await gl.forwardAsync(Tensor.zeros([1, config.dim]), on: gpu)
+        let (dW, dB) = try await gl.gradientsGPUAsync(X: flat, dY: dLogits, on: gpu)
+        let dXflat = try await gl.inputGradientsGPUAsync(dY: dLogits, on: gpu) // upstream for last block
         // Build params/grads pack
         var params: [Tensor] = [w0]
         var grads: [Tensor] = [dW]
@@ -39,7 +45,11 @@ public final class DecoderTrainer {
             let B = ids.count, L = config.maxLength, D = config.dim
             let dOut = dXflat.reshaped([B, L, D])
             let p = decoder.getLastBlockParams()
-            let gradsLast = try decoderLastTCNBackward(cache: cache, dOut: dOut, kernelSize: config.kernelSize, dilation: (config.dilationSchedule.last ?? 1), params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta))
+            let gradsLast = try decoderLastTCNBackward(cache: cache,
+                                                       dOut: dOut,
+                                                       kernelSize: config.kernelSize,
+                                                       dilation: (config.dilationSchedule.last ?? 1),
+                                                       params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta))
             // Append last-block grads to packs
             params.append(p.w1); grads.append(gradsLast.dW1)
             if let b1 = p.b1, let db1 = gradsLast.dB1 { params.append(b1); grads.append(db1) }
@@ -77,9 +87,17 @@ public final class DecoderTrainer {
     // scale: multiply upstream dLogits by this factor; grads are unscaled internally before opt.step.
     // clipNorm: optional global L2 grad clip across outProj and optional last TCN block
     // Returns (ce, overflow)
-    public func stepScaled(ids: [[Int]], zTeacher: Tensor, targets: [[Int]], unfreezeLastTCN: Bool = false, scale: Float = 1.0, clipNorm: Float = 0.0) throws -> (Float, Bool) {
+    public func stepScaled(ids: [[Int]],
+                           zTeacher: Tensor,
+                           targets: [[Int]],
+                           unfreezeLastTCN: Bool = false,
+                           scale: Float = 1.0,
+                           clipNorm: Float = 0.0,
+                           on gpu: GPUActor = GPU.shared) async throws -> (Float, Bool) {
         // Forward
-        let (flat, logits, cache) = decoder.forwardForTraining(ids: ids, z: zTeacher)
+        let (flat, logits, cache) = try await decoder.forwardForTraining(ids: ids,
+                                                                         z: zTeacher,
+                                                                         on: gpu)
         let ce = CrossEntropyLoss.meanLogits(logits: logits, targets: targets)
         // dLogits (softmax - onehot) / (B*L)
         var dLogits = CrossEntropyLoss.gradLogits(logits: logits, targets: targets)
@@ -92,9 +110,9 @@ public final class DecoderTrainer {
         var gl = GraphLinear(inFeatures: config.dim, outFeatures: config.vocabSize, bias: b0 != nil, seed: 0)
         gl.weight = w0
         gl.bias = b0
-        _ = try? gl.forward(Tensor.zeros([1, config.dim]))
-        let (dW, dB) = try gl.gradientsGPU(X: flat, dY: dLogits)
-        let dXflat = try gl.inputGradientsGPU(dY: dLogits)
+        _ = try await gl.forwardAsync(Tensor.zeros([1, config.dim]), on: gpu)
+        let (dW, dB) = try await gl.gradientsGPUAsync(X: flat, dY: dLogits, on: gpu)
+        let dXflat = try await gl.inputGradientsGPUAsync(dY: dLogits, on: gpu)
         // Overflow detection
         func hasNaNOrInf(_ t: Tensor) -> Bool { for v in t.data { if !v.isFinite { return true } } ; return false }
         var overflow = hasNaNOrInf(dW) || hasNaNOrInf(dB)
@@ -105,7 +123,11 @@ public final class DecoderTrainer {
             let B = ids.count, L = config.maxLength, D = config.dim
             let dOut = dXflat.reshaped([B, L, D])
             let p = decoder.getLastBlockParams()
-            let gradsLast = try decoderLastTCNBackward(cache: cache, dOut: dOut, kernelSize: config.kernelSize, dilation: (config.dilationSchedule.last ?? 1), params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta))
+            let gradsLast = try decoderLastTCNBackward(cache: cache,
+                                                       dOut: dOut,
+                                                       kernelSize: config.kernelSize,
+                                                       dilation: (config.dilationSchedule.last ?? 1),
+                                                       params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta))
             // Append
             params.append(p.w1); grads.append(gradsLast.dW1)
             if let b1 = p.b1, let db1 = gradsLast.dB1 { params.append(b1); grads.append(db1) }

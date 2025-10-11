@@ -3,7 +3,12 @@ import EFCore
 import EnergyFlow
 
 // Evaluate encoder on a sample set with batching and micro-batching.
-public func evaluate(enc: TextToCubeEncoder, samples: [JSONLSample], batchSize: Int, microBatch: Int, maxLen: Int) -> (Double, Double) {
+public func evaluate(enc: TextToCubeEncoder,
+                     samples: [JSONLSample],
+                     batchSize: Int,
+                     microBatch: Int,
+                     maxLen: Int,
+                     on gpu: GPUActor = GPU.shared) async throws -> (Double, Double) {
     var ptr = 0
     var totalMSE: Double = 0
     var totalCos: Double = 0
@@ -27,7 +32,9 @@ public func evaluate(enc: TextToCubeEncoder, samples: [JSONLSample], batchSize: 
                 let idsChunk = Array(ids[offset..<(offset+take)])
                 let maskChunk = Array(mask[offset..<(offset+take)])
                 let tgtChunk = Array(tgts[offset..<(offset+take)])
-                let out = enc.encodeTokens(inputIDs: idsChunk, attentionMask: maskChunk)
+                let out = try await enc.encodeTokens(inputIDs: idsChunk,
+                                                     attentionMask: maskChunk,
+                                                     on: gpu)
                 let b = out.shape[0]; let d = out.shape[1]
                 var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
@@ -49,7 +56,7 @@ public func evaluate(enc: TextToCubeEncoder, samples: [JSONLSample], batchSize: 
                 let take = min(micro, B - offset)
                 let txtChunk = Array(texts[offset..<(offset+take)])
                 let tgtChunk = Array(tgts[offset..<(offset+take)])
-                let out = enc.encode(txtChunk)
+                let out = try await enc.encode(txtChunk, on: gpu)
                 let b = out.shape[0]; let d = out.shape[1]
                 var pred = Array(repeating: Array(repeating: 0.0 as Float, count: d), count: b)
                 for bi in 0..<b { for di in 0..<d { pred[bi][di] = out.data[bi*d + di] } }
