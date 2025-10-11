@@ -68,8 +68,9 @@ public final class TextToCubeEncoder {
         // 4) Projection to output via GPU
         var proj = gpuProj
         do {
-            let outGPU = try await proj.forwardAsync(pooled, on: gpu)
+            let readback = try await proj.forwardDeferred(pooled, on: gpu)
             gpuProj = proj
+            let outGPU = try await readback.value()
             let out = modelConfig.useTanhOutput ? Activations.tanh(outGPU) : outGPU
             logger.debug("out: \(out.prettyShape) mean=\(mean(of: out)), std=\(std(of: out))", category: Logger.Category.textBridge)
             return out
@@ -88,8 +89,9 @@ public final class TextToCubeEncoder {
         let pooled = try await gpu.maskedMean(x: enc, mask: maskFixed)
         var proj = gpuProj
         do {
-            let outGPU = try await proj.forwardAsync(pooled, on: gpu)
+            let readback = try await proj.forwardDeferred(pooled, on: gpu)
             gpuProj = proj
+            let outGPU = try await readback.value()
             return (pooled, outGPU)
         } catch {
             fatalError("GPU projection failed: \(error)")
@@ -137,8 +139,9 @@ public final class TextToCubeEncoder {
         let pooled = try await gpu.maskedMean(x: y, mask: maskFixed)
         var proj = gpuProj
         do {
-            let outGPU = try await proj.forwardAsync(pooled, on: gpu)
+            let readback = try await proj.forwardDeferred(pooled, on: gpu)
             gpuProj = proj
+            let outGPU = try await readback.value()
             let cache = LastTCNCache(xIn: x, norm: norm, h1: h1, h1a: h1a)
             return (pooled, outGPU, cache, maskFixed)
         } catch {
@@ -203,9 +206,17 @@ public final class TextToCubeEncoder {
     public func projectionInputGradientsGPU(dY: Tensor,
                                             on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         var proj = gpuProj
-        let dx = try await proj.inputGradientsGPUAsync(dY: dY, on: gpu)
+        let readback = try await proj.inputGradientsGPUDeferred(dY: dY, on: gpu)
         gpuProj = proj
-        return dx
+        return try await readback.value()
+    }
+
+    public func projectionInputGradientsGPUDeferred(dY: Tensor,
+                                                     on gpu: GPUActor = GPU.shared) async throws -> GPUReadback<Tensor> {
+        var proj = gpuProj
+        let readback = try await proj.inputGradientsGPUDeferred(dY: dY, on: gpu)
+        gpuProj = proj
+        return readback
     }
 
     // Project-only using current GPU projection (to evaluate post-update metrics without recomputing TCN)
@@ -213,9 +224,9 @@ public final class TextToCubeEncoder {
                             on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         var proj = gpuProj
         do {
-            let outGPU = try await proj.forwardAsync(pooled, on: gpu)
+            let readback = try await proj.forwardDeferred(pooled, on: gpu)
             gpuProj = proj
-            return outGPU
+            return try await readback.value()
         } catch {
             fatalError("GPU projection failed: \(error)")
         }
@@ -226,9 +237,18 @@ public final class TextToCubeEncoder {
                                        dY: Tensor,
                                        on gpu: GPUActor = GPU.shared) async throws -> (Tensor, Tensor) {
         var proj = gpuProj
-        let grads = try await proj.gradientsGPUAsync(X: X, dY: dY, on: gpu)
+        let readback = try await proj.gradientsGPUDeferred(X: X, dY: dY, on: gpu)
         gpuProj = proj
-        return grads
+        return try await readback.value()
+    }
+
+    public func projectionGradientsGPUDeferred(X: Tensor,
+                                               dY: Tensor,
+                                               on gpu: GPUActor = GPU.shared) async throws -> GPUReadback<(Tensor, Tensor)> {
+        var proj = gpuProj
+        let readback = try await proj.gradientsGPUDeferred(X: X, dY: dY, on: gpu)
+        gpuProj = proj
+        return readback
     }
 
     // Backward for masked mean: given upstream dPooled [B,H] and mask [B][L],

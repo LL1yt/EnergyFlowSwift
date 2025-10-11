@@ -68,21 +68,17 @@ public final class CombinedTrainer {
         let B = dY.shape[0]; let D = dY.shape[1]
         for i in 0..<(B*D) { dY.data[i] = betaMSE * dY.data[i] + alphaCos * dYcos.data[i] }
         // Projection grads + upstream to encoder
-        let (dWproj, dBproj) = try await enc.projectionGradientsGPU(X: res.pooled,
-                                                                    dY: dY,
-                                                                    on: gpu)
+        let projGradReadback = try await enc.projectionGradientsGPUDeferred(X: res.pooled,
+                                                                            dY: dY,
+                                                                            on: gpu)
         let dXin = try await enc.projectionInputGradientsGPU(dY: dY, on: gpu)
         let dEnc = try await enc.maskedMeanBackward(dPooled: dXin,
                                                     mask: res.maskFixed,
                                                     seqLen: modelCfg.maxLength,
                                                     on: gpu)
         // Last block grads
-        var paramsList: [Tensor] = []
-        var gradsList: [Tensor] = []
-        // out-proj first
-        let proj = enc.getProjParams()
-        paramsList.append(proj.weight); gradsList.append(dWproj)
-        if let bp = proj.bias { paramsList.append(bp); gradsList.append(dBproj) }
+        var lastBlockParams: (w1: Tensor, b1: Tensor?, w2: Tensor, b2: Tensor?, gamma: Tensor, beta: Tensor)? = nil
+        var lastBlockGrads: LastTCNGrads? = nil
         if unfreezeLastTCN {
             let p = enc.getLastBlockParams()
             let grads = try await lastTCNBackward(cache: res.cache,
@@ -91,17 +87,28 @@ public final class CombinedTrainer {
                                                   modelCfg: modelCfg,
                                                   params: LastTCNParams(w1: p.w1, b1: p.b1, w2: p.w2, b2: p.b2, gamma: p.gamma, beta: p.beta),
                                                   on: gpu)
-            paramsList.append(p.w1); gradsList.append(grads.dW1)
-            if let b1 = p.b1, let db1 = grads.dB1 { paramsList.append(b1); gradsList.append(db1) }
-            paramsList.append(p.w2); gradsList.append(grads.dW2)
-            if let b2 = p.b2, let db2 = grads.dB2 { paramsList.append(b2); gradsList.append(db2) }
-            paramsList.append(p.gamma); gradsList.append(grads.dGamma)
-            paramsList.append(p.beta); gradsList.append(grads.dBeta)
+            lastBlockParams = p
+            lastBlockGrads = grads
         }
         // LR schedule for encoder projection/last block
         let lrNow = LRSchedulers.warmupCosine(baseLR: baseLREnc, minLR: minLREnc, warmupSteps: warmupSteps, decaySteps: cosineDecaySteps, step: stepAIndex)
         if optEncProj.lr != lrNow { optEncProj.lr = lrNow }
-        // Global clip across collected grads (projection and optional last block)
+        // Friendly progress log at mid-verbosity (every 100 A-steps)
+        await gpu.syncBatch(label: "trainer.stepA")
+        let (dWproj, dBproj) = try await projGradReadback.value()
+        var paramsList: [Tensor] = []
+        var gradsList: [Tensor] = []
+        let proj = enc.getProjParams()
+        paramsList.append(proj.weight); gradsList.append(dWproj)
+        if let bp = proj.bias { paramsList.append(bp); gradsList.append(dBproj) }
+        if unfreezeLastTCN, let lp = lastBlockParams, let lg = lastBlockGrads {
+            paramsList.append(lp.w1); gradsList.append(lg.dW1)
+            if let b1 = lp.b1, let db1 = lg.dB1 { paramsList.append(b1); gradsList.append(db1) }
+            paramsList.append(lp.w2); gradsList.append(lg.dW2)
+            if let b2 = lp.b2, let db2 = lg.dB2 { paramsList.append(b2); gradsList.append(db2) }
+            paramsList.append(lp.gamma); gradsList.append(lg.dGamma)
+            paramsList.append(lp.beta); gradsList.append(lg.dBeta)
+        }
         if clipNorm > 0 {
             var gl = gradsList
             _ = GradClip.clipGlobalL2Norm(tensors: &gl, maxNorm: clipNorm, eps: 1e-6)
@@ -110,32 +117,27 @@ public final class CombinedTrainer {
         var pack = paramsList
         optEncProj.step(params: &pack, grads: gradsList)
         stepAIndex += 1
-        // Write back
         var cursor = 0
         let newWproj = pack[cursor]; cursor += 1
         var newBproj: Tensor? = nil
-        if enc.getProjParams().bias != nil { newBproj = pack[cursor]; cursor += 1 }
+        if proj.bias != nil { newBproj = pack[cursor]; cursor += 1 }
         enc.setProjParams(weight: newWproj, bias: newBproj)
         enc.invalidateProjectionCache()
-        if unfreezeLastTCN {
-            let p0 = enc.getLastBlockParams()
+        if unfreezeLastTCN, let lp = lastBlockParams {
             let newW1 = pack[cursor]; cursor += 1
             var newB1: Tensor? = nil
-            if p0.b1 != nil { newB1 = pack[cursor]; cursor += 1 }
+            if lp.b1 != nil { newB1 = pack[cursor]; cursor += 1 }
             let newW2 = pack[cursor]; cursor += 1
             var newB2: Tensor? = nil
-            if p0.b2 != nil { newB2 = pack[cursor]; cursor += 1 }
+            if lp.b2 != nil { newB2 = pack[cursor]; cursor += 1 }
             let newGamma = pack[cursor]; cursor += 1
             let newBeta = pack[cursor]; cursor += 1
             enc.setLastBlockParams(w1: newW1, b1: newB1, w2: newW2, b2: newB2, gamma: newGamma, beta: newBeta)
             enc.invalidateLastBlockCaches()
-            // Sync last block enc -> dec
             let pSync = enc.getLastBlockParams()
             decTrainer.decoder.setLastBlockParams(w1: pSync.w1, b1: pSync.b1, w2: pSync.w2, b2: pSync.b2, gamma: pSync.gamma, beta: pSync.beta)
             decTrainer.decoder.invalidateLastBlockCaches()
         }
-        // Friendly progress log at mid-verbosity (every 100 A-steps)
-        await gpu.syncBatch(label: "trainer.stepA")
         let (mseMean, cosMean) = try await metricsReadback.value()
         if stepAIndex % 100 == 0 {
             Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f cos=%.6f unfreeze=%@",
