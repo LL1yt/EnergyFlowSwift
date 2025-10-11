@@ -3,6 +3,8 @@ import Dispatch
 import Metal
 import MetalPerformanceShaders
 
+extension MTLCommandBuffer: @unchecked Sendable {}
+
 public enum GPUActorError: Error {
     case deviceUnavailable
     case commandQueueUnavailable
@@ -81,7 +83,7 @@ public actor GPUActor {
         let pending = pendingCommandBuffers
         pendingCommandBuffers.removeAll(keepingCapacity: true)
         for buffer in pending {
-            buffer.waitUntilCompleted()
+            _ = await buffer.completed()
         }
         drainHostReadbacks()
     }
