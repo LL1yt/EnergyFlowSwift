@@ -24,7 +24,13 @@ public actor GPUActor {
     var conv1DCaches: [UUID: Conv1DCacheEntry] = [:]
     var linearCaches: [UUID: LinearCacheEntry] = [:]
     var buffers: [String: MTLBuffer] = [:]
+    private struct PendingHostReadback {
+        let label: String
+        let resume: () -> Void
+    }
+
     private var pendingCommandBuffers: [MTLCommandBuffer] = []
+    private var pendingHostReadbacks: [PendingHostReadback] = []
     private var activeBatchDepth: Int = 0
 
     public init() {
@@ -77,6 +83,7 @@ public actor GPUActor {
         for buffer in pending {
             buffer.waitUntilCompleted()
         }
+        drainHostReadbacks()
     }
 
     public func isBatching() -> Bool {
@@ -101,16 +108,13 @@ public actor GPUActor {
                                commandBuffer: MTLCommandBuffer,
                                produce: @escaping () throws -> T) async throws -> T {
         return try await withCheckedThrowingContinuation { continuation in
-            commandBuffer.addCompletedHandler { cb in
-                if let error = cb.error {
-                    continuation.resume(throwing: GPUActorError.commandBufferFailed(label: label, underlying: error))
-                    return
-                }
-                do {
-                    let value = try produce()
-                    continuation.resume(returning: value)
-                } catch {
-                    continuation.resume(throwing: error)
+            commandBuffer.addCompletedHandler { [weak self] cb in
+                guard let self else { return }
+                Task {
+                    await self.handleCommandBufferCompletion(label: label,
+                                                             commandBuffer: cb,
+                                                             produce: produce,
+                                                             continuation: continuation)
                 }
             }
             if activeBatchDepth > 0 {
@@ -118,6 +122,41 @@ public actor GPUActor {
             }
             commandBuffer.commit()
         }
+    }
+
+    private func enqueueHostReadback(label: String, resume: @escaping () -> Void) {
+        pendingHostReadbacks.append(PendingHostReadback(label: label, resume: resume))
+        // Current pipeline still expects immediate availability of results.
+        // Once GPU-only flows are in place we can defer draining until syncBatch.
+        drainHostReadbacks()
+    }
+
+    private func drainHostReadbacks() {
+        guard !pendingHostReadbacks.isEmpty else { return }
+        let tasks = pendingHostReadbacks
+        pendingHostReadbacks.removeAll(keepingCapacity: true)
+        for task in tasks {
+            task.resume()
+        }
+    }
+
+    private func handleCommandBufferCompletion<T>(label: String,
+                                                  commandBuffer: MTLCommandBuffer,
+                                                  produce: @escaping () throws -> T,
+                                                  continuation: CheckedContinuation<T, Error>) async {
+        let resume: () -> Void = {
+            if let error = commandBuffer.error {
+                continuation.resume(throwing: GPUActorError.commandBufferFailed(label: label, underlying: error))
+                return
+            }
+            do {
+                let value = try produce()
+                continuation.resume(returning: value)
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+        enqueueHostReadback(label: label, resume: resume)
     }
 }
 
