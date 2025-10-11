@@ -127,7 +127,7 @@ public actor GPUActor {
             guard let self else { return }
             Task { [weak self] in
                 guard let self else { return }
-                await self.enqueueHostReadback(label: label) {
+                self.enqueueHostReadback(label: label) {
                     if let error = commandBuffer.error {
                         state.resolve(.failure(GPUActorError.commandBufferFailed(label: label, underlying: error)))
                         return

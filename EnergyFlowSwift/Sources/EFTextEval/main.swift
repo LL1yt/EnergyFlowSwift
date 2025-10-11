@@ -5,85 +5,83 @@ import EFCore
 struct Args {
     var dataPath: String
     var batchSize: Int = 16
-    var maxLength: Int = 128   // 0 means auto from dataset
-    var lengthCap: Int = 256   // cap for auto length (keeps eval fast); 0 means no cap
-    var maxBatches: Int = 0    // 0 means all batches
-    var microBatch: Int = 32   // internal split for progress and latency; 0 => same as batchSize
+    var maxLength: Int = 128
+    var lengthCap: Int = 256
+    var maxBatches: Int = 0
+    var microBatch: Int = 32
 }
 
-@main
-struct EFTextEvalMain {
-    static func parseArgs() -> Args? {
-        var a = Args(dataPath: "")
-        var it = CommandLine.arguments.dropFirst().makeIterator()
-        while let key = it.next() {
-            switch key {
-            case "--data":
-                if let v = it.next() { a.dataPath = v }
-            case "--batch-size":
-                if let v = it.next(), let n = Int(v) { a.batchSize = n }
-            case "--max-length":
-                if let v = it.next(), let n = Int(v) { a.maxLength = n }
-            case "--length-cap":
-                if let v = it.next(), let n = Int(v) { a.lengthCap = n }
-            case "--max-batches":
-                if let v = it.next(), let n = Int(v) { a.maxBatches = n }
-            case "--micro-batch":
-                if let v = it.next(), let n = Int(v) { a.microBatch = n }
-            case "-h", "--help":
-                return nil
-            default:
-                continue
-            }
+func parseArgs() -> Args? {
+    var a = Args(dataPath: "")
+    var it = CommandLine.arguments.dropFirst().makeIterator()
+    while let key = it.next() {
+        switch key {
+        case "--data":
+            if let v = it.next() { a.dataPath = v }
+        case "--batch-size":
+            if let v = it.next(), let n = Int(v) { a.batchSize = n }
+        case "--max-length":
+            if let v = it.next(), let n = Int(v) { a.maxLength = n }
+        case "--length-cap":
+            if let v = it.next(), let n = Int(v) { a.lengthCap = n }
+        case "--max-batches":
+            if let v = it.next(), let n = Int(v) { a.maxBatches = n }
+        case "--micro-batch":
+            if let v = it.next(), let n = Int(v) { a.microBatch = n }
+        case "-h", "--help":
+            return nil
+        default:
+            continue
         }
-        if a.dataPath.isEmpty { return nil }
-        return a
     }
+    if a.dataPath.isEmpty { return nil }
+    return a
+}
 
-    static func usage() {
-        print("Usage: EFTextEval --data /path/to/data.jsonl|.efb [--batch-size 16] [--max-length 128|0(auto)] [--length-cap 256] [--max-batches 0(all)] [--micro-batch 32]")
+func usage() {
+    print("Usage: EFTextEval --data /path/to/data.jsonl|.efb [--batch-size 16] [--max-length 128|0(auto)] [--length-cap 256] [--max-batches 0(all)] [--micro-batch 32]")
+}
+
+func mse(_ y: [Float], _ t: [Float]) -> Float {
+    precondition(y.count == t.count)
+    var acc: Float = 0
+    for i in 0..<y.count {
+        let d = y[i] - t[i]
+        acc += d * d
     }
+    return acc / Float(y.count)
+}
 
-    static func mse(_ y: [Float], _ t: [Float]) -> Float {
-        precondition(y.count == t.count)
-        var acc: Float = 0
-        for i in 0..<y.count {
-            let d = y[i] - t[i]
-            acc += d * d
-        }
-        return acc / Float(y.count)
+func batchMSE(_ y: [[Float]], _ t: [[Float]]) -> Float {
+    precondition(y.count == t.count)
+    var acc: Float = 0
+    for i in 0..<y.count { acc += mse(y[i], t[i]) }
+    return acc / Float(max(y.count, 1))
+}
+
+func cosine(_ a: [Float], _ b: [Float]) -> Float {
+    precondition(a.count == b.count)
+    var dot: Float = 0
+    var na: Float = 0
+    var nb: Float = 0
+    for i in 0..<a.count {
+        dot += a[i] * b[i]
+        na += a[i] * a[i]
+        nb += b[i] * b[i]
     }
+    let denom = sqrt(max(na, 1e-12)) * sqrt(max(nb, 1e-12))
+    return denom > 0 ? dot / denom : 0
+}
 
-    static func batchMSE(_ y: [[Float]], _ t: [[Float]]) -> Float {
-        precondition(y.count == t.count)
-        var acc: Float = 0
-        for i in 0..<y.count { acc += mse(y[i], t[i]) }
-        return acc / Float(max(y.count, 1))
-    }
+func batchCosine(_ y: [[Float]], _ t: [[Float]]) -> Float {
+    precondition(y.count == t.count)
+    var acc: Float = 0
+    for i in 0..<y.count { acc += cosine(y[i], t[i]) }
+    return acc / Float(max(y.count, 1))
+}
 
-    static func cosine(_ a: [Float], _ b: [Float]) -> Float {
-        precondition(a.count == b.count)
-        var dot: Float = 0
-        var na: Float = 0
-        var nb: Float = 0
-        for i in 0..<a.count {
-            dot += a[i] * b[i]
-            na += a[i] * a[i]
-            nb += b[i] * b[i]
-        }
-        let denom = sqrt(max(na, 1e-12)) * sqrt(max(nb, 1e-12))
-        return denom > 0 ? dot / denom : 0
-    }
-
-    static func batchCosine(_ y: [[Float]], _ t: [[Float]]) -> Float {
-        precondition(y.count == t.count)
-        var acc: Float = 0
-        for i in 0..<y.count { acc += cosine(y[i], t[i]) }
-        return acc / Float(max(y.count, 1))
-    }
-
-    static func run() async throws {
-        guard let args = parseArgs() else { usage(); return }
+func run() async throws {
+    guard let args = parseArgs() else { usage(); return }
         let logger = Logger.shared
         logger.info("EFTextEval start: data=\(args.dataPath) batchSize=\(args.batchSize) maxLen=\(args.maxLength)", category: Logger.Category.dataset)
 
@@ -233,6 +231,9 @@ struct EFTextEvalMain {
         logger.info("FINAL: samples=\(seen) avgMSE=\(String(format: "%.6f", finalMSE))", category: Logger.Category.dataset)
     }
 
+
+@main
+struct EFTextEvalMain {
     static func main() async {
         do {
             try await run()

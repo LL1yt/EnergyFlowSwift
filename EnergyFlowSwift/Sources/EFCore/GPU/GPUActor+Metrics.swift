@@ -15,7 +15,7 @@ extension GPUActor {
         let batches = shape[0]
         let dim = shape[1]
         if batches == 0 || dim == 0 {
-            return (0.0, 0.0)
+            return GPUReadback(resolved: (Float(0), Float(0)))
         }
         let pipelines = try ensureMetricsPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
@@ -87,7 +87,7 @@ extension GPUActor {
                      "crossEntropyMean targets shape mismatch")
         let samples = B * L
         if samples == 0 || V == 0 {
-            return 0.0
+            return GPUReadback(resolved: Float(0))
         }
         let pipelines = try ensureMetricsPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
