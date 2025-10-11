@@ -3,6 +3,12 @@ import Metal
 extension GPUActor {
     public func kdMetricsMean(student: Tensor,
                               teacher: Tensor) async throws -> (mse: Float, cos: Float) {
+        let readback = try await kdMetricsMeanDeferred(student: student, teacher: teacher)
+        return try await readback.value()
+    }
+
+    public func kdMetricsMeanDeferred(student: Tensor,
+                                      teacher: Tensor) async throws -> GPUReadback<(Float, Float)> {
         precondition(student.shape == teacher.shape, "kdMetricsMean shape mismatch")
         let shape = student.shape
         precondition(shape.count == 2, "kdMetricsMean expects rank-2 tensors")
@@ -54,8 +60,8 @@ extension GPUActor {
                              depth: 1)
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return try await awaitCommandBuffer(label: "GPUActor.Metrics.kdMetricsMean",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Metrics.kdMetricsMean",
+                                     commandBuffer: commandBuffer) {
             let ptr = accumBuffer.contents().bindMemory(to: Float.self, capacity: 2)
             let sumMSE = ptr[0]
             let sumCos = ptr[1]
@@ -66,6 +72,12 @@ extension GPUActor {
 
     public func crossEntropyMean(logits: Tensor,
                                  targets: [[Int]]) async throws -> Float {
+        let readback = try await crossEntropyMeanDeferred(logits: logits, targets: targets)
+        return try await readback.value()
+    }
+
+    public func crossEntropyMeanDeferred(logits: Tensor,
+                                         targets: [[Int]]) async throws -> GPUReadback<Float> {
         precondition(logits.shape.count == 3, "crossEntropyMean expects logits [B,L,V]")
         let B = logits.shape[0]
         let L = logits.shape[1]
@@ -127,8 +139,8 @@ extension GPUActor {
                              depth: 1)
         encoder.dispatchThreadgroups(groups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
-        return try await awaitCommandBuffer(label: "GPUActor.Metrics.crossEntropyMean",
-                                            commandBuffer: commandBuffer) {
+        return scheduleCommandBuffer(label: "GPUActor.Metrics.crossEntropyMean",
+                                     commandBuffer: commandBuffer) {
             let ptr = accumBuffer.contents().bindMemory(to: Float.self, capacity: 2)
             let totalLoss = ptr[0]
             let count = max(ptr[1], 1.0)

@@ -37,7 +37,7 @@ public actor GPUActor {
 
     private struct PendingHostReadback {
         let label: String
-        let resume: () -> Void
+        let execute: () -> Void
     }
 
     private var pendingCommandBuffers: [CommandBufferToken] = []
@@ -106,26 +106,37 @@ public actor GPUActor {
     func awaitCommandBuffer<T>(label: String,
                                commandBuffer: MTLCommandBuffer,
                                produce: @escaping () throws -> T) async throws -> T {
-        return try await withCheckedThrowingContinuation { continuation in
-            let token = CommandBufferToken(label: label, buffer: commandBuffer)
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                guard let self else { return }
-                Task { [weak self] in
-                    guard let self else { return }
-                    await self.handleCommandBufferCompletion(token: token,
-                                                             produce: produce,
-                                                             continuation: continuation)
-                }
-            }
-            if activeBatchDepth > 0 {
-                pendingCommandBuffers.append(token)
-            }
-            commandBuffer.commit()
-        }
+        let readback = scheduleCommandBuffer(label: label,
+                                             commandBuffer: commandBuffer,
+                                             produce: produce)
+        return try await readback.value()
     }
 
-    private func enqueueHostReadback(label: String, resume: @escaping () -> Void) {
-        pendingHostReadbacks.append(PendingHostReadback(label: label, resume: resume))
+    func scheduleCommandBuffer<T>(label: String,
+                                  commandBuffer: MTLCommandBuffer,
+                                  produce: @escaping () throws -> T) -> GPUReadback<T> {
+        let state = GPUReadbackState<T>()
+        let token = CommandBufferToken(label: label, buffer: commandBuffer)
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            guard let self else { return }
+            self.enqueueHostReadback(label: label) {
+                do {
+                    let value = try produce()
+                    state.resolve(.success(value))
+                } catch {
+                    state.resolve(.failure(error))
+                }
+            }
+        }
+        if activeBatchDepth > 0 {
+            pendingCommandBuffers.append(token)
+        }
+        commandBuffer.commit()
+        return GPUReadback(state: state)
+    }
+
+    private func enqueueHostReadback(label: String, execute: @escaping () -> Void) {
+        pendingHostReadbacks.append(PendingHostReadback(label: label, execute: execute))
         if activeBatchDepth == 0 {
             drainHostReadbacks()
         }
@@ -136,26 +147,55 @@ public actor GPUActor {
         let tasks = pendingHostReadbacks
         pendingHostReadbacks.removeAll(keepingCapacity: true)
         for task in tasks {
-            task.resume()
+            task.execute()
         }
     }
 
-    private func handleCommandBufferCompletion<T>(token: CommandBufferToken,
-                                                  produce: @escaping () throws -> T,
-                                                  continuation: CheckedContinuation<T, Error>) async {
-        let resume: () -> Void = {
-            if let error = token.buffer.error {
-                continuation.resume(throwing: GPUActorError.commandBufferFailed(label: token.label, underlying: error))
-                return
-            }
-            do {
-                let value = try produce()
-                continuation.resume(returning: value)
-            } catch {
-                continuation.resume(throwing: error)
+}
+
+private final class GPUReadbackState<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<T, Error>?
+    private var continuations: [CheckedContinuation<T, Error>] = []
+
+    func awaitValue() async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
+            if let result = result {
+                lock.unlock()
+                continuation.resume(with: result)
+            } else {
+                continuations.append(continuation)
+                lock.unlock()
             }
         }
-        enqueueHostReadback(label: token.label, resume: resume)
+    }
+
+    func resolve(_ result: Result<T, Error>) {
+        lock.lock()
+        if self.result != nil {
+            lock.unlock()
+            return
+        }
+        self.result = result
+        let continuations = self.continuations
+        self.continuations.removeAll()
+        lock.unlock()
+        for continuation in continuations {
+            continuation.resume(with: result)
+        }
+    }
+}
+
+public struct GPUReadback<T>: Sendable {
+    private let state: GPUReadbackState<T>
+
+    fileprivate init(state: GPUReadbackState<T>) {
+        self.state = state
+    }
+
+    public func value() async throws -> T {
+        try await state.awaitValue()
     }
 }
 

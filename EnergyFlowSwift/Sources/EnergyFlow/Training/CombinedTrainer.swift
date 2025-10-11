@@ -61,10 +61,7 @@ public final class CombinedTrainer {
                                                                      on: gpu)
         let out = res.out // [B, D]
         // KD losses
-        let metricsTask = Task<(Float, Float), Error> {
-            try await gpu.kdMetricsMean(student: out, teacher: zTeacher)
-        }
-        defer { metricsTask.cancel() }
+        let metricsReadback = try await gpu.kdMetricsMeanDeferred(student: out, teacher: zTeacher)
         // Build dY for combined loss alpha*(1-cos) + beta*MSE
         var dY = dY_MSEMean(y: out, target: zTeacher)
         let dYcos = dY_CosineMeanLoss(y: out, target: zTeacher)
@@ -139,7 +136,7 @@ public final class CombinedTrainer {
         }
         // Friendly progress log at mid-verbosity (every 100 A-steps)
         await gpu.syncBatch(label: "trainer.stepA")
-        let (mseMean, cosMean) = try await metricsTask.value
+        let (mseMean, cosMean) = try await metricsReadback.value()
         if stepAIndex % 100 == 0 {
             Logger.shared.info1(String(format: "A-step %d: B=%d lr=%.4g clip=%.2f mse=%.6f cos=%.6f unfreeze=%@",
                                        stepAIndex, zTeacher.shape[0], lrNow, clipNorm,
