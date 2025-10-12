@@ -53,6 +53,79 @@ extension GPUActor {
         )
     }
 
+    public func residualAddHandleDeferred(yHandle: GPUTensorHandle,
+                                          xHandle: GPUTensorHandle,
+                                          outputShape: [Int]? = nil,
+                                          consumeInputs: Bool = false,
+                                          deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
+        precondition(yHandle.rows == xHandle.rows && yHandle.cols == xHandle.cols,
+                     "residualAddHandle expects matching handle dimensions")
+        let rows = yHandle.rows
+        let cols = yHandle.cols
+        let count = rows * cols
+        let shape = outputShape ?? (yHandle.shape.isEmpty ? xHandle.shape : yHandle.shape)
+        let ySource = consumeInputs
+            ? consumeHandle(yHandle, expectRows: rows, expectCols: cols)
+            : peekHandle(yHandle, expectRows: rows, expectCols: cols)
+        let xSource = consumeInputs
+            ? consumeHandle(xHandle, expectRows: rows, expectCols: cols)
+            : peekHandle(xHandle, expectRows: rows, expectCols: cols)
+        if count == 0 {
+            let emptyBuffer = buffer(length: 16, label: "GPUActor.Elementwise.residualAddHandle.emptyBuffer")
+            memset(emptyBuffer.contents(), 0, 16)
+            let handle = registerHandle(buffer: emptyBuffer,
+                                        shape: shape,
+                                        rows: rows,
+                                        cols: cols,
+                                        rowBytes: 0,
+                                        elemType: .float32,
+                                        label: "Elementwise.residualAddHandle.empty")
+            return GPUReadback(resolved: handle)
+        }
+        let yBuffer = try packHandleToFloat32Contiguous(sourceBuffer: ySource,
+                                                        rows: rows,
+                                                        cols: cols,
+                                                        rowBytes: yHandle.rowBytes,
+                                                        elemType: yHandle.elemType,
+                                                        label: "GPUActor.Elementwise.residualAddHandle.y")
+        let xBuffer = try packHandleToFloat32Contiguous(sourceBuffer: xSource,
+                                                        rows: rows,
+                                                        cols: cols,
+                                                        rowBytes: xHandle.rowBytes,
+                                                        elemType: xHandle.elemType,
+                                                        label: "GPUActor.Elementwise.residualAddHandle.x")
+        let pipelines = try ensureElementwisePipelines()
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.residualAddHandle: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.Elementwise.residualAddHandle"
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.residualAddHandle: encoder creation failed")
+        }
+        encoder.label = "GPUActor.Elementwise.residualAddHandle.encoder"
+        encoder.setComputePipelineState(pipelines.residualAdd)
+        encoder.setBuffer(yBuffer, offset: 0, index: 0)
+        encoder.setBuffer(xBuffer, offset: 0, index: 1)
+        var n = Int32(count)
+        encoder.setBytes(&n, length: MemoryLayout<Int32>.size, index: 2)
+        let threadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
+        encoder.endEncoding()
+        let handle = registerHandle(buffer: yBuffer,
+                                    shape: shape,
+                                    rows: rows,
+                                    cols: cols,
+                                    rowBytes: cols * MemoryLayout<Float>.size,
+                                    elemType: .float32,
+                                    label: "Elementwise.residualAddHandle.output")
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.residualAddHandle",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
+            handle
+        }
+    }
+
     public func addBroadcast2DInto3D(y: Tensor, addBD: Tensor, sequenceLength L: Int) async throws -> Tensor {
         let readback = try await addBroadcast2DInto3DDeferred(y: y,
                                                                addBD: addBD,
@@ -190,6 +263,84 @@ extension GPUActor {
                                      commandBuffer: commandBuffer,
                                      deferUntilSync: deferUntilSync) { [reader] in
             return reader.read()
+        }
+    }
+
+    public func maskZeroHandleDeferred(yHandle: GPUTensorHandle,
+                                       mask: [[Int]],
+                                       outputShape: [Int]? = nil,
+                                       consumeInput: Bool = false,
+                                       deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
+        let B = mask.count
+        let L = mask.first?.count ?? 0
+        let rowsExpected = B * L
+        precondition(yHandle.rows == rowsExpected, "maskZeroHandle expects handle rows \(rowsExpected), got \(yHandle.rows)")
+        let cols = yHandle.cols
+        let count = yHandle.rows * cols
+        let shape = outputShape ?? (yHandle.shape.count == 3 ? yHandle.shape : [B, L, cols])
+        let ySource = consumeInput
+            ? consumeHandle(yHandle, expectRows: yHandle.rows, expectCols: cols)
+            : peekHandle(yHandle, expectRows: yHandle.rows, expectCols: cols)
+        if count == 0 {
+            let emptyBuffer = buffer(length: 16, label: "GPUActor.Elementwise.maskZeroHandle.emptyBuffer")
+            memset(emptyBuffer.contents(), 0, 16)
+            let handle = registerHandle(buffer: emptyBuffer,
+                                        shape: shape,
+                                        rows: yHandle.rows,
+                                        cols: cols,
+                                        rowBytes: 0,
+                                        elemType: .float32,
+                                        label: "Elementwise.maskZeroHandle.empty")
+            return GPUReadback(resolved: handle)
+        }
+        let pipelines = try ensureElementwisePipelines()
+        let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: L)
+        let yBuffer = try packHandleToFloat32Contiguous(sourceBuffer: ySource,
+                                                        rows: yHandle.rows,
+                                                        cols: cols,
+                                                        rowBytes: yHandle.rowBytes,
+                                                        elemType: yHandle.elemType,
+                                                        label: "GPUActor.Elementwise.maskZeroHandle.y")
+        guard let maskBuffer = device.makeBuffer(length: maskFlat.count * MemoryLayout<Int32>.size,
+                                                 options: .storageModeShared) else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.maskZeroHandle: mask buffer allocation failed")
+        }
+        maskBuffer.label = "GPUActor.Elementwise.maskZeroHandle.mask"
+        maskFlat.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(maskBuffer.contents(), base, maskFlat.count * MemoryLayout<Int32>.size)
+            }
+        }
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.maskZeroHandle: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.Elementwise.maskZeroHandle"
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.maskZeroHandle: encoder creation failed")
+        }
+        encoder.label = "GPUActor.Elementwise.maskZeroHandle.encoder"
+        encoder.setComputePipelineState(pipelines.maskZero)
+        encoder.setBuffer(yBuffer, offset: 0, index: 0)
+        encoder.setBuffer(maskBuffer, offset: 0, index: 1)
+        var vB = Int32(B), vL = Int32(L), vD = Int32(cols)
+        encoder.setBytes(&vB, length: MemoryLayout<Int32>.size, index: 2)
+        encoder.setBytes(&vL, length: MemoryLayout<Int32>.size, index: 3)
+        encoder.setBytes(&vD, length: MemoryLayout<Int32>.size, index: 4)
+        let threadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
+        encoder.endEncoding()
+        let handle = registerHandle(buffer: yBuffer,
+                                    shape: shape,
+                                    rows: yHandle.rows,
+                                    cols: cols,
+                                    rowBytes: cols * MemoryLayout<Float>.size,
+                                    elemType: .float32,
+                                    label: "Elementwise.maskZeroHandle.output")
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskZeroHandle",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
+            handle
         }
     }
 
@@ -419,6 +570,33 @@ extension GPUActor {
                                      deferUntilSync: deferUntilSync) { [reader] in
             return reader.read()
         }
+    }
+
+    private func packHandleToFloat32Contiguous(sourceBuffer: MTLBuffer,
+                                               rows: Int,
+                                               cols: Int,
+                                               rowBytes: Int,
+                                               elemType: GPUElementType,
+                                               label: String) throws -> MTLBuffer {
+        let elemFloat = MemoryLayout<Float>.size
+        guard let dst = device.makeBuffer(length: rows * cols * elemFloat, options: .storageModeShared) else {
+            throw GPUActorError.commandBufferUnavailable("\(label): contiguous buffer allocation failed")
+        }
+        dst.label = label
+        let dstPtr = dst.contents().bindMemory(to: Float.self, capacity: rows * cols)
+        for row in 0..<rows {
+            let dstRow = dstPtr.advanced(by: row * cols)
+            if elemType == .float32 {
+                let src = sourceBuffer.contents().advanced(by: row * rowBytes).bindMemory(to: Float.self, capacity: cols)
+                memcpy(dstRow, src, cols * elemFloat)
+            } else {
+                let src = sourceBuffer.contents().advanced(by: row * rowBytes).bindMemory(to: Float16.self, capacity: cols)
+                for c in 0..<cols {
+                    dstRow[c] = Float(src[c])
+                }
+            }
+        }
+        return dst
     }
 
     private func ensureElementwisePipelines() throws -> ElementwisePipelines {

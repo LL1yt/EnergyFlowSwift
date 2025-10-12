@@ -338,6 +338,8 @@ extension GPUActor {
                                                gamma: Tensor,
                                                beta: Tensor,
                                                eps: Float,
+                                               outputShape: [Int]? = nil,
+                                               consumeInput: Bool = false,
                                                deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
         let N = xHandle.rows
         let D = xHandle.cols
@@ -356,7 +358,9 @@ extension GPUActor {
         let gammaBytes = D * elemFloat
         let betaBytes = D * elemFloat
         // Prepare contiguous fp16 x buffer
-        let xInBuf = consumeHandle(xHandle, expectRows: N, expectCols: D)
+        let xInBuf = consumeInput
+            ? consumeHandle(xHandle, expectRows: N, expectCols: D)
+            : peekHandle(xHandle, expectRows: N, expectCols: D)
         guard let xHalfBuf = device.makeBuffer(length: xBytesHalf, options: .storageModeShared) else {
             throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardHandle: xHalf alloc failed")
         }
@@ -436,7 +440,7 @@ extension GPUActor {
         normEncoder.dispatchThreadgroups(normThreadgroups, threadsPerThreadgroup: normThreadsPerGroup)
         normEncoder.endEncoding()
         let handle = registerHandle(buffer: yHalfBuf,
-                                    shape: [N, D],
+                                    shape: outputShape ?? [N, D],
                                     rows: N,
                                     cols: D,
                                     rowBytes: D * elemHalf,

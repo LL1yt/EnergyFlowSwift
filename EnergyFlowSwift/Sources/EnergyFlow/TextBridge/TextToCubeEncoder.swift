@@ -168,28 +168,59 @@ public final class TextToCubeEncoder {
         }
         // Last block with caches
         let last = tcnStack.blocks[nb - 1]
-        // LN on [B*L, D]
-        let xFlat = x.reshaped([B * L, D])
-        let normFlat = try await gpu.layerNormForward(x: xFlat,
-                                                      gamma: last.ln.gamma,
-                                                      beta: last.ln.beta,
-                                                      eps: last.ln.eps)
-        let norm = normFlat.reshaped([B, L, D])
+        let xHandle = await gpu.tensorToHandle(x, label: "Encoder.lastBlock.input")
+        let normRB = try await gpu.layerNormForwardHandleDeferred(xHandle: xHandle,
+                                                                  gamma: last.ln.gamma,
+                                                                  beta: last.ln.beta,
+                                                                  eps: last.ln.eps,
+                                                                  outputShape: [B, L, D],
+                                                                  consumeInput: false)
+        let normHandle = try await normRB.value()
+        let norm = try await gpu.readHandleToTensor(normHandle)
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: LN done", category: Logger.Category.training)
-        let h1 = try await last.conv1.forwardAsync(norm, on: gpu)
-        let h1a = try await gpu.geluForward(x: h1)
+
+        let h1RB = try await last.conv1.forwardFromHandleDeferred(normHandle,
+                                                                  on: gpu,
+                                                                  outputShape: [B, L, last.hidden],
+                                                                  consumeInput: false)
+        let h1Handle = try await h1RB.value()
+        let h1 = try await gpu.readHandleToTensor(h1Handle)
+
+        let h1aRB = try await gpu.geluForwardHandleDeferred(xHandle: h1Handle,
+                                                            outputShape: [B, L, last.hidden],
+                                                            consumeInput: false)
+        let h1aHandle = try await h1aRB.value()
+        let h1a = try await gpu.readHandleToTensor(h1aHandle)
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: GELU done", category: Logger.Category.training)
-        var y = try await last.conv2.forwardAsync(h1a, on: gpu)
+
+        let conv2RB = try await last.conv2.forwardFromHandleDeferred(h1aHandle,
+                                                                     on: gpu,
+                                                                     outputShape: [B, L, D],
+                                                                     consumeInput: false)
+        let conv2Handle = try await conv2RB.value()
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: conv2 done", category: Logger.Category.training)
-        // Residual and mask via deferred APIs (await immediately to proceed)
-        let yResRB = try await gpu.residualAddDeferred(y: y, x: x)
+
+        await gpu.releaseHandle(normHandle)
+        await gpu.releaseHandle(h1Handle)
+        await gpu.releaseHandle(h1aHandle)
+
+        let residualRB = try await gpu.residualAddHandleDeferred(yHandle: conv2Handle,
+                                                                 xHandle: xHandle,
+                                                                 outputShape: [B, L, D],
+                                                                 consumeInputs: true)
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled residualAdd deferred", category: Logger.Category.training)
-        y = try await yResRB.value()
+        let residualHandle = try await residualRB.value()
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: residualAdd readback resolved", category: Logger.Category.training)
-        let yMaskRB = try await gpu.maskZeroDeferred(y: y, mask: maskFixed)
+
+        let maskRB = try await gpu.maskZeroHandleDeferred(yHandle: residualHandle,
+                                                          mask: maskFixed,
+                                                          outputShape: [B, L, D],
+                                                          consumeInput: true)
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled maskZero deferred", category: Logger.Category.training)
-        y = try await yMaskRB.value()
+        let maskedHandle = try await maskRB.value()
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: maskZero readback resolved", category: Logger.Category.training)
+        let y = try await gpu.readHandleToTensor(maskedHandle)
+        await gpu.releaseHandle(maskedHandle)
         // Compute pooled in two forms:
         // 1) GPU handle for chaining into projection (no host copy)
         // 2) Host Tensor for trainers that need pooled (return as resolved readback)

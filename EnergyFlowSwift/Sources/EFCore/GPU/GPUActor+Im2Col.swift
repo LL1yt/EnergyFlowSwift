@@ -181,7 +181,7 @@ extension GPUActor {
                                      commandBuffer: commandBuffer) { () }
     }
 
-    private func ensureIm2ColPipelines() throws -> Im2ColPipelines {
+    func ensureIm2ColPipelines() throws -> Im2ColPipelines {
         if let pipelines = im2ColPipelines {
             return pipelines
         }

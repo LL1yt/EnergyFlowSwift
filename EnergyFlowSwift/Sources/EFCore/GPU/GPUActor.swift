@@ -190,9 +190,7 @@ public actor GPUActor {
         let rows = handle.rows
         let cols = handle.cols
         if rows == 0 || cols == 0 { return Tensor.zeros(handle.shape) }
-        let buf = peekHandle(handle)
-            fatalError("GPUActor: readHandleToTensor missing buffer for handle id=\(handle.id)")
-        }
+        let buf = peekHandle(handle, expectRows: rows, expectCols: cols)
         switch handle.elemType {
         case .float32:
             var output = [Float](repeating: 0, count: rows * cols)
@@ -235,6 +233,15 @@ public actor GPUActor {
                                epoch: batchEpoch)
     }
 
+    func consumeHandle(_ handle: GPUTensorHandle, expectRows: Int? = nil, expectCols: Int? = nil) -> MTLBuffer {
+        if let er = expectRows { precondition(er == handle.rows, "GPUTensorHandle rows mismatch") }
+        if let ec = expectCols { precondition(ec == handle.cols, "GPUTensorHandle cols mismatch") }
+        guard let buf = handleRegistry.removeValue(forKey: handle.id) else {
+            fatalError("GPUActor: missing buffer for handle \(handle.label) id=\(handle.id)")
+        }
+        return buf
+    }
+
     func peekHandle(_ handle: GPUTensorHandle, expectRows: Int? = nil, expectCols: Int? = nil) -> MTLBuffer {
         if let er = expectRows { precondition(er == handle.rows, "GPUTensorHandle rows mismatch") }
         if let ec = expectCols { precondition(ec == handle.cols, "GPUTensorHandle cols mismatch") }
@@ -242,6 +249,54 @@ public actor GPUActor {
             fatalError("GPUActor: missing buffer for handle \(handle.label) id=\(handle.id)")
         }
         return buf
+    }
+
+    public func tensorToHandle(_ tensor: Tensor,
+                               elemType: GPUElementType = .float32,
+                               label: String) -> GPUTensorHandle {
+        let shape = tensor.shape
+        let cols = shape.last ?? 1
+        let rows: Int
+        if cols == 0 {
+            rows = 0
+        } else {
+            rows = tensor.count / max(cols, 1)
+        }
+        let elemSize = (elemType == .float32) ? MemoryLayout<Float>.size : MemoryLayout<Float16>.size
+        let rowBytes = cols * elemSize
+        let totalBytes = rows * rowBytes
+        let length = max(totalBytes, 16)
+        guard let buffer = device.makeBuffer(length: length, options: .storageModeShared) else {
+            fatalError("GPUActor: tensorToHandle(\(label)) failed to allocate buffer length=\(length)")
+        }
+        buffer.label = "GPUActor.TensorHandle.\(label)"
+        if totalBytes > 0 {
+            switch elemType {
+            case .float32:
+                tensor.data.withUnsafeBytes { raw in
+                    if let base = raw.baseAddress {
+                        memcpy(buffer.contents(), base, totalBytes)
+                    }
+                }
+            case .float16:
+                let dst = buffer.contents().bindMemory(to: Float16.self, capacity: rows * cols)
+                let count = rows * cols
+                for idx in 0..<count {
+                    dst[idx] = Float16(tensor.data[idx])
+                }
+            }
+        }
+        return registerHandle(buffer: buffer,
+                              shape: shape,
+                              rows: rows,
+                              cols: cols,
+                              rowBytes: rowBytes,
+                              elemType: elemType,
+                              label: label)
+    }
+
+    public func releaseHandle(_ handle: GPUTensorHandle) {
+        _ = consumeHandle(handle)
     }
 }
 

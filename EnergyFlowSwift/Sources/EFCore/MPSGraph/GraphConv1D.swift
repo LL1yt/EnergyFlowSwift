@@ -89,4 +89,35 @@ public final class GraphConv1D {
         )
     }
 
+    public func forwardFromHandleDeferred(_ handle: GPUTensorHandle,
+                                          on gpu: GPUActor = GPU.shared,
+                                          outputShape: [Int]? = nil,
+                                          consumeInput: Bool = false,
+                                          deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
+        precondition(handle.shape.count == 3, "GraphConv1D.forwardFromHandle expects handle shape [B,L,Cin]")
+        precondition(handle.shape[2] == inChannels, "Cin mismatch: got \(handle.shape[2]), expected \(inChannels)")
+        let key = cacheID
+        let ver = cacheVersion
+        let inC = inChannels
+        let outC = outChannels
+        let ksz = kernelSize
+        let dil = dilation
+        let w = weight
+        let b = bias
+        return try await gpu.conv1DForwardFromHandleDeferred(
+            key: key,
+            version: ver,
+            inChannels: inC,
+            outChannels: outC,
+            kernelSize: ksz,
+            dilation: dil,
+            weight: w,
+            bias: b,
+            xHandle: handle,
+            outputShape: outputShape,
+            consumeInput: consumeInput,
+            deferUntilSync: deferUntilSync
+        )
+    }
+
 }

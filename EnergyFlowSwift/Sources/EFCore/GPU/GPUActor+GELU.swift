@@ -151,9 +151,20 @@ extension GPUActor {
 
     // New: GELU from a GPU handle, returning a handle to the result (fp16)
     public func geluForwardHandleDeferred(xHandle: GPUTensorHandle,
+                                          outputShape: [Int]? = nil,
+                                          consumeInput: Bool = false,
                                           deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
         let count = xHandle.rows * xHandle.cols
-        if count == 0 { return GPUReadback(resolved: registerHandle(buffer: buffer(length: 1, label: "empty"), shape: [0,0], rows: 0, cols: 0, rowBytes: 0, elemType: .float16, label: "GELU.empty")) }
+        if count == 0 {
+            let emptyHandle = registerHandle(buffer: buffer(length: 1, label: "GELU.forwardHandle.empty"),
+                                             shape: outputShape ?? [0, 0],
+                                             rows: xHandle.rows,
+                                             cols: xHandle.cols,
+                                             rowBytes: 0,
+                                             elemType: .float16,
+                                             label: "GELU.empty")
+            return GPUReadback(resolved: emptyHandle)
+        }
         let pipelines = try ensureGELUPipelines()
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             throw GPUActorError.commandBufferUnavailable("GELU.forwardHandle: command buffer creation failed")
@@ -162,7 +173,9 @@ extension GPUActor {
         let elemHalf = MemoryLayout<Float16>.size
         let elemFloat = MemoryLayout<Float>.size
         // Prepare contiguous fp16 input buffer
-        let xInBuf = consumeHandle(xHandle)
+        let xInBuf = consumeInput
+            ? consumeHandle(xHandle)
+            : peekHandle(xHandle)
         guard let xHalfBuf = device.makeBuffer(length: count * elemHalf, options: .storageModeShared) else {
             throw GPUActorError.commandBufferUnavailable("GELU.forwardHandle: temp xHalf allocation failed")
         }
@@ -207,7 +220,7 @@ extension GPUActor {
         encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
         encoder.endEncoding()
         let handle = registerHandle(buffer: yBuf,
-                                    shape: [xHandle.rows, xHandle.cols],
+                                    shape: outputShape ?? [xHandle.rows, xHandle.cols],
                                     rows: xHandle.rows,
                                     cols: xHandle.cols,
                                     rowBytes: xHandle.cols * elemHalf,
