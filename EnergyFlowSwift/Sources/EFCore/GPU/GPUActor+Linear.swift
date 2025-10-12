@@ -299,7 +299,7 @@ extension GPUActor {
         let inputCols = hasBias ? (inFeatures + 1) : inFeatures
         let elemHalf = MemoryLayout<Float16>.size
         let yRowBytes = alignedRowBytes(columns: outFeatures, elemSize: elemHalf)
-        let xBuffer = consumeHandle(xHandle, expectRows: batch, expectCols: inFeatures)
+        let xBuffer = peekHandle(xHandle, expectRows: batch, expectCols: inFeatures)
         // If bias, we need to augment an intermediate buffer (copy into augmented FP16 with 1 column appended)
         let xBufferFP16: MTLBuffer
         let xRowBytesFP16: Int

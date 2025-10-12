@@ -152,7 +152,7 @@ public final class TextToCubeEncoder {
     // Deferred variant: returns readbacks for pooled and out; cache and mask remain as-is
     public func forwardForTrainingWithLastBlockCacheDeferred(inputIDs: [[Int]],
                                                              attentionMask: [[Int]],
-                                                             on gpu: GPUActor = GPU.shared) async throws -> (pooledRB: GPUReadback<Tensor>, outRB: GPUReadback<Tensor>, cache: LastTCNCache, maskFixed: [[Int]]) {
+                                                             on gpu: GPUActor = GPU.shared) async throws -> (pooledHandleRB: GPUReadback<GPUTensorHandle>, outRB: GPUReadback<Tensor>, cache: LastTCNCache, maskFixed: [[Int]]) {
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: start B=\(inputIDs.count) L=\(inputIDs.first?.count ?? 0)", category: Logger.Category.training)
         let (idsFixed, maskFixed) = padOrTruncate(inputIDs: inputIDs, attentionMask: attentionMask, to: modelConfig.maxLength)
         let embs = embedding.forward(ids: idsFixed)
@@ -195,9 +195,6 @@ public final class TextToCubeEncoder {
         // 2) Host Tensor for trainers that need pooled (return as resolved readback)
         let pooledHandleRB = try await gpu.maskedMeanHandleDeferred(x: y, mask: maskFixed)
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled maskedMean handle deferred", category: Logger.Category.training)
-        // Also compute pooled Tensor (temporary until trainers consume handles)
-        let pooled = try await gpu.maskedMean(x: y, mask: maskFixed)
-        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: maskedMean (host) done", category: Logger.Category.training)
         var proj = gpuProj
         // Resolve handle (no batch active, so this will await command completion only for maskedMean kernel)
         let pooledHandle = try await pooledHandleRB.value()
@@ -205,9 +202,8 @@ public final class TextToCubeEncoder {
         gpuProj = proj
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled proj from handle deferred", category: Logger.Category.training)
         let cache = LastTCNCache(xIn: x, norm: norm, h1: h1, h1a: h1a)
-        let pooledRB = GPUReadback(resolved: pooled)
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: return", category: Logger.Category.training)
-        return (pooledRB, outRB, cache, maskFixed)
+        return (pooledHandleRB, outRB, cache, maskFixed)
     }
 
     // Accessors for last TCN block params

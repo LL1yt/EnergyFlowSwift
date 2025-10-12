@@ -61,7 +61,8 @@ public final class CombinedTrainer {
         // First sync to resolve forward readbacks
         // No batching yet; forward readbacks resolve without sync
         let out = try await fwd.outRB.value()   // [B, D]
-        let pooled = try await fwd.pooledRB.value()
+        // Read pooled handle into host Tensor for gradient scheduling
+        let pooled = try await gpu.readHandleToTensor(try await fwd.pooledHandleRB.value())
         // Build dY for combined loss alpha*(1-cos) + beta*MSE (CPU)
         var dY = dY_MSEMean(y: out, target: zTeacher)
         let dYcos = dY_CosineMeanLoss(y: out, target: zTeacher)

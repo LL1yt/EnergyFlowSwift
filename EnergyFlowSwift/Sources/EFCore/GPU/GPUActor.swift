@@ -184,6 +184,37 @@ public actor GPUActor {
         }
     }
 
+    // Public helper: read a GPU handle into a host Tensor (Float)
+    public func readHandleToTensor(_ handle: GPUTensorHandle) async -> Tensor {
+        await ensureBatchSynced(for: handle.epoch, label: "readHandleToTensor(\(handle.label))")
+        let rows = handle.rows
+        let cols = handle.cols
+        if rows == 0 || cols == 0 { return Tensor.zeros(handle.shape) }
+        let buf = peekHandle(handle)
+            fatalError("GPUActor: readHandleToTensor missing buffer for handle id=\(handle.id)")
+        }
+        switch handle.elemType {
+        case .float32:
+            var output = [Float](repeating: 0, count: rows * cols)
+            output.withUnsafeMutableBufferPointer { bp in
+                guard let base = bp.baseAddress else { return }
+                for r in 0..<rows {
+                    let src = buf.contents().advanced(by: r * handle.rowBytes)
+                    let dst = base.advanced(by: r * cols)
+                    memcpy(dst, src, cols * MemoryLayout<Float>.size)
+                }
+            }
+            return Tensor(shape: handle.shape, data: output)
+        case .float16:
+            var output = [Float](repeating: 0, count: rows * cols)
+            for r in 0..<rows {
+                let src = buf.contents().advanced(by: r * handle.rowBytes).bindMemory(to: Float16.self, capacity: cols)
+                for c in 0..<cols { output[r * cols + c] = Float(src[c]) }
+            }
+            return Tensor(shape: handle.shape, data: output)
+        }
+    }
+
     // MARK: - Handle registry helpers
     func registerHandle(buffer: MTLBuffer,
                         shape: [Int],
@@ -204,10 +235,10 @@ public actor GPUActor {
                                epoch: batchEpoch)
     }
 
-    func consumeHandle(_ handle: GPUTensorHandle, expectRows: Int? = nil, expectCols: Int? = nil) -> MTLBuffer {
+    func peekHandle(_ handle: GPUTensorHandle, expectRows: Int? = nil, expectCols: Int? = nil) -> MTLBuffer {
         if let er = expectRows { precondition(er == handle.rows, "GPUTensorHandle rows mismatch") }
         if let ec = expectCols { precondition(ec == handle.cols, "GPUTensorHandle cols mismatch") }
-        guard let buf = handleRegistry.removeValue(forKey: handle.id) else {
+        guard let buf = handleRegistry[handle.id] else {
             fatalError("GPUActor: missing buffer for handle \(handle.label) id=\(handle.id)")
         }
         return buf
