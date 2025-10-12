@@ -38,6 +38,7 @@ final class DeferredForwardParityTests: XCTestCase {
         Logger.shared.info("Encoder: deferred forward synced, awaiting readbacks", category: Logger.Category.training)
         let pooledHandle = try await def.pooledHandleRB.value()
         let pooledDef = try await gpu.readHandleToTensor(pooledHandle)
+        await gpu.releaseHandle(pooledHandle)
         let outDef = try await def.outRB.value()
         Logger.shared.info("Encoder: readbacks resolved; comparing parity", category: Logger.Category.training)
         // Compare shapes and basic parity

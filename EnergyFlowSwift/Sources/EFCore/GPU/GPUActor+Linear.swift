@@ -276,6 +276,140 @@ extension GPUActor {
         )
     }
 
+    public func linearGradientsFromHandleDeferred(key: UUID,
+                                                  version: UInt64,
+                                                  inFeatures: Int,
+                                                  outFeatures: Int,
+                                                  weight: Tensor,
+                                                  xHandle: GPUTensorHandle,
+                                                  dY: Tensor,
+                                                  bias: Tensor?,
+                                                  consumeInput: Bool = false,
+                                                  deferUntilSync: Bool = true) async throws -> GPUReadback<(Tensor, Tensor)> {
+        precondition(xHandle.cols == inFeatures, "linearGradientsFromHandle expects handle cols \(xHandle.cols) == inFeatures \(inFeatures)")
+        let batch = xHandle.rows
+        precondition(dY.shape.count == 2 && dY.shape[0] == batch && dY.shape[1] == outFeatures,
+                     "linearGradientsFromHandle dY mismatch: expected [\(batch), \(outFeatures)] got \(dY.shape)")
+        if batch == 0 {
+            if consumeInput {
+                _ = consumeHandle(xHandle)
+            }
+            return GPUReadback(resolved: (Tensor.zeros([outFeatures, inFeatures]), Tensor.zeros([outFeatures])))
+        }
+        _ = try ensureLinearCache(
+            key: key,
+            version: version,
+            inFeatures: inFeatures,
+            outFeatures: outFeatures,
+            weight: weight
+        )
+        let elemHalf = MemoryLayout<Float16>.size
+        let rowsL = outFeatures
+        let colsL = batch
+        let rowsR = batch
+        let colsR = inFeatures
+        let rowsY = outFeatures
+        let colsY = inFeatures
+        let lRowBytes = alignedRowBytes(columns: colsL, elemSize: elemHalf)
+        let rRowBytes = alignedRowBytes(columns: colsR, elemSize: elemHalf)
+        let yRowBytes = alignedRowBytes(columns: colsY, elemSize: elemHalf)
+        let lBuffer = buffer(length: rowsL * lRowBytes, label: "GPUActor.Linear.gradHandle.L.\(key)")
+        let rBuffer = buffer(length: rowsR * rRowBytes, label: "GPUActor.Linear.gradHandle.R.\(key)")
+        let yBuffer = buffer(length: rowsY * yRowBytes, label: "GPUActor.Linear.gradHandle.Y.\(key)")
+        memset(lBuffer.contents(), 0, rowsL * lRowBytes)
+        memset(rBuffer.contents(), 0, rowsR * rRowBytes)
+        memset(yBuffer.contents(), 0, rowsY * yRowBytes)
+
+        var dyHalf = [Float16](repeating: 0, count: rowsL * colsL)
+        for bIdx in 0..<batch {
+            let srcBase = bIdx * outFeatures
+            for outIdx in 0..<outFeatures {
+                dyHalf[outIdx * colsL + bIdx] = Float16(dY.data[srcBase + outIdx])
+            }
+        }
+        dyHalf.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                for row in 0..<rowsL {
+                    let src = base.advanced(by: row * colsL * elemHalf)
+                    let dst = lBuffer.contents().advanced(by: row * lRowBytes)
+                    memcpy(dst, src, colsL * elemHalf)
+                }
+            }
+        }
+
+        let xSource = consumeInput
+            ? consumeHandle(xHandle, expectRows: rowsR, expectCols: colsR)
+            : peekHandle(xHandle, expectRows: rowsR, expectCols: colsR)
+        for row in 0..<rowsR {
+            let dst = rBuffer.contents().advanced(by: row * rRowBytes)
+            if xHandle.elemType == .float16 {
+                let src = xSource.contents().advanced(by: row * xHandle.rowBytes)
+                memcpy(dst, src, colsR * elemHalf)
+            } else {
+                let src = xSource.contents().advanced(by: row * xHandle.rowBytes).bindMemory(to: Float.self, capacity: colsR)
+                var halfRow = [Float16](repeating: 0, count: colsR)
+                for c in 0..<colsR { halfRow[c] = Float16(src[c]) }
+                halfRow.withUnsafeBytes { raw in
+                    if let base = raw.baseAddress {
+                        memcpy(dst, base, colsR * elemHalf)
+                    }
+                }
+            }
+        }
+
+        let lDesc = MPSMatrixDescriptor(rows: rowsL, columns: colsL, rowBytes: lRowBytes, dataType: .float16)
+        let rDesc = MPSMatrixDescriptor(rows: rowsR, columns: colsR, rowBytes: rRowBytes, dataType: .float16)
+        let yDesc = MPSMatrixDescriptor(rows: rowsY, columns: colsY, rowBytes: yRowBytes, dataType: .float16)
+        let lMat = MPSMatrix(buffer: lBuffer, descriptor: lDesc)
+        let rMat = MPSMatrix(buffer: rBuffer, descriptor: rDesc)
+        let yMat = MPSMatrix(buffer: yBuffer, descriptor: yDesc)
+        let mm = MPSMatrixMultiplication(
+            device: device,
+            transposeLeft: false,
+            transposeRight: false,
+            resultRows: rowsY,
+            resultColumns: colsY,
+            interiorColumns: colsL,
+            alpha: 1.0,
+            beta: 0.0
+        )
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("Linear.gradientsHandle: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.Linear.gradientsHandle"
+        mm.encode(commandBuffer: commandBuffer, leftMatrix: lMat, rightMatrix: rMat, resultMatrix: yMat)
+
+        let dyData = dY.data
+        let dWReader = StridedFloat16BufferReader(
+            buffer: yBuffer,
+            rows: rowsY,
+            cols: colsY,
+            rowBytes: yRowBytes,
+            shape: [outFeatures, inFeatures]
+        )
+        let reader = BufferReader<(Tensor, Tensor)>(
+            buffer: yBuffer
+        ) {
+            let dW = dWReader.read()
+            var dBHost = [Float](repeating: 0, count: outFeatures)
+            for bIdx in 0..<batch {
+                let base = bIdx * outFeatures
+                for o in 0..<outFeatures {
+                    dBHost[o] += dyData[base + o]
+                }
+            }
+            let dB = Tensor(shape: [outFeatures], data: dBHost)
+            return (dW, dB)
+        }
+
+        return scheduleCommandBufferWithReader(
+            label: "GPUActor.Linear.gradientsHandle",
+            commandBuffer: commandBuffer,
+            deferUntilSync: deferUntilSync,
+            reader: reader
+        )
+    }
+
     // New: forward from a GPU handle without host copy
     public func linearForwardFromHandleDeferred(key: UUID,
                                                 version: UInt64,

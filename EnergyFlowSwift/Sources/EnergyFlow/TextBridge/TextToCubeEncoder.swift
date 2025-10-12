@@ -219,12 +219,12 @@ public final class TextToCubeEncoder {
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled maskZero deferred", category: Logger.Category.training)
         let maskedHandle = try await maskRB.value()
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: maskZero readback resolved", category: Logger.Category.training)
-        let y = try await gpu.readHandleToTensor(maskedHandle)
-        await gpu.releaseHandle(maskedHandle)
         // Compute pooled in two forms:
         // 1) GPU handle for chaining into projection (no host copy)
         // 2) Host Tensor for trainers that need pooled (return as resolved readback)
-        let pooledHandleRB = try await gpu.maskedMeanHandleDeferred(x: y, mask: maskFixed)
+        let pooledHandleRB = try await gpu.maskedMeanHandleFromHandleDeferred(xHandle: maskedHandle,
+                                                                              mask: maskFixed,
+                                                                              consumeInput: true)
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled maskedMean handle deferred", category: Logger.Category.training)
         var proj = gpuProj
         // Resolve handle (no batch active, so this will await command completion only for maskedMean kernel)
@@ -335,6 +335,19 @@ public final class TextToCubeEncoder {
                                                on gpu: GPUActor = GPU.shared) async throws -> GPUReadback<(Tensor, Tensor)> {
         var proj = gpuProj
         let readback = try await proj.gradientsGPUDeferred(X: X, dY: dY, on: gpu)
+        gpuProj = proj
+        return readback
+    }
+
+    public func projectionGradientsGPUFromHandleDeferred(pooledHandle: GPUTensorHandle,
+                                                         dY: Tensor,
+                                                         on gpu: GPUActor = GPU.shared,
+                                                         consumeInput: Bool = false) async throws -> GPUReadback<(Tensor, Tensor)> {
+        var proj = gpuProj
+        let readback = try await proj.gradientsGPUFromHandleDeferred(xHandle: pooledHandle,
+                                                                     dY: dY,
+                                                                     on: gpu,
+                                                                     consumeInput: consumeInput)
         gpuProj = proj
         return readback
     }

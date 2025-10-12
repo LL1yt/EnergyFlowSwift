@@ -486,6 +486,95 @@ extension GPUActor {
         }
     }
 
+    public func maskedMeanHandleFromHandleDeferred(xHandle: GPUTensorHandle,
+                                                   mask: [[Int]],
+                                                   outputShape: [Int]? = nil,
+                                                   consumeInput: Bool = false,
+                                                   deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
+        precondition(xHandle.shape.count == 3, "maskedMeanHandleFromHandleDeferred expects handle shape [B,L,H]")
+        let B = xHandle.shape[0]
+        let L = xHandle.shape[1]
+        let H = xHandle.shape[2]
+        precondition(mask.count == B, "mask batch mismatch: expected \(B) got \(mask.count)")
+        precondition(mask.first?.count ?? 0 == L, "mask length mismatch: expected \(L)")
+        let rowsExpected = B * L
+        precondition(xHandle.rows == rowsExpected, "maskedMeanHandleFromHandleDeferred expects rows \(rowsExpected), got \(xHandle.rows)")
+        precondition(xHandle.cols == H, "maskedMeanHandleFromHandleDeferred expects cols \(H), got \(xHandle.cols)")
+        if B == 0 || L == 0 || H == 0 {
+            let emptyBuffer = buffer(length: 16, label: "GPUActor.Elementwise.maskedMeanHandleFromHandle.empty")
+            memset(emptyBuffer.contents(), 0, 16)
+            if consumeInput {
+                _ = consumeHandle(xHandle)
+            }
+            let handle = registerHandle(buffer: emptyBuffer,
+                                        shape: outputShape ?? [B, H],
+                                        rows: B,
+                                        cols: H,
+                                        rowBytes: 0,
+                                        elemType: .float32,
+                                        label: "Elementwise.maskedMeanHandleFromHandle.empty")
+            return GPUReadback(resolved: handle)
+        }
+        let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: L)
+        let sourceBuffer = consumeInput
+            ? consumeHandle(xHandle, expectRows: rowsExpected, expectCols: H)
+            : peekHandle(xHandle, expectRows: rowsExpected, expectCols: H)
+        let xBuffer = try packHandleToFloat32Contiguous(sourceBuffer: sourceBuffer,
+                                                        rows: rowsExpected,
+                                                        cols: H,
+                                                        rowBytes: xHandle.rowBytes,
+                                                        elemType: xHandle.elemType,
+                                                        label: "GPUActor.Elementwise.maskedMeanHandleFromHandle.x")
+        let pipelines = try ensureElementwisePipelines()
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.maskedMeanHandleFromHandle: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.Elementwise.maskedMeanHandleFromHandle"
+        let elem = MemoryLayout<Float>.size
+        let yRowBytes = H * elem
+        let yBuffer = buffer(length: B * yRowBytes, label: "GPUActor.Elementwise.maskedMeanHandleFromHandle.y")
+        memset(yBuffer.contents(), 0, B * yRowBytes)
+        guard let maskBuffer = device.makeBuffer(length: maskFlat.count * MemoryLayout<Int32>.size,
+                                                 options: .storageModeShared) else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.maskedMeanHandleFromHandle: mask buffer allocation failed")
+        }
+        maskBuffer.label = "GPUActor.Elementwise.maskedMeanHandleFromHandle.mask"
+        maskFlat.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(maskBuffer.contents(), base, maskFlat.count * MemoryLayout<Int32>.size)
+            }
+        }
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.maskedMeanHandleFromHandle: encoder creation failed")
+        }
+        encoder.label = "GPUActor.Elementwise.maskedMeanHandleFromHandle.encoder"
+        encoder.setComputePipelineState(pipelines.maskedMean)
+        encoder.setBuffer(xBuffer, offset: 0, index: 0)
+        encoder.setBuffer(maskBuffer, offset: 0, index: 1)
+        encoder.setBuffer(yBuffer, offset: 0, index: 2)
+        var vB = Int32(B), vL = Int32(L), vH = Int32(H), vEps: Float = 1e-9
+        encoder.setBytes(&vB, length: MemoryLayout<Int32>.size, index: 3)
+        encoder.setBytes(&vL, length: MemoryLayout<Int32>.size, index: 4)
+        encoder.setBytes(&vH, length: MemoryLayout<Int32>.size, index: 5)
+        encoder.setBytes(&vEps, length: MemoryLayout<Float>.size, index: 6)
+        let threadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let threadGroups = MTLSize(width: (B * H + 255) / 256, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
+        encoder.endEncoding()
+        let handle = registerHandle(buffer: yBuffer,
+                                    shape: outputShape ?? [B, H],
+                                    rows: B,
+                                    cols: H,
+                                    rowBytes: yRowBytes,
+                                    elemType: .float32,
+                                    label: "Elementwise.maskedMeanHandleFromHandle.output")
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskedMeanHandleFromHandle",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
+            handle
+        }
+    }
+
     public func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) async throws -> Tensor {
         let readback = try await maskedMeanBackwardDeferred(dPooled: dPooled,
                                                             mask: mask,

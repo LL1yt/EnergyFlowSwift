@@ -61,8 +61,7 @@ public final class CombinedTrainer {
         // First sync to resolve forward readbacks
         // No batching yet; forward readbacks resolve without sync
         let out = try await fwd.outRB.value()   // [B, D]
-        // Read pooled handle into host Tensor for gradient scheduling
-        let pooled = try await gpu.readHandleToTensor(try await fwd.pooledHandleRB.value())
+        let pooledHandle = try await fwd.pooledHandleRB.value()
         // Build dY for combined loss alpha*(1-cos) + beta*MSE (CPU)
         var dY = dY_MSEMean(y: out, target: zTeacher)
         let dYcos = dY_CosineMeanLoss(y: out, target: zTeacher)
@@ -70,9 +69,10 @@ public final class CombinedTrainer {
         for i in 0..<(B*D) { dY.data[i] = betaMSE * dY.data[i] + alphaCos * dYcos.data[i] }
         // Schedule GPU ops (deferred) for proj grads, input grads, maskedMeanBackward, and metrics
         await gpu.beginBatch()
-        let projGradReadback = try await enc.projectionGradientsGPUDeferred(X: pooled,
-                                                                            dY: dY,
-                                                                            on: gpu)
+        let projGradReadback = try await enc.projectionGradientsGPUFromHandleDeferred(pooledHandle: pooledHandle,
+                                                                                      dY: dY,
+                                                                                      on: gpu,
+                                                                                      consumeInput: true)
         let dXin = try await enc.projectionInputGradientsGPU(dY: dY, on: gpu) // immediate to avoid extra sync
         let dEncRB = try await gpu.maskedMeanBackwardDeferred(dPooled: dXin,
                                                               mask: fwd.maskFixed,

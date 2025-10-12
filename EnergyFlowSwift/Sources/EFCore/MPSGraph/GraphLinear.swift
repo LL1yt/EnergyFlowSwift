@@ -95,6 +95,29 @@ public struct GraphLinear {
                                                      bias: b)
     }
 
+    public func gradientsGPUFromHandleDeferred(xHandle: GPUTensorHandle,
+                                               dY: Tensor,
+                                               on gpu: GPUActor = GPU.shared,
+                                               consumeInput: Bool = false) async throws -> GPUReadback<(Tensor, Tensor)> {
+        precondition(xHandle.cols == inFeatures, "GraphLinear.gradientsGPUFromHandle expects handle cols == inFeatures")
+        let batch = xHandle.rows
+        precondition(dY.shape.count == 2 && dY.shape[0] == batch && dY.shape[1] == outFeatures,
+                     "Shape mismatch: dY [B, Out]")
+        let key = cacheID
+        let ver = cacheVersion
+        let w = weight
+        let b = bias
+        return try await gpu.linearGradientsFromHandleDeferred(key: key,
+                                                               version: ver,
+                                                               inFeatures: inFeatures,
+                                                               outFeatures: outFeatures,
+                                                               weight: w,
+                                                               xHandle: xHandle,
+                                                               dY: dY,
+                                                               bias: b,
+                                                               consumeInput: consumeInput)
+    }
+
     public func inputGradientsGPUAsync(dY: Tensor, on gpu: GPUActor = GPU.shared) async throws -> Tensor {
         precondition(dY.shape.count == 2 && dY.shape[1] == outFeatures, "GraphLinear.inputGradientsGPU expects [B, outFeatures]")
         let key = cacheID
