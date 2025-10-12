@@ -109,7 +109,11 @@ public final class TextDecoder {
         let h1 = try await last.conv1.forwardAsync(norm, on: gpu)
         let h1a = try await gpu.geluForward(x: h1)
         var y = try await last.conv2.forwardAsync(h1a, on: gpu)
-        y = try await gpu.residualAdd(y: y, x: xin)
+        // Use deferred residualAdd (await immediately to proceed)
+        let yRB = try await gpu.residualAddDeferred(y: y, x: xin)
+        Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: scheduled residualAdd deferred", category: Logger.Category.training)
+        y = try await yRB.value()
+        Logger.shared.info1("TextDecoder.forwardForTrainingDeferred: residualAdd readback resolved", category: Logger.Category.training)
         // Flat for outProj
         let flat = y.reshaped([B * L, D])
         var oproj = outProj

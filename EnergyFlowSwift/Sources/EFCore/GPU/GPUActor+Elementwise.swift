@@ -273,6 +273,68 @@ extension GPUActor {
         }
     }
 
+    // New: return GPU handle to pooled buffer to chain with GPU ops without host copy
+    public func maskedMeanHandleDeferred(x: Tensor,
+                                         mask: [[Int]],
+                                         deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
+        precondition(x.shape.count == 3, "maskedMeanHandleDeferred expects x [B,L,H]")
+        let B = x.shape[0], L = x.shape[1], H = x.shape[2]
+        let maskFlat = flattenMask(mask, expectedBatch: B, expectedLength: L)
+        let pipelines = try ensureElementwisePipelines()
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.maskedMeanHandle: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.Elementwise.maskedMeanHandle"
+        let elem = MemoryLayout<Float>.size
+        let xBytes = B * L * H * elem
+        let yBytes = B * H * elem
+        let maskBytes = maskFlat.count * MemoryLayout<Int32>.size
+        let xBuffer = buffer(length: xBytes, label: "GPUActor.Elementwise.maskedMeanHandle.x")
+        let yBuffer = buffer(length: yBytes, label: "GPUActor.Elementwise.maskedMeanHandle.y")
+        let maskBuffer = buffer(length: maskBytes, label: "GPUActor.Elementwise.maskedMeanHandle.mask")
+        x.data.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(xBuffer.contents(), base, xBytes)
+            }
+        }
+        memset(yBuffer.contents(), 0, yBytes)
+        maskFlat.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(maskBuffer.contents(), base, maskBytes)
+            }
+        }
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("Elementwise.maskedMeanHandle: encoder creation failed")
+        }
+        encoder.label = "GPUActor.Elementwise.maskedMeanHandle.encoder"
+        encoder.setComputePipelineState(pipelines.maskedMean)
+        encoder.setBuffer(xBuffer, offset: 0, index: 0)
+        encoder.setBuffer(maskBuffer, offset: 0, index: 1)
+        encoder.setBuffer(yBuffer, offset: 0, index: 2)
+        var vB = Int32(B), vL = Int32(L), vH = Int32(H), vEps: Float = 1e-9
+        encoder.setBytes(&vB, length: MemoryLayout<Int32>.size, index: 3)
+        encoder.setBytes(&vL, length: MemoryLayout<Int32>.size, index: 4)
+        encoder.setBytes(&vH, length: MemoryLayout<Int32>.size, index: 5)
+        encoder.setBytes(&vEps, length: MemoryLayout<Float>.size, index: 6)
+        let threadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let threadGroups = MTLSize(width: (B * H + 255) / 256, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
+        encoder.endEncoding()
+        // Register handle before committing so closure doesn't capture MTLBuffer
+        let handle = registerHandle(buffer: yBuffer,
+                                    shape: [B, H],
+                                    rows: B,
+                                    cols: H,
+                                    rowBytes: alignedRowBytes(columns: H, elemSize: elem),
+                                    elemType: .float32,
+                                    label: "Elementwise.maskedMeanHandle")
+        return scheduleCommandBuffer(label: "GPUActor.Elementwise.maskedMeanHandle",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
+            handle
+        }
+    }
+
     public func maskedMeanBackward(dPooled: Tensor, mask: [[Int]], seqLen: Int) async throws -> Tensor {
         let readback = try await maskedMeanBackwardDeferred(dPooled: dPooled,
                                                             mask: mask,

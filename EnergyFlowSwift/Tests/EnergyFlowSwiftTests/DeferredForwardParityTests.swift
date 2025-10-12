@@ -86,10 +86,11 @@ final class DeferredForwardParityTests: XCTestCase {
         Logger.shared.info("Decoder: deferred forward synced, awaiting readbacks", category: Logger.Category.training)
         let flatDef = try await def.flatRB.value()
         let logitsDef = try await def.logitsRB.value()
+        let logitsDef3 = (logitsDef.shape.count == 3) ? logitsDef : logitsDef.reshaped([B, L, decCfg.vocabSize])
         Logger.shared.info("Decoder: readbacks resolved; comparing parity", category: Logger.Category.training)
         // Compare shapes and parity
         XCTAssertEqual(imm.flatFeatures.shape, flatDef.shape)
-        XCTAssertEqual(imm.logits.shape, logitsDef.shape)
+        XCTAssertEqual(imm.logits.shape, logitsDef3.shape)
         // Numeric tolerance
         func meanAbsDiff(_ a: Tensor, _ b: Tensor) -> Float {
             precondition(a.count == b.count)
@@ -98,6 +99,6 @@ final class DeferredForwardParityTests: XCTestCase {
             return acc / Float(max(1, a.count))
         }
         XCTAssertLessThan(meanAbsDiff(imm.flatFeatures, flatDef), 1e-4)
-        XCTAssertLessThan(meanAbsDiff(imm.logits, logitsDef), 1e-4)
+        XCTAssertLessThan(meanAbsDiff(imm.logits, logitsDef3), 1e-4)
     }
 }

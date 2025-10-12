@@ -276,6 +276,123 @@ extension GPUActor {
         )
     }
 
+    // New: forward from a GPU handle without host copy
+    public func linearForwardFromHandleDeferred(key: UUID,
+                                                version: UInt64,
+                                                inFeatures: Int,
+                                                outFeatures: Int,
+                                                weight: Tensor,
+                                                bias: Tensor?,
+                                                xHandle: GPUTensorHandle,
+                                                deferUntilSync: Bool = true) async throws -> GPUReadback<Tensor> {
+        precondition(xHandle.cols == inFeatures, "linearForwardFromHandle: input cols mismatch")
+        let batch = xHandle.rows
+        if batch == 0 { return GPUReadback(resolved: Tensor.zeros([0, outFeatures])) }
+        let cache = try ensureLinearCache(
+            key: key,
+            version: version,
+            inFeatures: inFeatures,
+            outFeatures: outFeatures,
+            weight: weight
+        )
+        let hasBias = bias != nil
+        let inputCols = hasBias ? (inFeatures + 1) : inFeatures
+        let elemHalf = MemoryLayout<Float16>.size
+        let yRowBytes = alignedRowBytes(columns: outFeatures, elemSize: elemHalf)
+        let xBuffer = consumeHandle(xHandle, expectRows: batch, expectCols: inFeatures)
+        // If bias, we need to augment an intermediate buffer (copy into augmented FP16 with 1 column appended)
+        let xBufferFP16: MTLBuffer
+        let xRowBytesFP16: Int
+        do {
+            let inAug = inputCols
+            let rowBytes = alignedRowBytes(columns: inAug, elemSize: elemHalf)
+            guard let tmp = device.makeBuffer(length: batch * rowBytes, options: .storageModeShared) else {
+                throw GPUActorError.commandBufferUnavailable("Linear.fromHandle: temp x buffer allocation failed")
+            }
+            tmp.label = "GPUActor.Linear.forwardFromHandle.xFP16"
+            // Convert xHandle (float32) to float16 if needed (assume maskedMean produced f32)
+            for row in 0..<batch {
+                let src = xBuffer.contents().advanced(by: row * xHandle.rowBytes)
+                let dst = tmp.contents().advanced(by: row * rowBytes)
+                // Convert row of Float -> Float16
+                let srcPtr = src.bindMemory(to: Float.self, capacity: inFeatures)
+                var halfRow = [Float16](repeating: 0, count: inAug)
+                for c in 0..<inFeatures { halfRow[c] = Float16(srcPtr[c]) }
+                if hasBias { halfRow[inAug - 1] = Float16(1.0) }
+                halfRow.withUnsafeBytes { raw in
+                    if let base = raw.baseAddress {
+                        memcpy(dst, base, inAug * elemHalf)
+                    }
+                }
+            }
+            xBufferFP16 = tmp
+            xRowBytesFP16 = rowBytes
+        }
+        let yBuffer = buffer(length: batch * yRowBytes, label: "GPUActor.Linear.forwardFromHandle.y")
+        memset(yBuffer.contents(), 0, batch * yRowBytes)
+        let wBuffer: MTLBuffer
+        let wRowBytes: Int
+        if hasBias, let biasTensor = bias {
+            let augmentedRowBytes = alignedRowBytes(columns: inputCols, elemSize: elemHalf)
+            let wAugBuffer = buffer(length: outFeatures * augmentedRowBytes, label: "GPUActor.Linear.forwardFromHandle.wAug.\(key)")
+            memset(wAugBuffer.contents(), 0, outFeatures * augmentedRowBytes)
+            for row in 0..<outFeatures {
+                let src = cache.weightBuffer.contents().advanced(by: row * cache.rowBytes)
+                let dst = wAugBuffer.contents().advanced(by: row * augmentedRowBytes)
+                memcpy(dst, src, inFeatures * elemHalf)
+            }
+            var biasHalf = [Float16](repeating: 0, count: outFeatures)
+            for i in 0..<outFeatures { biasHalf[i] = Float16(biasTensor.data[i]) }
+            biasHalf.withUnsafeBytes { raw in
+                if let base = raw.baseAddress {
+                    for row in 0..<outFeatures {
+                        let dst = wAugBuffer.contents().advanced(by: row * augmentedRowBytes + inFeatures * elemHalf)
+                        memcpy(dst, base.advanced(by: row * elemHalf), elemHalf)
+                    }
+                }
+            }
+            wBuffer = wAugBuffer
+            wRowBytes = augmentedRowBytes
+        } else {
+            wBuffer = cache.weightBuffer
+            wRowBytes = cache.rowBytes
+        }
+        let xDesc = MPSMatrixDescriptor(rows: batch, columns: inputCols, rowBytes: xRowBytesFP16, dataType: .float16)
+        let wDesc = MPSMatrixDescriptor(rows: outFeatures, columns: inputCols, rowBytes: wRowBytes, dataType: .float16)
+        let yDesc = MPSMatrixDescriptor(rows: batch, columns: outFeatures, rowBytes: yRowBytes, dataType: .float16)
+        let xMat = MPSMatrix(buffer: xBufferFP16, descriptor: xDesc)
+        let wMat = MPSMatrix(buffer: wBuffer, descriptor: wDesc)
+        let yMat = MPSMatrix(buffer: yBuffer, descriptor: yDesc)
+        let mm = MPSMatrixMultiplication(
+            device: device,
+            transposeLeft: false,
+            transposeRight: true,
+            resultRows: batch,
+            resultColumns: outFeatures,
+            interiorColumns: inputCols,
+            alpha: 1.0,
+            beta: 0.0
+        )
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("Linear.forwardFromHandle: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.Linear.forwardFromHandle"
+        mm.encode(commandBuffer: commandBuffer, leftMatrix: xMat, rightMatrix: wMat, resultMatrix: yMat)
+        let reader = StridedFloat16BufferReader(
+            buffer: yBuffer,
+            rows: batch,
+            cols: outFeatures,
+            rowBytes: yRowBytes,
+            shape: [batch, outFeatures]
+        )
+        return scheduleCommandBufferWithReader(
+            label: "GPUActor.Linear.forwardFromHandle",
+            commandBuffer: commandBuffer,
+            deferUntilSync: deferUntilSync,
+            reader: reader
+        )
+    }
+
     public func linearInputGradients(key: UUID,
                                      version: UInt64,
                                      inFeatures: Int,

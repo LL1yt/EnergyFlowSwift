@@ -125,4 +125,21 @@ public struct GraphLinear {
                                                           dY: dY)
     }
 
+    // New: forward from a GPU handle without host copy
+    public func forwardFromHandleDeferred(_ handle: GPUTensorHandle,
+                                          on gpu: GPUActor = GPU.shared) async throws -> GPUReadback<Tensor> {
+        precondition(handle.cols == inFeatures, "GraphLinear.forwardFromHandle: handle cols (\(handle.cols)) must equal inFeatures (\(inFeatures))")
+        let key = cacheID
+        let ver = cacheVersion
+        let w = weight
+        let b = bias
+        return try await gpu.linearForwardFromHandleDeferred(key: key,
+                                                             version: ver,
+                                                             inFeatures: inFeatures,
+                                                             outFeatures: outFeatures,
+                                                             weight: w,
+                                                             bias: b,
+                                                             xHandle: handle)
+    }
+
 }

@@ -45,6 +45,10 @@ public actor GPUActor {
     private var activeBatchDepth: Int = 0
     private var batchEpoch: UInt64 = 0
 
+    // Registry for GPU handles to avoid capturing MTLBuffer in @Sendable closures.
+    // Buffers are registered under a UUID and consumed by downstream GPU ops.
+    var handleRegistry: [UUID: MTLBuffer] = [:]
+
     public init() {
         guard let device = MTLCreateSystemDefaultDevice() else {
             fatalError("GPUActor: No Metal device available.")
@@ -180,6 +184,34 @@ public actor GPUActor {
         }
     }
 
+    // MARK: - Handle registry helpers
+    func registerHandle(buffer: MTLBuffer,
+                        shape: [Int],
+                        rows: Int,
+                        cols: Int,
+                        rowBytes: Int,
+                        elemType: GPUElementType,
+                        label: String) -> GPUTensorHandle {
+        let id = UUID()
+        handleRegistry[id] = buffer
+        return GPUTensorHandle(id: id,
+                               shape: shape,
+                               rows: rows,
+                               cols: cols,
+                               rowBytes: rowBytes,
+                               elemType: elemType,
+                               label: label,
+                               epoch: batchEpoch)
+    }
+
+    func consumeHandle(_ handle: GPUTensorHandle, expectRows: Int? = nil, expectCols: Int? = nil) -> MTLBuffer {
+        if let er = expectRows { precondition(er == handle.rows, "GPUTensorHandle rows mismatch") }
+        if let ec = expectCols { precondition(ec == handle.cols, "GPUTensorHandle cols mismatch") }
+        guard let buf = handleRegistry.removeValue(forKey: handle.id) else {
+            fatalError("GPUActor: missing buffer for handle \(handle.label) id=\(handle.id)")
+        }
+        return buf
+    }
 }
 
 private final class GPUReadbackState<T: Sendable>: @unchecked Sendable {
