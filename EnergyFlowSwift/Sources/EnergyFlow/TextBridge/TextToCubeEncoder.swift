@@ -190,13 +190,20 @@ public final class TextToCubeEncoder {
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled maskZero deferred", category: Logger.Category.training)
         y = try await yMaskRB.value()
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: maskZero readback resolved", category: Logger.Category.training)
-        // For now, compute pooled immediately to feed projection; return it as a resolved readback
+        // Compute pooled in two forms:
+        // 1) GPU handle for chaining into projection (no host copy)
+        // 2) Host Tensor for trainers that need pooled (return as resolved readback)
+        let pooledHandleRB = try await gpu.maskedMeanHandleDeferred(x: y, mask: maskFixed)
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled maskedMean handle deferred", category: Logger.Category.training)
+        // Also compute pooled Tensor (temporary until trainers consume handles)
         let pooled = try await gpu.maskedMean(x: y, mask: maskFixed)
-        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: maskedMean done", category: Logger.Category.training)
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: maskedMean (host) done", category: Logger.Category.training)
         var proj = gpuProj
-        let outRB = try await proj.forwardDeferred(pooled, on: gpu)
+        // Resolve handle (no batch active, so this will await command completion only for maskedMean kernel)
+        let pooledHandle = try await pooledHandleRB.value()
+        let outRB = try await proj.forwardFromHandleDeferred(pooledHandle, on: gpu)
         gpuProj = proj
-        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled proj deferred", category: Logger.Category.training)
+        Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: scheduled proj from handle deferred", category: Logger.Category.training)
         let cache = LastTCNCache(xIn: x, norm: norm, h1: h1, h1a: h1a)
         let pooledRB = GPUReadback(resolved: pooled)
         Logger.shared.info1("Encoder.forwardForTrainingWithLastBlockCacheDeferred: return", category: Logger.Category.training)

@@ -149,6 +149,77 @@ extension GPUActor {
         )
     }
 
+    // New: GELU from a GPU handle, returning a handle to the result (fp16)
+    public func geluForwardHandleDeferred(xHandle: GPUTensorHandle,
+                                          deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
+        let count = xHandle.rows * xHandle.cols
+        if count == 0 { return GPUReadback(resolved: registerHandle(buffer: buffer(length: 1, label: "empty"), shape: [0,0], rows: 0, cols: 0, rowBytes: 0, elemType: .float16, label: "GELU.empty")) }
+        let pipelines = try ensureGELUPipelines()
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("GELU.forwardHandle: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.GELU.forwardHandle"
+        let elemHalf = MemoryLayout<Float16>.size
+        let elemFloat = MemoryLayout<Float>.size
+        // Prepare contiguous fp16 input buffer
+        let xInBuf = consumeHandle(xHandle)
+        guard let xHalfBuf = device.makeBuffer(length: count * elemHalf, options: .storageModeShared) else {
+            throw GPUActorError.commandBufferUnavailable("GELU.forwardHandle: temp xHalf allocation failed")
+        }
+        xHalfBuf.label = "GPUActor.GELU.forwardHandle.xHalf"
+        if xHandle.elemType == .float16 {
+            // Row-wise copy respecting rowBytes
+            for row in 0..<xHandle.rows {
+                let src = xInBuf.contents().advanced(by: row * xHandle.rowBytes)
+                let dst = xHalfBuf.contents().advanced(by: row * xHandle.cols * elemHalf)
+                memcpy(dst, src, xHandle.cols * elemHalf)
+            }
+        } else {
+            // Convert float32 -> float16 row-wise
+            for row in 0..<xHandle.rows {
+                let src = xInBuf.contents().advanced(by: row * xHandle.rowBytes).bindMemory(to: Float.self, capacity: xHandle.cols)
+                var halfRow = [Float16](repeating: 0, count: xHandle.cols)
+                for c in 0..<xHandle.cols { halfRow[c] = Float16(src[c]) }
+                halfRow.withUnsafeBytes { raw in
+                    if let base = raw.baseAddress {
+                        let dst = xHalfBuf.contents().advanced(by: row * xHandle.cols * elemHalf)
+                        memcpy(dst, base, xHandle.cols * elemHalf)
+                    }
+                }
+            }
+        }
+        // Output contiguous fp16 buffer
+        guard let yBuf = device.makeBuffer(length: count * elemHalf, options: .storageModeShared) else {
+            throw GPUActorError.commandBufferUnavailable("GELU.forwardHandle: y buffer allocation failed")
+        }
+        yBuf.label = "GPUActor.GELU.forwardHandle.y"
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("GELU.forwardHandle: encoder creation failed")
+        }
+        encoder.label = "GPUActor.GELU.forwardHandle.encoder"
+        encoder.setComputePipelineState(pipelines.forward)
+        encoder.setBuffer(xHalfBuf, offset: 0, index: 0)
+        encoder.setBuffer(yBuf, offset: 0, index: 1)
+        var n = Int32(count)
+        encoder.setBytes(&n, length: MemoryLayout<Int32>.size, index: 2)
+        let threadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let threadGroups = MTLSize(width: (count + 255) / 256, height: 1, depth: 1)
+        encoder.dispatchThreadgroups(threadGroups, threadsPerThreadgroup: threadsPerGroup)
+        encoder.endEncoding()
+        let handle = registerHandle(buffer: yBuf,
+                                    shape: [xHandle.rows, xHandle.cols],
+                                    rows: xHandle.rows,
+                                    cols: xHandle.cols,
+                                    rowBytes: xHandle.cols * elemHalf,
+                                    elemType: .float16,
+                                    label: "GELU.forwardHandle.output")
+        return scheduleCommandBuffer(label: "GPUActor.GELU.forwardHandle",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
+            handle
+        }
+    }
+
     private func ensureGELUPipelines() throws -> GELUPipelines {
         if let pipelines = geluPipelines {
             return pipelines

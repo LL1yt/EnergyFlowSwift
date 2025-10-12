@@ -333,6 +333,122 @@ extension GPUActor {
         )
     }
 
+    // New: LayerNorm forward from a GPU handle, returning a handle (fp16)
+    public func layerNormForwardHandleDeferred(xHandle: GPUTensorHandle,
+                                               gamma: Tensor,
+                                               beta: Tensor,
+                                               eps: Float,
+                                               deferUntilSync: Bool = true) async throws -> GPUReadback<GPUTensorHandle> {
+        let N = xHandle.rows
+        let D = xHandle.cols
+        precondition(D == gamma.shape.first, "LN handle: D mismatch with gamma")
+        let pipelines = try ensureLayerNormPipelines()
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardHandle: command buffer creation failed")
+        }
+        commandBuffer.label = "GPUActor.LayerNorm.forwardHandle"
+        let elemHalf = MemoryLayout<Float16>.size
+        let elemFloat = MemoryLayout<Float>.size
+        let xBytesHalf = N * D * elemHalf
+        let yBytesHalf = N * D * elemHalf
+        let meanBytes = N * elemFloat
+        let invStdBytes = N * elemFloat
+        let gammaBytes = D * elemFloat
+        let betaBytes = D * elemFloat
+        // Prepare contiguous fp16 x buffer
+        let xInBuf = consumeHandle(xHandle, expectRows: N, expectCols: D)
+        guard let xHalfBuf = device.makeBuffer(length: xBytesHalf, options: .storageModeShared) else {
+            throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardHandle: xHalf alloc failed")
+        }
+        xHalfBuf.label = "GPUActor.LayerNorm.forwardHandle.x"
+        if xHandle.elemType == .float16 {
+            for row in 0..<N {
+                let src = xInBuf.contents().advanced(by: row * xHandle.rowBytes)
+                let dst = xHalfBuf.contents().advanced(by: row * D * elemHalf)
+                memcpy(dst, src, D * elemHalf)
+            }
+        } else {
+            for row in 0..<N {
+                let src = xInBuf.contents().advanced(by: row * xHandle.rowBytes).bindMemory(to: Float.self, capacity: D)
+                var halfRow = [Float16](repeating: 0, count: D)
+                for c in 0..<D { halfRow[c] = Float16(src[c]) }
+                halfRow.withUnsafeBytes { raw in
+                    if let base = raw.baseAddress {
+                        let dst = xHalfBuf.contents().advanced(by: row * D * elemHalf)
+                        memcpy(dst, base, D * elemHalf)
+                    }
+                }
+            }
+        }
+        guard let yHalfBuf = device.makeBuffer(length: yBytesHalf, options: .storageModeShared) else {
+            throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardHandle: yHalf alloc failed")
+        }
+        yHalfBuf.label = "GPUActor.LayerNorm.forwardHandle.y"
+        let meanBuffer = buffer(length: meanBytes, label: "GPUActor.LayerNorm.forwardHandle.mean")
+        let invStdBuffer = buffer(length: invStdBytes, label: "GPUActor.LayerNorm.forwardHandle.invstd")
+        let gammaBuffer = buffer(length: gammaBytes, label: "GPUActor.LayerNorm.forwardHandle.gamma")
+        let betaBuffer = buffer(length: betaBytes, label: "GPUActor.LayerNorm.forwardHandle.beta")
+        gamma.data.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(gammaBuffer.contents(), base, gammaBytes)
+            }
+        }
+        beta.data.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(betaBuffer.contents(), base, betaBytes)
+            }
+        }
+        memset(meanBuffer.contents(), 0, meanBytes)
+        memset(invStdBuffer.contents(), 0, invStdBytes)
+        guard let statsEncoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardHandle: stats encoder creation failed")
+        }
+        statsEncoder.label = "GPUActor.LayerNorm.forwardHandle.stats"
+        statsEncoder.setComputePipelineState(pipelines.stats)
+        statsEncoder.setBuffer(xHalfBuf, offset: 0, index: 0)
+        statsEncoder.setBuffer(meanBuffer, offset: 0, index: 1)
+        statsEncoder.setBuffer(invStdBuffer, offset: 0, index: 2)
+        var vN = Int32(N)
+        var vD = Int32(D)
+        var vEps = eps
+        statsEncoder.setBytes(&vN, length: MemoryLayout<Int32>.size, index: 3)
+        statsEncoder.setBytes(&vD, length: MemoryLayout<Int32>.size, index: 4)
+        statsEncoder.setBytes(&vEps, length: MemoryLayout<Float>.size, index: 5)
+        let statsThreadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let statsThreadgroups = MTLSize(width: (N + 255) / 256, height: 1, depth: 1)
+        statsEncoder.dispatchThreadgroups(statsThreadgroups, threadsPerThreadgroup: statsThreadsPerGroup)
+        statsEncoder.endEncoding()
+        guard let normEncoder = commandBuffer.makeComputeCommandEncoder() else {
+            throw GPUActorError.commandBufferUnavailable("LayerNorm.forwardHandle: normalize encoder creation failed")
+        }
+        normEncoder.label = "GPUActor.LayerNorm.forwardHandle.norm"
+        normEncoder.setComputePipelineState(pipelines.normalize)
+        normEncoder.setBuffer(xHalfBuf, offset: 0, index: 0)
+        normEncoder.setBuffer(yHalfBuf, offset: 0, index: 1)
+        normEncoder.setBuffer(gammaBuffer, offset: 0, index: 2)
+        normEncoder.setBuffer(betaBuffer, offset: 0, index: 3)
+        normEncoder.setBuffer(meanBuffer, offset: 0, index: 4)
+        normEncoder.setBuffer(invStdBuffer, offset: 0, index: 5)
+        normEncoder.setBytes(&vN, length: MemoryLayout<Int32>.size, index: 6)
+        normEncoder.setBytes(&vD, length: MemoryLayout<Int32>.size, index: 7)
+        let normThreadsPerGroup = MTLSize(width: 256, height: 1, depth: 1)
+        let normThreadgroups = MTLSize(width: (N + 255) / 256, height: 1, depth: 1)
+        normEncoder.dispatchThreadgroups(normThreadgroups, threadsPerThreadgroup: normThreadsPerGroup)
+        normEncoder.endEncoding()
+        let handle = registerHandle(buffer: yHalfBuf,
+                                    shape: [N, D],
+                                    rows: N,
+                                    cols: D,
+                                    rowBytes: D * elemHalf,
+                                    elemType: .float16,
+                                    label: "LayerNorm.forwardHandle.output")
+        return scheduleCommandBuffer(label: "GPUActor.LayerNorm.forwardHandle",
+                                     commandBuffer: commandBuffer,
+                                     deferUntilSync: deferUntilSync) {
+            handle
+        }
+    }
+
     private func ensureLayerNormPipelines() throws -> LayerNormPipelines {
         if let pipelines = layerNormPipelines {
             return pipelines
